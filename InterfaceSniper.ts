@@ -137,7 +137,7 @@ function isDebugMode(): boolean {
  * @param outFile Pfad zur TS-Datei (relativ zur aufrufenden Datei → wird in <callerDir>/sniped/<outFile> gespeichert,
  *                oder absolut, wenn ein absoluter Pfad angegeben wird)
  */
-export function InterfaceSniper(interfaceName: string, outFile: string): MethodDecorator {
+export function InterfaceSniper(interfaceName: string, outFile?: string): MethodDecorator {
   return (
     target: Object,
     propertyKey: string | symbol,
@@ -161,6 +161,9 @@ export function InterfaceSniper(interfaceName: string, outFile: string): MethodD
             }
 
             const debug = isDebugMode();
+
+            if (!outFile)
+              outFile = interfaceName + ".interface.ts"
 
             const resolved = path.isAbsolute(outFile)
               ? outFile

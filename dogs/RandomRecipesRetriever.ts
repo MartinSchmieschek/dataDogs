@@ -1,5 +1,5 @@
-import { AbstractHuntingDog } from "../enities/abstractHuntingDog";
-import { IHuntingSeason } from "../enities/IHuntingSeason";
+import { AbstractHuntingDog } from "../core/enities/abstractHuntingDog";
+import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import { InterfaceSniper } from "../InterfaceSniper";
 
 export interface MockData {

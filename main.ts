@@ -1,13 +1,10 @@
 import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
-import { IHuntingDog, IHuntingDog as IDog } from "./enities/IHuntingDog"
-import { IHuntingSeason } from "./enities/IHuntingSeason"
+import { IHuntingDog, IHuntingDog as IDog } from "./core/enities/IHuntingDog"
+import { IHuntingSeason } from "./core/enities/IHuntingSeason"
 import { RandomRecipesRetriever } from "./dogs/RandomRecipesRetriever";
 import { CountryFlagBlackLab } from "./dogs/CountryFlagBlackLab";
-import { MbdhDogExample } from './mbdhEnrichShit/mbdhDogs/MbdhEampleDog';
 import { AsciiArt, AsciiPrinter } from './AsciiPrinter';
-import { ResuractedMBDHDogBase } from './mbdhEnrichShit/resuractedMBDHDogBase';
 import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
-import { TalkingDog } from './dogs/TalkingDog/TalkingDog';
 import { writeFileSync } from 'fs';
 
 
@@ -16,16 +13,23 @@ import { writeFileSync } from 'fs';
 const mainDataDogs:()=>Promise<unknown> = () => {
     return new Promise((res, rej) => {
         // init hunting dogs
-        const kennel: Array<IDog<unknown>> = [new RandomRecipesRetriever(), new CountryFlagBlackLab(), new DishFlagBlackLab(), new RandomEveryThingRetriever(), new TalkingDog()]
+        const kennel: Array<IDog<unknown>> = [
+            new RandomRecipesRetriever(), 
+            new CountryFlagBlackLab(), 
+            new DishFlagBlackLab(), 
+            new RandomEveryThingRetriever(), 
+            //new FoodPornRetriever(), // deactivated to much requests for this api key
+            new TalkingDog() 
+        ]
 
         // for fun try to convert mbdh enrichment class into a dog
         const mbdhSubject = {};
         const mbdhContext = {};
         const chatter = [] as any
-        kennel.push(new MbdhDogExample(mbdhSubject, mbdhContext, chatter))
+
 
         AsciiPrinter.print(AsciiArt.Box, "")
-        kennel.forEach(dog => AsciiPrinter.print((dog instanceof ResuractedMBDHDogBase) ? AsciiArt.Zombie : AsciiArt.Cat, "<" + dog.name + ">"))
+        kennel.forEach(dog => AsciiPrinter.print((dog instanceof RandomEveryThingRetriever) ? AsciiArt.Zombie : AsciiArt.Cat, "<" + dog.name + ">"))
         // just trigger everyOne
         const dogsWithBeesInthePants = Object.assign([], kennel) as Array<IDog<unknown>>;
 
@@ -57,11 +61,13 @@ const mainDataDogs:()=>Promise<unknown> = () => {
 
         console.log("dog with bees in the pants:" + dogsWithBeesInthePants.map(dog => "<" + dog.name + ">").join(", "))
 
-        // lets the data season begin with nothing :D
-        const season: IHuntingSeason = {
+        const maxWaves = kennel.length;
+        // lets the data season begin with nothing :D this will change over time, this is our progression anchor
+        const season: IHuntingSeason =  {
             exhausted: [],
-        } = {
-            exhausted: [],
+            withBeesInThePants:dogsWithBeesInthePants,
+            maxRuns:maxWaves,
+            run:0
         }
 
 
@@ -76,12 +82,13 @@ const mainDataDogs:()=>Promise<unknown> = () => {
         // go explore
         letOutThePack(firstHunt).then(async () => {
             let wave = 1;
-            const maxWaves = kennel.length;
+            
 
             // prepare all other runs
             let seasonRuns: (() => Promise<void>)[] = []
             for (let i = 0; i < maxWaves; i++) {
                 wave++;
+                season.run = wave;
                 seasonRuns.push(
                     async () => {
                         let leftoverDogs = dogsWithBeesInthePants.filter(dog => dog.isReady(season));
@@ -109,6 +116,7 @@ const mainDataDogs:()=>Promise<unknown> = () => {
 
             })
 
+
             // dump
             let storyDog = season.exhausted.find(dog => dog instanceof TalkingDog)
             //writeFileSync("./TalkingDogDump.html", storyDog?.collected ?? "no dog there");
@@ -123,6 +131,8 @@ const mainDataDogs:()=>Promise<unknown> = () => {
 
 
 import express from "express";
+import { FoodPornRetriever } from './dogs/FoodPornRetriever';
+import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 
 const app = express();
 const port = 3000;
