@@ -1,10 +1,21 @@
-import { FragmentRenderer } from "./FragmentRenderer";
+import { FragmentBase } from "./FragmentBase";
 
 export interface VideoData {
   youtubeId: string;
 }
 
-export class VideoFragmentRenderer extends FragmentRenderer<VideoData> {
+export class VideoFragmentRenderer extends FragmentBase {
+  getStyle(): string {
+    throw new Error("Method not implemented.");
+  }
+
+  render(): string {
+    throw new Error("Method not implemented.");
+  }
+  getScript(): string {
+    throw new Error("Method not implemented.");
+  }
+  /*
   render(data: VideoData): string {
     return `
       <div class="video-fragment">
@@ -19,4 +30,5 @@ export class VideoFragmentRenderer extends FragmentRenderer<VideoData> {
       </div>
     `;
   }
+    */
 }

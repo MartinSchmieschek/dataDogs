@@ -4,9 +4,10 @@ import { IHuntingSeason } from "../../core/enities/IHuntingSeason";
 import { FoodPornRetriever } from "../FoodPornRetriever";
 import { RandomEveryThingRetriever } from "../RandomEverthingRetriever";
 import { RandomRecipesRetriever } from "../RandomRecipesRetriever";
-import { DogIntro } from "./DogIntro";
 import { LayoutRenderer } from "../../core/renderer/LayoutRenderer";
-import { LayoutZones, tinderLayout } from "../../core/renderer/layouts/tinderLayout";
+import { ButtonFragment } from "../../core/renderer/fragments/ButtonFragment";
+import { TinderLayout, TinderLayoutEnum } from "../../core/renderer/layouts/TinderLayout";
+import { GestureFragment } from "../../core/renderer/fragments/GestureFragment";
 
 export class TalkingDog extends AbstractHuntingDog<string> {
 
@@ -66,56 +67,34 @@ export class TalkingDog extends AbstractHuntingDog<string> {
             const allOtherShitDog = season.exhausted.find(item => item instanceof RandomEveryThingRetriever)
             let name: string = allOtherShitDog?.collected?.characters.name!;
             let description: string = allOtherShitDog?.collected?.characters.gender ?? '';
-            let image = allOtherShitDog?.collected?.woof.url!
+            let dogimage = allOtherShitDog?.collected?.woof.url!
 
 
               
-              const layout = tinderLayout();
-              
-              const content = layout.zones.find((i:any) => i.id === LayoutZones.Image);
-              if (content)
-                content.value = {
-                  name: name,
-                  imageUrl: image,
-                  description: description,
-                };
+            const layout = new TinderLayout();
 
-                const cookingVideoDog = season.exhausted.find(item => item instanceof FoodPornRetriever)
-              
-              const videoZone = layout.zones.find((i:any) => i.id === LayoutZones.Video);
-              if (videoZone)
-                videoZone.value = { youtubeId: cookingVideoDog?.collected?.items[0].id.videoId};
-              
-
-          
-       /*      
-
-              const reciepeDog = season.exhausted.find(item => item instanceof RandomRecipesRetriever)
-              let ingredients: string[] = reciepeDog!.collected!.ingredients
-              let steps = reciepeDog!.collected!.instructions
-
-            const intro = new DogIntro({
-                name: name,
-                mediaUrl: image,
-                ingredients: ingredients,
-                steps: steps,
-                youtubeItem: (cookingVideoDog?.collected?.items && cookingVideoDog?.collected?.items.length > 0) ? cookingVideoDog?.collected?.items[0] : undefined
-            });
-
-            // Node / Server-side: du kannst intro.render() verwenden und in eine Datei oder Response einbauen
-            const html = intro.render();
-            console.log(html);
-*/
-
-            // try to add new layoutRenderer
-            const actions = {
-                like: (id: string) => console.log("Liked 🐶"),
-                dislike: (id: string) => console.log("Disliked 🐾"),
-              };
-
+            // Inhalte befüllen
+            const image = layout.get(TinderLayoutEnum.PresentationImage);
+            if (image && "imageUrl" in image) image.imageUrl = dogimage;
             
-            const renderer = new LayoutRenderer(layout, actions);
-            const html = renderer.renderDocument();
+            const title = layout.get(TinderLayoutEnum.Title);
+            if (title && "text" in title) title.text = name;
+            
+
+            // Button-Aktion
+            const next = layout.get(TinderLayoutEnum.Next);
+            if (next) {
+              (next as ButtonFragment).action = () => window.location.reload();
+            }
+
+            // Button-Aktion
+            const l = layout.get(TinderLayoutEnum.SwipeLeft);
+            if (l) {
+                (l as GestureFragment).action = () => window.location.reload();
+            }
+
+            const renderer = new LayoutRenderer();
+            const html = renderer.render(layout);
 
             res(html)
         })

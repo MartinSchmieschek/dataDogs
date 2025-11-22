@@ -1,85 +1,28 @@
-import { FragmentRenderer } from "./FragmentRenderer";
-import { DogFragmentRenderer } from "./DogFragmentRenderer";
-import { VideoFragmentRenderer } from "./VideoFragmentRenderer";
-import { ButtonsFragmentRenderer } from "./ButtonsFragmentRenderer";
+import { LayoutBase } from "./layouts/LayoutBase";
 
-export interface LayoutZone {
-  id: string;
-  fragment: string;
-  style: Record<string, string>;
-  value?: any;
-}
-
-export interface LayoutDefinition {
-  name: string;
-  zones: LayoutZone[];
-}
 
 export class LayoutRenderer {
-  private layout: LayoutDefinition;
-  private actions: Record<string, (id: string) => void>;
-  private fragmentMap: Record<string, FragmentRenderer<any>>;
-
-  constructor(layout: LayoutDefinition, actions: Record<string, (id: string) => void>) {
-    this.layout = layout;
-    this.actions = actions;
-
-    // Fragment-Typen registrieren
-    this.fragmentMap = {
-      dog: new DogFragmentRenderer(),
-      video: new VideoFragmentRenderer(),
-      buttons: new ButtonsFragmentRenderer(),
-    };
-  }
-
-  private renderZone(zone: LayoutZone): string {
-    const renderer = this.fragmentMap[zone.fragment];
-    if (!renderer) return `<div>❌ Unknown fragment: ${zone.fragment}</div>`;
-
-    const style = Object.entries(zone.style)
-      .map(([k, v]) => `${k}:${v}`)
-      .join(";");
-
-    return `
-      <div id="${zone.id}" class="zone" style="${style}">
-        ${renderer.render(zone.value)}
-      </div>
-    `;
-  }
-
-  renderDocument(): string {
-    const zonesHtml = this.layout.zones.map(z => this.renderZone(z)).join("\n");
-
-    const style = `
-      <style>
-        body {
-          margin: 0;
-          background: #fafafa;
-          font-family: system-ui, sans-serif;
-          overflow: hidden;
-        }
-      </style>
-    `;
-
-    const script = `
-      <script>
-        const actions = ${JSON.stringify(Object.keys(this.actions))};
-        document.querySelectorAll("[data-action]").forEach(btn => {
-          btn.addEventListener("click", e => {
-            const act = e.currentTarget.getAttribute("data-action");
-            console.log("Action triggered:", act);
-            location.reload();
-          });
-        });
-      </script>
-    `;
+  render(layout: LayoutBase<any>): string {
+    const html = layout.renderHtml();
+    const styles = layout.collectStyles();
+    const scripts = layout.collectScripts();
 
     return `
       <html>
-        <head>${style}</head>
+        <head>
+          <style>${styles}</style>
+        </head>
         <body>
-          ${zonesHtml}
-          ${script}
+          ${html}
+          <script>
+            ${scripts}
+
+            // Simulation für Gesten mit Keyboard:
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'ArrowLeft') window.dispatchEvent(new Event('swipeLeft'));
+              if (e.key === 'ArrowRight') window.dispatchEvent(new Event('swipeRight'));
+            });
+          </script>
         </body>
       </html>
     `;
