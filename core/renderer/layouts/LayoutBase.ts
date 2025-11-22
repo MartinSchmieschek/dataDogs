@@ -10,6 +10,10 @@ export abstract class LayoutBase<E extends string> {
     return this.fragments.get(id);
   }
 
+  find(is: (fragment:FragmentBase, id:string)=>boolean): FragmentBase[] {
+    return Array.from(this.fragments.entries()).filter(item => is(item[1],item[0])).map(item => item[1])
+  }
+
   getAllFragments(): FragmentBase[] {
     return Array.from(this.fragments.values());
   }

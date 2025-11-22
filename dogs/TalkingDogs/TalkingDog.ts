@@ -6,8 +6,10 @@ import { RandomEveryThingRetriever } from "../RandomEverthingRetriever";
 import { RandomRecipesRetriever } from "../RandomRecipesRetriever";
 import { LayoutRenderer } from "../../core/renderer/LayoutRenderer";
 import { ButtonFragment } from "../../core/renderer/fragments/ButtonFragment";
-import { TinderLayout, TinderLayoutEnum } from "../../core/renderer/layouts/TinderLayout";
 import { GestureFragment } from "../../core/renderer/fragments/GestureFragment";
+import { TinderLayout, TinderLayoutEnum } from "../../core/renderer/layouts/tinderLayout";
+import { SwipeLeftGestureFragment } from "../../core/renderer/fragments/SwipeLeftGestureFragment";
+import { SwipeRightGestureFragment } from "../../core/renderer/fragments/SwipeRightGestureFragment";
 
 export class TalkingDog extends AbstractHuntingDog<string> {
 
@@ -87,11 +89,11 @@ export class TalkingDog extends AbstractHuntingDog<string> {
               (next as ButtonFragment).action = () => window.location.reload();
             }
 
-            // Button-Aktion
-            const l = layout.get(TinderLayoutEnum.SwipeLeft);
-            if (l) {
-                (l as GestureFragment).action = () => window.location.reload();
-            }
+            // swipes
+            const l = layout.find(item => (item instanceof SwipeLeftGestureFragment || item instanceof SwipeRightGestureFragment))
+            l.forEach(item => {
+                (item as GestureFragment).action = () => window.location.reload();
+            })
 
             const renderer = new LayoutRenderer();
             const html = renderer.render(layout);
