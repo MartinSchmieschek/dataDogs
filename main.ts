@@ -11,7 +11,7 @@ import { writeFileSync } from 'fs';
 
 // function to collect data
 const mainDataDogs:()=>Promise<unknown> = () => {
-    return new Promise((res, rej) => {
+    return new Promise(async (res, rej) => {
         // init hunting dogs
         const kennel: Array<IDog<unknown>> = [
             new RandomRecipesRetriever(), 
@@ -22,106 +22,31 @@ const mainDataDogs:()=>Promise<unknown> = () => {
             new TalkingDog() 
         ]
 
-        // for fun try to convert mbdh enrichment class into a dog
-        const mbdhSubject = {};
-        const mbdhContext = {};
-        const chatter = [] as any
 
-
-        AsciiPrinter.print(AsciiArt.Box, "")
-        kennel.forEach(dog => AsciiPrinter.print((dog instanceof RandomEveryThingRetriever) ? AsciiArt.Zombie : AsciiArt.Cat, "<" + dog.name + ">"))
-        // just trigger everyOne
-        const dogsWithBeesInthePants = Object.assign([], kennel) as Array<IDog<unknown>>;
-
-        // things to do:
-        const letOut = async (dog: IHuntingDog<unknown>) => {
-            try {
-                console.log("<" + dog.name + ">" + " is running.")
-                await dog.collectYield(season);
-                season.exhausted.push(dog)
-
-
-                // be happy about one more exausted dog
-                let dogIndex = dogsWithBeesInthePants.findIndex(comperrator => comperrator === dog)
-                if (dogIndex >= 0) {
-                    console.log("<" + dog.name + ">" + " is now exausted.")
-                    dogsWithBeesInthePants.splice(dogIndex, 1)
-                }
-
-            }
-            catch (e) {
-                console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e)
-            }
-        }
-
-        const letOutThePack = async (pack: IHuntingDog<unknown>[]) => {
-            console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
-            await Promise.all(pack.map(dog => letOut(dog)));
-        }
-
-        console.log("dog with bees in the pants:" + dogsWithBeesInthePants.map(dog => "<" + dog.name + ">").join(", "))
-
-        const maxWaves = kennel.length;
-        // lets the data season begin with nothing :D this will change over time, this is our progression anchor
-        const season: IHuntingSeason =  {
-            exhausted: [],
-            withBeesInThePants:dogsWithBeesInthePants,
-            maxRuns:maxWaves,
-            run:0
-        }
-
-
-
-        AsciiPrinter.print(AsciiArt.StartLine, "")
-        // go gether something
-        const firstHunt = dogsWithBeesInthePants.filter((dog) => { return dog.isReady(season) })
-
-        if (firstHunt.length === 0)
-            throw console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
-
-        // go explore
-        letOutThePack(firstHunt).then(async () => {
-            let wave = 1;
-            
-
-            // prepare all other runs
-            let seasonRuns: (() => Promise<void>)[] = []
-            for (let i = 0; i < maxWaves; i++) {
-                wave++;
-                season.run = wave;
-                seasonRuns.push(
-                    async () => {
-                        let leftoverDogs = dogsWithBeesInthePants.filter(dog => dog.isReady(season));
-                        if (leftoverDogs.length > 0) {
-                            await letOutThePack(leftoverDogs)
-                        }
-                        else {
-                            console.log("no more dogs withe bees int the pants.")
-                            i = maxWaves;
-                        }
-                    }
-                );
-            }
-
-            // make the season runs
-            for await (const run of seasonRuns) {
-                await run();
-            }
-
-            // report
-            AsciiPrinter.print(AsciiArt.Treasure, "")
-            season.exhausted.forEach(dog => {
-                AsciiPrinter.print(AsciiArt.Dog, "<" + dog.name + ">")
-                console.log(dog.collected)
-
-            })
-
-
-            // dump
-            let storyDog = season.exhausted.find(dog => dog instanceof TalkingDog)
-            //writeFileSync("./TalkingDogDump.html", storyDog?.collected ?? "no dog there");
-            res(storyDog?.collected)
+        let hunt = new Harvester({
+            kennel
         })
+
+        let theHunt = await hunt.run();
+
+        console.log(theHunt);
+
+        let storyDog = theHunt.exhausted.find(dog => dog instanceof TalkingDog)
+        //writeFileSync("./TalkingDogDump.html", storyDog?.collected ?? "no dog there");
+        //res(storyDog?.collected)
+
+        let waves: Array<Array<{ name: string; result: any }>> = []
+        theHunt.wave.forEach(wave => {
+            waves.push(wave.map(i => {
+                return{
+                    name:i.name,
+                    result:i.collected
+                }
+            }))
+        })
+
+        let html = Results.createWaveHTML(waves)
+        res(html)
 
     })
 }
@@ -133,6 +58,8 @@ const mainDataDogs:()=>Promise<unknown> = () => {
 import express from "express";
 import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
+import { Harvester } from './core/harverster';
+import { Results } from './results';
 
 const app = express();
 const port = 3000;

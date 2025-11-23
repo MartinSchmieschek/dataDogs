@@ -43,7 +43,7 @@ export class TalkingDog extends AbstractHuntingDog<string> {
         let maxOptionalIntersections = TalkingDog.intersection<IHuntingDog<unknown>>(optionalDogs, season.withBeesInThePants)
 
         // wait maybe there will be more
-        if (season.run < season.maxRuns || optionalIntersectionsCount < maxOptionalIntersections)
+        if (season.runIndex < season.maxRuns || optionalIntersectionsCount < maxOptionalIntersections)
             return false;
 
         if (requiredIntersectionsCount.length >= reqDogs.length) {
