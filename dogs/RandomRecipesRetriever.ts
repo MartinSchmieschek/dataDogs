@@ -1,4 +1,5 @@
-import { AbstractHuntingDog } from "../core/enities/abstractHuntingDog";
+import { Dog } from "../core/enities/abstractHuntingDog";
+import { IHuntingDog } from "../core/enities/IHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import { InterfaceSniper } from "../InterfaceSniper";
 
@@ -20,7 +21,16 @@ export interface MockData {
     tags:string[]
 }
 
-export class RandomRecipesRetriever extends AbstractHuntingDog<MockData>{
+export class RandomRecipesRetriever extends Dog<MockData>{
+
+    get required(){
+        return []
+    }
+
+    get optional(){
+        return []
+    }
+
 
     protected yieldCollectorFactory: (season:IHuntingSeason) => Promise<MockData> = (season:IHuntingSeason) => {
         return this.request(season)
@@ -36,11 +46,5 @@ export class RandomRecipesRetriever extends AbstractHuntingDog<MockData>{
     get name(){
         return RandomRecipesRetriever.name
     }
-
-    isReady(collection: IHuntingSeason): boolean {
-        // A Retriever is always ready
-        return true;
-    }
-
 
 }

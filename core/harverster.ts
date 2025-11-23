@@ -1,8 +1,11 @@
-import { promises } from "dns";
+
+import { Dog } from "./enities/abstractHuntingDog";
 import { IHuntingDog } from "./enities/IHuntingDog";
 import { IHuntingSeason } from "./enities/IHuntingSeason";
 
-export class Harvester {
+
+
+export class SeasonRunner {
     private kennel: Array<IHuntingDog<unknown>> = [
 
     ]
@@ -58,7 +61,22 @@ export class Harvester {
     private async letOutThePack (pack: IHuntingDog<unknown>[], season: IHuntingSeason):Promise<void> {
         console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
         await Promise.all(pack.map(dog => this.letOut(dog, season)));
-        this.season.wave.push(pack.filter(dog => dog.collected != undefined))
+
+        let i = this.season.wave.push(pack.filter(dog => dog.collected != undefined).map(i => {return {
+            instance:i,
+            optionalRequiresFrom:null,
+            requiresFrom:null
+        }}))
+
+        this.season.wave[i-1].forEach(i => {
+            let baseDog = i.instance as Dog<unknown>
+            if (baseDog && baseDog.filterByRequirements != undefined){
+                let possibleSources = baseDog.filterByRequirements(this.season.exhausted)
+                i.optionalRequiresFrom = possibleSources.optional,
+                i.requiresFrom = possibleSources.required
+            }
+
+        })
     }
 
     public async run():Promise<IHuntingSeason> {

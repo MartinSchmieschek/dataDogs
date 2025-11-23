@@ -1,16 +1,21 @@
-import { AbstractHuntingDog } from "../core/enities/abstractHuntingDog";
+import { Dog } from "../core/enities/abstractHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
-export class CountryFlagBlackLab extends AbstractHuntingDog<string>{
+export class CountryFlagBlackLab extends Dog<string>{
+
+    get required() {
+        return [RandomRecipesRetriever]
+    }
+
+    get optional() {
+        return []
+    }
+
     get name(): string {
         return CountryFlagBlackLab.name
     }
 
-    isReady(collection: IHuntingSeason): boolean {
-       return collection.exhausted.find(item => item instanceof RandomRecipesRetriever) ? true : false
-    }
-    
     protected yieldCollectorFactory: (season:IHuntingSeason) => Promise<string> = (season:IHuntingSeason) => {
         let currentYield = season.exhausted.find(item => item instanceof RandomRecipesRetriever)
         if (currentYield && currentYield.collected && !(currentYield.collected instanceof Error))

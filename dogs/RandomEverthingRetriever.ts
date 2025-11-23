@@ -1,11 +1,19 @@
-import { AbstractHuntingDog } from "../core/enities/abstractHuntingDog";
+import { Dog } from "../core/enities/abstractHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import { InterfaceSniper } from "../InterfaceSniper";
 import { IJustAll } from "./interfaceDump/IJustAll.interface";
 
 
 
-export class RandomEveryThingRetriever extends AbstractHuntingDog<IJustAll> {
+export class RandomEveryThingRetriever extends Dog<IJustAll> {
+
+    get required(){
+        return []
+    }
+
+    get optional() {
+        return []
+    }
 
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<any> = (season: IHuntingSeason) => {
         return this.request(season)
@@ -41,11 +49,5 @@ export class RandomEveryThingRetriever extends AbstractHuntingDog<IJustAll> {
     get name() {
         return RandomEveryThingRetriever.name
     }
-
-    isReady(collection: IHuntingSeason): boolean {
-        // A Retriever is always ready
-        return true;
-    }
-
 
 }

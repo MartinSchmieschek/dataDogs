@@ -23,7 +23,7 @@ const mainDataDogs:()=>Promise<unknown> = () => {
         ]
 
 
-        let hunt = new Harvester({
+        let hunt = new SeasonRunner({
             kennel
         })
 
@@ -35,17 +35,21 @@ const mainDataDogs:()=>Promise<unknown> = () => {
         //writeFileSync("./TalkingDogDump.html", storyDog?.collected ?? "no dog there");
         //res(storyDog?.collected)
 
-        let waves: Array<Array<{ name: string; result: any }>> = []
+        let waves: Waves = []
         theHunt.wave.forEach(wave => {
             waves.push(wave.map(i => {
                 return{
-                    name:i.name,
-                    result:i.collected
+                    id:i.instance.name,
+                    name:i.instance.name,
+                    result:i.instance.collected,
+                    parentsOptional:[...i.optionalRequiresFrom? i.optionalRequiresFrom.map(i => i.instance.name) : []],
+                    parentsRequired:[...i.requiresFrom? i.requiresFrom.map(i => i.instance.name) : []]
+
                 }
             }))
         })
 
-        let html = Results.createWaveHTML(waves)
+        let html = Results.buildWavesHtml(waves)
         res(html)
 
     })
@@ -58,8 +62,8 @@ const mainDataDogs:()=>Promise<unknown> = () => {
 import express from "express";
 import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
-import { Harvester } from './core/harverster';
-import { Results } from './results';
+import { SeasonRunner } from './core/harverster';
+import { Results, Waves } from './results';
 
 const app = express();
 const port = 3000;
