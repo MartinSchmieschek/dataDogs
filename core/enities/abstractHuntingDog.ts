@@ -12,8 +12,8 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
 
     abstract get name():string
 
-    abstract get required():Array<DogClass<IHuntingDog<unknown>>>
-    abstract get optional():Array<DogClass<IHuntingDog<unknown>>>
+    abstract get required():(new (...args: any[]) => IHuntingDog<unknown>)[]
+    abstract get optional():(new (...args: any[]) => IHuntingDog<unknown>)[]
 
     // Prüft ob a eine Instanz derselben Klasse ist wie b
     private static isIntersecting(a: DogClass<IHuntingDog<unknown>>, b: DogClass<IHuntingDog<unknown>>): boolean {

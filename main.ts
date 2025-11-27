@@ -19,7 +19,15 @@ const mainDataDogs:()=>Promise<unknown> = () => {
             new DishFlagBlackLab(), 
             new RandomEveryThingRetriever(), 
             //new FoodPornRetriever(), // deactivated to much requests for this api key
-            new TalkingDog() 
+            new TalkingDog() ,
+            new SerializedDog({
+                theRun:`
+    const response = await fetch("https://dummyjson.com/recipes");
+    const json = await response.json()
+    const retrive = RandomRecipesRetriever.difficulty
+    return retrive;
+`
+            })
         ]
 
 
@@ -38,14 +46,19 @@ const mainDataDogs:()=>Promise<unknown> = () => {
         let waves: Waves = []
         theHunt.wave.forEach(wave => {
             waves.push(wave.map(i => {
-                return{
-                    id:i.instance.name,
+                let dog= {                    id:i.instance.name,
                     name:i.instance.name,
                     result:i.instance.collected,
                     parentsOptional:[...i.optionalRequiresFrom? i.optionalRequiresFrom.map(i => i.instance.name) : []],
-                    parentsRequired:[...i.requiresFrom? i.requiresFrom.map(i => i.instance.name) : []]
-
+                    parentsRequired:[...i.requiresFrom? i.requiresFrom.map(i => i.instance.name) : []],
                 }
+
+                if (i instanceof SerializedDog){
+                    
+                }
+
+                return dog;
+
             }))
         })
 
@@ -64,6 +77,7 @@ import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { SeasonRunner } from './core/harverster';
 import { Results, Waves } from './results';
+import { SerializedDog } from './dogs/SerializedDog';
 
 const app = express();
 const port = 3000;
