@@ -17,6 +17,10 @@ export class SerializedDog<T> extends Dog<T> {
         return "Serilized Dog"
     }
 
+    public get instanceConfig():any{
+        return this.config
+    }
+
 
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<T> = (season:IHuntingSeason) => {
             return this.runExternalCode(season)

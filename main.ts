@@ -51,9 +51,12 @@ const mainDataDogs:()=>Promise<unknown> = () => {
                     result:i.instance.collected,
                     parentsOptional:[...i.optionalRequiresFrom? i.optionalRequiresFrom.map(i => i.instance.name) : []],
                     parentsRequired:[...i.requiresFrom? i.requiresFrom.map(i => i.instance.name) : []],
-                }
+                } as NodeEntry
 
-                if (i instanceof SerializedDog){
+                if (i.instance instanceof SerializedDog){
+                    console.log(i)
+                    let seDog = i.instance as SerializedDog<unknown>;
+                    dog.codeTs = seDog.instanceConfig.theRun;
                     
                 }
 
@@ -76,7 +79,7 @@ import express from "express";
 import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { SeasonRunner } from './core/harverster';
-import { Results, Waves } from './results';
+import { NodeEntry, Results, Waves } from './results';
 import { SerializedDog } from './dogs/SerializedDog';
 
 const app = express();
