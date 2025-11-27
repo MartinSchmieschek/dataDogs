@@ -4,6 +4,10 @@ import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import * as vm from "vm";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
+export interface ISerilizedDogConfig{
+    theRun:string
+}
+
 export class SerializedDog<T> extends Dog<T> {
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
@@ -26,7 +30,7 @@ export class SerializedDog<T> extends Dog<T> {
             return this.runExternalCode(season)
         }
 
-    constructor(private config:{theRun:string}){
+    constructor(private config:ISerilizedDogConfig){
         super();
         if (!this.config.theRun){
             this.config.theRun = `throw new Error("Empty yieldCollector!")`

@@ -1,3 +1,4 @@
+import { promises } from 'dns';
 import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
 import { IHuntingDog, IHuntingDog as IDog } from "./core/enities/IHuntingDog"
 import { IHuntingSeason } from "./core/enities/IHuntingSeason"
@@ -8,20 +9,29 @@ import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
 import { writeFileSync } from 'fs';
 
 
+interface IStore {
+    save(d: any): Promise<void>;
+    load(id: string): Promise<any>;
+    findByType(type: string): Promise<[{ id: string, serilizedDogConfig: string }]>
+}
+
+
+
+
 
 // function to collect data
-const mainDataDogs:()=>Promise<unknown> = () => {
+const mainDataDogs: () => Promise<unknown> = () => {
     return new Promise(async (res, rej) => {
         // init hunting dogs
         const kennel: Array<IDog<unknown>> = [
-            new RandomRecipesRetriever(), 
-            new CountryFlagBlackLab(), 
-            new DishFlagBlackLab(), 
-            new RandomEveryThingRetriever(), 
+            new RandomRecipesRetriever(),
+            new CountryFlagBlackLab(),
+            new DishFlagBlackLab(),
+            new RandomEveryThingRetriever(),
             //new FoodPornRetriever(), // deactivated to much requests for this api key
-            new TalkingDog() ,
+            new TalkingDog(),
             new SerializedDog({
-                theRun:`
+                theRun: `
     const response = await fetch("https://dummyjson.com/recipes");
     const json = await response.json()
     const retrive = RandomRecipesRetriever.difficulty
@@ -29,6 +39,18 @@ const mainDataDogs:()=>Promise<unknown> = () => {
 `
             })
         ]
+
+        let toLoad = await store!.findByType(SerializedDog.name)
+        toLoad.forEach(sd => {
+            try {
+                let dog = new SerializedDog(JSON.parse(sd.serilizedDogConfig))
+                kennel.push(dog);
+            } catch (e) {
+                throw e
+            }
+
+        })
+
 
 
         let hunt = new SeasonRunner({
@@ -46,18 +68,19 @@ const mainDataDogs:()=>Promise<unknown> = () => {
         let waves: Waves = []
         theHunt.wave.forEach(wave => {
             waves.push(wave.map(i => {
-                let dog= {                    id:i.instance.name,
-                    name:i.instance.name,
-                    result:i.instance.collected,
-                    parentsOptional:[...i.optionalRequiresFrom? i.optionalRequiresFrom.map(i => i.instance.name) : []],
-                    parentsRequired:[...i.requiresFrom? i.requiresFrom.map(i => i.instance.name) : []],
+                let dog = {
+                    id: i.instance.name,
+                    name: i.instance.name,
+                    result: i.instance.collected,
+                    parentsOptional: [...i.optionalRequiresFrom ? i.optionalRequiresFrom.map(i => i.instance.name) : []],
+                    parentsRequired: [...i.requiresFrom ? i.requiresFrom.map(i => i.instance.name) : []],
                 } as NodeEntry
 
-                if (i.instance instanceof SerializedDog){
+                if (i.instance instanceof SerializedDog) {
                     console.log(i)
                     let seDog = i.instance as SerializedDog<unknown>;
                     dog.codeTs = seDog.instanceConfig.theRun;
-                    
+
                 }
 
                 return dog;
@@ -80,10 +103,11 @@ import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { SeasonRunner } from './core/harverster';
 import { NodeEntry, Results, Waves } from './results';
-import { SerializedDog } from './dogs/SerializedDog';
+import { ISerilizedDogConfig, SerializedDog } from './dogs/SerializedDog';
 
 const app = express();
 const port = 3000;
+const store: IStore | undefined = undefined
 
 // einfache Route
 app.get("/", (req, res) => {
