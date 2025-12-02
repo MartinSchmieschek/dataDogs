@@ -1,1 +1,13 @@
 /mbdhEnrichShit
+
+# Node modules
+node_modules/
+
+# Dev DB
+dev.db
+
+# Prisma client
+node_modules/@prisma/
+
+# env
+.env
