@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon main.ts",
-    "dev": "ts-node main.ts",
+    "prisma:sync": "prisma generate && prisma db push",
+    "start": "npm run prisma:sync && nodemon main.ts",
+    "dev": "npm run prisma:sync && ts-node main.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Martin",
@@ -17,6 +18,15 @@
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "tsc": "^2.0.4",
-    "vm2": "^3.10.0"
+    "vm2": "^3.10.0",
+    "@prisma/client": "^5.5.0",
+    "pg": "^8.10.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.5.0"
+  },
+  "prisma": {
+    "schema": "store/prisma/schema.prisma",
+    "seed": "ts-node scripts/seed.ts"
   }
 }

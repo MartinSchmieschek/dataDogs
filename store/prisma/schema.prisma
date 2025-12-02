@@ -1,0 +1,21 @@
+// Prisma schema for jsonAggregator store
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // For local development we default to SQLite. To use SQLite set:
+  // DATABASE_URL="file:./dev.db"
+  // To switch to Postgres (cloud), change provider to "postgresql" and set a proper DATABASE_URL.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Dog {
+  id                   String   @id
+  type                 String
+  // For SQLite we persist the serialized config as a string (JSON stored as text).
+  // If you switch to Postgres you can change this field to `Json` for native JSONB support.
+  serilizedDogConfig   String
+  createdAt            DateTime @default(now())
+}
