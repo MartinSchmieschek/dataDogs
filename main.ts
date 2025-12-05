@@ -33,11 +33,11 @@ async function start() {
     if (!seeds || seeds.length === 0) {
         const seedCfg = {
             theRun: `
-const response = await fetch("https://dummyjson.com/recipes");
-const json = await response.json();
-const retrive = RandomRecipesRetriever.difficulty;
-return retrive;
-`
+                const response = await fetch("https://dummyjson.com/recipes");
+                const json = await response.json();
+                const retrive = RandomRecipesRetriever.difficulty;
+                return retrive;
+                `,
         } as ISerilizedDogConfig;
 
         await store.save({ id: 'seed-serialized-1', type: SerializedDog.name, serilizedDogConfig: seedCfg });
@@ -95,7 +95,7 @@ async function fillKennel(store: IStore): Promise<Array<IDog<unknown>>> {
     const toLoad = await store.findByType(SerializedDog.name);
     toLoad.forEach((sd: any) => {
         try {
-            const dog = new SerializedDog(JSON.parse(sd.serilizedDogConfig));
+            const dog = new SerializedDog(JSON.parse(sd.serilizedDogConfig),sd.id);
             kennel.push(dog);
         } catch (e) {
             console.error('Failed to load SerializedDog:', e);
@@ -115,18 +115,22 @@ async function runSeason(kennel: Array<IDog<unknown>>): Promise<Waves> {
     // Baue Wellen-Struktur
     const waves: Waves = [];
     theHunt.wave.forEach((wave: any) => {
+        // Remap Objects, that is no fun and schould be never done!
         waves.push(wave.map((entry: any) => {
+            //create Waves dog entry 
             const dog = {
-                id: entry.instance.name,
+                id:entry.instance.name,  //:P will change the lining? (entry.instance instanceof SerializedDog) ? (entry.instance as SerializedDog<unknown>).storageId : entry.instance.name,
                 name: entry.instance.name,
                 result: entry.instance.collected,
                 parentsOptional: [...entry.optionalRequiresFrom ? entry.optionalRequiresFrom.map((r: any) => r.instance.name) : []],
                 parentsRequired: [...entry.requiresFrom ? entry.requiresFrom.map((r: any) => r.instance.name) : []],
             } as NodeEntry;
 
+            // add additional codeTs if SerializedDog
             if (entry.instance instanceof SerializedDog) {
                 const seDog = entry.instance as SerializedDog<unknown>;
                 dog.codeTs = seDog.instanceConfig.theRun;
+                dog.vmContext = seDog.simpleVmContext
             }
 
             return dog;
