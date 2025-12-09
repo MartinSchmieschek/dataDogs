@@ -13,8 +13,10 @@ import express from "express";
 import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { SeasonRunner } from './core/harverster';
-import { NodeEntry, Results, Waves } from './results';
+//import { NodeEntry, Results, Waves } from './results';
 import { ISerilizedDogConfig, SerializedDog } from './dogs/SerializedDog';
+import { NodeEntry, Results, Waves } from './ui/results';
+import { TypeDefBuilder } from './ui/TypeDefBuilder';
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
 start().catch(e => {
@@ -118,7 +120,7 @@ async function runSeason(kennel: Array<IDog<unknown>>): Promise<Waves> {
         // Remap Objects, that is no fun and schould be never done!
         waves.push(wave.map((entry: any) => {
             //create Waves dog entry 
-            const dog = {
+            const nodeEntry = {
                 id:entry.instance.name,  //:P will change the lining? (entry.instance instanceof SerializedDog) ? (entry.instance as SerializedDog<unknown>).storageId : entry.instance.name,
                 name: entry.instance.name,
                 result: entry.instance.collected,
@@ -129,11 +131,13 @@ async function runSeason(kennel: Array<IDog<unknown>>): Promise<Waves> {
             // add additional codeTs if SerializedDog
             if (entry.instance instanceof SerializedDog) {
                 const seDog = entry.instance as SerializedDog<unknown>;
-                dog.codeTs = seDog.instanceConfig.theRun;
-                dog.vmContext = seDog.simpleVmContext
+                nodeEntry.codeTs = seDog.instanceConfig.theRun;
+                nodeEntry.vmContext = seDog.simpleVmContext;
+                let def = TypeDefBuilder.buildType("VMContext", seDog.simpleVmContext);
+                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildType("VMContext", seDog.simpleVmContext);
             }
 
-            return dog;
+            return nodeEntry;
         }));
     });
 
