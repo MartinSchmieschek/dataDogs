@@ -1,3 +1,4 @@
+import { TypeDefBuilder } from './ui/TypeDefBuilder';
 import { promises } from 'dns';
 import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
 import { IHuntingDog, IHuntingDog as IDog } from "./core/enities/IHuntingDog"
@@ -16,7 +17,6 @@ import { SeasonRunner } from './core/harverster';
 //import { NodeEntry, Results, Waves } from './results';
 import { ISerilizedDogConfig, SerializedDog } from './dogs/SerializedDog';
 import { NodeEntry, Results, Waves } from './ui/results';
-import { TypeDefBuilder } from './ui/TypeDefBuilder';
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
 start().catch(e => {
@@ -132,9 +132,7 @@ async function runSeason(kennel: Array<IDog<unknown>>): Promise<Waves> {
             if (entry.instance instanceof SerializedDog) {
                 const seDog = entry.instance as SerializedDog<unknown>;
                 nodeEntry.codeTs = seDog.instanceConfig.theRun;
-                nodeEntry.vmContext = seDog.simpleVmContext;
-                let def = TypeDefBuilder.buildType("VMContext", seDog.simpleVmContext);
-                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildType("VMContext", seDog.simpleVmContext);
+                nodeEntry.vmContext = TypeDefBuilder.buildContextLib(seDog.name, seDog.simpleVmContext);
             }
 
             return nodeEntry;

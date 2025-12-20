@@ -5,7 +5,7 @@ export type NodeEntry = {
   name: string;
   result: any;
   codeTs?: string;
-  vmContext?: Record<string, any>;
+  vmContext?: string;
   vmContextTypeDef?: string;
   parentsRequired?: string[];
   parentsOptional?: string[];
@@ -232,7 +232,7 @@ function selectNode(n) {
 
 // make _ctx from node here as global info in editor
 monaco.languages.typescript.typescriptDefaults.addExtraLib(
-    n._ctxTypeDef || "", "ts:node-" + n.dataset.id + "-context.d.ts"
+    n._ctx || "", "ts:node-" + n.dataset.id + "-context.d.ts"
 );
     
 }
