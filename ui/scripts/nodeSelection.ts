@@ -13,10 +13,10 @@ export function buildNodeSelection(): string {
 
   if (monacoEditor) {
     const code = n._ts || "// no code";
-    // Setze Code + export {} um Modul zu markieren (erlaubt top-level await)
+    // Wrappe Code in async Funktion für Monaco (verhindert await-Fehler)
     const newline = String.fromCharCode(10);
-    const codeWithExport = code + newline + newline + "export {};";
-    monacoEditor.setValue(codeWithExport);
+    const wrappedCode = "async function run() {" + newline + code + newline + "}";
+    monacoEditor.setValue(wrappedCode);
     
     // Entferne vorherige Type Definitions
     if (activeTypeDefDispose) {

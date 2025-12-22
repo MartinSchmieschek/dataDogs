@@ -15,9 +15,12 @@ export function buildSaveHandler(): string {
   const nodeId = activeNode._nodeId || activeNode.dataset.id;
   let tsCode = monacoEditor.getValue();
   
-  // Entferne export {} am Ende
-  const exportPattern = new RegExp(String.fromCharCode(10) + String.fromCharCode(10) + "export \\{\\};?\\s*$");
-  tsCode = tsCode.replace(exportPattern, "");
+  // Entferne async function run() { ... } Wrapper
+  const wrapperPattern = /^async\s+function\s+run\s*\(\s*\)\s*\{([\s\S]*)\}\s*$/;
+  const match = tsCode.match(wrapperPattern);
+  if (match && match[1]) {
+    tsCode = match[1].trim();
+  }
 
   try {
     const response = await fetch("/save?id=" + encodeURIComponent(nodeId), {
