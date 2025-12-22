@@ -4,7 +4,7 @@ export function buildNodeCrud(): string {
   const baseId = prompt("Basis-ID für neue Node (z.B. 'my-node'):");
   if (!baseId) return;
   
-  const defaultCode = "// Neue Node\\nconst result = {};\\nreturn result;";
+  const defaultCode = "// Neue Node\\nconst result = { message: 'Hello from new node' };\\nreturn result;";
   
   try {
     const response = await fetch("/api/nodes", {
@@ -36,7 +36,8 @@ export function buildNodeCrud(): string {
 }
 
 async function deleteNode() {
-  const activeNode = document.querySelector(".node.selected");
+  // Verwende selectedNodeElement statt DOM-Query (funktioniert mit vis.js)
+  const activeNode = (typeof selectedNodeElement !== 'undefined' && selectedNodeElement) ? selectedNodeElement : null;
   if (!activeNode) {
     alert("Keine Node ausgewählt");
     return;
@@ -48,7 +49,7 @@ async function deleteNode() {
     return;
   }
 
-  const nodeId = activeNode._nodeId || activeNode.dataset.id;
+  const nodeId = activeNode._nodeId || (activeNode.dataset ? activeNode.dataset.id : null);
   if (!nodeId) {
     alert("Node-ID nicht gefunden");
     return;

@@ -1,8 +1,7 @@
 import { Buffer } from "buffer";
-import * as wavesRenderer from "./scripts/wavesRenderer";
+import * as visNetworkRenderer from "./scripts/visNetworkRenderer";
 import * as nodeSelection from "./scripts/nodeSelection";
 import * as monacoInit from "./scripts/monacoInit";
-import * as linesDrawer from "./scripts/linesDrawer";
 import * as saveHandler from "./scripts/saveHandler";
 import * as nodeCrud from "./scripts/nodeCrud";
 
@@ -11,7 +10,7 @@ export type NodeEntry = {
   name: string;
   result: any;
   codeTs?: string;
-  vmContext?: string;
+  vmContext?: Record<string, any>; // Geändert von string zu Record<string, any>
   vmContextTypeDef?: string;
   parentsRequired?: string[];
   parentsOptional?: string[];
@@ -60,12 +59,22 @@ ${this.buildStyles()}
 <div id="layout">
   <div id="left-col">
     ${this.buildAsciiBoat()}
-    <div id="waves"></div>
-    <canvas id="lines"></canvas>
+    <div style="padding: 10px; border-bottom: 1px solid #333; display: flex; gap: 10px;">
+      <button id="new">New</button>
+      <button id="delete">Delete</button>
+    </div>
+    <div id="network-container"></div>
   </div>
 
-  <div id="right-col">
-    ${this.buildViewer()}
+  <div id="side-panel" class="side-panel-closed">
+    <div id="side-panel-resizer"></div>
+    <div id="side-panel-header">
+      <span id="side-panel-title">Node Editor</span>
+      <button id="side-panel-close">×</button>
+    </div>
+    <div id="side-panel-content">
+      ${this.buildViewer()}
+    </div>
   </div>
 </div>
 
@@ -86,6 +95,7 @@ ${this.buildScripts()}
 <meta charset="UTF-8">
 <title>Node Waves</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/loader.min.js"></script>
 `;
   }
@@ -94,12 +104,82 @@ ${this.buildScripts()}
     return `
 <style>
 body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
-#layout { display:flex; height:100vh; }
+#layout { display:flex; height:100vh; position:relative; }
 
-#left-col { flex:1; min-width:0; position:relative; padding-bottom:40px; overflow-y:auto; }
-#right-col { flex:1; min-width:0; border-left:1px solid #333; overflow-y:auto; padding:20px; }
+#left-col { flex:1; min-width:300px; position:relative; padding-bottom:40px; overflow-y:auto; transition:width 0.2s; }
+
+#side-panel {
+  width:0;
+  height:100vh;
+  background:#0d0d11;
+  border-left:1px solid #333;
+  transition:width 0.3s ease;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  flex-shrink:0;
+}
+#side-panel.side-panel-open {
+  width:50%;
+  min-width:400px;
+  max-width:80%;
+}
+
+#side-panel-resizer {
+  width:4px;
+  background:#333;
+  cursor:col-resize;
+  position:absolute;
+  top:0;
+  left:0;
+  bottom:0;
+  z-index:10;
+  transition:background 0.2s;
+}
+#side-panel-resizer:hover {
+  background:#4a9eff;
+}
+#side-panel-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:15px 20px;
+  border-bottom:1px solid #333;
+  background:#1b1b1f;
+}
+#side-panel-title {
+  font-size:18px;
+  font-weight:bold;
+}
+#side-panel-close {
+  background:transparent;
+  border:none;
+  color:#eee;
+  font-size:28px;
+  cursor:pointer;
+  padding:0;
+  width:30px;
+  height:30px;
+  line-height:30px;
+  transition:color 0.2s;
+}
+#side-panel-close:hover {
+  color:#4a9eff;
+}
+#side-panel-content {
+  flex:1;
+  overflow-y:auto;
+  padding:20px;
+}
 
 #boat { width:100%; height:120px; display:flex; justify-content:center; align-items:center; }
+#network-container { 
+  width:100%; 
+  height:calc(100vh - 120px); 
+  min-height:calc(100vh - 120px);
+  position:relative;
+  background:#0d0d11;
+}
 #waves { margin-top:20px; display:flex; flex-direction:column; gap:40px; }
 
 .wave { display:flex; gap:20px; justify-content:center; flex-wrap:wrap; }
@@ -193,8 +273,6 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
 
   <div id="serialized-dog-controls" style="margin: 10px 0; display: none; gap: 10px; flex-wrap: wrap;">
     <button id="save">Save</button>
-    <button id="new">New</button>
-    <button id="delete">Delete</button>
   </div>
 
   <div id="serialized-dog-parents" style="display: none;">
@@ -240,14 +318,16 @@ const viewerCtx = document.getElementById("context");
 let monacoEditor = null;
 let activeTypeDefDispose = null;
 let selectedNodeElement = null;
+let extraLibDisposes = []; // Liste aller dispose-Funktionen für ExtraLibs
+if (typeof extraLibDisposes === 'undefined') {
+  extraLibDisposes = [];
+}
 
-${wavesRenderer.buildWavesRenderer()}
+${visNetworkRenderer.buildVisNetworkRenderer()}
 
 ${nodeSelection.buildNodeSelection()}
 
 ${monacoInit.buildMonacoInit()}
-
-${linesDrawer.buildLinesDrawer()}
 
 ${saveHandler.buildSaveHandler()}
 
@@ -257,26 +337,131 @@ ${nodeCrud.buildNodeCrud()}
 // Init
 // ------------------------------------------------
 window.onload = ()=>{
-  renderWaves();
-  requestAnimationFrame(drawLines);
-  
-  const saveBtn = document.getElementById("save");
-  if (saveBtn) {
-    saveBtn.addEventListener("click", saveNode);
+  // Warte bis vis.js geladen ist
+  function waitForVis() {
+    if (typeof vis !== 'undefined' && vis.Network) {
+      renderWaves();
+      
+      // Resize-Handler für vis.js Network
+      window.addEventListener("resize", () => {
+        const container = document.getElementById("network-container");
+        if (container && typeof network !== 'undefined' && network && typeof network.setSize === 'function') {
+          network.setSize(container.offsetWidth, container.offsetHeight);
+        }
+      });
+      
+      const saveBtn = document.getElementById("save");
+      if (saveBtn) {
+        saveBtn.addEventListener("click", saveNode);
+      }
+      
+      const newBtn = document.getElementById("new");
+      if (newBtn) {
+        newBtn.addEventListener("click", createNode);
+      }
+      
+      const deleteBtn = document.getElementById("delete");
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", deleteNode);
+      }
+      
+      // Side Panel Close Button
+      const sidePanelClose = document.getElementById("side-panel-close");
+      if (sidePanelClose) {
+        sidePanelClose.addEventListener("click", () => {
+          const sidePanel = document.getElementById("side-panel");
+          if (sidePanel) {
+            sidePanel.classList.remove("side-panel-open");
+          }
+          // Zerstöre Editor beim Schließen
+          if (monacoEditor) {
+            try {
+              monacoEditor.dispose();
+            } catch (e) {
+              console.warn("Fehler beim Zerstören des Editors:", e);
+            }
+            monacoEditor = null;
+          }
+        });
+      }
+      
+      // Side Panel Resizer
+      const sidePanelResizer = document.getElementById("side-panel-resizer");
+      const sidePanel = document.getElementById("side-panel");
+      const leftCol = document.getElementById("left-col");
+      const layout = document.getElementById("layout");
+      
+      if (sidePanelResizer && sidePanel && leftCol && layout) {
+        let isResizing = false;
+        let startX = 0;
+        let startPanelWidth = 0;
+        let startLeftWidth = 0;
+        
+        sidePanelResizer.addEventListener("mousedown", (e) => {
+          isResizing = true;
+          startX = e.clientX;
+          startPanelWidth = sidePanel.offsetWidth;
+          startLeftWidth = leftCol.offsetWidth;
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        
+        document.addEventListener("mousemove", (e) => {
+          if (!isResizing) return;
+          
+          const diff = startX - e.clientX; // Umgekehrt, da Panel rechts ist
+          const layoutWidth = layout.offsetWidth;
+          
+          let newPanelWidth = startPanelWidth + diff;
+          let newLeftWidth = startLeftWidth - diff;
+          
+          // Min/Max Constraints
+          const minPanelWidth = 400;
+          const minLeftWidth = 300;
+          const maxPanelWidth = layoutWidth * 0.8;
+          
+          if (newPanelWidth < minPanelWidth) {
+            newPanelWidth = minPanelWidth;
+            newLeftWidth = layoutWidth - minPanelWidth;
+          } else if (newLeftWidth < minLeftWidth) {
+            newLeftWidth = minLeftWidth;
+            newPanelWidth = layoutWidth - minLeftWidth;
+          } else if (newPanelWidth > maxPanelWidth) {
+            newPanelWidth = maxPanelWidth;
+            newLeftWidth = layoutWidth - maxPanelWidth;
+          }
+          
+          // Setze neue Breiten
+          sidePanel.style.width = newPanelWidth + "px";
+          sidePanel.style.flex = "none";
+          leftCol.style.width = newLeftWidth + "px";
+          leftCol.style.flex = "none";
+          
+          // Aktualisiere vis.js Network Größe
+          if (typeof network !== 'undefined' && network && typeof network.setSize === 'function') {
+            const container = document.getElementById("network-container");
+            if (container) {
+              network.setSize(container.offsetWidth, container.offsetHeight);
+            }
+          }
+        });
+        
+        document.addEventListener("mouseup", () => {
+          if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+          }
+        });
+      }
+    } else {
+      setTimeout(waitForVis, 50);
+    }
   }
-  
-  const newBtn = document.getElementById("new");
-  if (newBtn) {
-    newBtn.addEventListener("click", createNode);
-  }
-  
-  const deleteBtn = document.getElementById("delete");
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", deleteNode);
-  }
+  waitForVis();
 };
-window.addEventListener("resize", ()=>requestAnimationFrame(drawLines));
-window.addEventListener("scroll", ()=>requestAnimationFrame(drawLines));
 </script>
 `;
   }

@@ -6,7 +6,8 @@ export function buildSaveHandler(): string {
     return;
   }
 
-  const activeNode = document.querySelector(".node.selected");
+  // Verwende selectedNodeElement statt DOM-Query (funktioniert mit vis.js)
+  const activeNode = (typeof selectedNodeElement !== 'undefined' && selectedNodeElement) ? selectedNodeElement : null;
   if (!activeNode) {
     alert("Keine Node ausgewählt");
     return;
@@ -18,7 +19,7 @@ export function buildSaveHandler(): string {
     return;
   }
 
-  const nodeId = activeNode._nodeId || activeNode.dataset.id;
+  const nodeId = activeNode._nodeId || (activeNode.dataset ? activeNode.dataset.id : null);
   let tsCode = monacoEditor.getValue();
   
   // Entferne alle verschachtelten async function run() { ... } Wrapper rekursiv

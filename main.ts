@@ -181,15 +181,27 @@ async function start() {
             // Erste Version: baseId-v1
             const firstVersionId = `${baseId}-v1`;
             
+            console.log(`[createNode] Erstelle neue SerializedDog: ${firstVersionId}`);
+            console.log(`[createNode] Config:`, JSON.stringify(config, null, 2));
+            
             await store.save({ 
                 id: firstVersionId, 
                 type: SerializedDog.name, 
                 serializedDogConfig: config 
             });
             
+            // Verifiziere, dass die Node gespeichert wurde
+            const saved = await store.findByType(SerializedDog.name);
+            const found = saved.find((n: any) => n.id === firstVersionId);
+            if (!found) {
+                console.error(`[createNode] FEHLER: Node ${firstVersionId} wurde nicht in DB gefunden nach dem Speichern!`);
+                return res.status(500).json({ error: 'Node wurde nicht gespeichert' });
+            }
+            
+            console.log(`[createNode] Erfolgreich gespeichert: ${firstVersionId}`);
             res.status(200).json({ ok: true, id: firstVersionId });
         } catch (e) {
-            console.error(e);
+            console.error('[createNode] Fehler:', e);
             res.status(500).json({ error: String(e) });
         }
     });
@@ -320,6 +332,7 @@ async function runSeason(kennel: Array<IDog<unknown>>): Promise<Waves> {
                 const seDog = entry.instance as SerializedDog<unknown>;
                 nodeEntry.codeTs = seDog.instanceConfig.theRun;
                 const vmCtx = seDog.simpleVmContext || {};
+                nodeEntry.vmContext = vmCtx; // Füge vmContext hinzu
                 nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx);
                 // Übergebe die vollständige Config an die UI (aus DB, nicht aus Runtime)
                 nodeEntry.serializedDogConfig = {
