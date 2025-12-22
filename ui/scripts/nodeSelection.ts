@@ -6,26 +6,103 @@ export function buildNodeSelection(): string {
   n.classList.add("selected");
   selectedNodeElement = n;
 
+  // Prüfe ob SerializedDog (hat _config)
+  const isSerializedDog = !!n._config;
+  
+  // Prüfe ob Output HTML ist
+  const result = n._json;
+  const isHtml = typeof result === 'string' && (
+    result.trim().startsWith('<html') || 
+    result.trim().startsWith('<!DOCTYPE') ||
+    result.trim().startsWith('<') && result.includes('</')
+  );
+
   // --- Viewer aktualisieren ---
   viewerMeta.textContent = "ID: " + n.dataset.id;
   viewerJson.textContent = JSON.stringify(n._json, null, 2);
-  viewerCtx.textContent = JSON.stringify(n._ctx, null, 2);
   
-  // Config anzeigen
-  const viewerConfig = document.getElementById("config");
-  if (viewerConfig) {
-    if (n._config) {
+  // Zeige/Verstecke SerializedDog-spezifische UI-Elemente
+  const controlsDiv = document.getElementById("serialized-dog-controls");
+  const parentsDiv = document.getElementById("serialized-dog-parents");
+  const configDiv = document.getElementById("serialized-dog-config");
+  const contextDiv = document.getElementById("serialized-dog-context");
+  const tsDiv = document.getElementById("serialized-dog-ts");
+  const htmlDiv = document.getElementById("html-output");
+  const htmlRender = document.getElementById("html-render");
+  
+  if (isSerializedDog) {
+    // Zeige Controls, Parents, Config, Context und TypeScript Editor
+    if (controlsDiv) controlsDiv.style.display = "flex";
+    if (parentsDiv) parentsDiv.style.display = "block";
+    if (configDiv) configDiv.style.display = "block";
+    if (contextDiv) {
+      contextDiv.style.display = "block";
+      viewerCtx.textContent = JSON.stringify(n._ctx, null, 2);
+    }
+    if (tsDiv) tsDiv.style.display = "block";
+    
+    // Für SerializedDogs: Zeige HTML Output falls vorhanden (zusätzlich zum Editor)
+    if (isHtml && htmlDiv && htmlRender) {
+      htmlDiv.style.display = "block";
+      htmlRender.innerHTML = result;
+    } else if (htmlDiv) {
+      htmlDiv.style.display = "none";
+    }
+    
+    // Config anzeigen
+    const viewerConfig = document.getElementById("config");
+    if (viewerConfig && n._config) {
       viewerConfig.textContent = JSON.stringify(n._config, null, 2);
-    } else {
-      viewerConfig.textContent = "// Keine Config verfügbar (nur für SerializedDogs)";
+    }
+    
+    // Parents-Auswahl aktualisieren
+    updateParentsSelection(n);
+  } else {
+    // Verstecke Controls, Parents, Config, Context und TypeScript Editor
+    if (controlsDiv) controlsDiv.style.display = "none";
+    if (parentsDiv) parentsDiv.style.display = "none";
+    if (configDiv) configDiv.style.display = "none";
+    if (contextDiv) contextDiv.style.display = "none";
+    if (tsDiv) tsDiv.style.display = "none";
+    
+    // Zeige HTML Output falls vorhanden
+    if (isHtml && htmlDiv && htmlRender) {
+      htmlDiv.style.display = "block";
+      htmlRender.innerHTML = result;
+    } else if (htmlDiv) {
+      htmlDiv.style.display = "none";
     }
   }
 
-  // --- Parents-Auswahl aktualisieren ---
-  updateParentsSelection(n);
-
-  if (monacoEditor) {
+  // Nur für SerializedDogs: Monaco Editor verwenden
+  if (monacoEditor && isSerializedDog) {
+    // RESET: Entferne ALLE vorherigen Type Definitions (auch von anderen Nodes)
+    if (activeTypeDefDispose && typeof activeTypeDefDispose === 'function') {
+      try {
+        activeTypeDefDispose();
+      } catch (e) {
+        console.warn("Fehler beim Aufrufen von activeTypeDefDispose:", e);
+      }
+      activeTypeDefDispose = null;
+    }
+    
+    // Entferne alle ExtraLibs die mit "ts:node-" beginnen (von vorherigen Nodes)
+    try {
+      const extraLibs = monaco.languages.typescript.typescriptDefaults.getExtraLibs();
+      if (extraLibs) {
+        Object.keys(extraLibs).forEach(uri => {
+          if (uri.startsWith("ts:node-")) {
+            monaco.languages.typescript.typescriptDefaults.removeExtraLib(uri);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("Fehler beim Entfernen von ExtraLibs:", e);
+    }
+    
+    // Lade Code von Node
     let code = n._ts || "// no code";
+    
     // Entferne alle vorhandenen Wrapper zuerst
     function removeWrappers(code) {
       const trimmed = code.trim();
@@ -60,15 +137,12 @@ export function buildNodeSelection(): string {
     // Wrappe Code einmal in async Funktion für Monaco (verhindert await-Fehler)
     const newline = String.fromCharCode(10);
     const wrappedCode = "async function run() {" + newline + code + newline + "}";
+    
+    // Setze Code IMMER neu (auch wenn gleich)
     monacoEditor.setValue(wrappedCode);
+    monacoEditor.updateOptions({ readOnly: false });
     
-    // Entferne vorherige Type Definitions
-    if (activeTypeDefDispose) {
-      activeTypeDefDispose();
-      activeTypeDefDispose = null;
-    }
-    
-    // Füge neue Type Definitions hinzu
+    // Füge neue Type Definitions für diese Node hinzu (NACH dem Setzen des Codes)
     if (n._ctxTypeDef) {
       activeTypeDefDispose = monaco.languages.typescript.typescriptDefaults.addExtraLib(
         n._ctxTypeDef, 
@@ -80,6 +154,10 @@ export function buildNodeSelection(): string {
         "ts:node-" + n.dataset.id + "-context.d.ts"
       );
     }
+  } else if (monacoEditor && !isSerializedDog) {
+    // Für nicht-SerializedDogs: Editor leeren und read-only
+    monacoEditor.setValue("// Diese Node kann nicht bearbeitet werden");
+    monacoEditor.updateOptions({ readOnly: true });
   }
 }
 

@@ -12,6 +12,12 @@ export function buildSaveHandler(): string {
     return;
   }
 
+  // Prüfe ob SerializedDog (hat _config)
+  if (!activeNode._config) {
+    alert("Diese Node kann nicht bearbeitet werden (nur SerializedDogs)");
+    return;
+  }
+
   const nodeId = activeNode._nodeId || activeNode.dataset.id;
   let tsCode = monacoEditor.getValue();
   

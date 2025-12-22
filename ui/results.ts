@@ -181,32 +181,45 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   <h3>JSON</h3>
   <pre id="json"></pre>
 
-  <h3>TypeScript</h3>
-  <div id="ts-editor"></div>
+  <div id="serialized-dog-ts" style="display: none;">
+    <h3>TypeScript</h3>
+    <div id="ts-editor"></div>
+  </div>
 
-  <div style="margin: 10px 0; display: flex; gap: 10px; flex-wrap: wrap;">
+  <div id="html-output" style="display: none;">
+    <h3>HTML Output</h3>
+    <div id="html-render" style="border: 1px solid #333; padding: 10px; background: #fff; color: #000; min-height: 200px;"></div>
+  </div>
+
+  <div id="serialized-dog-controls" style="margin: 10px 0; display: none; gap: 10px; flex-wrap: wrap;">
     <button id="save">Save</button>
     <button id="new">New</button>
     <button id="delete">Delete</button>
   </div>
 
-  <h3>Parents</h3>
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px;">
-    <div>
-      <label><strong>Required:</strong></label>
-      <div id="parents-required" style="max-height: 150px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000;"></div>
-    </div>
-    <div>
-      <label><strong>Optional:</strong></label>
-      <div id="parents-optional" style="max-height: 150px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000;"></div>
+  <div id="serialized-dog-parents" style="display: none;">
+    <h3>Parents</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px;">
+      <div>
+        <label><strong>Required:</strong></label>
+        <div id="parents-required" style="max-height: 150px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000;"></div>
+      </div>
+      <div>
+        <label><strong>Optional:</strong></label>
+        <div id="parents-optional" style="max-height: 150px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000;"></div>
+      </div>
     </div>
   </div>
 
-  <h3>VM Context</h3>
-  <pre id="context"></pre>
+  <div id="serialized-dog-context" style="display: none;">
+    <h3>VM Context</h3>
+    <pre id="context"></pre>
+  </div>
 
-  <h3>Config</h3>
-  <pre id="config" style="background:#000; padding:10px; margin-bottom:10px; white-space:pre; overflow:auto;"></pre>
+  <div id="serialized-dog-config" style="display: none;">
+    <h3>Config</h3>
+    <pre id="config" style="background:#000; padding:10px; margin-bottom:10px; white-space:pre; overflow:auto;"></pre>
+  </div>
 </div>
 `;
   }

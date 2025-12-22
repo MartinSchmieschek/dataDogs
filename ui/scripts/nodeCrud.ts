@@ -42,6 +42,12 @@ async function deleteNode() {
     return;
   }
 
+  // Prüfe ob SerializedDog (hat _config)
+  if (!activeNode._config) {
+    alert("Diese Node kann nicht gelöscht werden (nur SerializedDogs)");
+    return;
+  }
+
   const nodeId = activeNode._nodeId || activeNode.dataset.id;
   if (!nodeId) {
     alert("Node-ID nicht gefunden");
