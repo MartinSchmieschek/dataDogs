@@ -4,7 +4,7 @@ import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import * as vm from "vm";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
-export interface ISerilizedDogConfig{
+export interface ISerializedDogConfig{
     theRun:string
 }
 
@@ -38,7 +38,7 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     get name(): string {
-        return "Serilized Dog " + this.storageId
+        return "Serialized Dog " + this.storageId
     }
 
     public get instanceConfig():any{
@@ -50,7 +50,7 @@ export class SerializedDog<T> extends Dog<T> {
             return this.runExternalCode(season)
         }
 
-    constructor(private config:ISerilizedDogConfig, private storageIdentifier:string) {
+    constructor(private config:ISerializedDogConfig, private storageIdentifier:string) {
         super();
         this._storageId = storageIdentifier
         if (!this.config.theRun){

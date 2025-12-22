@@ -1,4 +1,9 @@
 import { Buffer } from "buffer";
+import * as wavesRenderer from "./scripts/wavesRenderer";
+import * as nodeSelection from "./scripts/nodeSelection";
+import * as monacoInit from "./scripts/monacoInit";
+import * as linesDrawer from "./scripts/linesDrawer";
+import * as saveHandler from "./scripts/saveHandler";
 
 export type NodeEntry = {
   id: string;
@@ -99,6 +104,11 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   transition:transform 0.2s;
 }
 .node:hover { transform:translateY(-5px); }
+.node.selected { 
+  background:#2b2b3f; 
+  box-shadow:0 0 12px rgba(100,150,255,0.4);
+  border:2px solid #4a9eff;
+}
 .node::after {
   content:attr(data-id); position:absolute; top:-14px;
   width:100%; text-align:center; opacity:0.5; font-size:10px;
@@ -148,8 +158,7 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   <h3>TypeScript</h3>
   <div id="ts-editor"></div>
 
-  <button id="save">Save
-  </button>
+  <button id="save">Save</button>
 
   <h3>VM Context</h3>
   <pre id="context"></pre>
@@ -165,155 +174,24 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
 <script>
 const waves = JSON.parse(document.getElementById("waves-data").textContent);
 
-// --- Element-Refs (Fix für deinen Fehler!) ---
+// --- Element-Refs ---
 const wavesEl = document.getElementById("waves");
 const viewerMeta = document.getElementById("meta");
 const viewerJson = document.getElementById("json");
 const viewerCtx = document.getElementById("context");
 let monacoEditor = null;
-
-// ------------------------------------------------
-// base64 → TS
-// ------------------------------------------------
-function base64ToUtf8(b64){
-  if (!b64) return "";
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-  return new TextDecoder("utf-8").decode(bytes);
-}
-
-// ------------------------------------------------
-// Waves Rendering
-// ------------------------------------------------
-function renderWaves(){
-  waves.forEach(wave=>{
-    const waveEl=document.createElement("div");
-    waveEl.className="wave";
-
-    wave.forEach(node=>{
-      const el=document.createElement("div");
-      el.className="node";
-      el.dataset.id=node.id;
-      el.textContent=node.name;
-
-      el._json=node.result;
-      el._ctx=node.vmContext || {};
-      el._ctxTypeDef=node.vmContextTypeDef || undefined;
-      el._ts=node.codeTs ? base64ToUtf8(node.codeTs) : "// no code";
-      el._req=node.parentsRequired || [];
-      el._opt=node.parentsOptional || [];
-
-      el.onclick=()=>selectNode(el);
-
-      waveEl.appendChild(el);
-    });
-
-    wavesEl.appendChild(waveEl);
-  });
-}
-
-// ------------------------------------------------
-// Node Auswahl
-// ------------------------------------------------
 let activeTypeDefDispose = null;
+let selectedNodeElement = null;
 
-function selectNode(n) {
-  // --- Viewer aktualisieren ---
-  viewerMeta.textContent = "ID: " + n.dataset.id;
-  viewerJson.textContent = JSON.stringify(n._json, null, 2);
-  viewerCtx.textContent = JSON.stringify(n._ctx, null, 2);
+${wavesRenderer.buildWavesRenderer()}
 
-  if (monacoEditor) {
-    monacoEditor.setValue(n._ts || "// no code");
-  }
+${nodeSelection.buildNodeSelection()}
 
+${monacoInit.buildMonacoInit()}
 
+${linesDrawer.buildLinesDrawer()}
 
-// make _ctx from node here as global info in editor
-monaco.languages.typescript.typescriptDefaults.addExtraLib(
-    n._ctx || "", "ts:node-" + n.dataset.id + "-context.d.ts"
-);
-    
-}
-
-
-
-// ------------------------------------------------
-// Monaco Editor
-// ------------------------------------------------
-require.config({ paths:{ vs:"https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs" } });
-
-require(["vs/editor/editor.main"], ()=>{
-
-  monacoEditor = monaco.editor.create(
-    document.getElementById("ts-editor"),
-    {
-      value:"// Select a node",
-      language:"typescript",
-      theme:"vs-dark",
-      automaticLayout:true,
-    }
-  );
-});
-
-
-
-
-
-
-// ------------------------------------------------
-// Linien
-// ------------------------------------------------
-function drawLines(){
-  const canvas=document.getElementById("lines");
-  const ctx=canvas.getContext("2d");
-
-  canvas.width=document.body.clientWidth;
-  canvas.height=document.body.scrollHeight;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  const nodes=[...document.querySelectorAll(".node")];
-  const rectMap=new Map();
-
-  nodes.forEach(el=>{
-    const r=el.getBoundingClientRect();
-    rectMap.set(el.dataset.id, {
-      x:r.left+r.width/2,
-      y:r.top + window.scrollY + r.height/2
-    });
-  });
-
-  nodes.forEach(el=>{
-    const from=rectMap.get(el.dataset.id);
-    if (!from) return;
-
-    el._req.forEach(id=>{
-      const to = rectMap.get(id);
-      if (!to) return;
-      ctx.strokeStyle = "#ff4444";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-    });
-
-    el._opt.forEach(id=>{
-      const to = rectMap.get(id);
-      if (!to) return;
-      ctx.strokeStyle = "#44aaff";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-    });
-  });
-
-  requestAnimationFrame(drawLines);
-}
+${saveHandler.buildSaveHandler()}
 
 // ------------------------------------------------
 // Init
@@ -321,6 +199,11 @@ function drawLines(){
 window.onload = ()=>{
   renderWaves();
   requestAnimationFrame(drawLines);
+  
+  const saveBtn = document.getElementById("save");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", saveNode);
+  }
 };
 window.addEventListener("resize", ()=>requestAnimationFrame(drawLines));
 window.addEventListener("scroll", ()=>requestAnimationFrame(drawLines));

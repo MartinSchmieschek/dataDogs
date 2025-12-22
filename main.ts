@@ -15,7 +15,7 @@ import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { SeasonRunner } from './core/harverster';
 //import { NodeEntry, Results, Waves } from './results';
-import { ISerilizedDogConfig, SerializedDog } from './dogs/SerializedDog';
+import { ISerializedDogConfig, SerializedDog } from './dogs/SerializedDog';
 import { NodeEntry, Results, Waves } from './ui/results';
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
@@ -40,9 +40,9 @@ async function start() {
                 const retrive = RandomRecipesRetriever.difficulty;
                 return retrive;
                 `,
-        } as ISerilizedDogConfig;
+        } as ISerializedDogConfig;
 
-        await store.save({ id: 'seed-serialized-1', type: SerializedDog.name, serilizedDogConfig: seedCfg });
+        await store.save({ id: 'seed-serialized-1', type: SerializedDog.name, serializedDogConfig: seedCfg });
         console.log('Seeded initial SerializedDog into DB');
     }
 
@@ -65,10 +65,45 @@ async function start() {
         }
     });
 
-    // einfache Route zum Speichern
-    app.post('/api/saveSerilizedDog', async (req: any, res: any) => {
+    // Route zum Speichern von SerializedDogs
+    app.post('/api/saveSerializedDog', async (req: any, res: any) => {
         try {
             await store.save(req.body);
+            res.status(200).json({ ok: true });
+        } catch (e) {
+            console.error(e);
+            res.status(500).json({ error: String(e) });
+        }
+    });
+
+    // Route zum Speichern von Node-Code (kompatibel mit UI)
+    app.post('/save', async (req: any, res: any) => {
+        try {
+            const id = req.query.id || req.body.id;
+            const tsCode = req.body.tsCode || req.body.code;
+            
+            if (!id || !tsCode) {
+                return res.status(400).json({ error: 'id and tsCode are required' });
+            }
+
+            // Lade existierenden SerializedDog oder erstelle neuen
+            const existing = await store.load(id);
+            let config: ISerializedDogConfig;
+            
+            if (existing) {
+                config = typeof existing === 'string' ? JSON.parse(existing) : existing;
+            } else {
+                config = { theRun: '' };
+            }
+
+            config.theRun = tsCode;
+
+            await store.save({ 
+                id, 
+                type: SerializedDog.name, 
+                serializedDogConfig: config 
+            });
+            
             res.status(200).json({ ok: true });
         } catch (e) {
             console.error(e);
@@ -97,7 +132,10 @@ async function fillKennel(store: IStore): Promise<Array<IDog<unknown>>> {
     const toLoad = await store.findByType(SerializedDog.name);
     toLoad.forEach((sd: any) => {
         try {
-            const dog = new SerializedDog(JSON.parse(sd.serilizedDogConfig),sd.id);
+            const config = typeof sd.serializedDogConfig === 'string' 
+                ? JSON.parse(sd.serializedDogConfig) 
+                : sd.serializedDogConfig;
+            const dog = new SerializedDog(config, sd.id);
             kennel.push(dog);
         } catch (e) {
             console.error('Failed to load SerializedDog:', e);
@@ -132,7 +170,8 @@ async function runSeason(kennel: Array<IDog<unknown>>): Promise<Waves> {
             if (entry.instance instanceof SerializedDog) {
                 const seDog = entry.instance as SerializedDog<unknown>;
                 nodeEntry.codeTs = seDog.instanceConfig.theRun;
-                nodeEntry.vmContext = TypeDefBuilder.buildContextLib(seDog.name, seDog.simpleVmContext);
+                const vmCtx = seDog.simpleVmContext || {};
+                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx);
             }
 
             return nodeEntry;

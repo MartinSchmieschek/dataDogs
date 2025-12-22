@@ -27,35 +27,35 @@ export class PrismaStore implements IStore {
     const type = d?.type ?? (d?.constructor?.name ?? 'unknown');
 
     // support two shapes:
-    // 1) { serilizedDogConfig: {...}, id?:..., type?:... }
+    // 1) { serializedDogConfig: {...}, id?:..., type?:... }
     // 2) raw config object (the config itself)
     let cfg: any;
-    if (d && d.serilizedDogConfig !== undefined) {
+    if (d && d.serializedDogConfig !== undefined) {
       // accept either string or object; normalize to object for manipulation
-      cfg = typeof d.serilizedDogConfig === 'string' ? JSON.parse(d.serilizedDogConfig) : d.serilizedDogConfig;
+      cfg = typeof d.serializedDogConfig === 'string' ? JSON.parse(d.serializedDogConfig) : d.serializedDogConfig;
     } else {
       cfg = typeof d === 'string' ? JSON.parse(d) : d;
     }
 
-    // Persist as string because SQLite schema uses String for serilizedDogConfig
+    // Persist as string because SQLite schema uses String for serializedDogConfig
     const dbValue = typeof cfg === 'string' ? cfg : JSON.stringify(cfg);
 
     await this.prisma.dog.upsert({
       where: { id },
-      create: { id, type, serilizedDogConfig: dbValue },
-      update: { type, serilizedDogConfig: dbValue }
+      create: { id, type, serializedDogConfig: dbValue },
+      update: { type, serializedDogConfig: dbValue }
     });
   }
 
   public async load(id: string): Promise<any> {
     const row = await this.prisma.dog.findUnique({ where: { id } });
-    return row ? row.serilizedDogConfig : null;
+    return row ? row.serializedDogConfig : null;
   }
 
-  public async findByType(type: string): Promise<Array<{ id: string; serilizedDogConfig: string }>> {
+  public async findByType(type: string): Promise<Array<{ id: string; serializedDogConfig: string }>> {
     const rows = await this.prisma.dog.findMany({ where: { type } });
     // stored value is a string (JSON text). Return as-is.
-    return rows.map((r: any) => ({ id: r.id, serilizedDogConfig: r.serilizedDogConfig }));
+    return rows.map((r: any) => ({ id: r.id, serializedDogConfig: r.serializedDogConfig }));
   }
 
   public async disconnect(): Promise<void> {
