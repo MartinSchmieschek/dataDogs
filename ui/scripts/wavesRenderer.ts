@@ -17,15 +17,18 @@ function renderWaves(){
       const el=document.createElement("div");
       el.className="node";
       el.dataset.id=node.id;
-      el.textContent=node.name;
+      el.textContent = node.name || "";
 
       el._json=node.result;
       el._ctx=node.vmContext || {};
       el._ctxTypeDef=node.vmContextTypeDef || undefined;
       el._ts=node.codeTs ? base64ToUtf8(node.codeTs) : "// no code";
-      el._req=node.parentsRequired || [];
-      el._opt=node.parentsOptional || [];
+      // Nutze Config-Werte falls verfügbar, sonst fallback auf node.parentsRequired/Optional
+      const config = node.serializedDogConfig || null;
+      el._req = config ? (config.parentsRequired || []) : (node.parentsRequired || []);
+      el._opt = config ? (config.parentsOptional || []) : (node.parentsOptional || []);
       el._nodeId=node.id;
+      el._config=config;
 
       el.onclick=()=>selectNode(el);
 

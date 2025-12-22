@@ -6,6 +6,9 @@ import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
 export interface ISerializedDogConfig{
     theRun:string
+    version?: number  // Versionsnummer für Sort-Index
+    parentsRequired?: string[]  // Node-IDs der required Eltern
+    parentsOptional?: string[]  // Node-IDs der optional Eltern
 }
 
 export class SerializedDog<T> extends Dog<T> {
@@ -38,7 +41,8 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     get name(): string {
-        return "Serialized Dog " + this.storageId
+        const versionSuffix = this.config.version ? " v" + this.config.version : "";
+        return "Serialized Dog " + this.storageId + versionSuffix;
     }
 
     public get instanceConfig():any{
@@ -91,8 +95,10 @@ export class SerializedDog<T> extends Dog<T> {
             const result = await script.runInContext(context);
             return result as T;
         } catch (err: any) {
+            //TODO: Provide proper errors to ui
             console.error("Script Error:", err);
-            throw err;
+            return ("Error: " + err.message) as T
+            //throw err;
         }
     }
 

@@ -54,7 +54,16 @@ export class SeasonRunner {
 
         }
         catch (e) {
-            console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e)
+            console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e);
+            // Speichere Fehler im Dog (als Error-Objekt im result)
+            (dog as any).__error = e instanceof Error ? e.message : String(e);
+            // Füge Dog trotzdem zu exhausted hinzu, damit es in Waves erscheint
+            season.exhausted.push(dog);
+            // Entferne aus withBeesInThePants
+            let dogIndex = this.dogsWithBeesInthePants.findIndex(comperrator => comperrator === dog)
+            if (dogIndex >= 0) {
+                this.dogsWithBeesInthePants.splice(dogIndex, 1)
+            }
         }
     }
 
@@ -62,7 +71,10 @@ export class SeasonRunner {
         console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
         await Promise.all(pack.map(dog => this.letOut(dog, season)));
 
-        let i = this.season.wave.push(pack.filter(dog => dog.collected != undefined).map(i => {return {
+        // Füge alle Dogs hinzu, auch die mit Fehlern (collected kann undefined sein, aber __error vorhanden)
+        let i = this.season.wave.push(pack.filter(dog => {
+            return dog.collected != undefined || (dog as any).__error != undefined;
+        }).map(i => {return {
             instance:i,
             optionalRequiresFrom:null,
             requiresFrom:null
@@ -93,8 +105,10 @@ export class SeasonRunner {
         // go gether something
         const firstHunt = this.dogsWithBeesInthePants.filter((dog) => { return dog.isReady(this.season) })
 
-        if (firstHunt.length === 0)
-            throw console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
+        if (firstHunt.length === 0) {
+            console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
+            throw new Error("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
+        }
 
         // go explore
         await this.letOutThePack(firstHunt, this.season).then(async () => {

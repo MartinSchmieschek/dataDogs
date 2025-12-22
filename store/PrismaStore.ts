@@ -58,6 +58,10 @@ export class PrismaStore implements IStore {
     return rows.map((r: any) => ({ id: r.id, serializedDogConfig: r.serializedDogConfig }));
   }
 
+  public async delete(id: string): Promise<void> {
+    await this.prisma.dog.delete({ where: { id } });
+  }
+
   public async disconnect(): Promise<void> {
     await this.prisma.$disconnect();
   }
