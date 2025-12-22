@@ -15,10 +15,16 @@ function base64ToUtf8(b64){
 }
 
 // Sammle Node-Daten und erstelle vis.js Nodes und Edges
+let nodesArrayGlobal = []; // Global für Zugriff nach collectNodeData
+
 function collectNodeData() {
   nodeDataMap.clear();
-  const nodesArray = [];
+  nodesArrayGlobal = []; // Reset
   const edgesArray = [];
+  
+  // Finde erste Wave für zentrale Ausrichtung
+  const firstWave = waves.length > 0 ? waves[0] : [];
+  const firstWaveNodeIds = firstWave.map(n => n.id);
   
   waves.forEach((wave, waveIndex) => {
     wave.forEach(node => {
@@ -57,8 +63,18 @@ function collectNodeData() {
       };
       nodeDataMap.set(node.id, nodeData);
       
-      // Erstelle vis.js Node
-      nodesArray.push({
+      // Erstelle vis.js Node mit fixierter Y-Position basierend auf Wave-Level
+      // Starte von oben (z.B. bei 100) und verteile nach unten
+      const yPosition = 100 + (waveIndex * 250); // Start bei 100px, dann 250px Abstand pro Wave-Level
+      // Initiale X-Position gleichmäßig verteilt innerhalb der Wave (zentriert um 0)
+      const nodeIndexInWave = wave.findIndex(n => n.id === node.id);
+      const totalNodesInWave = wave.length;
+      // Verteile Nodes gleichmäßig um die Mitte (z.B. -400 bis +400 für 5 Nodes)
+      const spacing = 200; // Abstand zwischen Nodes
+      const totalWidth = (totalNodesInWave - 1) * spacing;
+      const initialX = (nodeIndexInWave * spacing) - (totalWidth / 2); // Zentriert um 0
+      
+      nodesArrayGlobal.push({
         id: node.id,
         label: node.name || node.id,
         // Skaliere Node-Größe basierend auf Anzahl der Verbindungen
@@ -83,7 +99,14 @@ function collectNodeData() {
         },
         margin: 10,
         borderWidth: 1,
-        borderWidthSelected: 2
+        borderWidthSelected: 2,
+        x: initialX, // Initiale X-Position für gleichmäßige Startverteilung
+        y: yPosition, // Y-Position basierend auf Wave
+        fixed: {
+          x: waveIndex === 0, // Erste Wave: X-Position fixiert (keine Physik), andere Waves: X verschiebbar
+          y: true // Y-Position für ALLE Waves fixiert (Nodes bleiben in ihrer Wave-Ebene)
+        },
+        mass: waveIndex === 0 ? 10 : 1 // Erste Wave hat höhere Masse (Anker)
       });
       
       // Erstelle Edges für Required Parents (rot, durchgezogen)
@@ -100,7 +123,7 @@ function collectNodeData() {
           arrows: 'to',
           smooth: {
             type: 'cubicBezier',
-            roundness: 0.4
+            roundness: 0.5
           }
         });
       });
@@ -120,14 +143,14 @@ function collectNodeData() {
           arrows: 'to',
           smooth: {
             type: 'cubicBezier',
-            roundness: 0.4
+            roundness: 0.5
           }
         });
       });
     });
   });
   
-  nodes = new vis.DataSet(nodesArray);
+  nodes = new vis.DataSet(nodesArrayGlobal);
   edges = new vis.DataSet(edgesArray);
 }
 
@@ -153,25 +176,32 @@ function initNetwork() {
   
   const options = {
     layout: {
-      hierarchical: {
-        enabled: true,
-        direction: 'UD', // Up-Down
-        sortMethod: 'directed',
-        levelSeparation: 150,
-        nodeSpacing: 100,
-        treeSpacing: 200,
-        blockShifting: true,
-        edgeMinimization: true,
-        parentCentralization: true,
-        shakeTowards: 'leaves'
-      }
+      improvedLayout: true // Verbessertes Layout-Algorithmus
     },
     physics: {
-      enabled: false // Deaktiviere Physik für hierarchisches Layout
+      enabled: true, // Aktiviere Physik für gummi-artige Ausrichtung (nur für nachfolgende Waves)
+      stabilization: {
+        enabled: true,
+        iterations: 1000, // Noch mehr Iterationen für bessere Stabilisierung
+        fit: true,
+        updateInterval: 25, // Häufigere Updates während Stabilisierung
+        onlyDynamicEdges: false // Stabilisiere auch statische Edges
+      },
+      forceAtlas2Based: {
+        gravitationalConstant: -5, // Sehr stark reduziert für weniger Drift
+        centralGravity: 0.0, // Komplett deaktiviert - keine zentrale Schwerkraft
+        springLength: 200,
+        springConstant: 0.05, // Reduziert für weniger Bewegung
+        damping: 0.99, // Extrem hohe Dämpfung um Drift zu verhindern
+        avoidOverlap: 1
+      },
+      maxVelocity: 2, // Extrem reduziert um Drift zu verhindern
+      minVelocity: 0.0001,
+      solver: 'forceAtlas2Based'
     },
     interaction: {
       hover: true,
-      dragNodes: true,
+      dragNodes: true, // Erlaube Verschieben
       dragView: true,
       zoomView: true,
       selectConnectedEdges: false
@@ -195,7 +225,7 @@ function initNetwork() {
           border: '#4a9eff' 
         }
       },
-      margin: 10,
+      margin: 15, // Mehr Margin um Überschneidungen zu vermeiden
       borderWidth: 1,
       borderWidthSelected: 2
     },
@@ -203,7 +233,7 @@ function initNetwork() {
       arrows: 'to',
       smooth: {
         type: 'cubicBezier',
-        roundness: 0.4
+        roundness: 0.5 // Mehr Rundung für bessere Sichtbarkeit und weniger Kreuzungen
       },
       color: {
         inherit: 'from'
@@ -212,6 +242,104 @@ function initNetwork() {
   };
   
   network = new vis.Network(container, data, options);
+  
+  // Speichere ursprüngliche Y-Positionen für alle Nodes
+  const originalYPositions = new Map();
+  nodesArrayGlobal.forEach(node => {
+    if (node.y !== undefined) {
+      originalYPositions.set(node.id, node.y);
+    }
+  });
+  
+  // Nach Stabilisierung: Physik reduzieren, aber aktiv lassen für Stabilität
+  network.on("stabilizationEnd", function() {
+    // Reduziere Physik drastisch, aber lasse sie aktiv für Stabilität
+    network.setOptions({
+      physics: {
+        enabled: true,
+        stabilization: {
+          enabled: false
+        },
+        forceAtlas2Based: {
+          gravitationalConstant: -1, // Sehr schwach
+          centralGravity: 0.0,
+          springLength: 200,
+          springConstant: 0.01, // Sehr schwach
+          damping: 0.99, // Extrem hohe Dämpfung
+          avoidOverlap: 1
+        },
+        maxVelocity: 0.1, // Sehr langsam
+        minVelocity: 0.0001
+      }
+    });
+  });
+  
+  // Event-Handler: Verhindere Überlappung der ersten Wave beim Verschieben
+  network.on("dragStart", function(params) {
+    if (params.nodes && params.nodes.length > 0) {
+      const draggedNodeId = params.nodes[0];
+      const draggedNode = nodes.get(draggedNodeId);
+      const originalY = originalYPositions.get(draggedNodeId);
+      const firstWaveY = 100; // Y-Position der ersten Wave
+      
+      if (draggedNode && originalY === firstWaveY) {
+        // Node ist aus der ersten Wave
+        // Temporär X-Fixierung aufheben für Verschiebung (Y bleibt fixiert)
+        nodes.update([{
+          id: draggedNodeId,
+          fixed: {
+            x: false, // X temporär verschiebbar
+            y: true // Y bleibt fixiert (in der Ebene)
+          }
+        }]);
+      }
+    }
+  });
+  
+  network.on("dragEnd", function(params) {
+    if (params.nodes && params.nodes.length > 0) {
+      const draggedNodeId = params.nodes[0];
+      const draggedNode = nodes.get(draggedNodeId);
+      const originalY = originalYPositions.get(draggedNodeId);
+      const firstWaveY = 100; // Y-Position der ersten Wave
+      
+      if (draggedNode && originalY === firstWaveY) {
+        // Node ist aus der ersten Wave
+        // Prüfe auf Überlappungen mit anderen Nodes der ersten Wave
+        const positions = network.getPositions();
+        const currentPos = positions[draggedNodeId];
+        
+        Object.keys(positions).forEach(otherNodeId => {
+          if (otherNodeId === draggedNodeId) return;
+          const otherOriginalY = originalYPositions.get(otherNodeId);
+          if (otherOriginalY === firstWaveY) {
+            // Andere Node ist auch in der ersten Wave
+            const otherPos = positions[otherNodeId];
+            const distance = Math.abs(currentPos.x - otherPos.x); // Nur X-Abstand (Y ist gleich)
+            if (distance < 150) { // Mindestabstand 150px
+              // Verschiebe Node weg von Überlappung (nur X-Richtung)
+              const direction = currentPos.x > otherPos.x ? 1 : -1;
+              const newX = otherPos.x + direction * 150;
+              nodes.update([{
+                id: draggedNodeId,
+                x: newX,
+                y: originalY // Y bleibt in der Ebene
+              }]);
+            }
+          }
+        });
+        
+        // Setze Fixierung wieder (X fixiert für erste Wave, Y bleibt fixiert)
+        nodes.update([{
+          id: draggedNodeId,
+          fixed: {
+            x: true, // X wieder fixiert (keine Physik für erste Wave)
+            y: true // Y bleibt fixiert (in der Ebene)
+          }
+        }]);
+      }
+    }
+  });
   
   // Event-Handler für Node-Selektion
   network.on("selectNode", function (params) {
