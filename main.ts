@@ -280,6 +280,13 @@ async function fillKennel(store: IStore): Promise<Array<IDog<unknown>>> {
             console.error('Failed to load SerializedDog:', e);
         }
     });
+    
+    // Setze Kennel-Referenz für alle SerializedDogs (für Parent-Lookup in simpleVmContext)
+    kennel.forEach(dog => {
+        if (dog instanceof SerializedDog) {
+            (dog as SerializedDog<unknown>).setKennelRef(kennel);
+        }
+    });
 
     return kennel;
 }

@@ -2,7 +2,6 @@ import { Dog } from "../core/enities/abstractHuntingDog";
 import { DogClass, IHuntingDog } from "../core/enities/IHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import * as vm from "vm";
-import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
 export interface ISerializedDogConfig{
     theRun:string
@@ -20,6 +19,11 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     private requiredYieldsContext: Map<string, any> = new Map<string, any>();
+    private kennelRef: Array<IHuntingDog<unknown>> | null = null; // Referenz zum Kennel für Parent-Lookup
+
+    public setKennelRef(kennel: Array<IHuntingDog<unknown>>): void {
+        this.kennelRef = kennel;
+    }
 
     public get simpleVmContext(): Record<string, any> | undefined{
         let justContext:any = {
@@ -29,26 +33,175 @@ export class SerializedDog<T> extends Dog<T> {
         this.requiredYieldsContext.forEach((value, key) => {
             justContext[key] = value
         })
+        
+        // Füge required/optional Parents aus Config hinzu (für Monaco Editor)
+        // Diese werden zur Laufzeit aus season.exhausted gefüllt, aber für Type Definitions
+        // brauchen wir die Info aus dem Kennel
+        if (this.kennelRef) {
+            const parentsRequired = this.config.parentsRequired || [];
+            parentsRequired.forEach((parentId: string) => {
+                const parentDog = this.kennelRef!.find(dog => {
+                    if (dog instanceof SerializedDog) {
+                        return (dog as SerializedDog<unknown>).storageId === parentId;
+                    }
+                    return dog.name === parentId;
+                });
+                if (parentDog) {
+                    // Nutze Parent-Name (CamelCase) als Variablennamen
+                    const safeName = parentDog.name;
+                    // Für Type Definitions: verwende einen Platzhalter-Typ
+                    justContext[safeName] = parentDog.collected || {};
+                }
+            });
+            
+            const parentsOptional = this.config.parentsOptional || [];
+            parentsOptional.forEach((parentId: string) => {
+                const parentDog = this.kennelRef!.find(dog => {
+                    if (dog instanceof SerializedDog) {
+                        return (dog as SerializedDog<unknown>).storageId === parentId;
+                    }
+                    return dog.name === parentId;
+                });
+                if (parentDog) {
+                    // Nutze Parent-Name (CamelCase) als Variablennamen
+                    const safeName = parentDog.name;
+                    // Für Type Definitions: verwende einen Platzhalter-Typ
+                    justContext[safeName] = parentDog.collected || {};
+                }
+            });
+        }
+        
         return justContext
         
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-                return [RandomRecipesRetriever];
+        // Mappe Parent-IDs aus Config zu Dog-Klassen
+        if (!this.kennelRef) {
+            return [];
+        }
+        
+        const parentsRequired = this.config.parentsRequired || [];
+        const requiredClasses: (new (...args: any[]) => IHuntingDog<unknown>)[] = [];
+        
+        parentsRequired.forEach((parentId: string) => {
+            const parentDog = this.kennelRef!.find(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+            
+            if (parentDog) {
+                // Hole die Konstruktor-Klasse der Parent-Instanz
+                const parentClass = parentDog.constructor as new (...args: any[]) => IHuntingDog<unknown>;
+                // Füge nur hinzu, wenn noch nicht vorhanden (vermeide Duplikate)
+                if (!requiredClasses.includes(parentClass)) {
+                    requiredClasses.push(parentClass);
+                }
+            }
+        });
+        
+        return requiredClasses;
     }
+    
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return []
+        // Mappe Parent-IDs aus Config zu Dog-Klassen
+        if (!this.kennelRef) {
+            return [];
+        }
+        
+        const parentsOptional = this.config.parentsOptional || [];
+        const optionalClasses: (new (...args: any[]) => IHuntingDog<unknown>)[] = [];
+        
+        parentsOptional.forEach((parentId: string) => {
+            const parentDog = this.kennelRef!.find(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+            
+            if (parentDog) {
+                // Hole die Konstruktor-Klasse der Parent-Instanz
+                const parentClass = parentDog.constructor as new (...args: any[]) => IHuntingDog<unknown>;
+                // Füge nur hinzu, wenn noch nicht vorhanden (vermeide Duplikate)
+                if (!optionalClasses.includes(parentClass)) {
+                    optionalClasses.push(parentClass);
+                }
+            }
+        });
+        
+        return optionalClasses;
     }
 
     get name(): string {
-        const versionSuffix = this.config.version ? " v" + this.config.version : "";
-        return "Serialized Dog " + this.storageId + versionSuffix;
+        // Konvertiere storageId zu CamelCase (z.B. "node-v2" -> "NodeV2")
+        const camelCaseId = this.toCamelCase(this.storageId);
+        return camelCaseId;
     }
+    
+    private toCamelCase(id: string): string {
+        // Entferne Version-Suffix (z.B. "-v2" -> "")
+        const withoutVersion = id.replace(/-v\d+$/, '');
+        // Konvertiere zu CamelCase: "node-name" -> "NodeName", "node_name" -> "NodeName"
+        return withoutVersion
+            .split(/[-_\s]+/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join('');
+    }
+
 
     public get instanceConfig():any{
         return this.config
     }
 
+    // Überschreibe isReady, um spezifische Instanzen zu prüfen (nach name/storageId)
+    // da required/optional Klassen zurückgeben, aber wir die spezifische Instanz brauchen
+    isReady(season: IHuntingSeason): boolean {
+        const parentsRequired = this.config.parentsRequired || [];
+        const parentsOptional = this.config.parentsOptional || [];
+        
+        // Prüfe, ob alle required Parents in exhausted sind (nach storageId/name)
+        const requiredFound = parentsRequired.every((parentId: string) => {
+            return season.exhausted.some(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+        });
+        
+        if (!requiredFound) {
+            return false;
+        }
+        
+        // Prüfe optional Parents (wenn maxRuns noch nicht erreicht, warte auf mehr)
+        const optionalFound = parentsOptional.filter((parentId: string) => {
+            return season.exhausted.some(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+        }).length;
+        
+        const optionalAvailable = parentsOptional.filter((parentId: string) => {
+            return season.withBeesInThePants.some(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+        }).length;
+        
+        // Wenn noch Runs möglich sind und nicht alle optional Parents gefunden wurden, warte
+        if (season.runIndex < season.maxRuns && optionalFound < optionalAvailable) {
+            return false;
+        }
+        
+        return true;
+    }
 
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<T> = (season:IHuntingSeason) => {
             return this.runExternalCode(season)
@@ -77,16 +230,53 @@ export class SerializedDog<T> extends Dog<T> {
             })()
         `;
 
-        const context = vm.createContext({
+        // Erstelle Context mit nur required/optional exhausted dogs als globale Variablen
+        const contextObj: any = {
             fetch,
             console,
-        });
-
+        };
+        
         // this magic binds the exausted dogs yield into a virtual realm so every magic can safly happen. 
-        season.exhausted.forEach(dog => {
-            context[dog.name] = dog.collected
-            this.requiredYieldsContext.set(dog.name, dog.collected);
-        })
+        // Füge nur required/optional Parents aus Config zum Context hinzu
+        const parentsRequired = this.config.parentsRequired || [];
+        const parentsOptional = this.config.parentsOptional || [];
+        const allParentIds = [...parentsRequired, ...parentsOptional];
+        
+        allParentIds.forEach((parentId: string) => {
+            // Finde Dog anhand ID (storageId für SerializedDogs, name für andere)
+            const parentDog = season.exhausted.find(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+            
+            if (parentDog && parentDog.collected !== undefined) {
+                const dogName = parentDog.name;
+                // Setze als Property im Context-Objekt (wird automatisch als globale Variable verfügbar)
+                contextObj[dogName] = parentDog.collected;
+                this.requiredYieldsContext.set(dogName, parentDog.collected);
+                // Debug: Log für SerializedDogs
+                if (parentDog instanceof SerializedDog) {
+                    console.log(`[SerializedDog ${this.storageId}] Füge ${dogName} (storageId: ${(parentDog as SerializedDog<unknown>).storageId}) zum Context hinzu`);
+                }
+            } else if (parentDog && parentDog.collected === undefined) {
+                console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} gefunden, aber collected ist undefined`);
+            } else {
+                console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} nicht in exhausted gefunden`);
+            }
+        });
+        
+        // Debug: Log alle exhausted dogs und Context-Keys
+        console.log(`[SerializedDog ${this.storageId}] Required/Optional Parent IDs:`, allParentIds);
+        console.log(`[SerializedDog ${this.storageId}] Context keys vor createContext:`, Object.keys(contextObj));
+        
+        // Erstelle VM Context NACH dem Hinzufügen aller Variablen
+        // WICHTIG: Alle Variablen müssen VOR createContext gesetzt werden!
+        const context = vm.createContext(contextObj);
+        
+        // Debug: Prüfe ob Variablen nach createContext verfügbar sind
+        console.log(`[SerializedDog ${this.storageId}] Context keys nach createContext:`, Object.keys(context));
 
         // Script
         const script = new vm.Script(wrappedCode);
