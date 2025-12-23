@@ -69,16 +69,38 @@ function collectNodeData() {
       // Initiale X-Position gleichmäßig verteilt innerhalb der Wave (zentriert um 0)
       const nodeIndexInWave = wave.findIndex(n => n.id === node.id);
       const totalNodesInWave = wave.length;
-      // Verteile Nodes gleichmäßig um die Mitte (z.B. -400 bis +400 für 5 Nodes)
-      const spacing = 200; // Abstand zwischen Nodes
+      
+      // Berechne Node-Größe für Abstand-Berechnung
+      const nodeName = node.name || node.id;
+      const textLength = nodeName.length;
+      // Berechne tatsächliche Text-Breite (ca. 8-10px pro Zeichen bei monospace font size 14)
+      const textWidth = textLength * 10; // 10px pro Zeichen für monospace font
+      const padding = 30; // Padding links und rechts
+      const baseSize = Math.max(100, textWidth + padding); // Mindestgröße basierend auf tatsächlicher Text-Breite
+      const connectionSize = (parentsRequired.length + parentsOptional.length) * 15;
+      const nodeSize = Math.max(baseSize, connectionSize + 60); // Node-Größe
+      
+      // Abstand zwischen Nodes in derselben Wave: Mindestabstand = 4 × Node-Größe (sehr viel mehr Abstand!)
+      const minSpacing = nodeSize * 4.0; // Mindestabstand = 4 × div-Größe (Nodes sollen sehr weit auseinander sein)
+      const spacing = minSpacing; // Verwende Mindestabstand
       const totalWidth = (totalNodesInWave - 1) * spacing;
       const initialX = (nodeIndexInWave * spacing) - (totalWidth / 2); // Zentriert um 0
       
+      // nodeName, textLength, baseSize, connectionSize und nodeSize wurden bereits oben berechnet
+      
       nodesArrayGlobal.push({
         id: node.id,
-        label: node.name || node.id,
-        // Skaliere Node-Größe basierend auf Anzahl der Verbindungen
-        value: Math.max(10, (parentsRequired.length + parentsOptional.length) * 5 + 20),
+        label: nodeName,
+        // Skaliere Node-Größe basierend auf Textlänge und Anzahl der Verbindungen
+        value: nodeSize,
+        widthConstraint: {
+          minimum: nodeSize,
+          maximum: nodeSize * 1.5
+        },
+        heightConstraint: {
+          minimum: 40,
+          maximum: 60
+        },
         shape: 'box',
         font: { 
           color: '#eee',
@@ -97,7 +119,7 @@ function collectNodeData() {
             border: '#4a9eff' 
           }
         },
-        margin: 10,
+        margin: 35, // Sehr stark erhöhter Margin für mehr Abstand zwischen Nodes (verhindert Überlappung)
         borderWidth: 1,
         borderWidthSelected: 2,
         x: initialX, // Initiale X-Position für gleichmäßige Startverteilung
@@ -190,10 +212,10 @@ function initNetwork() {
       forceAtlas2Based: {
         gravitationalConstant: -5, // Sehr stark reduziert für weniger Drift
         centralGravity: 0.0, // Komplett deaktiviert - keine zentrale Schwerkraft
-        springLength: 200,
-        springConstant: 0.05, // Reduziert für weniger Bewegung
+        springLength: 200, // Deutlich erhöht für viel mehr Abstand zwischen verbundenen Nodes
+        springConstant: 0.05, // Reduziert für weniger Zugkraft
         damping: 0.99, // Extrem hohe Dämpfung um Drift zu verhindern
-        avoidOverlap: 1
+        avoidOverlap: 10.0 // Extrem erhöht für maximale Abstoßung (keine Überlappung)
       },
       maxVelocity: 2, // Extrem reduziert um Drift zu verhindern
       minVelocity: 0.0001,
@@ -225,7 +247,7 @@ function initNetwork() {
           border: '#4a9eff' 
         }
       },
-      margin: 15, // Mehr Margin um Überschneidungen zu vermeiden
+        margin: 35, // Sehr stark erhöhter Margin um Überschneidungen zu vermeiden
       borderWidth: 1,
       borderWidthSelected: 2
     },
@@ -263,15 +285,73 @@ function initNetwork() {
         forceAtlas2Based: {
           gravitationalConstant: -1, // Sehr schwach
           centralGravity: 0.0,
-          springLength: 200,
-          springConstant: 0.01, // Sehr schwach
+          springLength: 200, // Deutlich erhöht für viel mehr Abstand zwischen verbundenen Nodes
+          springConstant: 0.05, // Reduziert für weniger Zugkraft
           damping: 0.99, // Extrem hohe Dämpfung
-          avoidOverlap: 1
+          avoidOverlap: 10.0 // Extrem erhöht für maximale Abstoßung (keine Überlappung)
         },
         maxVelocity: 0.1, // Sehr langsam
         minVelocity: 0.0001
       }
     });
+    
+    // Überwache und korrigiere Abstände zwischen Nodes in derselben Wave
+    setInterval(function() {
+      const positions = network.getPositions();
+      const updates = [];
+      
+      // Gruppiere Nodes nach Wave (Y-Position)
+      const nodesByWave = new Map();
+      originalYPositions.forEach((originalY, nodeId) => {
+        if (!nodesByWave.has(originalY)) {
+          nodesByWave.set(originalY, []);
+        }
+        nodesByWave.get(originalY).push(nodeId);
+      });
+      
+      // Prüfe Abstände innerhalb jeder Wave
+      nodesByWave.forEach((nodeIds, waveY) => {
+        if (nodeIds.length < 2) return; // Nur wenn mehrere Nodes in der Wave
+        
+        // Sortiere Nodes nach X-Position
+        const sortedNodes = nodeIds.map(id => ({
+          id: id,
+          x: positions[id] ? positions[id].x : 0,
+          node: nodes.get(id)
+        })).sort((a, b) => a.x - b.x);
+        
+        // Prüfe Abstände zwischen benachbarten Nodes
+        for (let i = 0; i < sortedNodes.length - 1; i++) {
+          const node1 = sortedNodes[i];
+          const node2 = sortedNodes[i + 1];
+          const distance = Math.abs(node2.x - node1.x);
+          
+          // Berechne Node-Größen inklusive Margin
+          const node1Size = node1.node ? (node1.node.value || 50) : 50;
+          const node2Size = node2.node ? (node2.node.value || 50) : 50;
+          const node1Margin = node1.node && node1.node.margin ? node1.node.margin : 35;
+          const node2Margin = node2.node && node2.node.margin ? node2.node.margin : 35;
+          const node1Total = node1Size + (node1Margin * 2); // Größe + Margin auf beiden Seiten
+          const node2Total = node2Size + (node2Margin * 2);
+          // Mindestabstand = Summe der Node-Größen (damit sie sich nicht berühren) + Extra-Puffer
+          const minDistance = node1Total + node2Total + 50; // Deutlich mehr Abstand zwischen Nodes in derselben Wave
+          
+          // Korrigiere wenn zu nah (ÜBERLAPPUNG!)
+          if (distance < minDistance) {
+            // Zu nah: Verschiebe Node2 weiter weg
+            const correction = minDistance - distance + 30; // Extra 30px Puffer
+            updates.push({
+              id: node2.id,
+              x: node2.x + correction
+            });
+          }
+        }
+      });
+      
+      if (updates.length > 0) {
+        nodes.update(updates);
+      }
+    }, 100); // Alle 100ms überwachen (häufiger für bessere Reaktion auf Überlappungen)
   });
   
   // Event-Handler: Verhindere Überlappung der ersten Wave beim Verschieben
