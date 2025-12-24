@@ -2,12 +2,20 @@ import { Dog } from "../core/enities/abstractHuntingDog";
 import { DogClass, IHuntingDog } from "../core/enities/IHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import * as vm from "vm";
+import { IUpdateInput } from "../api/AbstractController";
 
-export interface ISerializedDogConfig{
-    theRun:string
-    version?: number  // Versionsnummer für Sort-Index
-    parentsRequired?: string[]  // Node-IDs der required Eltern
-    parentsOptional?: string[]  // Node-IDs der optional Eltern
+/**
+ * Konfiguration für SerializedDog
+ * Erweitert IUpdateInput für Save/Update-Operationen
+ */
+export interface ISerializedDogConfig extends IUpdateInput {
+    theRun: string;  // Der TypeScript-Code, der ausgeführt wird (required, nicht optional)
+    // version ist in IUpdateInput definiert
+    parentsRequired?: string[];  // Node-IDs der required Eltern
+    parentsOptional?: string[];  // Node-IDs der optional Eltern
+    // Unterstützt auch tsCode/code als Alternative zu theRun (wird in ConfigRouteHandler gemappt)
+    tsCode?: string;  // Alternative zu theRun (wird zu theRun gemappt)
+    code?: string;   // Alternative zu theRun (wird zu theRun gemappt)
 }
 
 export class SerializedDog<T> extends Dog<T> {
