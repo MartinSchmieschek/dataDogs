@@ -156,51 +156,39 @@ export class SerializedDog<T> extends Dog<T> {
         return this.config
     }
 
-    // Überschreibe isReady, um spezifische Instanzen zu prüfen (nach name/storageId)
-    // da required/optional Klassen zurückgeben, aber wir die spezifische Instanz brauchen
-    isReady(season: IHuntingSeason): boolean {
+    /**
+     * Überschreibe matchesParent, um spezifische Instanzen nach storageId/name zu prüfen.
+     * Die Basis-isReady Logik verwendet diese Methode für instanz-spezifische Prüfung.
+     * 
+     * Für SerializedDog: Prüfe, ob die gegebene Instanz eine der spezifischen Parent-Instanzen ist,
+     * die in required/optional definiert sind. Die parentClass wird ignoriert, da wir nach
+     * spezifischen Instanzen (storageId/name) suchen.
+     */
+    protected matchesParent(parentClass: (new (...args: any[]) => IHuntingDog<unknown>), instance: IHuntingDog<unknown>): boolean {
+        // Zuerst prüfe, ob es eine Instanz der Klasse ist (Standard-Prüfung)
+        if (!(instance instanceof parentClass)) {
+            return false;
+        }
+        
+        // Für SerializedDog: Prüfe, ob die spezifische Instanz (nach storageId/name) in den Parents ist
+        // Hole die spezifischen Parent-IDs aus der Config
         const parentsRequired = this.config.parentsRequired || [];
         const parentsOptional = this.config.parentsOptional || [];
+        const allParents = [...parentsRequired, ...parentsOptional];
         
-        // Prüfe, ob alle required Parents in exhausted sind (nach storageId/name)
-        const requiredFound = parentsRequired.every((parentId: string) => {
-            return season.exhausted.some(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
+        // Wenn keine spezifischen Parents definiert sind, verwende Standard-Klassen-Prüfung
+        if (allParents.length === 0) {
+            return true;
+        }
+        
+        // Prüfe, ob diese Instanz eine der spezifischen Parent-Instanzen ist
+        // (nach storageId für SerializedDog, sonst nach name)
+        return allParents.some((parentId: string) => {
+            if (instance instanceof SerializedDog) {
+                return (instance as SerializedDog<unknown>).storageId === parentId;
+            }
+            return instance.name === parentId;
         });
-        
-        if (!requiredFound) {
-            return false;
-        }
-        
-        // Prüfe optional Parents (wenn maxRuns noch nicht erreicht, warte auf mehr)
-        const optionalFound = parentsOptional.filter((parentId: string) => {
-            return season.exhausted.some(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
-        }).length;
-        
-        const optionalAvailable = parentsOptional.filter((parentId: string) => {
-            return season.withBeesInThePants.some(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
-        }).length;
-        
-        // Wenn noch Runs möglich sind und nicht alle optional Parents gefunden wurden, warte
-        if (season.runIndex < season.maxRuns && optionalFound < optionalAvailable) {
-            return false;
-        }
-        
-        return true;
     }
 
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<T> = (season:IHuntingSeason) => {

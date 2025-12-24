@@ -172,7 +172,30 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   padding:20px;
 }
 
-#boat { width:100%; height:120px; display:flex; justify-content:center; align-items:center; }
+#boat { 
+  width:100%; 
+  height:120px; 
+  display:flex; 
+  justify-content:center; 
+  align-items:center; 
+}
+#boat pre {
+  font-size: 10px;
+  line-height: 1.2;
+  transform: scale(0.7);
+  transform-origin: center;
+  margin: 0;
+  padding: 0;
+  animation: fisherFloat 4s ease-in-out infinite;
+}
+@keyframes fisherFloat {
+  0%, 100% {
+    transform: scale(0.7) translateY(0px);
+  }
+  50% {
+    transform: scale(0.7) translateY(-8px);
+  }
+}
 #network-container { 
   width:100%; 
   height:calc(100vh - 120px); 
@@ -242,10 +265,39 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
     return `
 <div id="boat">
 <pre>
-      ~~~~~~~~ 
-        __/___
-       /_____/
-   ⚓  /_____/
+                                                                                                        
+                                                                     t8.SXX% ;@@;                       
+                                                                  .. %;8XX8888X8:                       
+                                                                     X8X88888S8;..                      
+                                                                       8888S@88 X                       
+                                                                     .t X88@8X88@                       
+                                                                     ...8S88t@88 ..                     
+                                                                        8@888888S..                     
+                                                                     :8S8@8X8@                          
+                                                                  t@88%        %888;888@..              
+                                                               .%. %8tt8:.      8@8Xt8888..             
+                                                               %. .. .%88:      88888@8 ;.               
+                                                               %.  .  .tS.%t.  ..%888@;888               
+                                                               %.    . . .tS%8:.  8XS8888.8t            
+                                                               t.  .       .;.8;..  .;88@;X8X88:.       
+                                                               %.    .  .   .;8 :t.   @88888t888..      
+                                                               %.  .      .  .:.t;:t.  tX88@88:. S88@%X8Xt%            
+                                                               %.     .  .       .tS8 S..  .88@8@Xt .%88888t8@.        
+                                                               %. .  .     .  .   : S@8%8%8S8SX88@8@8 888@tS8X8@t       
+                                                               %.      .    .   . ..:;8@t8SS@88X88X8%X888888t88 :.      
+                                                               %.  .    . .   .   ...8;888888@%t@88;88X8@8X8X8 t.     
+                                                               %.   . .          . .. :888@8888888X8X8888;8888:.      
+                                                               %. .      .  .  .      t88@; 8@88888t@8@888Xt t.       
+                                                               %.    .     . .  . . .  %8@X888888@;%88:X;S @:         
+                                                               %. .    . .   :8X     ; 88X8SX8@;@8@88;S88@..          
+                                                               t.   .       . ;8SX%@S8X888@8@8888;@8@8S8S.            
+                                                               %.     .  .    .:..8 S88@%@88%@tS88 8X;::              
+                                                               %.  .   .   .   .. :. 8S888 :88S ::;t.                
+                                                               %.   .    .   .  . .. .88X%.:;:                       
+                                                               %. .   .    .   .  ..8X8:                             
+                                                               %.       .    .   . 88@  ..                           
+                                                               %.  . .    .   . X:8@88...                            
+                                                                     .    .  ..88.;:                                 
 </pre>
 </div>`;
   }

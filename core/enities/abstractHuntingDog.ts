@@ -60,25 +60,89 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
         return {required:requiredIntersections,optional:optionalIntersections}
     }
 
-    isReady(season: IHuntingSeason): boolean {
+    /**
+     * Geschützte Methode, die von abgeleiteten Klassen überschrieben werden kann,
+     * um spezifische Instanz-Prüfung zu ermöglichen (z.B. nach storageId bei SerializedDog).
+     * Standard-Implementierung prüft nur, ob die Instanz eine Instanz der gegebenen Klasse ist.
+     */
+    protected matchesParent(parentClass: DogClass<IHuntingDog<unknown>>, instance: IHuntingDog<unknown>): boolean {
+        return instance instanceof parentClass;
+    }
 
-        const requiredDogs = this.required
-        const optionalDogs = this.optional
-
-        let requiredIntersections = Dog.intersection(requiredDogs, season.exhausted)
-        let optionalIntersections = Dog.intersection(optionalDogs, season.exhausted)
-        let maxOptionalIntersections = Dog.intersection(optionalDogs, season.withBeesInThePants)
-
-        if (requiredIntersections.length >= requiredDogs.length) {
-            // wait maybe there will be more
-            if (season.runIndex < season.maxRuns && optionalIntersections.length < maxOptionalIntersections.length)
-                return false;
-
-
+    /**
+     * Prüft, ob alle required Parents in exhausted sind.
+     * Verwendet matchesParent für instanz-spezifische Prüfung.
+     */
+    protected areRequiredParentsReady(season: IHuntingSeason): boolean {
+        const requiredDogs = this.required;
+        const requiredCount = requiredDogs.length;
+        
+        if (requiredCount === 0) {
             return true;
-        } 
+        }
+        
+        let foundCount = 0;
+        for (const requiredClass of requiredDogs) {
+            const found = season.exhausted.some(dog => this.matchesParent(requiredClass, dog));
+            if (found) {
+                foundCount++;
+            }
+        }
+        
+        return foundCount >= requiredCount;
+    }
 
-        return false;
+    /**
+     * Prüft, ob alle optional Parents bereits in exhausted sind (nicht in derselben Welle laufen).
+     * Verwendet matchesParent für instanz-spezifische Prüfung.
+     */
+    protected areOptionalParentsReady(season: IHuntingSeason): boolean {
+        const optionalDogs = this.optional;
+        const optionalCount = optionalDogs.length;
+        
+        if (optionalCount === 0) {
+            return true;
+        }
+        
+        // Prüfe, ob ein optional Parent noch in withBeesInThePants ist (noch nicht gelaufen)
+        // Wenn ja, ist dieser Hund noch nicht ready (optional Parents müssen in vorheriger Welle laufen)
+        for (const optionalClass of optionalDogs) {
+            const stillRunning = season.withBeesInThePants.some(dog => this.matchesParent(optionalClass, dog));
+            if (stillRunning) {
+                return false;
+            }
+        }
+        
+        // Prüfe, ob alle optional Parents bereits in exhausted sind
+        let foundCount = 0;
+        for (const optionalClass of optionalDogs) {
+            const found = season.exhausted.some(dog => this.matchesParent(optionalClass, dog));
+            if (found) {
+                foundCount++;
+            }
+        }
+        
+        // Wenn noch Runs möglich sind und nicht alle optional Parents gefunden wurden, warte
+        // (aber nur wenn sie nicht mehr in withBeesInThePants sind - das wurde oben bereits geprüft)
+        if (season.runIndex < season.maxRuns && foundCount < optionalCount) {
+            return false;
+        }
+        
+        return true;
+    }
+
+    isReady(season: IHuntingSeason): boolean {
+        // Prüfe required Parents: Alle müssen in exhausted sein
+        if (!this.areRequiredParentsReady(season)) {
+            return false;
+        }
+
+        // Prüfe optional Parents: Sie müssen ALLE bereits in exhausted sein (nicht in derselben Welle laufen)
+        if (!this.areOptionalParentsReady(season)) {
+            return false;
+        }
+
+        return true;
     }
 
     protected abstract yieldCollectorFactory:(season:IHuntingSeason) => Promise<Y>
