@@ -90,7 +90,14 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     async list(filter?: Partial<T>): Promise<IControllerResponse<T[]>> {
         try {
             const results = await this.store.findByType(this.entityType);
-            let entities = results.map((r: any) => this.parseEntity(r.serializedDogConfig || r));
+            let entities = results.map((r: any) => {
+                const parsed = this.parseEntity(r.serializedDogConfig || r);
+                // Stelle sicher, dass die ID aus dem Store-Objekt übernommen wird (falls nicht bereits in parsed)
+                if (r.id) {
+                    parsed.id = r.id;
+                }
+                return parsed;
+            });
             
             // Optional: Filter anwenden
             if (filter) {

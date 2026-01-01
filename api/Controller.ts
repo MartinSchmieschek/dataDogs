@@ -111,6 +111,12 @@ export class Controller<T extends { id?: string; version?: number; [key: string]
                         existing = this.parseEntity(matchingVersions[0].serializedDogConfig || matchingVersions[0]);
                     }
                 }
+            } else {
+                // Ohne Versionsverwaltung: Lade direkt
+                const existingData = await this.store.load(input.id);
+                if (existingData) {
+                    existing = this.parseEntity(existingData);
+                }
             }
 
             // Merge mit existierender Entity oder erstelle neue

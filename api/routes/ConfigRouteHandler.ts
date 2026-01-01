@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AbstractController, IControllerResponse, IEntity } from '../../api/AbstractController';
+import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
 
 /**
  * Registry für Controller, die über Subpaths erreichbar sind

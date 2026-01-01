@@ -3,8 +3,6 @@ import { IHuntingSeason } from "../core/enities/IHuntingSeason";
 import { InterfaceSniper } from "../InterfaceSniper";
 import { IJustAll } from "./interfaceDump/IJustAll.interface";
 
-
-
 export class RandomEveryThingRetriever extends Dog<IJustAll> {
 
     get required(){

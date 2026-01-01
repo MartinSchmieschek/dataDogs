@@ -10,7 +10,6 @@ export interface ICreateKennelInput extends ICreateInput {
     name?: string;
     description?: string;
     dogIds?: string[];
-    baseDogTypes?: string[];
 }
 
 /**
@@ -21,7 +20,6 @@ export interface ISaveKennelInput extends IUpdateInput {
     name?: string;
     description?: string;
     dogIds?: string[];
-    baseDogTypes?: string[];
 }
 
 /**
@@ -46,7 +44,6 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 name: input.name || undefined,
                 description: input.description || undefined,
                 dogIds: input.dogIds || [],
-                baseDogTypes: input.baseDogTypes || [],
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -102,7 +99,6 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 name: input.name !== undefined ? input.name : (existing?.name || undefined),
                 description: input.description !== undefined ? input.description : (existing?.description || undefined),
                 dogIds: input.dogIds !== undefined ? input.dogIds : (existing?.dogIds || []),
-                baseDogTypes: input.baseDogTypes !== undefined ? input.baseDogTypes : (existing?.baseDogTypes || []),
                 createdAt: existing?.createdAt || new Date(),
                 updatedAt: new Date()
             };
@@ -136,9 +132,6 @@ export class KennelController extends AbstractController<IKennelConfig> {
         // Stelle sicher, dass dogIds ein Array ist
         if (parsed && !Array.isArray(parsed.dogIds)) {
             parsed.dogIds = [];
-        }
-        if (parsed && !Array.isArray(parsed.baseDogTypes)) {
-            parsed.baseDogTypes = [];
         }
         return parsed as IKennelConfig;
     }

@@ -1,26 +1,18 @@
-import { TypeDefBuilder } from './ui/TypeDefBuilder';
-import { promises } from 'dns';
 import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
-import { IHuntingDog, IHuntingDog as IDog } from "./core/enities/IHuntingDog"
-import { IHuntingSeason } from "./core/enities/IHuntingSeason"
 import { RandomRecipesRetriever } from "./dogs/RandomRecipesRetriever";
 import { CountryFlagBlackLab } from "./dogs/CountryFlagBlackLab";
-import { AsciiArt, AsciiPrinter } from './AsciiPrinter';
 import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
-import { writeFileSync } from 'fs';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
-import { FoodPornRetriever } from './dogs/FoodPornRetriever';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
-import { SeasonRunner } from './core/harverster';
-//import { NodeEntry, Results, Waves } from './results';
 import { ISerializedDogConfig, SerializedDog } from './dogs/SerializedDog';
-import { NodeEntry, Results, Waves } from './ui/results';
-import { KennelRun } from './core/KennelRun';
+import { Results, Waves } from './ui/results';
+import { KennelRun, IKennelConfig } from './core/KennelRun';
 import { Controller } from './api/Controller';
-import { ControllerRegistry, ConfigRouteHandler } from './core/routes/ConfigRouteHandler';
-import { IKennelConfig } from './core/KennelRun';
+import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
+import { KennelList } from './ui/kennelList';
+import { StartupTest } from './StartupTest';
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
 start().catch(e => {
@@ -43,6 +35,7 @@ async function start() {
     const nodeSeeds = await nodesStore.findByType(SerializedDog.name);
     if (!nodeSeeds || nodeSeeds.length === 0) {
         const seedCfg = {
+            id: 'seed-serialized-1-v1',
             theRun: `
                 const response = await fetch("https://dummyjson.com/recipes");
                 const json = await response.json();
@@ -57,14 +50,34 @@ async function start() {
     }
 
     // Seed: Ensure at least one Kennel-Config exists in DB
+    // Liste aller verfügbaren Basis-Dogs (durch Instanziierung)
+    const allBaseDogs = [
+        new RandomRecipesRetriever(),
+        new CountryFlagBlackLab(),
+        new DishFlagBlackLab(),
+        new RandomEveryThingRetriever(),
+        new TalkingDog()
+    ];
+    
+    // Map von BaseDog-Namen zu Instanzen (für KennelRun)
+    const baseDogsMap = new Map<string, any>();
+    allBaseDogs.forEach(dog => {
+        baseDogsMap.set(dog.name, dog);
+    });
+    
+    const { BASE_DOG_PREFIX } = await import('./core/KennelRun');
+    
     const kennelSeeds = await kennelsStore.findByType('KennelConfig');
     if (!kennelSeeds || kennelSeeds.length === 0) {
+        // Erstelle dogIds mit allen Basis-Dogs
+        const baseDogIds = allBaseDogs.map(dog => BASE_DOG_PREFIX + dog.name);
+        console.log(`[Seed] Erstelle Kennel-Config mit ${baseDogIds.length} Basis-Dogs:`, baseDogIds);
+        
         const defaultKennelConfig: IKennelConfig = {
             id: 'default-kennel',
             name: 'Default Kennel',
             description: 'Standard-Kennel mit allen verfügbaren Dogs',
-            dogIds: [],
-            baseDogTypes: ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'],
+            dogIds: baseDogIds,
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -75,6 +88,7 @@ async function start() {
             serializedDogConfig: JSON.stringify(defaultKennelConfig) 
         });
         console.log('✅ Seeded initial Kennel-Config into DB');
+        console.log(`✅ Kennel-Config enthält ${baseDogIds.length} Basis-Dogs:`, baseDogIds);
     }
 
     const app = express();
@@ -84,36 +98,129 @@ async function start() {
 
     // Controller-Registry erstellen und Controller registrieren
     const registry = new ControllerRegistry();
-    registry.register('nodes', new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name));
-    registry.register('kennels', new Controller<IKennelConfig>(kennelsStore, 'KennelConfig'));
+    const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
+    const kennelsController = new Controller<IKennelConfig>(kennelsStore, 'KennelConfig', true);
+    
+    registry.register('nodes', nodesController);
+    // Kennels haben Versionsverwaltung - beim Speichern wird eine neue Version erstellt
+    registry.register('kennels', kennelsController);
+
+    // Startup-Tests ausführen
+    const startupTest = new StartupTest();
+    await startupTest.runAllTests(
+        nodesStore,
+        kennelsStore,
+        nodesController,
+        kennelsController,
+        baseDogsMap
+    );
+
+    // Route für BaseDogs-Liste (MUSS vor dem generischen Route-Handler registriert werden)
+    app.get('/api/basedogs', async (req: any, res: any) => {
+        try {
+            const baseDogsList = Array.from(baseDogsMap.entries()).map(([name, dog]) => ({
+                id: BASE_DOG_PREFIX + name,
+                name: name,
+                type: 'BaseDog'
+            }));
+            res.status(200).json({ ok: true, data: baseDogsList });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ ok: false, error: String(err) });
+        }
+    });
 
     // Generisches Route-System registrieren
     const routeHandler = new ConfigRouteHandler(registry);
     routeHandler.registerRoutes(app, '/api');
 
-    // Einfache Route (für UI)
+    // Route für Kennel-Liste (ohne ID)
+    app.get('/kennel', async (req: any, res: any) => {
+        try {
+            const kennelsResult = await registry.get('kennels')?.list();
+            const kennels = kennelsResult?.ok && kennelsResult.data 
+                ? kennelsResult.data.map((k: any) => ({
+                    id: k.id,
+                    name: k.name,
+                    description: k.description
+                }))
+                : [];
+            
+            const html = KennelList.buildKennelListHtml(kennels);
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+        } catch (err) {
+            console.error(err);
+            res.status(500).send(String(err));
+        }
+    });
+
+
+
+    // Route für Root - zeigt Liste aller Kennels
     app.get('/', async (req: any, res: any) => {
         try {
-            // Lade die geseedete Kennel-Config
-            const defaultKennelData = await kennelsStore.load('default-kennel');
+            const kennelsResult = await registry.get('kennels')?.list();
+            const kennels = kennelsResult?.ok && kennelsResult.data 
+                ? kennelsResult.data.map((k: any) => ({
+                    id: k.id,
+                    name: k.name,
+                    description: k.description
+                }))
+                : [];
+            
+            const html = KennelList.buildKennelListHtml(kennels);
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+        } catch (err) {
+            console.error(err);
+            res.status(500).send(String(err));
+        }
+    });
+
+    // Route für einzelne Kennel über Root-Path (/:kennelId)
+    // Lädt immer die neueste Version der KennelConfig
+    app.get('/:kennelId', async (req: any, res: any) => {
+        try {
+            const kennelId = req.params.kennelId;
+            
+            // Prüfe ob es eine API-Route ist (sollte nicht hier landen, aber sicherheitshalber)
+            if (kennelId === 'api' || kennelId === 'kennel') {
+                return; // Lass andere Routen das handhaben
+            }
+
+            // Lade neueste Version der Kennel-Config
+            // findLatestVersionsByType gibt nur die neueste Version zurück
+            const latestVersions = await kennelsStore.findLatestVersionsByType('KennelConfig', [kennelId]);
+            
             let kennelConfig: IKennelConfig | undefined;
             
-            if (defaultKennelData) {
-                kennelConfig = typeof defaultKennelData === 'string' 
-                    ? JSON.parse(defaultKennelData) 
-                    : defaultKennelData;
-                console.log(`[main] Geladene Kennel-Config:`, JSON.stringify(kennelConfig, null, 2));
+            if (latestVersions && latestVersions.length > 0) {
+                const kennelData = latestVersions[0].serializedDogConfig;
+                kennelConfig = typeof kennelData === 'string' 
+                    ? JSON.parse(kennelData) 
+                    : kennelData;
+                console.log(`[main] Geladene Kennel-Config (neueste Version): ${kennelId}`, JSON.stringify(kennelConfig, null, 2));
             } else {
-                console.log(`[main] Keine Kennel-Config gefunden`);
+                // Fallback: Versuche direkt zu laden (falls keine Versionierung)
+                const kennelData = await kennelsStore.load(kennelId);
+                if (kennelData) {
+                    kennelConfig = typeof kennelData === 'string' 
+                        ? JSON.parse(kennelData) 
+                        : kennelData;
+                    console.log(`[main] Geladene Kennel-Config (direkt): ${kennelId}`, JSON.stringify(kennelConfig, null, 2));
+                } else {
+                    console.log(`[main] Kennel-Config ${kennelId} nicht gefunden`);
+                    res.status(404).send(`Kennel ${kennelId} nicht gefunden`);
+                    return;
+        }
             }
             
-            // Erstelle KennelRun mit der Config (falls vorhanden)
-            const kennelRun = kennelConfig 
-                ? new KennelRun(nodesStore, kennelConfig)
-                : new KennelRun(nodesStore);
+            // Erstelle KennelRun mit der Config und der BaseDogs-Map
+            const kennelRun = new KennelRun(nodesStore, kennelConfig, baseDogsMap);
             
             const waves = await kennelRun.run();
-            const html = Results.buildWavesHtml(waves);
+            const html = Results.buildWavesHtml(waves, kennelConfig);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.send(html);
         } catch (err) {
@@ -128,11 +235,3 @@ async function start() {
         console.log(`✅ Server läuft auf http://localhost:${port}`);
     });
 }
-
-// Die Funktionen fillKennel und runSeason wurden in die KennelRun Klasse verschoben
-// Siehe: core/KennelRun.ts
-
-// Die API-Controller sind im api/ Ordner
-// Siehe: api/Controller.ts, api/AbstractController.ts
-
-

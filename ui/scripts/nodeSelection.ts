@@ -15,8 +15,12 @@ export function buildNodeSelection(): string {
   
   selectedNodeElement = n;
 
-  // Prüfe ob SerializedDog (hat _config)
+  // Prüfe ob SerializedDog (hat _config) oder BaseDog
   const isSerializedDog = !!n._config;
+  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
+  const nodeName = n._json?.name || (n.dataset ? n.dataset.id : (n._nodeId || n.id || "unknown"));
+  const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
+  const canDelete = isSerializedDog || isBaseDog;
   
   // Prüfe ob Output HTML ist
   const result = n._json;
@@ -33,6 +37,8 @@ export function buildNodeSelection(): string {
   
   // Zeige/Verstecke SerializedDog-spezifische UI-Elemente
   const controlsDiv = document.getElementById("serialized-dog-controls");
+  const deleteBtn = document.getElementById("delete-from-kennel");
+  const versionDiv = document.getElementById("serialized-dog-version");
   const parentsDiv = document.getElementById("serialized-dog-parents");
   const configDiv = document.getElementById("serialized-dog-config");
   const contextDiv = document.getElementById("serialized-dog-context");
@@ -43,6 +49,8 @@ export function buildNodeSelection(): string {
   if (isSerializedDog) {
     // Zeige Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "flex";
+    if (deleteBtn) deleteBtn.style.display = "block";
+    if (versionDiv) versionDiv.style.display = "block";
     if (parentsDiv) parentsDiv.style.display = "block";
     if (configDiv) configDiv.style.display = "block";
     if (contextDiv) {
@@ -65,11 +73,34 @@ export function buildNodeSelection(): string {
       viewerConfig.textContent = JSON.stringify(n._config, null, 2);
     }
     
+    // Versionsauswahl aktualisieren
+    updateVersionSelection(n);
+    
     // Parents-Auswahl aktualisieren
     updateParentsSelection(n);
+  } else if (isBaseDog) {
+    // Für BaseDogs: Zeige nur Controls mit Delete-Button
+    if (controlsDiv) controlsDiv.style.display = "flex";
+    if (deleteBtn) deleteBtn.style.display = "block";
+    // Verstecke andere Controls
+    if (versionDiv) versionDiv.style.display = "none";
+    if (parentsDiv) parentsDiv.style.display = "none";
+    if (configDiv) configDiv.style.display = "none";
+    if (contextDiv) contextDiv.style.display = "none";
+    if (tsDiv) tsDiv.style.display = "none";
+    
+    // Zeige HTML Output falls vorhanden
+    if (isHtml && htmlDiv && htmlRender) {
+      htmlDiv.style.display = "block";
+      htmlRender.innerHTML = result;
+    } else if (htmlDiv) {
+      htmlDiv.style.display = "none";
+    }
   } else {
     // Verstecke Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "none";
+    if (deleteBtn) deleteBtn.style.display = "none";
+    if (versionDiv) versionDiv.style.display = "none";
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
     if (contextDiv) contextDiv.style.display = "none";
@@ -206,6 +237,223 @@ export function buildNodeSelection(): string {
       }
       monacoEditor = null;
     }
+  }
+}
+
+async function updateVersionSelection(selectedNode) {
+  const versionSelect = document.getElementById("version-select");
+  const versionInfo = document.getElementById("version-info");
+  const updateVersionBtn = document.getElementById("update-version-btn");
+  
+  if (!versionSelect || !versionInfo) return;
+  
+  const nodeId = selectedNode._nodeId || (selectedNode.dataset ? selectedNode.dataset.id : null);
+  if (!nodeId) {
+    versionSelect.innerHTML = '<option value="">Keine Node-ID gefunden</option>';
+    versionInfo.textContent = "Keine Node-ID gefunden";
+    return;
+  }
+  
+  // Extrahiere Basis-ID
+  const baseId = nodeId.replace(/-v\\d+$/, '');
+  
+  // Lade KennelConfig um aktuelle Version zu finden
+  let currentKennelConfig = null;
+  try {
+    const kennelConfigScript = document.getElementById('kennel-config-data');
+    if (kennelConfigScript && kennelConfigScript.textContent) {
+      currentKennelConfig = JSON.parse(kennelConfigScript.textContent);
+    }
+  } catch (e) {
+    console.warn('[updateVersionSelection] Fehler beim Laden der KennelConfig:', e);
+  }
+  
+  // Finde aktuelle Version in KennelConfig
+  const dogIds = currentKennelConfig?.dogIds || [];
+  let currentVersionId = null;
+  let isBaseIdBinding = false;
+  
+  for (const id of dogIds) {
+    const idBaseId = id.replace(/-v\\d+$/, '');
+    if (idBaseId === baseId) {
+      if (id === baseId || !id.match(/-v\\d+$/)) {
+        // Basis-ID ohne Version = neueste Version
+        isBaseIdBinding = true;
+        currentVersionId = baseId;
+      } else {
+        // Spezifische Version
+        currentVersionId = id;
+      }
+      break;
+    }
+  }
+  
+  // Lade verfügbare Versionen
+  try {
+    const response = await fetch('/api/nodes');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    
+    const result = await response.json();
+    if (result.ok && result.data) {
+      // Filtere alle Versionen dieser Basis-ID
+      const versions = result.data.filter(dog => {
+        const dogBaseId = dog.id.replace(/-v\\d+$/, '');
+        return dogBaseId === baseId;
+      });
+      
+      // Sortiere nach Version (neueste zuerst)
+      versions.sort((a, b) => (b.version || 0) - (a.version || 0));
+      
+      // Erstelle Optionen
+      versionSelect.innerHTML = '';
+      
+      // Option 1: Basis-ID (neueste Version, keine Versionsbindung)
+      const baseOption = document.createElement('option');
+      baseOption.value = baseId;
+      baseOption.textContent = \`\${baseId} (neueste Version - keine Versionsbindung)\`;
+      if (isBaseIdBinding) {
+        baseOption.selected = true;
+      }
+      versionSelect.appendChild(baseOption);
+      
+      // Option 2: Alle spezifischen Versionen
+      versions.forEach(dog => {
+        const option = document.createElement('option');
+        option.value = dog.id;
+        option.textContent = \`\${dog.id} (v\${dog.version || '?'})\`;
+        if (currentVersionId === dog.id) {
+          option.selected = true;
+        }
+        versionSelect.appendChild(option);
+      });
+      
+      // Aktualisiere Info-Text
+      if (isBaseIdBinding) {
+        const latestVersion = versions[0];
+        versionInfo.textContent = \`Aktuell: Basis-ID (neueste Version: v\${latestVersion?.version || '?'})\`;
+      } else if (currentVersionId) {
+        const currentVersion = versions.find(v => v.id === currentVersionId);
+        versionInfo.textContent = \`Aktuell: \${currentVersionId} (v\${currentVersion?.version || '?'})\`;
+      } else {
+        versionInfo.textContent = "Nicht in KennelConfig gefunden";
+      }
+    } else {
+      throw new Error(result.error || 'Fehler beim Laden');
+    }
+  } catch (err) {
+    console.error('[updateVersionSelection] Fehler:', err);
+    versionSelect.innerHTML = '<option value="">Fehler beim Laden</option>';
+    versionInfo.textContent = "Fehler beim Laden der Versionen";
+  }
+  
+  // Event-Handler für Update-Button
+  if (updateVersionBtn) {
+    // Entferne alte Handler
+    const newBtn = updateVersionBtn.cloneNode(true);
+    updateVersionBtn.parentNode.replaceChild(newBtn, updateVersionBtn);
+    
+    newBtn.addEventListener('click', async () => {
+      const selectedVersionId = versionSelect.value;
+      if (!selectedVersionId) {
+        alert('Bitte eine Version auswählen');
+        return;
+      }
+      
+      await updateVersionInKennelConfig(baseId, selectedVersionId);
+    });
+  }
+}
+
+async function updateVersionInKennelConfig(baseId, newVersionId) {
+  try {
+    // Lade KennelConfig
+    let kennelConfig = null;
+    let kennelId = null;
+    
+    try {
+      const kennelConfigScript = document.getElementById('kennel-config-data');
+      if (kennelConfigScript && kennelConfigScript.textContent) {
+        kennelConfig = JSON.parse(kennelConfigScript.textContent);
+        kennelId = kennelConfig?.id || null;
+      }
+    } catch (e) {
+      console.warn('[updateVersionInKennelConfig] Fehler beim Laden der KennelConfig:', e);
+    }
+    
+    // Fallback: Versuche Kennel-ID aus URL zu extrahieren
+    if (!kennelId) {
+      const pathParts = window.location.pathname.split('/').filter(p => p);
+      if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+        kennelId = pathParts[0];
+      }
+    }
+    
+    if (!kennelId) {
+      alert('KennelConfig nicht gefunden');
+      return;
+    }
+    
+    // Lade KennelConfig falls nicht eingebettet
+    if (!kennelConfig || kennelConfig.id !== kennelId) {
+      const getResponse = await fetch(\`/api/kennels/\${kennelId}\`);
+      if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
+      
+      const getResult = await getResponse.json();
+      if (!getResult.ok || !getResult.data) {
+        throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+      }
+      
+      kennelConfig = getResult.data;
+    }
+    
+    let dogIds = kennelConfig.dogIds || [];
+    
+    // Entferne alle Versionen dieser Basis-ID
+    dogIds = dogIds.filter(id => {
+      const idBaseId = id.replace(/-v\\d+$/, '');
+      return idBaseId !== baseId;
+    });
+    
+    // Füge neue Version hinzu
+    dogIds.push(newVersionId);
+    
+    // Extrahiere Basis-ID (ohne Version) für Versionsverwaltung
+    const kennelBaseId = kennelConfig.id ? kennelConfig.id.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
+    
+    // Speichere aktualisierte KennelConfig
+    const updateData = {
+      id: kennelBaseId,
+      name: kennelConfig.name,
+      description: kennelConfig.description,
+      dogIds: dogIds,
+    };
+    
+    const putResponse = await fetch(\`/api/kennels/\${kennelBaseId}\`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!putResponse.ok) {
+      const errorText = await putResponse.text();
+      throw new Error('HTTP ' + putResponse.status + ': ' + errorText);
+    }
+    
+    const putResult = await putResponse.json();
+    if (putResult.ok) {
+      const savedId = putResult.id || putResult.data?.id;
+      const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
+      
+      alert('Version aktualisiert!');
+      
+      // Lade neueste Version der KennelConfig und lade Seite neu
+      window.location.href = \`/\${finalBaseId}\`;
+    } else {
+      throw new Error(putResult.error || 'Fehler beim Speichern');
+    }
+  } catch (err) {
+    console.error('[updateVersionInKennelConfig] Fehler:', err);
+    alert('Fehler: ' + err.message);
   }
 }
 
