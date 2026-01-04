@@ -90,7 +90,8 @@ function collectNodeData() {
       
       nodesArrayGlobal.push({
         id: node.id,
-        label: nodeName,
+        label: '🐕 ' + nodeName,
+        shape: 'box',
         // Skaliere Node-Größe basierend auf Textlänge und Anzahl der Verbindungen
         value: nodeSize,
         widthConstraint: {
@@ -101,7 +102,6 @@ function collectNodeData() {
           minimum: 40,
           maximum: 60
         },
-        shape: 'box',
         font: { 
           color: '#eee',
           size: 14,
@@ -200,6 +200,11 @@ function initNetwork() {
     layout: {
       improvedLayout: true // Verbessertes Layout-Algorithmus
     },
+    nodes: {
+      shapeProperties: {
+        useBorderWithImage: true
+      }
+    },
     physics: {
       enabled: true, // Aktiviere Physik für gummi-artige Ausrichtung (nur für nachfolgende Waves)
       stabilization: {
@@ -273,8 +278,122 @@ function initNetwork() {
     }
   });
   
+  // Delete-Buttons Management - Buttons nur einmal erstellen, dann nur Positionen aktualisieren
+  const deleteButtonsMap = new Map(); // Map von nodeId zu Button-Element
+  
+  function createDeleteButton(nodeId) {
+    const btn = document.createElement('button');
+    btn.className = 'node-delete-btn';
+    btn.setAttribute('data-node-id', nodeId);
+    btn.innerHTML = '×';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      deleteNodeFromNetwork(nodeId);
+    };
+    return btn;
+  }
+  
+  function updateDeleteButtons() {
+    const container = document.getElementById("network-container");
+    if (!container || !network) return;
+    
+    const positions = network.getPositions();
+    if (!positions) return;
+    
+    // Finde alle Nodes die Delete-Buttons brauchen
+    const nodesNeedingButtons = new Set();
+    Object.keys(positions).forEach(nodeId => {
+      const nodeData = nodeDataMap.get(nodeId);
+      if (!nodeData) return;
+      
+      const config = nodeData.serializedDogConfig || null;
+      const isSerializedDog = !!config;
+      const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
+      const nodeName = nodeData.name || nodeId;
+      const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
+      const canDelete = isSerializedDog || isBaseDog;
+      
+      if (canDelete) {
+        nodesNeedingButtons.add(nodeId);
+      }
+    });
+    
+    // Entferne Buttons für Nodes die nicht mehr existieren oder keine Buttons mehr brauchen
+    deleteButtonsMap.forEach((btn, nodeId) => {
+      if (!nodesNeedingButtons.has(nodeId) || !positions[nodeId]) {
+        btn.remove();
+        deleteButtonsMap.delete(nodeId);
+      }
+    });
+    
+    // Erstelle oder aktualisiere Buttons
+    nodesNeedingButtons.forEach(nodeId => {
+      const pos = positions[nodeId];
+      if (!pos) return;
+      
+      // Hole Button (erstellen falls nicht vorhanden)
+      let btn = deleteButtonsMap.get(nodeId);
+      if (!btn) {
+        btn = createDeleteButton(nodeId);
+        container.appendChild(btn);
+        deleteButtonsMap.set(nodeId, btn);
+      }
+      
+      // Berechne Canvas-Koordinaten zu DOM-Koordinaten
+      const canvasRect = container.getBoundingClientRect();
+      const scale = network.getScale();
+      const viewPos = network.getViewPosition();
+      
+      // vis.js getPositions() gibt Koordinaten im Canvas-Koordinatensystem zurück
+      // Diese müssen in DOM-Koordinaten (relativ zum Container) umgewandelt werden
+      const canvasX = pos.x;
+      const canvasY = pos.y;
+      
+      // Hole Node-Größe
+      const node = nodes.get(nodeId);
+      const nodeWidth = node ? (node.value || 100) : 100;
+      const nodeHeight = 50; // Geschätzte Höhe
+      
+      // vis.js Transform: Canvas-Koordinaten zu DOM-Koordinaten
+      // viewPos ist der Offset, scale ist der Zoom-Faktor
+      // Container-Mitte ist der Ursprung
+      const centerX = canvasRect.width / 2;
+      const centerY = canvasRect.height / 2;
+      
+      // Transform: (Canvas-Pos - View-Offset) * Scale + Container-Mitte
+      const domX = centerX + (canvasX - viewPos.x) * scale;
+      const domY = centerY + (canvasY - viewPos.y) * scale;
+      
+      // Button-Position: Oben rechts der Node
+      const btnSize = Math.max(18, 22 * scale);
+      const btnX = domX + (nodeWidth * scale) / 2 - btnSize / 2;
+      const btnY = domY - (nodeHeight * scale) / 2 - btnSize / 2;
+      
+      // Aktualisiere Position und Größe (ohne Button neu zu erstellen)
+      btn.style.position = 'absolute';
+      btn.style.left = btnX + 'px';
+      btn.style.top = btnY + 'px';
+      btn.style.width = btnSize + 'px';
+      btn.style.height = btnSize + 'px';
+      btn.style.background = '#ff4444';
+      btn.style.color = '#fff';
+      btn.style.border = 'none';
+      btn.style.borderRadius = '50%';
+      btn.style.cursor = 'pointer';
+      btn.style.fontSize = (btnSize * 0.75) + 'px';
+      btn.style.lineHeight = '1';
+      btn.style.padding = '0';
+      btn.style.display = 'flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'center';
+      btn.style.zIndex = '1000';
+      btn.style.pointerEvents = 'auto';
+    });
+  }
+  
   // Nach Stabilisierung: Physik reduzieren, aber aktiv lassen für Stabilität
   network.on("stabilizationEnd", function() {
+    updateDeleteButtons();
     // Reduziere Physik drastisch, aber lasse sie aktiv für Stabilität
     network.setOptions({
       physics: {
@@ -419,6 +538,9 @@ function initNetwork() {
         }]);
       }
     }
+    
+    // Update Delete-Buttons nach dem Verschieben
+    requestAnimationFrame(updateDeleteButtons);
   });
   
   // Event-Handler für Node-Selektion
@@ -429,10 +551,81 @@ function initNetwork() {
     }
   });
   
+  // Update Delete-Buttons bei Zoom, Pan oder Bewegung - SOFORT ohne Debouncing
+  network.on("zoom", function() {
+    requestAnimationFrame(updateDeleteButtons);
+  });
+  
+  network.on("dragEnd", function() {
+    requestAnimationFrame(updateDeleteButtons);
+  });
+  
+  // Update bei jedem Frame während Bewegung (für flüssige Animation)
+  let animationFrameId = null;
+  function continuousUpdate() {
+    updateDeleteButtons();
+    animationFrameId = requestAnimationFrame(continuousUpdate);
+  }
+  
+  network.on("startStabilizing", function() {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    continuousUpdate();
+  });
+  
+  network.on("stabilizationEnd", function() {
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    updateDeleteButtons();
+  });
+  
+  // Update Buttons auch bei Window-Resize
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', function() {
+      requestAnimationFrame(updateDeleteButtons);
+    });
+  }
+  
   // Expose nodeDataMap global für nodeSelection
   if (typeof window !== 'undefined') {
     window.nodeDataMap = nodeDataMap;
     window.visNetwork = network;
+  }
+}
+
+// Delete-Funktion für Nodes
+async function deleteNodeFromNetwork(nodeId) {
+  const nodeData = nodeDataMap.get(nodeId);
+  if (!nodeData) {
+    alert("Node-Daten nicht gefunden");
+    return;
+  }
+  
+  // Erstelle temporäres Element-Objekt für deleteNode
+  const tempEl = {
+    dataset: { id: nodeData.id },
+    _json: nodeData.result,
+    _ctx: nodeData.vmContext,
+    _ctxTypeDef: nodeData.vmContextTypeDef,
+    _ts: nodeData.codeTs,
+    _req: nodeData.parentsRequired,
+    _opt: nodeData.parentsOptional,
+    _nodeId: nodeData.id,
+    _config: nodeData.serializedDogConfig
+  };
+  
+  // Setze selectedNodeElement für deleteNode
+  if (typeof selectedNodeElement !== 'undefined') {
+    selectedNodeElement = tempEl;
+  }
+  
+  // Rufe deleteNode auf
+  if (typeof deleteNode === 'function') {
+    await deleteNode();
+  } else {
+    console.error("deleteNode Funktion nicht gefunden!");
+    alert("Delete-Funktion nicht verfügbar");
   }
 }
 

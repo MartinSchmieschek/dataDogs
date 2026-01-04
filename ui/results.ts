@@ -4,6 +4,7 @@ import * as nodeSelection from "./scripts/nodeSelection";
 import * as monacoInit from "./scripts/monacoInit";
 import * as saveHandler from "./scripts/saveHandler";
 import * as nodeCrud from "./scripts/nodeCrud";
+import { JsStringBuilder } from "./utils/jsStringBuilder";
 
 export type NodeEntry = {
   id: string;
@@ -27,6 +28,42 @@ export type Waves = NodeEntry[][];
 export class Results {
 
   // =========================================================
+  // HELPER: Sichere JavaScript-String-Generierung
+  // =========================================================
+  /**
+   * Erstellt einen JavaScript-String sicher mit String-Konkatenation
+   * Verhindert Escaping-Probleme bei verschachtelten Template-Strings
+   */
+  private static jsString(parts: string[], ...values: any[]): string {
+    let result = '';
+    for (let i = 0; i < parts.length; i++) {
+      // Escape String-Literal
+      const escaped = parts[i]
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+      result += "'" + escaped + "'";
+      
+      if (i < values.length) {
+        const val = values[i];
+        if (typeof val === 'string') {
+          // Variable name, nicht escaped
+          result += ' + ' + val;
+        } else if (typeof val === 'number') {
+          result += ' + ' + val;
+        } else {
+          result += ' + ' + JSON.stringify(val);
+        }
+      }
+      if (i < parts.length - 1) {
+        result += ' + ';
+      }
+    }
+    return result;
+  }
+
+  // =========================================================
   // PUBLIC
   // =========================================================
   public static buildWavesHtml(waves: Waves, kennelConfig?: any): string {
@@ -41,6 +78,12 @@ export class Results {
 
     const json = JSON.stringify(encoded);
     return this.buildPage(json, kennelConfig);
+  }
+
+  public static buildEmptyKennelHtml(runError: any, kennelConfig?: any): string {
+    const errorMessage = runError?.message || String(runError);
+    const errorJson = JSON.stringify({ error: errorMessage, kennelConfig });
+    return this.buildEmptyPage(errorJson, kennelConfig);
   }
 
   // =========================================================
@@ -60,21 +103,10 @@ ${this.buildStyles()}
 <div id="layout">
   <div id="left-col">
     ${this.buildAsciiBoat()}
-    <div style="padding: 10px; border-bottom: 1px solid #333; display: flex; gap: 10px;">
-      <button id="new">New</button>
-      <button id="delete">Delete</button>
-    </div>
     <div id="add-dogs-panel" style="padding: 10px; border-bottom: 1px solid #333;">
-      <button id="add-dog-to-kennel-btn" style="background: #0066cc; color: #fff; border: none; padding: 6px 12px; cursor: pointer; margin-bottom: 10px;">+ Dog zur KennelConfig hinzufügen</button>
-      <div id="add-dog-selector" style="display: none;">
-        <select id="available-dogs-select" style="width: 100%; padding: 8px; background: #000; color: #fff; border: 1px solid #333; margin-bottom: 10px;">
-          <option value="">Lade verfügbare SerializedDogs...</option>
-        </select>
-        <div style="display: flex; gap: 10px;">
-          <button id="add-selected-dog-btn" style="background: #00cc00; color: #fff; border: none; padding: 6px 12px; cursor: pointer;">Hinzufügen</button>
-          <button id="cancel-add-dog-btn" style="background: #666; color: #fff; border: none; padding: 6px 12px; cursor: pointer;">Abbrechen</button>
-        </div>
-      </div>
+      <select id="available-dogs-select" style="width: 100%; padding: 8px; background: #000; color: #fff; border: 1px solid #333;">
+        <option value="">Dog hinzufügen...</option>
+      </select>
     </div>
     <div id="network-container"></div>
   </div>
@@ -100,6 +132,52 @@ ${kennelConfigJson}
 </script>
 
 ${this.buildScripts()}
+</body>
+</html>`;
+  }
+
+  private static buildEmptyPage(errorJson: string, kennelConfig?: any): string {
+    const kennelConfigJson = kennelConfig ? JSON.stringify(kennelConfig).replace(/<\/script>/gi, "<\\/script>") : 'null';
+    return `
+<!DOCTYPE html>
+<html lang="de">
+<head>
+${this.buildHead()}
+${this.buildStyles()}
+</head>
+
+<body>
+<div id="layout">
+  <div id="left-col">
+    ${this.buildAsciiBoat()}
+    <div style="padding: 20px; text-align: center;">
+      <h2 style="color: #ff6b6b; margin-bottom: 20px;">⚠️ Leerer Kennel</h2>
+      <div style="background: #1b1b1f; padding: 20px; border-radius: 10px; border: 2px solid #ff6b6b; margin-bottom: 20px;">
+        <p style="color: #eee; font-size: 16px; margin: 0;">
+          Dieser Kennel enthält keine Dogs zum Ausführen.
+        </p>
+      </div>
+      <div style="background: #000; padding: 15px; border-radius: 5px; text-align: left; margin-bottom: 20px;">
+        <pre style="color: #ff6b6b; margin: 0; white-space: pre-wrap; word-wrap: break-word;">${errorJson.replace(/<\/script>/gi, "<\\/script>")}</pre>
+      </div>
+      <div style="padding: 10px; border-bottom: 1px solid #333;">
+        <select id="available-dogs-select" style="width: 100%; padding: 8px; background: #000; color: #fff; border: 1px solid #333;">
+          <option value="">Dog hinzufügen...</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="error-data" type="application/json">
+${errorJson.replace(/<\/script>/gi, "<\\/script>")}
+</script>
+
+<script id="kennel-config-data" type="application/json">
+${kennelConfigJson}
+</script>
+
+${this.buildEmptyScripts()}
 </body>
 </html>`;
   }
@@ -388,6 +466,218 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   // =========================================================
   // SCRIPTS
   // =========================================================
+  private static buildEmptyScripts(): string {
+    return `
+<script>
+// Lade KennelConfig aus eingebettetem JSON
+let currentKennelConfig = null;
+let currentKennelId = null;
+try {
+  const kennelConfigScript = document.getElementById('kennel-config-data');
+  if (kennelConfigScript && kennelConfigScript.textContent) {
+    currentKennelConfig = JSON.parse(kennelConfigScript.textContent);
+    currentKennelId = currentKennelConfig?.id || null;
+  }
+} catch (e) {
+  console.warn('[EmptyKennel] Fehler beim Laden der KennelConfig:', e);
+}
+
+// Fallback: Versuche Kennel-ID aus URL zu extrahieren
+if (!currentKennelId) {
+  const pathParts = window.location.pathname.split('/').filter(p => p);
+  if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+    currentKennelId = pathParts[0];
+  }
+}
+
+// Lade Dropdown beim Seitenaufruf
+async function loadDropdown() {
+  const availableDogsSelect = document.getElementById('available-dogs-select');
+  if (!availableDogsSelect) return;
+  
+  try {
+    const response = await fetch('/api/nodes');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    
+    const result = await response.json();
+    availableDogsSelect.innerHTML = '<option value="">Dog hinzufügen...</option>';
+    
+    // Option für neue SerializedDog
+    const newOption = document.createElement('option');
+    newOption.value = '__NEW__';
+    newOption.textContent = '➕ Neue SerializedDog erstellen';
+    availableDogsSelect.appendChild(newOption);
+    
+    if (result.ok && result.data) {
+      // Gruppiere nach Basis-ID
+      const dogsByBaseId = new Map();
+      result.data.forEach(dog => {
+        if (dog.id) {
+          const baseId = dog.id.replace(/-v\\d+$/, '');
+          if (!dogsByBaseId.has(baseId)) {
+            dogsByBaseId.set(baseId, []);
+          }
+          dogsByBaseId.get(baseId).push(dog);
+        }
+      });
+      
+      // Sortiere Versionen innerhalb jeder Basis-ID (neueste zuerst)
+      dogsByBaseId.forEach((versions, baseId) => {
+        versions.sort((a, b) => (b.version || 0) - (a.version || 0));
+      });
+      
+      // Erstelle Optionen: Nur Basis-IDs
+      dogsByBaseId.forEach((versions, baseId) => {
+        const latestVersion = versions[0];
+        const option = document.createElement('option');
+        option.value = baseId;
+        option.textContent = baseId + ' (v' + (latestVersion.version || '?') + ')';
+        availableDogsSelect.appendChild(option);
+      });
+    }
+  } catch (err) {
+    console.error('Fehler beim Laden:', err);
+    availableDogsSelect.innerHTML = '<option value="">Fehler beim Laden</option>';
+  }
+}
+
+// Auto-Hinzufügen beim Auswählen
+async function handleDogSelection(selectedValue) {
+  if (!selectedValue || selectedValue === '') return;
+  
+  let kennelId = currentKennelId;
+  if (!kennelId) {
+    const pathParts = window.location.pathname.split('/').filter(p => p);
+    if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+      kennelId = pathParts[0];
+    }
+  }
+  
+  if (!kennelId) {
+    alert('Keine KennelConfig gefunden.');
+    return;
+  }
+  
+  // Neue SerializedDog erstellen
+  if (selectedValue === '__NEW__') {
+    const baseId = prompt('Basis-ID für neue SerializedDog (z.B. my-dog):');
+    if (!baseId) {
+      document.getElementById('available-dogs-select').value = '';
+      return;
+    }
+    
+    const defaultCode = '// Neue SerializedDog\\nconst result = { message: "Hello from new dog" };\\nreturn result;';
+    
+    try {
+      const response = await fetch('/api/nodes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          baseId: baseId,
+          tsCode: defaultCode,
+          parentsRequired: [],
+          parentsOptional: []
+        })
+      });
+      
+      if (!response.ok) throw new Error("Create fehlgeschlagen: " + response.status);
+      
+      const result = await response.json();
+      if (result.ok) {
+        // Füge die neue Node zur KennelConfig hinzu
+        selectedValue = baseId;
+      } else {
+        throw new Error(result.error || "Unbekannter Fehler");
+      }
+    } catch (e) {
+      console.error("Create error:", e);
+      alert("Fehler beim Erstellen: " + e.message);
+      document.getElementById('available-dogs-select').value = '';
+      return;
+    }
+  }
+  
+  // Füge Dog zur KennelConfig hinzu
+  try {
+    let kennelConfig = currentKennelConfig;
+    if (!kennelConfig || kennelConfig.id !== kennelId) {
+      const getResponse = await fetch('/api/kennels/' + kennelId);
+      if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
+      
+      const getResult = await getResponse.json();
+      if (!getResult.ok || !getResult.data) {
+        throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+      }
+      
+      kennelConfig = getResult.data;
+    }
+    
+    const dogIds = kennelConfig.dogIds || [];
+    
+    const isAlreadyAdded = dogIds.some(id => {
+      const idBaseId = id.replace(/-v\\d+$/, '');
+      return idBaseId === selectedValue;
+    });
+    
+    if (isAlreadyAdded) {
+      alert('Dieser Dog ist bereits in der KennelConfig');
+      document.getElementById('available-dogs-select').value = '';
+      return;
+    }
+    
+    dogIds.push(selectedValue);
+    
+    const baseId = kennelConfig.id ? kennelConfig.id.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
+    
+    const updateData = {
+      id: baseId,
+      name: kennelConfig.name,
+      description: kennelConfig.description,
+      dogIds: dogIds,
+    };
+    
+    const putResponse = await fetch('/api/kennels/' + baseId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!putResponse.ok) {
+      const errorText = await putResponse.text();
+      throw new Error('HTTP ' + putResponse.status + ': ' + errorText);
+    }
+    
+    const putResult = await putResponse.json();
+    
+    if (putResult.ok) {
+      const savedId = putResult.id || putResult.data?.id;
+      const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : baseId;
+      window.location.href = '/' + finalBaseId;
+    } else {
+      throw new Error(putResult.error || 'Fehler beim Speichern');
+    }
+  } catch (err) {
+    console.error('[EmptyKennel] Fehler:', err);
+    alert('Fehler: ' + err.message);
+    document.getElementById('available-dogs-select').value = '';
+  }
+}
+
+// Event-Listener
+window.onload = () => {
+  loadDropdown();
+  
+  const availableDogsSelect = document.getElementById('available-dogs-select');
+  if (availableDogsSelect) {
+    availableDogsSelect.addEventListener('change', (e) => {
+      handleDogSelection(e.target.value);
+    });
+  }
+};
+</script>
+`;
+  }
+
   private static buildScripts(): string {
     return `
 <script>
@@ -439,13 +729,6 @@ window.onload = ()=>{
         saveBtn.addEventListener("click", saveNode);
       }
       
-      // Add Dog zur KennelConfig
-      const addDogBtn = document.getElementById('add-dog-to-kennel-btn');
-      const addDogSelector = document.getElementById('add-dog-selector');
-      const availableDogsSelect = document.getElementById('available-dogs-select');
-      const addSelectedDogBtn = document.getElementById('add-selected-dog-btn');
-      const cancelAddDogBtn = document.getElementById('cancel-add-dog-btn');
-      
       // Lade KennelConfig aus eingebettetem JSON
       let currentKennelConfig = null;
       let currentKennelId = null;
@@ -454,10 +737,9 @@ window.onload = ()=>{
         if (kennelConfigScript && kennelConfigScript.textContent) {
           currentKennelConfig = JSON.parse(kennelConfigScript.textContent);
           currentKennelId = currentKennelConfig?.id || null;
-          console.log('[AddDog] Geladene KennelConfig aus HTML:', currentKennelConfig);
         }
       } catch (e) {
-        console.warn('[AddDog] Fehler beim Laden der KennelConfig aus HTML:', e);
+        console.warn('[AddDog] Fehler beim Laden der KennelConfig:', e);
       }
       
       // Fallback: Versuche Kennel-ID aus URL zu extrahieren
@@ -468,278 +750,185 @@ window.onload = ()=>{
         }
       }
       
-      if (addDogBtn && addDogSelector && availableDogsSelect) {
-        addDogBtn.addEventListener('click', async () => {
-          if (!currentKennelId) {
-            alert('Keine KennelConfig gefunden. Bitte eine KennelConfig auswählen.');
-            return;
-          }
+      // Lade Dropdown beim Seitenaufruf
+      async function loadDropdown() {
+        const availableDogsSelect = document.getElementById('available-dogs-select');
+        if (!availableDogsSelect) return;
+        
+        try {
+          const response = await fetch('/api/nodes');
+          if (!response.ok) throw new Error('HTTP ' + response.status);
           
-          addDogSelector.style.display = 'block';
+          const result = await response.json();
+          availableDogsSelect.innerHTML = '<option value="">Dog hinzufügen...</option>';
           
-          // Lade verfügbare SerializedDogs und BaseDogs
-          try {
-            availableDogsSelect.innerHTML = '<option value="">Lade verfügbare Dogs...</option>';
-            
-            // Lade SerializedDogs (alle Versionen)
-            let nodesResult = null;
-            try {
-              const nodesResponse = await fetch('/api/nodes');
-              if (!nodesResponse.ok) {
-                throw new Error(\`Nodes API: HTTP \${nodesResponse.status} - \${nodesResponse.statusText}\`);
-              }
-              nodesResult = await nodesResponse.json();
-              if (!nodesResult.ok) {
-                throw new Error(\`Nodes API Fehler: \${nodesResult.error || 'Unbekannter Fehler'}\`);
-              }
-            } catch (err) {
-              console.error('[AddDog] Fehler beim Laden von SerializedDogs:', err);
-              throw new Error(\`SerializedDogs laden fehlgeschlagen: \${err.message}\`);
-            }
-            
-            // Lade BaseDogs
-            let baseDogsResult = null;
-            try {
-              const baseDogsResponse = await fetch('/api/basedogs');
-              if (!baseDogsResponse.ok) {
-                throw new Error(\`BaseDogs API: HTTP \${baseDogsResponse.status} - \${baseDogsResponse.statusText}\`);
-              }
-              baseDogsResult = await baseDogsResponse.json();
-              if (!baseDogsResult.ok) {
-                throw new Error(\`BaseDogs API Fehler: \${baseDogsResult.error || 'Unbekannter Fehler'}\`);
-              }
-            } catch (err) {
-              console.error('[AddDog] Fehler beim Laden von BaseDogs:', err);
-              throw new Error(\`BaseDogs laden fehlgeschlagen: \${err.message}\`);
-            }
-            
-            availableDogsSelect.innerHTML = '<option value="">Dog auswählen...</option>';
-            
-            let addedCount = 0;
-            
-            // Füge alle Versionen von SerializedDogs hinzu
-            if (nodesResult && nodesResult.data && Array.isArray(nodesResult.data)) {
-              // Sortiere nach Basis-ID und dann nach Version (neueste zuerst)
-              const sortedDogs = [...nodesResult.data].sort((a, b) => {
-                const aBaseId = a.id ? a.id.replace(/-v\\d+$/, '') : '';
-                const bBaseId = b.id ? b.id.replace(/-v\\d+$/, '') : '';
-                if (aBaseId !== bBaseId) {
-                  return aBaseId.localeCompare(bBaseId);
+          // Option für neue SerializedDog
+          const newOption = document.createElement('option');
+          newOption.value = '__NEW__';
+          newOption.textContent = '➕ Neue SerializedDog erstellen';
+          availableDogsSelect.appendChild(newOption);
+          
+          if (result.ok && result.data) {
+            // Gruppiere nach Basis-ID
+            const dogsByBaseId = new Map();
+            result.data.forEach(dog => {
+              if (dog.id) {
+                const baseId = dog.id.replace(/-v\\d+$/, '');
+                if (!dogsByBaseId.has(baseId)) {
+                  dogsByBaseId.set(baseId, []);
                 }
-                return (b.version || 0) - (a.version || 0);
-              });
-              
-              sortedDogs.forEach(dog => {
-                if (dog.id) {
-                  try {
-                    const option = document.createElement('option');
-                    option.value = dog.id;  // Vollständige ID mit Version
-                    const baseId = dog.id.replace(/-v\\d+$/, '');
-                    const versionMatch = dog.id.match(/-v(\\d+)$/);
-                    const version = dog.version || (versionMatch ? versionMatch[1] : '?');
-                    option.textContent = \`\${baseId} (v\${version}) [SerializedDog]\`;
-                    availableDogsSelect.appendChild(option);
-                    addedCount++;
-                  } catch (e) {
-                    console.warn('[AddDog] Fehler beim Hinzufügen von SerializedDog:', dog, e);
-                  }
-                }
-              });
-            } else {
-              console.warn('[AddDog] NodesResult hat kein data-Array:', nodesResult);
-            }
-            
-            // Füge BaseDogs hinzu
-            if (baseDogsResult && baseDogsResult.data && Array.isArray(baseDogsResult.data)) {
-              baseDogsResult.data.forEach(baseDog => {
-                try {
-                  if (!baseDog.id || !baseDog.name) {
-                    console.warn('[AddDog] BaseDog hat keine id oder name:', baseDog);
-                    return;
-                  }
-                  const option = document.createElement('option');
-                  option.value = baseDog.id;  // base:Name
-                  option.textContent = \`\${baseDog.name} [BaseDog]\`;
-                  availableDogsSelect.appendChild(option);
-                  addedCount++;
-                } catch (e) {
-                  console.warn('[AddDog] Fehler beim Hinzufügen von BaseDog:', baseDog, e);
-                }
-              });
-            } else {
-              console.warn('[AddDog] BaseDogsResult hat kein data-Array:', baseDogsResult);
-            }
-            
-            if (addedCount === 0) {
-              availableDogsSelect.innerHTML = '<option value="">Keine Dogs verfügbar</option>';
-            }
-          } catch (err) {
-            console.error('[AddDog] Fehler beim Laden:', err);
-            const errorMsg = err.message || String(err);
-            availableDogsSelect.innerHTML = \`<option value="">Fehler: \${errorMsg}</option>\`;
-          }
-        });
-      }
-      
-      if (cancelAddDogBtn && addDogSelector) {
-        cancelAddDogBtn.addEventListener('click', () => {
-          addDogSelector.style.display = 'none';
-        });
-      }
-      
-      if (addSelectedDogBtn && availableDogsSelect) {
-        addSelectedDogBtn.addEventListener('click', async () => {
-          // Versuche Kennel-ID nochmal aus URL zu extrahieren (falls sich geändert hat)
-          let kennelId = currentKennelId;
-          if (!kennelId) {
-            const pathParts = window.location.pathname.split('/').filter(p => p);
-            if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
-              kennelId = pathParts[0];
-            }
-          }
-          
-          if (!kennelId) {
-            alert('Keine KennelConfig gefunden. Bitte eine KennelConfig auswählen.');
-            return;
-          }
-          
-          const selectedDogId = availableDogsSelect.value;
-          if (!selectedDogId) {
-            alert('Bitte einen Dog auswählen');
-            return;
-          }
-          
-          try {
-            console.log('[AddDog] Kennel-ID:', kennelId);
-            console.log('[AddDog] Selected Dog ID:', selectedDogId);
-            
-            // Verwende eingebettete KennelConfig oder lade sie
-            let kennelConfig = currentKennelConfig;
-            
-            // Prüfe ob KennelConfig geladen wurde und ob ID übereinstimmt (berücksichtige Versionierung)
-            const configBaseId = kennelConfig?.id ? kennelConfig.id.replace(/-v\\d+$/, '') : null;
-            const kennelBaseId = kennelId ? kennelId.replace(/-v\\d+$/, '') : null;
-            
-            if (!kennelConfig || (configBaseId !== kennelBaseId && kennelBaseId)) {
-              console.log('[AddDog] Lade KennelConfig von API, weil:', {
-                hasConfig: !!kennelConfig,
-                configBaseId,
-                kennelBaseId,
-                match: configBaseId === kennelBaseId
-              });
-              
-              // Lade aktuelle KennelConfig (verwende Basis-ID für API-Call)
-              const apiId = kennelBaseId || kennelId;
-              const getResponse = await fetch(\`/api/kennels/\${apiId}\`);
-              if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
-              
-              const getResult = await getResponse.json();
-              if (!getResult.ok || !getResult.data) {
-                throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+                dogsByBaseId.get(baseId).push(dog);
               }
-              
-              kennelConfig = getResult.data;
-              console.log('[AddDog] KennelConfig von API geladen:', kennelConfig);
-            } else {
-              console.log('[AddDog] Verwende eingebettete KennelConfig:', kennelConfig);
-            }
-            
-            console.log('[AddDog] Geladene KennelConfig:', JSON.stringify(kennelConfig, null, 2));
-            console.log('[AddDog] Aktuelle dogIds:', kennelConfig.dogIds);
-            
-            const dogIds = kennelConfig.dogIds || [];
-            
-            // Prüfe ob bereits vorhanden
-            const isBaseDog = selectedDogId.startsWith('base:');
-            let isAlreadyAdded = false;
-            
-            if (isBaseDog) {
-              // Für BaseDogs: Prüfe auf exakte ID
-              isAlreadyAdded = dogIds.includes(selectedDogId);
-            } else {
-              // Für SerializedDogs: Prüfe ob bereits eine Version dieser Basis-ID vorhanden ist
-              const selectedBaseId = selectedDogId.replace(/-v\\d+$/, '');
-              isAlreadyAdded = dogIds.some(id => {
-                // Prüfe auf BaseDog mit gleichem Namen (sollte nicht vorkommen, aber sicherheitshalber)
-                if (id.startsWith('base:')) return false;
-                const idBaseId = id.replace(/-v\\d+$/, '');
-                return idBaseId === selectedBaseId;
-              });
-            }
-            
-            if (isAlreadyAdded) {
-              alert(isBaseDog ? 'Dieser BaseDog ist bereits in der KennelConfig' : 'Eine Version dieses SerializedDogs ist bereits in der KennelConfig');
-              return;
-            }
-            
-            // Füge hinzu: Vollständige ID (mit Version für SerializedDogs, base:Name für BaseDogs)
-            dogIds.push(selectedDogId);
-            console.log('[AddDog] Neue dogIds:', dogIds);
-            
-            // Extrahiere Basis-ID (ohne Version) für Versionsverwaltung
-            const baseId = kennelConfig.id ? kennelConfig.id.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
-            console.log('[AddDog] Extrahierte Basis-ID:', baseId);
-            console.log('[AddDog] Original KennelConfig ID:', kennelConfig.id);
-            console.log('[AddDog] Original kennelId:', kennelId);
-            
-            // Speichere aktualisierte KennelConfig (verwende Basis-ID, damit neue Version erstellt wird)
-            const updateData = {
-              id: baseId,  // Basis-ID verwenden, damit Versionsverwaltung funktioniert
-              name: kennelConfig.name,
-              description: kennelConfig.description,
-              dogIds: dogIds,
-            };
-            console.log('[AddDog] Speichere mit Daten:', JSON.stringify(updateData, null, 2));
-            console.log('[AddDog] PUT URL:', \`/api/kennels/\${baseId}\`);
-            
-            const putResponse = await fetch(\`/api/kennels/\${baseId}\`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(updateData)
             });
             
-            console.log('[AddDog] PUT Response Status:', putResponse.status);
-            console.log('[AddDog] PUT Response OK:', putResponse.ok);
+            // Sortiere Versionen innerhalb jeder Basis-ID (neueste zuerst)
+            dogsByBaseId.forEach((versions, baseId) => {
+              versions.sort((a, b) => (b.version || 0) - (a.version || 0));
+            });
             
-            if (!putResponse.ok) {
-              const errorText = await putResponse.text();
-              console.error('[AddDog] PUT Response Error:', errorText);
-              throw new Error('HTTP ' + putResponse.status + ': ' + errorText);
-            }
-            
-            const putResult = await putResponse.json();
-            console.log('[AddDog] PUT Result:', JSON.stringify(putResult, null, 2));
-            
-            if (putResult.ok) {
-              // Extrahiere Basis-ID aus der gespeicherten ID (kann versioniert sein)
-              const savedId = putResult.id || putResult.data?.id;
-              const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : baseId;
-              console.log('[AddDog] Gespeicherte ID:', savedId);
-              console.log('[AddDog] Finale Basis-ID:', finalBaseId);
-              
-              alert('SerializedDog zur KennelConfig hinzugefügt!');
-              addDogSelector.style.display = 'none';
-              
-              // Lade neueste Version der KennelConfig und lade Seite neu
-              window.location.href = \`/\${finalBaseId}\`;
-            } else {
-              throw new Error(putResult.error || 'Fehler beim Speichern');
-            }
-          } catch (err) {
-            console.error('[AddDog] Fehler:', err);
-            alert('Fehler: ' + err.message);
+            // Erstelle Optionen: Nur Basis-IDs
+            dogsByBaseId.forEach((versions, baseId) => {
+              const latestVersion = versions[0];
+              const option = document.createElement('option');
+              option.value = baseId;
+              option.textContent = baseId + ' (v' + (latestVersion.version || '?') + ')';
+              availableDogsSelect.appendChild(option);
+            });
           }
+        } catch (err) {
+          console.error('Fehler beim Laden:', err);
+          availableDogsSelect.innerHTML = '<option value="">Fehler beim Laden</option>';
+        }
+      }
+      
+      // Auto-Hinzufügen beim Auswählen
+      async function handleDogSelection(selectedValue) {
+        if (!selectedValue || selectedValue === '') return;
+        
+        let kennelId = currentKennelId;
+        if (!kennelId) {
+          const pathParts = window.location.pathname.split('/').filter(p => p);
+          if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+            kennelId = pathParts[0];
+          }
+        }
+        
+        if (!kennelId) {
+          alert('Keine KennelConfig gefunden.');
+          return;
+        }
+        
+        // Neue SerializedDog erstellen
+        if (selectedValue === '__NEW__') {
+          const baseId = prompt('Basis-ID für neue SerializedDog (z.B. my-dog):');
+          if (!baseId) {
+            document.getElementById('available-dogs-select').value = '';
+            return;
+          }
+          
+          const defaultCode = '// Neue SerializedDog\\nconst result = { message: "Hello from new dog" };\\nreturn result;';
+          
+          try {
+            const response = await fetch('/api/nodes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                baseId: baseId,
+                tsCode: defaultCode,
+                parentsRequired: [],
+                parentsOptional: []
+              })
+            });
+            
+            if (!response.ok) throw new Error("Create fehlgeschlagen: " + response.status);
+            
+            const result = await response.json();
+            if (result.ok) {
+              selectedValue = baseId;
+            } else {
+              throw new Error(result.error || "Unbekannter Fehler");
+            }
+          } catch (e) {
+            console.error("Create error:", e);
+            alert("Fehler beim Erstellen: " + e.message);
+            document.getElementById('available-dogs-select').value = '';
+            return;
+          }
+        }
+        
+        // Füge Dog zur KennelConfig hinzu
+        try {
+          let kennelConfig = currentKennelConfig;
+          if (!kennelConfig || kennelConfig.id !== kennelId) {
+            const getResponse = await fetch('/api/kennels/' + kennelId);
+            if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
+            
+            const getResult = await getResponse.json();
+            if (!getResult.ok || !getResult.data) {
+              throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+            }
+            
+            kennelConfig = getResult.data;
+          }
+          
+          const dogIds = kennelConfig.dogIds || [];
+          
+          const isAlreadyAdded = dogIds.some(id => {
+            const idBaseId = id.replace(/-v\\d+$/, '');
+            return idBaseId === selectedValue;
+          });
+          
+          if (isAlreadyAdded) {
+            alert('Dieser Dog ist bereits in der KennelConfig');
+            document.getElementById('available-dogs-select').value = '';
+            return;
+          }
+          
+          dogIds.push(selectedValue);
+          
+          const baseId = kennelConfig.id ? kennelConfig.id.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
+          
+          const updateData = {
+            id: baseId,
+            name: kennelConfig.name,
+            description: kennelConfig.description,
+            dogIds: dogIds,
+          };
+          
+          const putResponse = await fetch('/api/kennels/' + baseId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updateData)
+          });
+          
+          if (!putResponse.ok) {
+            const errorText = await putResponse.text();
+            throw new Error('HTTP ' + putResponse.status + ': ' + errorText);
+          }
+          
+          const putResult = await putResponse.json();
+          
+          if (putResult.ok) {
+            const savedId = putResult.id || putResult.data?.id;
+            const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : baseId;
+            window.location.href = '/' + finalBaseId;
+          } else {
+            throw new Error(putResult.error || 'Fehler beim Speichern');
+          }
+        } catch (err) {
+          console.error('[AddDog] Fehler:', err);
+          alert('Fehler: ' + err.message);
+          document.getElementById('available-dogs-select').value = '';
+        }
+      }
+      
+      // Lade Dropdown und setze Event-Listener
+      loadDropdown();
+      const availableDogsSelect = document.getElementById('available-dogs-select');
+      if (availableDogsSelect) {
+        availableDogsSelect.addEventListener('change', (e) => {
+          handleDogSelection(e.target.value);
         });
-      }
-      
-      const newBtn = document.getElementById("new");
-      if (newBtn) {
-        newBtn.addEventListener("click", createNode);
-      }
-      
-      const deleteBtn = document.getElementById("delete");
-      if (deleteBtn) {
-        deleteBtn.addEventListener("click", deleteNode);
       }
       
       // Delete Button im Edit-Panel

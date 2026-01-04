@@ -12,6 +12,7 @@ export interface TestResult {
 
 export class StartupTest {
     private results: TestResult[] = [];
+    private createdTestIds: string[] = []; // Liste aller erstellten Test-IDs
 
     /**
      * Führt alle Tests aus
@@ -25,27 +26,32 @@ export class StartupTest {
     ): Promise<TestResult[]> {
         console.log('\n🧪 Starte Startup-Tests...\n');
 
-        // Store-Tests
-        await this.testStoreSaveAndLoad(nodesStore);
-        await this.testStoreFindByType(nodesStore);
-        
-        // Controller-Tests
-        await this.testControllerList(nodesController);
-        await this.testControllerGetById(nodesController);
-        await this.testControllerCreate(nodesController);
-        await this.testControllerSave(nodesController);
-        
-        // KennelConfig-Tests
-        await this.testKennelConfigList(kennelsController);
-        await this.testKennelConfigGetById(kennelsController);
-        
-        // BaseDogs-Tests
-        await this.testBaseDogsAvailability(baseDogsMap);
-        await this.testBaseDogsFormat(baseDogsMap);
-        
-        // SerializedDog-Tests
-        await this.testSerializedDogExists(nodesStore);
-        await this.testAllVersionsInList(nodesController);
+        try {
+            // Store-Tests
+            await this.testStoreSaveAndLoad(nodesStore);
+            await this.testStoreFindByType(nodesStore);
+            
+            // Controller-Tests
+            await this.testControllerList(nodesController);
+            await this.testControllerGetById(nodesController);
+            await this.testControllerCreate(nodesController);
+            await this.testControllerSave(nodesController);
+            
+            // KennelConfig-Tests
+            await this.testKennelConfigList(kennelsController);
+            await this.testKennelConfigGetById(kennelsController);
+            
+            // BaseDogs-Tests
+            await this.testBaseDogsAvailability(baseDogsMap);
+            await this.testBaseDogsFormat(baseDogsMap);
+            
+            // SerializedDog-Tests
+            await this.testSerializedDogExists(nodesStore);
+            await this.testAllVersionsInList(nodesController);
+        } finally {
+            // Cleanup: Lösche alle erstellten Test-Daten
+            await this.cleanupTestData(nodesStore, kennelsStore, nodesController, kennelsController);
+        }
         
         // Zusammenfassung
         this.printSummary();
@@ -54,12 +60,50 @@ export class StartupTest {
     }
 
     /**
+     * Löscht alle erstellten Test-Daten (nur die spezifisch erstellten IDs)
+     */
+    private async cleanupTestData(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: Controller<IKennelConfig>
+    ): Promise<void> {
+        if (this.createdTestIds.length === 0) {
+            return; // Keine Test-Daten erstellt
+        }
+        
+        console.log('\n🧹 Räume Test-Daten auf...\n');
+        
+        // Lösche NUR die spezifisch erstellten Test-IDs
+        for (const testId of this.createdTestIds) {
+            try {
+                // Versuche über Controller zu löschen (für SerializedDogs)
+                await nodesController.delete(testId);
+                console.log(`  🗑️  Gelöscht: ${testId}`);
+            } catch (e) {
+                // Falls Controller-Löschen fehlschlägt, versuche über Store
+                try {
+                    await nodesStore.delete(testId);
+                    console.log(`  🗑️  Gelöscht (via Store): ${testId}`);
+                } catch (e2) {
+                    // Ignoriere Fehler (kann sein, dass bereits gelöscht wurde oder nicht existiert)
+                    console.log(`  ⚠️  Konnte nicht löschen: ${testId} (möglicherweise bereits gelöscht)`);
+                }
+            }
+        }
+        
+        console.log(`✅ Cleanup abgeschlossen (${this.createdTestIds.length} IDs verarbeitet)\n`);
+    }
+
+    /**
      * Test: Store kann speichern und laden
      */
     private async testStoreSaveAndLoad(store: IStore): Promise<void> {
         const testName = 'Store: Save & Load';
+        let testId: string | null = null;
         try {
-            const testId = 'test-store-' + Date.now();
+            testId = 'test-store-' + Date.now();
+            this.createdTestIds.push(testId);
             const testData = { id: testId, test: true, value: 123 };
             
             await store.save({
@@ -78,13 +122,11 @@ export class StartupTest {
                 throw new Error('Geladene Daten stimmen nicht überein');
             }
             
-            // Cleanup
-            await store.delete(testId);
-            
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         }
+        // Cleanup wird zentral am Ende durchgeführt
     }
 
     /**
@@ -148,8 +190,11 @@ export class StartupTest {
      */
     private async testControllerCreate(controller: Controller<ISerializedDogConfig>): Promise<void> {
         const testName = 'Controller: Create';
+        let testId: string | null = null;
+        let createdId: string | null = null;
         try {
-            const testId = 'test-create-' + Date.now();
+            testId = 'test-create-' + Date.now();
+            this.createdTestIds.push(testId);
             const input: ISerializedDogConfig = {
                 id: testId,
                 theRun: 'return { test: true };',
@@ -165,17 +210,17 @@ export class StartupTest {
                 throw new Error('Keine ID zurückgegeben');
             }
             
-            // Cleanup
-            try {
-                await controller.delete(result.id);
-            } catch (e) {
-                // Ignoriere Cleanup-Fehler
+            createdId = result.id;
+            if (createdId !== testId) {
+                // Wenn eine andere ID zurückgegeben wurde (z.B. versioniert), auch diese merken
+                this.createdTestIds.push(createdId);
             }
             
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         }
+        // Cleanup wird zentral am Ende durchgeführt
     }
 
     /**
@@ -183,8 +228,12 @@ export class StartupTest {
      */
     private async testControllerSave(controller: Controller<ISerializedDogConfig>): Promise<void> {
         const testName = 'Controller: Save';
+        let testId: string | null = null;
+        let createdId: string | null = null;
+        let savedId: string | null = null;
         try {
-            const testId = 'test-save-' + Date.now();
+            testId = 'test-save-' + Date.now();
+            this.createdTestIds.push(testId);
             const input: ISerializedDogConfig = {
                 id: testId,
                 theRun: 'return { test: true };',
@@ -192,7 +241,13 @@ export class StartupTest {
             };
             
             // Erstelle erst eine Entity
-            await controller.create(input);
+            const createResult = await controller.create(input);
+            if (createResult.ok && createResult.id) {
+                createdId = createResult.id;
+                if (createdId !== testId) {
+                    this.createdTestIds.push(createdId);
+                }
+            }
             
             // Dann speichere sie (Update)
             const updateInput: ISerializedDogConfig = {
@@ -206,17 +261,16 @@ export class StartupTest {
                 throw new Error(result.error || 'Speichern fehlgeschlagen');
             }
             
-            // Cleanup
-            try {
-                await controller.delete(testId);
-            } catch (e) {
-                // Ignoriere Cleanup-Fehler
+            if (result.id && result.id !== testId) {
+                savedId = result.id;
+                this.createdTestIds.push(savedId);
             }
             
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         }
+        // Cleanup wird zentral am Ende durchgeführt
     }
 
     /**
@@ -342,8 +396,10 @@ export class StartupTest {
      */
     private async testAllVersionsInList(controller: Controller<ISerializedDogConfig>): Promise<void> {
         const testName = 'SerializedDog: Alle Versionen in Liste';
+        const createdIds: string[] = [];
         try {
             const testBaseId = 'test-versions-' + Date.now();
+            this.createdTestIds.push(testBaseId);
             
             // Erstelle mehrere Versionen
             const v1Input: ISerializedDogConfig = {
@@ -353,6 +409,10 @@ export class StartupTest {
             };
             const v1Result = await controller.create(v1Input);
             if (!v1Result.ok || !v1Result.id) throw new Error('V1 erstellen fehlgeschlagen');
+            createdIds.push(v1Result.id);
+            if (v1Result.id !== testBaseId) {
+                this.createdTestIds.push(v1Result.id);
+            }
             
             const v2Input: ISerializedDogConfig = {
                 id: testBaseId,
@@ -361,6 +421,10 @@ export class StartupTest {
             };
             const v2Result = await controller.save(v2Input);
             if (!v2Result.ok || !v2Result.id) throw new Error('V2 erstellen fehlgeschlagen');
+            createdIds.push(v2Result.id);
+            if (v2Result.id !== testBaseId && v2Result.id !== v1Result.id) {
+                this.createdTestIds.push(v2Result.id);
+            }
             
             const v3Input: ISerializedDogConfig = {
                 id: testBaseId,
@@ -369,6 +433,10 @@ export class StartupTest {
             };
             const v3Result = await controller.save(v3Input);
             if (!v3Result.ok || !v3Result.id) throw new Error('V3 erstellen fehlgeschlagen');
+            createdIds.push(v3Result.id);
+            if (v3Result.id !== testBaseId && v3Result.id !== v1Result.id && v3Result.id !== v2Result.id) {
+                this.createdTestIds.push(v3Result.id);
+            }
             
             // Prüfe, dass alle Versionen in der Liste erscheinen
             const listResult = await controller.list();
@@ -393,19 +461,18 @@ export class StartupTest {
                 throw new Error('Doppelte IDs in der Liste gefunden');
             }
             
-            // Cleanup
-            try {
-                await controller.delete(v1Result.id);
-                await controller.delete(v2Result.id);
-                await controller.delete(v3Result.id);
-            } catch (e) {
-                // Ignoriere Cleanup-Fehler
-            }
+            // Füge alle gefundenen Versionen zur Cleanup-Liste hinzu
+            foundVersions.forEach((dog: ISerializedDogConfig) => {
+                if (dog.id && !this.createdTestIds.includes(dog.id)) {
+                    this.createdTestIds.push(dog.id);
+                }
+            });
             
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         }
+        // Cleanup wird zentral am Ende durchgeführt
     }
 
     /**

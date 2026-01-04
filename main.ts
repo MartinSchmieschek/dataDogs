@@ -35,7 +35,6 @@ async function start() {
     const nodeSeeds = await nodesStore.findByType(SerializedDog.name);
     if (!nodeSeeds || nodeSeeds.length === 0) {
         const seedCfg = {
-            id: 'seed-serialized-1-v1',
             theRun: `
                 const response = await fetch("https://dummyjson.com/recipes");
                 const json = await response.json();
@@ -100,7 +99,6 @@ async function start() {
     const registry = new ControllerRegistry();
     const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
     const kennelsController = new Controller<IKennelConfig>(kennelsStore, 'KennelConfig', true);
-    
     registry.register('nodes', nodesController);
     // Kennels haben Versionsverwaltung - beim Speichern wird eine neue Version erstellt
     registry.register('kennels', kennelsController);
@@ -114,21 +112,6 @@ async function start() {
         kennelsController,
         baseDogsMap
     );
-
-    // Route für BaseDogs-Liste (MUSS vor dem generischen Route-Handler registriert werden)
-    app.get('/api/basedogs', async (req: any, res: any) => {
-        try {
-            const baseDogsList = Array.from(baseDogsMap.entries()).map(([name, dog]) => ({
-                id: BASE_DOG_PREFIX + name,
-                name: name,
-                type: 'BaseDog'
-            }));
-            res.status(200).json({ ok: true, data: baseDogsList });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ ok: false, error: String(err) });
-        }
-    });
 
     // Generisches Route-System registrieren
     const routeHandler = new ConfigRouteHandler(registry);
@@ -188,7 +171,7 @@ async function start() {
             if (kennelId === 'api' || kennelId === 'kennel') {
                 return; // Lass andere Routen das handhaben
             }
-
+            
             // Lade neueste Version der Kennel-Config
             // findLatestVersionsByType gibt nur die neueste Version zurück
             const latestVersions = await kennelsStore.findLatestVersionsByType('KennelConfig', [kennelId]);
@@ -213,16 +196,30 @@ async function start() {
                     console.log(`[main] Kennel-Config ${kennelId} nicht gefunden`);
                     res.status(404).send(`Kennel ${kennelId} nicht gefunden`);
                     return;
-        }
+                }
             }
             
             // Erstelle KennelRun mit der Config und der BaseDogs-Map
             const kennelRun = new KennelRun(nodesStore, kennelConfig, baseDogsMap);
             
-            const waves = await kennelRun.run();
-            const html = Results.buildWavesHtml(waves, kennelConfig);
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            res.send(html);
+            try {
+                const waves = await kennelRun.run();
+                const html = Results.buildWavesHtml(waves, kennelConfig);
+                res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                res.send(html);
+            } catch (runError: any) {
+                // Prüfe ob es der "Nothing to harvest" Fehler ist
+                const errorMessage = runError?.message || String(runError);
+                if (errorMessage.includes("Nothing to harvest")) {
+                    // Zeige Fehlerseite für leeren Kennel
+                    const html = Results.buildEmptyKennelHtml(runError, kennelConfig);
+                    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                    res.send(html);
+                } else {
+                    // Andere Fehler normal behandeln
+                    throw runError;
+                }
+            }
         } catch (err) {
             console.error(err);
             res.status(500).send(String(err));
