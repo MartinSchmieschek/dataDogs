@@ -58,25 +58,22 @@ async function start() {
         new TalkingDog()
     ];
     
+    // Präfix für BaseDog-IDs (lokal definiert, nicht aus core importiert)
+    const BASE_DOG_PREFIX = 'base:';
+    
     // Map von BaseDog-Namen zu Instanzen (für KennelRun)
     const baseDogsMap = new Map<string, any>();
     allBaseDogs.forEach(dog => {
         baseDogsMap.set(dog.name, dog);
     });
     
-    const { BASE_DOG_PREFIX } = await import('./core/KennelRun');
-    
     const kennelSeeds = await kennelsStore.findByType('KennelConfig');
     if (!kennelSeeds || kennelSeeds.length === 0) {
-        // Erstelle dogIds mit allen Basis-Dogs
-        const baseDogIds = allBaseDogs.map(dog => BASE_DOG_PREFIX + dog.name);
-        console.log(`[Seed] Erstelle Kennel-Config mit ${baseDogIds.length} Basis-Dogs:`, baseDogIds);
-        
         const defaultKennelConfig: IKennelConfig = {
             id: 'default-kennel',
             name: 'Default Kennel',
             description: 'Standard-Kennel mit allen verfügbaren Dogs',
-            dogIds: baseDogIds,
+            dogIds: allBaseDogs.map(dog => BASE_DOG_PREFIX + dog.name),
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -87,7 +84,6 @@ async function start() {
             serializedDogConfig: JSON.stringify(defaultKennelConfig) 
         });
         console.log('✅ Seeded initial Kennel-Config into DB');
-        console.log(`✅ Kennel-Config enthält ${baseDogIds.length} Basis-Dogs:`, baseDogIds);
     }
 
     const app = express();
@@ -112,6 +108,39 @@ async function start() {
         kennelsController,
         baseDogsMap
     );
+
+    // Spezielle /api/nodes Route VOR dem generischen Route-System registrieren
+    // (wichtig: muss vor registerRoutes sein, damit sie nicht von /api/:subpath abgefangen wird)
+    app.get('/api/nodes', async (req: any, res: any) => {
+        try {
+            const controller = registry.get('nodes');
+            if (!controller) {
+                res.status(404).json({ error: 'Node-Controller nicht gefunden' });
+                return;
+            }
+
+            // Lade SerializedDogs
+            const result = await controller.list();
+            const serializedDogs = result.ok && result.data ? result.data : [];
+
+            // Erstelle BaseDogs-Liste
+            const baseDogsList = allBaseDogs.map(dog => ({
+                id: BASE_DOG_PREFIX + dog.name,
+                name: dog.name,
+                type: 'BaseDog'
+            }));
+
+            console.log(`[main.ts /api/nodes] BaseDogs:`, baseDogsList);
+            console.log(`[main.ts /api/nodes] SerializedDogs:`, serializedDogs.length);
+
+            // Kombiniere BaseDogs und SerializedDogs
+            const combinedData = [...baseDogsList, ...serializedDogs];
+            res.status(200).json({ ok: true, data: combinedData });
+        } catch (e) {
+            console.error(`[main.ts /api/nodes] Fehler:`, e);
+            res.status(500).json({ error: String(e) });
+        }
+    });
 
     // Generisches Route-System registrieren
     const routeHandler = new ConfigRouteHandler(registry);

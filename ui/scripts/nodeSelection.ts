@@ -33,11 +33,12 @@ export function buildNodeSelection(): string {
   // --- Viewer aktualisieren ---
   const nodeId = n.dataset ? n.dataset.id : (n._nodeId || n.id || "unknown");
   viewerMeta.textContent = "ID: " + nodeId;
-  viewerJson.textContent = JSON.stringify(n._json, null, 2);
+  
+  // Update result editor (immer sichtbar)
+  updateResultEditor(JSON.stringify(n._json, null, 2));
   
   // Zeige/Verstecke SerializedDog-spezifische UI-Elemente
   const controlsDiv = document.getElementById("serialized-dog-controls");
-  const deleteBtn = document.getElementById("delete-from-kennel");
   const versionDiv = document.getElementById("serialized-dog-version");
   const parentsDiv = document.getElementById("serialized-dog-parents");
   const configDiv = document.getElementById("serialized-dog-config");
@@ -49,13 +50,12 @@ export function buildNodeSelection(): string {
   if (isSerializedDog) {
     // Zeige Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "flex";
-    if (deleteBtn) deleteBtn.style.display = "block";
     if (versionDiv) versionDiv.style.display = "block";
     if (parentsDiv) parentsDiv.style.display = "block";
     if (configDiv) configDiv.style.display = "block";
     if (contextDiv) {
       contextDiv.style.display = "block";
-      viewerCtx.textContent = JSON.stringify(n._ctx, null, 2);
+      updateContextEditor(JSON.stringify(n._ctx, null, 2));
     }
     if (tsDiv) tsDiv.style.display = "block";
     
@@ -68,9 +68,8 @@ export function buildNodeSelection(): string {
     }
     
     // Config anzeigen
-    const viewerConfig = document.getElementById("config");
-    if (viewerConfig && n._config) {
-      viewerConfig.textContent = JSON.stringify(n._config, null, 2);
+    if (n._config) {
+      updateConfigEditor(JSON.stringify(n._config, null, 2));
     }
     
     // Versionsauswahl aktualisieren
@@ -79,10 +78,8 @@ export function buildNodeSelection(): string {
     // Parents-Auswahl aktualisieren
     updateParentsSelection(n);
   } else if (isBaseDog) {
-    // Für BaseDogs: Zeige nur Controls mit Delete-Button
-    if (controlsDiv) controlsDiv.style.display = "flex";
-    if (deleteBtn) deleteBtn.style.display = "block";
-    // Verstecke andere Controls
+    // Für BaseDogs: Verstecke SerializedDog-spezifische Controls
+    if (controlsDiv) controlsDiv.style.display = "none";
     if (versionDiv) versionDiv.style.display = "none";
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
@@ -99,7 +96,6 @@ export function buildNodeSelection(): string {
   } else {
     // Verstecke Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "none";
-    if (deleteBtn) deleteBtn.style.display = "none";
     if (versionDiv) versionDiv.style.display = "none";
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
@@ -240,10 +236,61 @@ export function buildNodeSelection(): string {
   }
 }
 
+// Helper-Funktionen für Monaco Editor
+function updateResultEditor(jsonString) {
+  const editorEl = document.getElementById("result-editor");
+  if (!editorEl) return;
+  
+  if (!resultEditor && typeof monaco !== 'undefined' && monaco && monaco.editor) {
+    resultEditor = monaco.editor.create(editorEl, {
+      value: jsonString,
+      language: "json",
+      theme: "vs-dark",
+      automaticLayout: true,
+      readOnly: true
+    });
+  } else if (resultEditor) {
+    resultEditor.setValue(jsonString);
+  }
+}
+
+function updateContextEditor(jsonString) {
+  const editorEl = document.getElementById("context-editor");
+  if (!editorEl) return;
+  
+  if (!contextEditor && typeof monaco !== 'undefined' && monaco && monaco.editor) {
+    contextEditor = monaco.editor.create(editorEl, {
+      value: jsonString,
+      language: "json",
+      theme: "vs-dark",
+      automaticLayout: true,
+      readOnly: true
+    });
+  } else if (contextEditor) {
+    contextEditor.setValue(jsonString);
+  }
+}
+
+function updateConfigEditor(jsonString) {
+  const editorEl = document.getElementById("config-editor");
+  if (!editorEl) return;
+  
+  if (!configEditor && typeof monaco !== 'undefined' && monaco && monaco.editor) {
+    configEditor = monaco.editor.create(editorEl, {
+      value: jsonString,
+      language: "json",
+      theme: "vs-dark",
+      automaticLayout: true,
+      readOnly: true
+    });
+  } else if (configEditor) {
+    configEditor.setValue(jsonString);
+  }
+}
+
 async function updateVersionSelection(selectedNode) {
   const versionSelect = document.getElementById("version-select");
   const versionInfo = document.getElementById("version-info");
-  const updateVersionBtn = document.getElementById("update-version-btn");
   
   if (!versionSelect || !versionInfo) return;
   
@@ -270,23 +317,30 @@ async function updateVersionSelection(selectedNode) {
   
   // Finde aktuelle Version in KennelConfig
   const dogIds = currentKennelConfig?.dogIds || [];
-  let currentVersionId = null;
+  let selectedVersionId = null;
   let isBaseIdBinding = false;
   
+  // Suche nach der Version in der KennelConfig
   for (const id of dogIds) {
     const idBaseId = id.replace(/-v\\d+$/, '');
     if (idBaseId === baseId) {
       if (id === baseId || !id.match(/-v\\d+$/)) {
         // Basis-ID ohne Version = neueste Version
         isBaseIdBinding = true;
-        currentVersionId = baseId;
+        selectedVersionId = baseId;
       } else {
         // Spezifische Version
-        currentVersionId = id;
+        selectedVersionId = id;
       }
-      break;
+      break; // Nimm die erste gefundene Version
     }
   }
+  
+  console.log('[updateVersionSelection] Node-ID:', nodeId);
+  console.log('[updateVersionSelection] Basis-ID:', baseId);
+  console.log('[updateVersionSelection] KennelConfig dogIds:', dogIds);
+  console.log('[updateVersionSelection] Gefundene Version in Config:', selectedVersionId);
+  console.log('[updateVersionSelection] Ist Basis-ID Binding:', isBaseIdBinding);
   
   // Lade verfügbare Versionen
   try {
@@ -295,14 +349,22 @@ async function updateVersionSelection(selectedNode) {
     
     const result = await response.json();
     if (result.ok && result.data) {
+      // Filtere BaseDogs raus (haben type: 'BaseDog' oder id.startsWith('base:'))
+      const serializedDogs = result.data.filter(dog => {
+        return !dog.type || dog.type !== 'BaseDog';
+      });
+      
       // Filtere alle Versionen dieser Basis-ID
-      const versions = result.data.filter(dog => {
+      const versions = serializedDogs.filter(dog => {
+        if (!dog.id) return false;
         const dogBaseId = dog.id.replace(/-v\\d+$/, '');
         return dogBaseId === baseId;
       });
       
       // Sortiere nach Version (neueste zuerst)
       versions.sort((a, b) => (b.version || 0) - (a.version || 0));
+      
+      console.log('[updateVersionSelection] Verfügbare Versionen:', versions.map(v => v.id));
       
       // Erstelle Optionen
       versionSelect.innerHTML = '';
@@ -311,9 +373,6 @@ async function updateVersionSelection(selectedNode) {
       const baseOption = document.createElement('option');
       baseOption.value = baseId;
       baseOption.textContent = \`\${baseId} (neueste Version - keine Versionsbindung)\`;
-      if (isBaseIdBinding) {
-        baseOption.selected = true;
-      }
       versionSelect.appendChild(baseOption);
       
       // Option 2: Alle spezifischen Versionen
@@ -321,9 +380,6 @@ async function updateVersionSelection(selectedNode) {
         const option = document.createElement('option');
         option.value = dog.id;
         option.textContent = \`\${dog.id} (v\${dog.version || '?'})\`;
-        if (currentVersionId === dog.id) {
-          option.selected = true;
-        }
         versionSelect.appendChild(option);
       });
       
@@ -331,9 +387,9 @@ async function updateVersionSelection(selectedNode) {
       if (isBaseIdBinding) {
         const latestVersion = versions[0];
         versionInfo.textContent = \`Aktuell: Basis-ID (neueste Version: v\${latestVersion?.version || '?'})\`;
-      } else if (currentVersionId) {
-        const currentVersion = versions.find(v => v.id === currentVersionId);
-        versionInfo.textContent = \`Aktuell: \${currentVersionId} (v\${currentVersion?.version || '?'})\`;
+      } else if (selectedVersionId) {
+        const currentVersion = versions.find(v => v.id === selectedVersionId);
+        versionInfo.textContent = \`Aktuell: \${selectedVersionId} (v\${currentVersion?.version || '?'})\`;
       } else {
         versionInfo.textContent = "Nicht in KennelConfig gefunden";
       }
@@ -346,22 +402,32 @@ async function updateVersionSelection(selectedNode) {
     versionInfo.textContent = "Fehler beim Laden der Versionen";
   }
   
-  // Event-Handler für Update-Button
-  if (updateVersionBtn) {
-    // Entferne alte Handler
-    const newBtn = updateVersionBtn.cloneNode(true);
-    updateVersionBtn.parentNode.replaceChild(newBtn, updateVersionBtn);
-    
-    newBtn.addEventListener('click', async () => {
-      const selectedVersionId = versionSelect.value;
-      if (!selectedVersionId) {
-        alert('Bitte eine Version auswählen');
-        return;
-      }
-      
-      await updateVersionInKennelConfig(baseId, selectedVersionId);
-    });
+  // Event-Handler für automatischen Version-Wechsel nach Auswahl
+  // Entferne alte Handler
+  const newSelect = versionSelect.cloneNode(true);
+  versionSelect.parentNode.replaceChild(newSelect, versionSelect);
+  
+  // WICHTIG: Wähle die Version aus, die in der KennelConfig steht - NACH cloneNode!
+  if (selectedVersionId) {
+    console.log('[updateVersionSelection] Versuche Version auszuwählen:', selectedVersionId);
+    const optionToSelect = Array.from(newSelect.options).find(opt => opt.value === selectedVersionId);
+    if (optionToSelect) {
+      optionToSelect.selected = true;
+      newSelect.value = selectedVersionId; // Setze auch direkt den value
+      console.log('[updateVersionSelection] Version ausgewählt:', selectedVersionId);
+    } else {
+      console.warn('[updateVersionSelection] Version nicht im Dropdown gefunden:', selectedVersionId, 'Verfügbare Optionen:', Array.from(newSelect.options).map(o => o.value));
+    }
   }
+  
+  newSelect.addEventListener('change', async () => {
+    const selectedVersionId = newSelect.value;
+    if (!selectedVersionId) {
+      return;
+    }
+    
+    await updateVersionInKennelConfig(baseId, selectedVersionId);
+  });
 }
 
 async function updateVersionInKennelConfig(baseId, newVersionId) {

@@ -400,37 +400,14 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   private static buildViewer(): string {
     return `
 <div id="viewer">
-  <div id="viewer-title">Node Viewer</div>
-
   <h3>Meta</h3>
   <pre id="meta"></pre>
 
-  <h3>JSON</h3>
-  <pre id="json"></pre>
-
-  <div id="serialized-dog-ts" style="display: none;">
-    <h3>TypeScript</h3>
-    <div id="ts-editor"></div>
-  </div>
-
-  <div id="html-output" style="display: none;">
-    <h3>HTML Output</h3>
-    <div id="html-render" style="border: 1px solid #333; padding: 10px; background: #fff; color: #000; min-height: 200px;"></div>
-  </div>
-
-  <div id="serialized-dog-controls" style="margin: 10px 0; display: none; gap: 10px; flex-wrap: wrap;">
-    <button id="save">Save</button>
-    <button id="delete-from-kennel" style="display: none; background: #ff4444; color: #fff; border: none; padding: 6px 12px; cursor: pointer;">Delete</button>
-  </div>
-
   <div id="serialized-dog-version" style="display: none; margin: 10px 0; padding: 10px; border: 1px solid #333; background: #1a1a1a;">
     <label style="display: block; margin-bottom: 5px;"><strong>Version:</strong></label>
-    <div style="display: flex; gap: 10px; align-items: center;">
-      <select id="version-select" style="flex: 1; padding: 6px; background: #000; color: #fff; border: 1px solid #333;">
-        <option value="">Lade Versionen...</option>
-      </select>
-      <button id="update-version-btn" style="padding: 6px 12px; background: #0066cc; color: #fff; border: none; cursor: pointer;">Aktualisieren</button>
-    </div>
+    <select id="version-select" style="width: 100%; padding: 6px; background: #000; color: #fff; border: 1px solid #333;">
+      <option value="">Lade Versionen...</option>
+    </select>
     <div style="margin-top: 5px; font-size: 12px; color: #888;">
       <span id="version-info">-</span>
     </div>
@@ -450,14 +427,35 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
     </div>
   </div>
 
-  <div id="serialized-dog-context" style="display: none;">
-    <h3>VM Context</h3>
-    <pre id="context"></pre>
+  <div id="serialized-dog-ts" style="display: none;">
+    <h3>TypeScript</h3>
+    <div id="ts-editor"></div>
+  </div>
+
+  <div id="serialized-dog-controls" style="margin: 10px 0; display: none; gap: 10px; flex-wrap: wrap;">
+    <button id="save">Save</button>
+  </div>
+
+  <div id="html-output" style="display: none;">
+    <h3>HTML Output</h3>
+    <div id="html-render" style="border: 1px solid #333; padding: 10px; background: #fff; color: #000; min-height: 200px;"></div>
   </div>
 
   <div id="serialized-dog-config" style="display: none;">
-    <h3>Config</h3>
-    <pre id="config" style="background:#000; padding:10px; margin-bottom:10px; white-space:pre; overflow:auto;"></pre>
+    <h3>SerializedDog Data</h3>
+    <div id="config-editor" style="height: 300px; border: 1px solid #333;"></div>
+  </div>
+
+  <hr style="margin: 20px 0; border: none; border-top: 2px solid #333;">
+
+  <div id="serialized-dog-context" style="display: none;">
+    <h3>VM Context</h3>
+    <div id="context-editor" style="height: 300px; border: 1px solid #333;"></div>
+  </div>
+
+  <div id="result-viewer" style="display: block;">
+    <h3>result</h3>
+    <div id="result-editor" style="height: 300px; border: 1px solid #333;"></div>
   </div>
 </div>
 `;
@@ -496,10 +494,6 @@ async function loadDropdown() {
   if (!availableDogsSelect) return;
   
   try {
-    const response = await fetch('/api/nodes');
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    
-    const result = await response.json();
     availableDogsSelect.innerHTML = '<option value="">Dog hinzufügen...</option>';
     
     // Option für neue SerializedDog
@@ -508,10 +502,36 @@ async function loadDropdown() {
     newOption.textContent = '➕ Neue SerializedDog erstellen';
     availableDogsSelect.appendChild(newOption);
     
+    // Lade alle Dogs (BaseDogs + SerializedDogs) von /api/nodes
+    const response = await fetch('/api/nodes');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    
+    const result = await response.json();
+    
     if (result.ok && result.data) {
-      // Gruppiere nach Basis-ID
+      // Trenne BaseDogs und SerializedDogs
+      const baseDogs = [];
+      const serializedDogs = [];
+      
+      result.data.forEach((dog) => {
+        if (dog.type === 'BaseDog' || (dog.id && dog.id.startsWith('base:'))) {
+          baseDogs.push(dog);
+        } else {
+          serializedDogs.push(dog);
+        }
+      });
+      
+      // Füge BaseDogs hinzu
+      baseDogs.forEach((baseDog) => {
+        const option = document.createElement('option');
+        option.value = baseDog.id; // z.B. "base:RandomRecipesRetriever"
+        option.textContent = '🐕 ' + baseDog.name; // z.B. "RandomRecipesRetriever"
+        availableDogsSelect.appendChild(option);
+      });
+      
+      // Gruppiere SerializedDogs nach Basis-ID
       const dogsByBaseId = new Map();
-      result.data.forEach(dog => {
+      serializedDogs.forEach((dog) => {
         if (dog.id) {
           const baseId = dog.id.replace(/-v\\d+$/, '');
           if (!dogsByBaseId.has(baseId)) {
@@ -531,7 +551,7 @@ async function loadDropdown() {
         const latestVersion = versions[0];
         const option = document.createElement('option');
         option.value = baseId;
-        option.textContent = baseId + ' (v' + (latestVersion.version || '?') + ')';
+        option.textContent = '🐕 ' + baseId + ' (v' + (latestVersion.version || '?') + ')';
         availableDogsSelect.appendChild(option);
       });
     }
@@ -612,20 +632,29 @@ async function handleDogSelection(selectedValue) {
       kennelConfig = getResult.data;
     }
     
-    const dogIds = kennelConfig.dogIds || [];
-    
-    const isAlreadyAdded = dogIds.some(id => {
-      const idBaseId = id.replace(/-v\\d+$/, '');
-      return idBaseId === selectedValue;
-    });
-    
-    if (isAlreadyAdded) {
-      alert('Dieser Dog ist bereits in der KennelConfig');
-      document.getElementById('available-dogs-select').value = '';
-      return;
-    }
-    
-    dogIds.push(selectedValue);
+        const dogIds = kennelConfig.dogIds || [];
+        
+        // Prüfe ob Dog bereits hinzugefügt wurde
+        // Für BaseDogs: direkter Vergleich (z.B. "base:RandomRecipesRetriever")
+        // Für SerializedDogs: Vergleich der Basis-ID (ohne Version)
+        const isAlreadyAdded = dogIds.some(id => {
+          if (selectedValue.startsWith('base:')) {
+            // BaseDog: direkter Vergleich
+            return id === selectedValue;
+          } else {
+            // SerializedDog: Vergleich der Basis-ID
+            const idBaseId = id.replace(/-v\\d+$/, '');
+            return idBaseId === selectedValue;
+          }
+        });
+        
+        if (isAlreadyAdded) {
+          alert('Dieser Dog ist bereits in der KennelConfig');
+          document.getElementById('available-dogs-select').value = '';
+          return;
+        }
+        
+        dogIds.push(selectedValue);
     
     const baseId = kennelConfig.id ? kennelConfig.id.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
     
@@ -686,8 +715,9 @@ const waves = JSON.parse(document.getElementById("waves-data").textContent);
 // --- Element-Refs ---
 const wavesEl = document.getElementById("waves");
 const viewerMeta = document.getElementById("meta");
-const viewerJson = document.getElementById("json");
-const viewerCtx = document.getElementById("context");
+let resultEditor = null;
+let contextEditor = null;
+let configEditor = null;
 let monacoEditor = null;
 let activeTypeDefDispose = null;
 let selectedNodeElement = null;
@@ -756,10 +786,6 @@ window.onload = ()=>{
         if (!availableDogsSelect) return;
         
         try {
-          const response = await fetch('/api/nodes');
-          if (!response.ok) throw new Error('HTTP ' + response.status);
-          
-          const result = await response.json();
           availableDogsSelect.innerHTML = '<option value="">Dog hinzufügen...</option>';
           
           // Option für neue SerializedDog
@@ -768,10 +794,36 @@ window.onload = ()=>{
           newOption.textContent = '➕ Neue SerializedDog erstellen';
           availableDogsSelect.appendChild(newOption);
           
+          // Lade alle Dogs (BaseDogs + SerializedDogs) von /api/nodes
+          const response = await fetch('/api/nodes');
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          
+          const result = await response.json();
+          
           if (result.ok && result.data) {
-            // Gruppiere nach Basis-ID
+            // Trenne BaseDogs und SerializedDogs
+            const baseDogs = [];
+            const serializedDogs = [];
+            
+            result.data.forEach((dog) => {
+              if (dog.type === 'BaseDog' || (dog.id && dog.id.startsWith('base:'))) {
+                baseDogs.push(dog);
+              } else {
+                serializedDogs.push(dog);
+              }
+            });
+            
+            // Füge BaseDogs hinzu
+            baseDogs.forEach((baseDog) => {
+              const option = document.createElement('option');
+              option.value = baseDog.id; // z.B. "base:RandomRecipesRetriever"
+              option.textContent = '🐕 ' + baseDog.name; // z.B. "RandomRecipesRetriever"
+              availableDogsSelect.appendChild(option);
+            });
+            
+            // Gruppiere SerializedDogs nach Basis-ID
             const dogsByBaseId = new Map();
-            result.data.forEach(dog => {
+            serializedDogs.forEach((dog) => {
               if (dog.id) {
                 const baseId = dog.id.replace(/-v\\d+$/, '');
                 if (!dogsByBaseId.has(baseId)) {
@@ -791,7 +843,7 @@ window.onload = ()=>{
               const latestVersion = versions[0];
               const option = document.createElement('option');
               option.value = baseId;
-              option.textContent = baseId + ' (v' + (latestVersion.version || '?') + ')';
+              option.textContent = '🐕 ' + baseId + ' (v' + (latestVersion.version || '?') + ')';
               availableDogsSelect.appendChild(option);
             });
           }
@@ -873,9 +925,18 @@ window.onload = ()=>{
           
           const dogIds = kennelConfig.dogIds || [];
           
+          // Prüfe ob Dog bereits hinzugefügt wurde
+          // Für BaseDogs: direkter Vergleich (z.B. "base:RandomRecipesRetriever")
+          // Für SerializedDogs: Vergleich der Basis-ID (ohne Version)
           const isAlreadyAdded = dogIds.some(id => {
-            const idBaseId = id.replace(/-v\\d+$/, '');
-            return idBaseId === selectedValue;
+            if (selectedValue.startsWith('base:')) {
+              // BaseDog: direkter Vergleich
+              return id === selectedValue;
+            } else {
+              // SerializedDog: Vergleich der Basis-ID
+              const idBaseId = id.replace(/-v\\d+$/, '');
+              return idBaseId === selectedValue;
+            }
           });
           
           if (isAlreadyAdded) {
