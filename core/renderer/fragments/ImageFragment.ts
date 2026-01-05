@@ -11,8 +11,19 @@ export class ImageFragment extends FragmentBase {
     this.alt = alt ?? "";
   }
 
+  private isVideo(url?: string): boolean {
+    if (!url) return false;
+    const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+    const lowerUrl = url.toLowerCase();
+    return videoExtensions.some(ext => lowerUrl.includes(ext)) || lowerUrl.includes('video');
+  }
+
   render(): string {
-    return `<img id="${this.id}" src="${this.imageUrl ?? ""}" alt="${this.alt}" class="image-fragment" />`;
+    const url = this.imageUrl ?? "";
+    if (this.isVideo(url)) {
+      return `<video id="${this.id}" src="${url}" class="image-fragment" controls autoplay loop muted playsinline></video>`;
+    }
+    return `<img id="${this.id}" src="${url}" alt="${this.alt}" class="image-fragment" />`;
   }
 
   getScript(): string {
@@ -23,6 +34,8 @@ export class ImageFragment extends FragmentBase {
     return `
       .image-fragment {
         width: 100%;
+        max-height: 60vh;
+        object-fit: contain;
         border-radius: 12px;
         display: block;
         margin: 0 auto;
