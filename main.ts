@@ -12,6 +12,7 @@ import { KennelRun, IKennelConfig } from './core/KennelRun';
 import { Controller } from './api/Controller';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
 import { KennelList } from './ui/kennelList';
+import { KennelEditor } from './ui/kennelEditor';
 import { StartupTest } from './StartupTest';
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
@@ -49,22 +50,26 @@ async function start() {
     }
 
     // Seed: Ensure at least one Kennel-Config exists in DB
-    // Liste aller verfügbaren Basis-Dogs (durch Instanziierung)
-    const allBaseDogs = [
-        new RandomRecipesRetriever(),
-        new CountryFlagBlackLab(),
-        new DishFlagBlackLab(),
-        new RandomEveryThingRetriever(),
-        new TalkingDog()
+    // Liste aller verfügbaren Basis-Dog-Klassen (für Instanziierung bei jedem Run)
+    const allBaseDogClasses = [
+        RandomRecipesRetriever,
+        CountryFlagBlackLab,
+        DishFlagBlackLab,
+        RandomEveryThingRetriever,
+        TalkingDog
     ];
+    
+    // Erstelle Instanzen für die Kennel-Liste (nur für Anzeige)
+    const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
     
     // Präfix für BaseDog-IDs (lokal definiert, nicht aus core importiert)
     const BASE_DOG_PREFIX = 'base:';
     
-    // Map von BaseDog-Namen zu Instanzen (für KennelRun)
-    const baseDogsMap = new Map<string, any>();
-    allBaseDogs.forEach(dog => {
-        baseDogsMap.set(dog.name, dog);
+    // Map von BaseDog-Namen zu Klassen (für KennelRun - erstellt neue Instanzen bei jedem Run)
+    const baseDogsMap = new Map<string, new () => any>();
+    allBaseDogClasses.forEach(DogClass => {
+        const instance = new DogClass();
+        baseDogsMap.set(instance.name, DogClass);
     });
     
     const kennelSeeds = await kennelsStore.findByType('KennelConfig');
@@ -149,14 +154,29 @@ async function start() {
     // Route für Kennel-Liste (ohne ID)
     app.get('/kennel', async (req: any, res: any) => {
         try {
-            const kennelsResult = await registry.get('kennels')?.list();
-            const kennels = kennelsResult?.ok && kennelsResult.data 
-                ? kennelsResult.data.map((k: any) => ({
-                    id: k.id,
-                    name: k.name,
-                    description: k.description
-                }))
-                : [];
+            // Lade alle Kennels und filtere nur die neuesten Versionen
+            const allKennels = await kennelsStore.findByType('KennelConfig');
+            
+            // Gruppiere nach Basis-ID und behalte nur die neueste Version
+            const kennelsMap = new Map<string, any>();
+            allKennels.forEach((k: any) => {
+                const baseId = k.id.replace(/-v\d+$/, '');
+                const existing = kennelsMap.get(baseId);
+                if (!existing || (k.version || 0) > (existing.version || 0)) {
+                    kennelsMap.set(baseId, k);
+                }
+            });
+            
+            const kennels = Array.from(kennelsMap.values()).map((k: any) => {
+                const config = typeof k.serializedDogConfig === 'string' 
+                    ? JSON.parse(k.serializedDogConfig) 
+                    : k.serializedDogConfig;
+                return {
+                    id: k.id.replace(/-v\d+$/, ''), // Basis-ID ohne Version
+                    name: config.name,
+                    description: config.description
+                };
+            });
             
             const html = KennelList.buildKennelListHtml(kennels);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -172,14 +192,29 @@ async function start() {
     // Route für Root - zeigt Liste aller Kennels
     app.get('/', async (req: any, res: any) => {
         try {
-            const kennelsResult = await registry.get('kennels')?.list();
-            const kennels = kennelsResult?.ok && kennelsResult.data 
-                ? kennelsResult.data.map((k: any) => ({
-                    id: k.id,
-                    name: k.name,
-                    description: k.description
-                }))
-                : [];
+            // Lade alle Kennels und filtere nur die neuesten Versionen
+            const allKennels = await kennelsStore.findByType('KennelConfig');
+            
+            // Gruppiere nach Basis-ID und behalte nur die neueste Version
+            const kennelsMap = new Map<string, any>();
+            allKennels.forEach((k: any) => {
+                const baseId = k.id.replace(/-v\d+$/, '');
+                const existing = kennelsMap.get(baseId);
+                if (!existing || (k.version || 0) > (existing.version || 0)) {
+                    kennelsMap.set(baseId, k);
+                }
+            });
+            
+            const kennels = Array.from(kennelsMap.values()).map((k: any) => {
+                const config = typeof k.serializedDogConfig === 'string' 
+                    ? JSON.parse(k.serializedDogConfig) 
+                    : k.serializedDogConfig;
+                return {
+                    id: k.id.replace(/-v\d+$/, ''), // Basis-ID ohne Version
+                    name: config.name,
+                    description: config.description
+                };
+            });
             
             const html = KennelList.buildKennelListHtml(kennels);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -190,19 +225,17 @@ async function start() {
         }
     });
 
-    // Route für einzelne Kennel über Root-Path (/:kennelId)
-    // Lädt immer die neueste Version der KennelConfig
-    app.get('/:kennelId', async (req: any, res: any) => {
+    // Route für Editor-UI (Node Editor mit Graph)
+    app.get('/edit/:kennelId', async (req: any, res: any) => {
         try {
             const kennelId = req.params.kennelId;
             
-            // Prüfe ob es eine API-Route ist (sollte nicht hier landen, aber sicherheitshalber)
+            // Prüfe ob es eine API-Route ist
             if (kennelId === 'api' || kennelId === 'kennel') {
-                return; // Lass andere Routen das handhaben
+                return;
             }
             
             // Lade neueste Version der Kennel-Config
-            // findLatestVersionsByType gibt nur die neueste Version zurück
             const latestVersions = await kennelsStore.findLatestVersionsByType('KennelConfig', [kennelId]);
             
             let kennelConfig: IKennelConfig | undefined;
@@ -228,8 +261,19 @@ async function start() {
                 }
             }
             
-            // Erstelle KennelRun mit der Config und der BaseDogs-Map
-            const kennelRun = new KennelRun(nodesStore, kennelConfig, baseDogsMap);
+            // Factory-Funktion für SerializedDogs
+            const serializedDogFactory = async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {
+                const loadedVersions = await nodesStore.findLatestVersionsByType(SerializedDog.name, ids);
+                return loadedVersions.map((sd: any) => {
+                    const config = typeof sd.serializedDogConfig === 'string' 
+                        ? JSON.parse(sd.serializedDogConfig) 
+                        : sd.serializedDogConfig;
+                    return new SerializedDog(config, sd.id);
+                });
+            };
+            
+            // Erstelle KennelRun mit Config, BaseDog-Klassen und SerializedDog-Factory
+            const kennelRun = new KennelRun(kennelConfig, baseDogsMap, serializedDogFactory);
             
             try {
                 const waves = await kennelRun.run();
@@ -252,6 +296,192 @@ async function start() {
         } catch (err) {
             console.error(err);
             res.status(500).send(String(err));
+        }
+    });
+
+    // Route für Ergebnis-Ausgabe
+    app.get('/api/kennels/:kennelId/result', async (req: any, res: any) => {
+        try {
+            const kennelId = req.params.kennelId;
+            
+            // Lade neueste Version der Kennel-Config
+            const latestVersions = await kennelsStore.findLatestVersionsByType('KennelConfig', [kennelId]);
+            
+            if (!latestVersions || latestVersions.length === 0) {
+                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+                return;
+            }
+            
+            const kennelData = latestVersions[0].serializedDogConfig;
+            const kennelConfig: IKennelConfig = typeof kennelData === 'string' 
+                ? JSON.parse(kennelData) 
+                : kennelData;
+            
+            // Nimm den ersten Hund aus der dogIds-Liste
+            const dogIds = kennelConfig.dogIds || [];
+            if (dogIds.length === 0) {
+                res.status(400).json({ error: 'Keine Hunde in der Config gefunden' });
+                return;
+            }
+            
+            const targetDogId = dogIds[0];
+            
+            // Factory-Funktion für SerializedDogs
+            const serializedDogFactory = async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {
+                const loadedVersions = await nodesStore.findLatestVersionsByType(SerializedDog.name, ids);
+                return loadedVersions.map((sd: any) => {
+                    const config = typeof sd.serializedDogConfig === 'string' 
+                        ? JSON.parse(sd.serializedDogConfig) 
+                        : sd.serializedDogConfig;
+                    return new SerializedDog(config, sd.id);
+                });
+            };
+            
+            // Führe Kennel aus
+            const kennelRun = new KennelRun(kennelConfig, baseDogsMap, serializedDogFactory);
+            const waves = await kennelRun.run();
+            
+            if (!waves || waves.length === 0) {
+                res.status(404).json({ error: 'Keine Hunde im Rudel gefunden' });
+                return;
+            }
+            
+            // Finde den Hund in den Waves
+            // Entferne "base:" Präfix für BaseDogs, da Waves nur den Namen ohne Präfix enthalten
+            const searchId = targetDogId.startsWith('base:') 
+                ? targetDogId.substring(5) // Entferne "base:"
+                : targetDogId;
+            
+            let oldestDog = null;
+            for (const wave of waves) {
+                for (const node of wave) {
+                    // Vergleiche mit und ohne Version, mit und ohne base: Präfix
+                    if (node.id === searchId || 
+                        node.id === targetDogId ||
+                        node.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '') ||
+                        node.id.replace(/-v\d+$/, '') === targetDogId.replace(/-v\d+$/, '')) {
+                        oldestDog = node;
+                        break;
+                    }
+                }
+                if (oldestDog) break;
+            }
+            
+            if (!oldestDog) {
+                res.status(404).json({ error: `Hund ${targetDogId} nicht in den Waves gefunden` });
+                return;
+            }
+            
+            // Gib nur das result zurück (HTML oder JSON)
+            const result = oldestDog.result;
+            if (typeof result === 'string' && (result.trim().startsWith('<html') || result.trim().startsWith('<!DOCTYPE') || (result.trim().startsWith('<') && result.includes('</')))) {
+                // HTML
+                res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                res.status(200).send(result);
+            } else {
+                // JSON
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.status(200).json(result);
+            }
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ error: String(err) });
+        }
+    });
+
+    // Route für einzelne Kennel über Root-Path (/:kennelId)
+    // Gibt die Ergebnisse vom ersten Hund in der dogIds-Liste zurück
+    app.get('/:kennelId', async (req: any, res: any) => {
+        try {
+            const kennelId = req.params.kennelId;
+            
+            // Prüfe ob es eine API-Route ist
+            if (kennelId === 'api' || kennelId === 'kennel' || kennelId === 'edit') {
+                return;
+            }
+            
+            // Lade neueste Version der Kennel-Config
+            const latestVersions = await kennelsStore.findLatestVersionsByType('KennelConfig', [kennelId]);
+            
+            if (!latestVersions || latestVersions.length === 0) {
+                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+                return;
+            }
+            
+            const kennelData = latestVersions[0].serializedDogConfig;
+            const kennelConfig: IKennelConfig = typeof kennelData === 'string' 
+                ? JSON.parse(kennelData) 
+                : kennelData;
+            
+            // Nimm den ersten Hund aus der dogIds-Liste
+            const dogIds = kennelConfig.dogIds || [];
+            if (dogIds.length === 0) {
+                res.status(400).json({ error: 'Keine Hunde in der Config gefunden' });
+                return;
+            }
+            
+            const targetDogId = dogIds[0];
+            
+            // Factory-Funktion für SerializedDogs
+            const serializedDogFactory = async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {
+                const loadedVersions = await nodesStore.findLatestVersionsByType(SerializedDog.name, ids);
+                return loadedVersions.map((sd: any) => {
+                    const config = typeof sd.serializedDogConfig === 'string' 
+                        ? JSON.parse(sd.serializedDogConfig) 
+                        : sd.serializedDogConfig;
+                    return new SerializedDog(config, sd.id);
+                });
+            };
+            
+            // Führe Kennel aus
+            const kennelRun = new KennelRun(kennelConfig, baseDogsMap, serializedDogFactory);
+            const waves = await kennelRun.run();
+            
+            if (!waves || waves.length === 0) {
+                res.status(404).json({ error: 'Keine Hunde im Rudel gefunden' });
+                return;
+            }
+            
+            // Finde den Hund in den Waves
+            // Entferne "base:" Präfix für BaseDogs, da Waves nur den Namen ohne Präfix enthalten
+            const searchId = targetDogId.startsWith('base:') 
+                ? targetDogId.substring(5) // Entferne "base:"
+                : targetDogId;
+            
+            let firstDog = null;
+            for (const wave of waves) {
+                for (const node of wave) {
+                    // Vergleiche mit und ohne Version
+                    if (node.id === searchId || 
+                        node.id === targetDogId ||
+                        node.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '') ||
+                        node.id.replace(/-v\d+$/, '') === targetDogId.replace(/-v\d+$/, '')) {
+                        firstDog = node;
+                        break;
+                    }
+                }
+                if (firstDog) break;
+            }
+            
+            if (!firstDog) {
+                res.status(404).json({ error: `Hund ${targetDogId} nicht in den Waves gefunden` });
+                return;
+            }
+            
+            // Gib nur das result zurück (HTML oder JSON)
+            const result = firstDog.result;
+            if (typeof result === 'string' && (result.trim().startsWith('<html') || result.trim().startsWith('<!DOCTYPE') || (result.trim().startsWith('<') && result.includes('</')))) {
+                // HTML
+                res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                res.status(200).send(result);
+            } else {
+                // JSON
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.status(200).json(result);
+            }
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ error: String(err) });
         }
     });
 

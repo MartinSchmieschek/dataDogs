@@ -1,4 +1,3 @@
-import { IStore } from '../store/IStore';
 import { IHuntingDog as IDog } from './enities/IHuntingDog';
 import { SerializedDog } from '../dogs/SerializedDog';
 import { SeasonRunner } from './harverster';
@@ -30,73 +29,29 @@ export interface IKennelConfig {
  * Ermöglicht mehrere Instanzen für verschiedene Kennel-Konfigurationen
  */
 export class KennelRun {
-    private store: IStore;
-    private baseDogs: Array<IDog<unknown>>;
     private config?: IKennelConfig;
-    private availableBaseDogs: Map<string, IDog<unknown>>;
+    private baseDogClasses: Map<string, new () => IDog<unknown>>;
+    private serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>>;
 
     /**
-     * @param store - Der Store für Datenbankzugriffe
-     * @param configOrBaseDogs - Optional: Entweder eine IKennelConfig oder eine Liste von Basis-Dogs
-     * @param availableBaseDogs - Optional: Map von BaseDog-Namen zu Instanzen (für die Erstellung aus Config)
+     * @param configOrBaseDogs - Optional: Entweder eine IKennelConfig oder eine Liste von Basis-Dogs (wird aktuell nicht verwendet)
+     * @param baseDogClasses - Map von BaseDog-Namen zu Klassen. Wird benötigt, um aus Config-Strings (z.B. "base:RandomRecipesRetriever") neue Instanzen zu erstellen.
+     *                        Bei jedem fillKennel() werden neue Instanzen erstellt, damit keine Ergebnisse gecacht werden.
+     * @param serializedDogFactory - Factory-Funktion, die SerializedDogs aus IDs erstellt. Bekommt ein Array von IDs und gibt ein Array von SerializedDogs zurück.
      */
-    constructor(store: IStore, configOrBaseDogs?: IKennelConfig | Array<IDog<unknown>>, availableBaseDogs?: Map<string, IDog<unknown>>) {
-        this.store = store;
-        this.availableBaseDogs = availableBaseDogs || new Map();
+    constructor(
+        configOrBaseDogs?: IKennelConfig | Array<IDog<unknown>>, 
+        baseDogClasses: Map<string, new () => IDog<unknown>> = new Map(),
+        serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => []
+    ) {
+        this.baseDogClasses = baseDogClasses;
+        this.serializedDogFactory = serializedDogFactory;
         
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Es ist eine IKennelConfig
             this.config = configOrBaseDogs;
             console.log(`[KennelRun.constructor] Config geladen:`, JSON.stringify(this.config, null, 2));
-            this.baseDogs = this.createBaseDogsFromConfig(configOrBaseDogs);
-            console.log(`[KennelRun.constructor] Erstellt ${this.baseDogs.length} baseDogs aus Config:`, this.baseDogs.map(d => d.name));
-        } else {
-            // Es ist ein Array von Dogs oder undefined
-            this.baseDogs = (configOrBaseDogs as Array<IDog<unknown>>) || [];
-            console.log(`[KennelRun.constructor] Keine Config, verwende ${this.baseDogs.length} baseDogs:`, this.baseDogs.map(d => d.name));
         }
-    }
-
-    /**
-     * Erstellt Basis-Dogs aus einer Kennel-Config
-     * Basis-Dogs werden in dogIds mit Präfix "base:" gespeichert (z.B. "base:RandomRecipesRetriever")
-     */
-    private createBaseDogsFromConfig(config: IKennelConfig): Array<IDog<unknown>> {
-        const dogs: Array<IDog<unknown>> = [];
-        
-        // Extrahiere Basis-Dogs aus dogIds (IDs die mit "base:" beginnen)
-        const baseDogIds = (config.dogIds || []).filter(id => id.startsWith(BASE_DOG_PREFIX));
-        
-        baseDogIds.forEach(baseDogId => {
-            // Entferne Präfix "base:" um den Typ-Namen zu erhalten
-            const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
-            const baseDog = this.availableBaseDogs.get(typeName);
-            if (baseDog) {
-                // Erstelle eine neue Instanz basierend auf der vorhandenen
-                // Da wir nur den Namen haben, müssen wir die Instanz aus der Map nehmen
-                // Für eine echte Instanz-Erstellung müssten wir die Klasse haben, aber
-                // wir können die vorhandene Instanz verwenden oder klonen
-                dogs.push(baseDog);
-            } else {
-                console.warn(`[KennelRun] Unbekannter Basis-Dog-Typ: ${typeName}`);
-            }
-        });
-        
-        return dogs;
-    }
-
-    /**
-     * Setzt die Basis-Dogs für diesen KennelRun
-     */
-    public setBaseDogs(dogs: Array<IDog<unknown>>): void {
-        this.baseDogs = dogs;
-    }
-
-    /**
-     * Gibt die aktuelle Kennel-Config zurück
-     */
-    public getConfig(): IKennelConfig | undefined {
-        return this.config;
     }
 
     /**
@@ -120,13 +75,15 @@ export class KennelRun {
 
         console.log(`[KennelRun.fillKennel] Gefunden: ${baseDogIds.length} Basis-Dogs, ${serializedDogIds.length} SerializedDogs in dogIds`);
 
-        // Erstelle Basis-Dogs aus dogIds
+        // Erstelle Basis-Dogs aus dogIds - IMMER neue Instanzen bei jedem fillKennel() (verhindert Caching)
         baseDogIds.forEach(baseDogId => {
             const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
-            const baseDog = this.availableBaseDogs.get(typeName);
-            if (baseDog) {
+            const BaseDogClass = this.baseDogClasses.get(typeName);
+            if (BaseDogClass) {
+                // Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
+                const baseDog = new BaseDogClass();
                 kennel.push(baseDog);
-                console.log(`[KennelRun.fillKennel] Erstellt Basis-Dog: ${typeName}`);
+                console.log(`[KennelRun.fillKennel] Erstellt neue Basis-Dog-Instanz: ${typeName}`);
             } else {
                 console.warn(`[KennelRun.fillKennel] Unbekannter Basis-Dog-Typ: ${typeName}`);
             }
@@ -134,28 +91,17 @@ export class KennelRun {
 
         // Lade SerializedDogs, wenn welche in dogIds angegeben sind
         if (serializedDogIds.length > 0) {
-            // Lade Versionen direkt vom Store
-            // - Spezifische Version-IDs werden genau geladen
-            // - Basis-IDs ohne Version werden als neueste Version geladen
-            const loadedVersions = await this.store.findLatestVersionsByType(SerializedDog.name, serializedDogIds);
-            
             const specificVersions = serializedDogIds.filter(id => this.isVersionedId(id)).length;
             const baseIds = serializedDogIds.length - specificVersions;
-            console.log(`[KennelRun.fillKennel] Lade ${loadedVersions.length} SerializedDogs (${specificVersions} spezifische Versionen, ${baseIds} Basis-IDs → neueste)`);
+            console.log(`[KennelRun.fillKennel] Lade SerializedDogs (${specificVersions} spezifische Versionen, ${baseIds} Basis-IDs → neueste)`);
             
-            // Erstelle SerializedDogs aus den geladenen Versionen
-            loadedVersions.forEach((sd: any) => {
-                try {
-                    const config = typeof sd.serializedDogConfig === 'string' 
-                        ? JSON.parse(sd.serializedDogConfig) 
-                        : sd.serializedDogConfig;
-                    const version = config.version || (sd.id.match(/-v(\d+)$/) ? parseInt(sd.id.match(/-v(\d+)$/)![1], 10) : 'unknown');
-                    console.log(`[KennelRun.fillKennel] Lade SerializedDog: ${sd.id}, version: ${version}`);
-                    const dog = new SerializedDog(config, sd.id);
-                    kennel.push(dog);
-                } catch (e) {
-                    console.error(`[KennelRun.fillKennel] Fehler beim Laden von SerializedDog ${sd.id}:`, e);
-                }
+            // Verwende Factory-Funktion, um SerializedDogs zu erstellen
+            const serializedDogs = await this.serializedDogFactory(serializedDogIds);
+            console.log(`[KennelRun.fillKennel] Factory erstellt ${serializedDogs.length} SerializedDogs`);
+            
+            serializedDogs.forEach(dog => {
+                kennel.push(dog);
+                console.log(`[KennelRun.fillKennel] SerializedDog hinzugefügt: ${dog.storageId}`);
             });
         }
         
@@ -248,15 +194,6 @@ export class KennelRun {
     public async run(): Promise<Waves> {
         const kennel = await this.fillKennel();
         return await this.runSeason(kennel);
-    }
-
-    /**
-     * Extrahiert die Basis-ID aus einer Version-ID
-     * z.B. "seed-serialized-1-v2" -> "seed-serialized-1"
-     */
-    private extractBaseId(id: string): string {
-        const match = id.match(/^(.+)-v\d+$/);
-        return match ? match[1] : id;
     }
 
     /**

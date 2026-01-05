@@ -434,6 +434,13 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
 
   <div id="serialized-dog-controls" style="margin: 10px 0; display: none; gap: 10px; flex-wrap: wrap;">
     <button id="save">Save</button>
+    <button id="move-to-first">⭐ An erste Stelle</button>
+    <button id="delete-from-kennel">Aus Kennel entfernen</button>
+  </div>
+
+  <div id="base-dog-controls" style="margin: 10px 0; display: none; gap: 10px; flex-wrap: wrap;">
+    <button id="move-to-first-base">⭐ An erste Stelle</button>
+    <button id="delete-from-kennel-base">Aus Kennel entfernen</button>
   </div>
 
   <div id="html-output" style="display: none;">
@@ -992,10 +999,28 @@ window.onload = ()=>{
         });
       }
       
-      // Delete Button im Edit-Panel
+      // Move to first Button (SerializedDog)
+      const moveToFirstBtn = document.getElementById("move-to-first");
+      if (moveToFirstBtn) {
+        moveToFirstBtn.addEventListener("click", moveNodeToFirst);
+      }
+      
+      // Move to first Button (BaseDog)
+      const moveToFirstBaseBtn = document.getElementById("move-to-first-base");
+      if (moveToFirstBaseBtn) {
+        moveToFirstBaseBtn.addEventListener("click", moveNodeToFirst);
+      }
+      
+      // Delete Button im Edit-Panel (SerializedDog)
       const deleteFromKennelBtn = document.getElementById("delete-from-kennel");
       if (deleteFromKennelBtn) {
         deleteFromKennelBtn.addEventListener("click", deleteNode);
+      }
+      
+      // Delete Button im Edit-Panel (BaseDog)
+      const deleteFromKennelBaseBtn = document.getElementById("delete-from-kennel-base");
+      if (deleteFromKennelBaseBtn) {
+        deleteFromKennelBaseBtn.addEventListener("click", deleteNode);
       }
       
       // Side Panel Close Button

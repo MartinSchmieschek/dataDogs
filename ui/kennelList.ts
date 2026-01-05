@@ -14,6 +14,10 @@ export class KennelList {
           </h3>
           <div style="color: #999; font-size: 12px; margin-bottom: 5px;">ID: ${kennel.id}</div>
           ${kennel.description ? `<div style="color: #ccc; margin-top: 5px;">${kennel.description}</div>` : ''}
+          <div style="margin-top: 10px; display: flex; gap: 10px;">
+            <a href="/${kennel.id}" style="padding: 6px 12px; background: #0066cc; color: #fff; text-decoration: none; border-radius: 3px; font-size: 12px;">Ausführen</a>
+            <a href="/edit/${kennel.id}" style="padding: 6px 12px; background: #666; color: #fff; text-decoration: none; border-radius: 3px; font-size: 12px;">Bearbeiten</a>
+          </div>
         </div>
       `).join('')
       : '<div style="color: #666; text-align: center; padding: 40px;">Keine Kennels gefunden</div>';

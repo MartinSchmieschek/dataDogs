@@ -39,6 +39,7 @@ export function buildNodeSelection(): string {
   
   // Zeige/Verstecke SerializedDog-spezifische UI-Elemente
   const controlsDiv = document.getElementById("serialized-dog-controls");
+  const baseControlsDiv = document.getElementById("base-dog-controls");
   const versionDiv = document.getElementById("serialized-dog-version");
   const parentsDiv = document.getElementById("serialized-dog-parents");
   const configDiv = document.getElementById("serialized-dog-config");
@@ -50,6 +51,7 @@ export function buildNodeSelection(): string {
   if (isSerializedDog) {
     // Zeige Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "flex";
+    if (baseControlsDiv) baseControlsDiv.style.display = "none";
     if (versionDiv) versionDiv.style.display = "block";
     if (parentsDiv) parentsDiv.style.display = "block";
     if (configDiv) configDiv.style.display = "block";
@@ -78,8 +80,9 @@ export function buildNodeSelection(): string {
     // Parents-Auswahl aktualisieren
     updateParentsSelection(n);
   } else if (isBaseDog) {
-    // Für BaseDogs: Verstecke SerializedDog-spezifische Controls
+    // Für BaseDogs: Zeige BaseDog-Controls, verstecke SerializedDog-spezifische Controls
     if (controlsDiv) controlsDiv.style.display = "none";
+    if (baseControlsDiv) baseControlsDiv.style.display = "flex";
     if (versionDiv) versionDiv.style.display = "none";
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
@@ -96,6 +99,7 @@ export function buildNodeSelection(): string {
   } else {
     // Verstecke Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "none";
+    if (baseControlsDiv) baseControlsDiv.style.display = "none";
     if (versionDiv) versionDiv.style.display = "none";
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";

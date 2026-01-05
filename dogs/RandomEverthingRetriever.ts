@@ -1,9 +1,7 @@
 import { Dog } from "../core/enities/abstractHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
-import { InterfaceSniper } from "../InterfaceSniper";
-import { IJustAll } from "./interfaceDump/IJustAll.interface";
 
-export class RandomEveryThingRetriever extends Dog<IJustAll> {
+export class RandomEveryThingRetriever extends Dog<any> {
 
     get required(){
         return []
@@ -17,7 +15,6 @@ export class RandomEveryThingRetriever extends Dog<IJustAll> {
         return this.request(season)
     }
 
-    @InterfaceSniper("IJustAll", "../dogs/interfaceDump/IJustAll.interface.ts")
     public async request(season: IHuntingSeason): Promise<any> {
 
         let all: any = {};

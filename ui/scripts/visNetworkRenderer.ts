@@ -88,9 +88,33 @@ function collectNodeData() {
       
       // nodeName, textLength, baseSize, connectionSize und nodeSize wurden bereits oben berechnet
       
+      // Prüfe ob diese Node die erste in der dogIds-Liste ist
+      let isFirstDog = false;
+      try {
+        const kennelConfigScript = document.getElementById('kennel-config-data');
+        if (kennelConfigScript && kennelConfigScript.textContent) {
+          const kennelConfig = JSON.parse(kennelConfigScript.textContent);
+          const dogIds = kennelConfig?.dogIds || [];
+          if (dogIds.length > 0) {
+            const firstDogId = dogIds[0];
+            // Prüfe ob node.id mit firstDogId übereinstimmt (mit oder ohne base: Präfix, mit oder ohne Version)
+            if (firstDogId.startsWith('base:')) {
+              const baseName = firstDogId.substring(5); // Entferne "base:"
+              isFirstDog = nodeName === baseName;
+            } else {
+              const nodeBaseId = node.id.replace(/-v\\d+$/, '');
+              const firstBaseId = firstDogId.replace(/-v\\d+$/, '');
+              isFirstDog = node.id === firstDogId || nodeBaseId === firstBaseId;
+            }
+          }
+        }
+      } catch (e) {
+        // Ignoriere Fehler beim Laden der KennelConfig
+      }
+      
       nodesArrayGlobal.push({
         id: node.id,
-        label: '🐕 ' + nodeName,
+        label: (isFirstDog ? '⭐ ' : '') + '🐕 ' + nodeName,
         shape: 'box',
         // Skaliere Node-Größe basierend auf Textlänge und Anzahl der Verbindungen
         value: nodeSize,

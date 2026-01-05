@@ -60,7 +60,8 @@ export function buildKennelConfigEditor(): string {
         </div>
       </div>
       <div>
-        <label style="display: block; margin-bottom: 5px;">Ausgewählte SerializedDogs:</label>
+        <label style="display: block; margin-bottom: 5px;">Ausgewählte Hunde (Reihenfolge = Ausführungsreihenfolge):</label>
+        <p style="color: #999; font-size: 11px; margin-bottom: 5px;">Der erste Hund in der Liste liefert die Ergebnisse über /:kennelId</p>
         <div id="kennel-config-selected-dogs" style="max-height: 300px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000;">
           <div style="color: #666; text-align: center; padding: 20px;">Keine ausgewählt</div>
         </div>

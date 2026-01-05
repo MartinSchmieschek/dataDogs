@@ -335,7 +335,8 @@ export class StartupTest {
             }
             
             // Prüfe ob alle BaseDogs eine name-Property haben
-            for (const [name, dog] of baseDogsMap.entries()) {
+            for (const [name, DogClass] of baseDogsMap.entries()) {
+                const dog = new DogClass();
                 if (!dog.name || dog.name !== name) {
                     throw new Error(`BaseDog ${name} hat keine korrekte name-Property`);
                 }
@@ -355,7 +356,7 @@ export class StartupTest {
         try {
             const { BASE_DOG_PREFIX } = await import('./core/KennelRun');
             
-            for (const [name, dog] of baseDogsMap.entries()) {
+            for (const [name, DogClass] of baseDogsMap.entries()) {
                 const expectedId = BASE_DOG_PREFIX + name;
                 if (!expectedId.startsWith(BASE_DOG_PREFIX)) {
                     throw new Error(`BaseDog ${name} hat kein korrektes Präfix: ${expectedId}`);

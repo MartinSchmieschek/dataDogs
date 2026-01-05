@@ -1,11 +1,9 @@
 import { Dog } from "../core/enities/abstractHuntingDog";
 import { IHuntingDog } from "../core/enities/IHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
-import { InterfaceSniper } from "../InterfaceSniper";
-import { IyoutubeSearchResults } from "../sniped/IyoutubeSearchResults.interface";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
-export class FoodPornRetriever extends Dog<IyoutubeSearchResults>{
+export class FoodPornRetriever extends Dog<unknown>{
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
         return []
     }
@@ -16,14 +14,13 @@ export class FoodPornRetriever extends Dog<IyoutubeSearchResults>{
         return FoodPornRetriever.name
     }
 
-    protected yieldCollectorFactory: (season:IHuntingSeason) => Promise<IyoutubeSearchResults> = (season:IHuntingSeason) => {
+    protected yieldCollectorFactory: (season:IHuntingSeason) => Promise<unknown> = (season:IHuntingSeason) => {
 
             return this.request(season)
 
     }
 
-    @InterfaceSniper("IyoutubeSearchResults")
-    public async request(season:IHuntingSeason): Promise<IyoutubeSearchResults> {
+    public async request(season:IHuntingSeason): Promise<unknown> {
 
         let theDish = season.exhausted.find(item => item instanceof RandomRecipesRetriever)
         if (theDish && theDish.collected && !(theDish.collected instanceof Error)){

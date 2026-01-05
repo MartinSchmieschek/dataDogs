@@ -35,6 +35,131 @@ export function buildNodeCrud(): string {
   }
 }
 
+async function moveNodeToFirst() {
+  // Verwende selectedNodeElement statt DOM-Query (funktioniert mit vis.js)
+  const activeNode = (typeof selectedNodeElement !== 'undefined' && selectedNodeElement) ? selectedNodeElement : null;
+  if (!activeNode) {
+    alert("Keine Node ausgewählt");
+    return;
+  }
+
+  const nodeId = activeNode._nodeId || (activeNode.dataset ? activeNode.dataset.id : null);
+  if (!nodeId) {
+    alert("Node-ID nicht gefunden");
+    return;
+  }
+
+  // Prüfe ob SerializedDog (hat _config) oder Basis-Dog
+  const isSerializedDog = !!activeNode._config;
+  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
+  const nodeName = activeNode._json?.name || nodeId;
+  const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
+  
+  if (!isSerializedDog && !isBaseDog) {
+    alert("Diese Node kann nicht verschoben werden (nur SerializedDogs oder Basis-Dogs)");
+    return;
+  }
+
+  try {
+    // Lade KennelConfig
+    let kennelConfig = null;
+    let kennelId = null;
+    
+    try {
+      const kennelConfigScript = document.getElementById('kennel-config-data');
+      if (kennelConfigScript && kennelConfigScript.textContent) {
+        kennelConfig = JSON.parse(kennelConfigScript.textContent);
+        kennelId = kennelConfig?.id || null;
+      }
+    } catch (e) {
+      console.warn('[MoveToFirst] Fehler beim Laden der KennelConfig aus HTML:', e);
+    }
+    
+    if (!kennelId) {
+      const pathParts = window.location.pathname.split('/').filter(p => p);
+      if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+        kennelId = pathParts[0];
+      }
+    }
+    
+    if (!kennelId) {
+      alert("KennelConfig nicht gefunden");
+      return;
+    }
+    
+    if (!kennelConfig || kennelConfig.id !== kennelId) {
+      const getResponse = await fetch(\`/api/kennels/\${kennelId}\`);
+      if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
+      
+      const getResult = await getResponse.json();
+      if (!getResult.ok || !getResult.data) {
+        throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+      }
+      
+      kennelConfig = getResult.data;
+    }
+    
+    const dogIds = kennelConfig.dogIds || [];
+    
+    // Finde die ID in dogIds
+    let targetId = null;
+    if (isBaseDog) {
+      targetId = 'base:' + nodeName;
+    } else {
+      // Für SerializedDogs: finde die passende ID (kann versioniert sein)
+      const nodeBaseId = nodeId.replace(/-v\\d+$/, '');
+      targetId = dogIds.find(id => {
+        if (id.startsWith('base:')) return false;
+        const idBaseId = id.replace(/-v\\d+$/, '');
+        return id === nodeId || idBaseId === nodeBaseId;
+      });
+    }
+    
+    if (!targetId) {
+      alert("Node ist nicht in der KennelConfig");
+      return;
+    }
+    
+    // Entferne aus aktueller Position und füge am Anfang hinzu
+    const filteredDogIds = dogIds.filter(id => id !== targetId);
+    filteredDogIds.unshift(targetId);
+    
+    const baseId = kennelConfig.id ? kennelConfig.id.replace(/-v\\d+$/, '') : kennelId.replace(/-v\\d+$/, '');
+    
+    const updateData = {
+      id: baseId,
+      name: kennelConfig.name,
+      description: kennelConfig.description,
+      dogIds: filteredDogIds
+    };
+    
+    const putResponse = await fetch(\`/api/kennels/\${baseId}\`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!putResponse.ok) {
+      throw new Error('HTTP ' + putResponse.status);
+    }
+
+    const putResult = await putResponse.json();
+    
+    if (putResult.ok) {
+      alert("Node an erste Stelle verschoben!");
+      // Lade Seite neu um Änderungen zu sehen
+      const savedId = putResult.id || putResult.data?.id;
+      const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : baseId;
+      window.location.href = \`/edit/\${finalBaseId}\`;
+    } else {
+      throw new Error(putResult.error || 'Fehler beim Speichern');
+    }
+  } catch (e) {
+    console.error("MoveToFirst error:", e);
+    alert("Fehler beim Verschieben: " + e.message);
+  }
+}
+
 async function deleteNode() {
   // Verwende selectedNodeElement statt DOM-Query (funktioniert mit vis.js)
   const activeNode = (typeof selectedNodeElement !== 'undefined' && selectedNodeElement) ? selectedNodeElement : null;

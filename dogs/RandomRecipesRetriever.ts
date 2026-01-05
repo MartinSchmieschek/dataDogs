@@ -1,7 +1,6 @@
 import { Dog } from "../core/enities/abstractHuntingDog";
 import { IHuntingDog } from "../core/enities/IHuntingDog";
 import { IHuntingSeason } from "../core/enities/IHuntingSeason";
-import { InterfaceSniper } from "../InterfaceSniper";
 
 export interface MockData {
 
@@ -36,7 +35,6 @@ export class RandomRecipesRetriever extends Dog<MockData>{
         return this.request(season)
     }
 
-    @InterfaceSniper("IRecipe", "IRecipes.interface.ts")
     public async request(season: IHuntingSeason): Promise<MockData> {
       const response = await fetch("https://dummyjson.com/recipes");
       const all: { recipes: MockData[] } = await response.json();

@@ -80,15 +80,15 @@ function renderKennelConfig() {
   const idInput = document.getElementById('kennel-config-id');
   const nameInput = document.getElementById('kennel-config-name');
   const descInput = document.getElementById('kennel-config-description');
-  
   if (idInput) idInput.value = currentKennelConfig.id || '';
   if (nameInput) nameInput.value = currentKennelConfig.name || '';
   if (descInput) descInput.value = currentKennelConfig.description || '';
   
-  // Setze Base Dog Types
-  const baseDogTypes = currentKennelConfig.baseDogTypes || [];
+  // Setze Base Dog Types (aus dogIds mit base:-Präfix)
+  const baseDogIds = (currentKennelConfig.dogIds || []).filter(id => id.startsWith('base:'));
   document.querySelectorAll('.base-dog-type').forEach(checkbox => {
-    checkbox.checked = baseDogTypes.includes(checkbox.value);
+    const baseDogId = 'base:' + checkbox.value;
+    checkbox.checked = baseDogIds.includes(baseDogId);
   });
   
   // Render Selected Dogs
@@ -134,19 +134,44 @@ function renderSelectedDogs() {
     return;
   }
   
-  container.innerHTML = selectedIds.map(id => {
+  container.innerHTML = selectedIds.map((id, index) => {
     const dog = availableSerializedDogs.find(d => d.id === id || d.id.replace(/-v\\d+$/, '') === id.replace(/-v\\d+$/, ''));
-    return \`
-      <div style="padding: 8px; margin-bottom: 5px; border: 1px solid #333; background: #000; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <div style="font-weight: bold;">\${id}</div>
-          <div style="font-size: 12px; color: #999;">\${dog ? 'Version: ' + (dog.version || 'unknown') : ''}</div>
-        </div>
-        <button onclick="removeDogFromSelection('\${id}')" style="padding: 4px 8px; background: #cc0000; color: #fff; border: none; cursor: pointer;">×</button>
-      </div>
-    \`;
+    const isFirst = index === 0;
+    const borderColor = isFirst ? '#00cc00' : '#333';
+    const bgColor = isFirst ? '#001a00' : '#000';
+    const firstStar = isFirst ? '<span style="color: #00cc00;">⭐</span>' : '';
+    const firstLabel = isFirst ? '<span style="color: #00cc00; font-size: 11px;">(Erster - liefert Ergebnisse)</span>' : '';
+    const firstButton = !isFirst ? '<button onclick="moveDogToFirst(' + index + ')" style="padding: 4px 8px; background: #00cc00; color: #fff; border: none; cursor: pointer;" title="An erste Stelle">⭐</button>' : '';
+    const versionText = dog ? 'Version: ' + (dog.version || 'unknown') : '';
+    const escapedId = id.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    
+    return '<div style="padding: 8px; margin-bottom: 5px; border: 1px solid ' + borderColor + '; background: ' + bgColor + '; display: flex; justify-content: space-between; align-items: center;">' +
+      '<div style="flex: 1;">' +
+        '<div style="font-weight: bold; display: flex; align-items: center; gap: 5px;">' +
+          firstStar +
+          '<span>' + id + '</span>' +
+          firstLabel +
+        '</div>' +
+        '<div style="font-size: 12px; color: #999;">' + versionText + '</div>' +
+      '</div>' +
+      '<div style="display: flex; gap: 5px; align-items: center;">' +
+        firstButton +
+        '<button onclick="removeDogFromSelection(\\'' + escapedId + '\\')" style="padding: 4px 8px; background: #cc0000; color: #fff; border: none; cursor: pointer;" title="Entfernen">×</button>' +
+      '</div>' +
+    '</div>';
   }).join('');
 }
+
+window.moveDogToFirst = function(index) {
+  if (!currentKennelConfig || !currentKennelConfig.dogIds || index === 0) return;
+  
+  const dogIds = currentKennelConfig.dogIds;
+  const dog = dogIds[index];
+  dogIds.splice(index, 1);
+  dogIds.unshift(dog);
+  
+  renderSelectedDogs();
+};
 
 window.toggleDogSelection = function(dogId) {
   if (!currentKennelConfig) return;
@@ -193,12 +218,35 @@ async function saveKennelConfig() {
   const nameInput = document.getElementById('kennel-config-name');
   const descInput = document.getElementById('kennel-config-description');
   
+  // Verwende die aktuelle Reihenfolge aus currentKennelConfig.dogIds
+  // Die Reihenfolge wurde vom Benutzer im Editor eingestellt (mit Up/Down Buttons)
+  let allDogIds = [...(currentKennelConfig.dogIds || [])];
+  
+  // Prüfe welche BaseDogs ausgewählt sind
+  const selectedBaseDogTypes = Array.from(document.querySelectorAll('.base-dog-type:checked')).map(cb => cb.value);
+  const baseDogIds = selectedBaseDogTypes.map(type => 'base:' + type);
+  
+  // Entferne BaseDogs, die nicht mehr ausgewählt sind (behalte Reihenfolge)
+  allDogIds = allDogIds.filter(id => {
+    if (id.startsWith('base:')) {
+      return baseDogIds.includes(id);
+    }
+    return true; // SerializedDogs behalten
+  });
+  
+  // Füge neue BaseDogs am Ende hinzu, die noch nicht in der Liste sind
+  // (nur wenn sie wirklich neu sind, nicht wenn sie nur an anderer Position waren)
+  baseDogIds.forEach(baseDogId => {
+    if (!allDogIds.includes(baseDogId)) {
+      allDogIds.push(baseDogId);
+    }
+  });
+  
   const config = {
     id: idInput?.value || currentKennelConfig.id,
     name: nameInput?.value || '',
     description: descInput?.value || '',
-    dogIds: currentKennelConfig.dogIds || [],
-    baseDogTypes: Array.from(document.querySelectorAll('.base-dog-type:checked')).map(cb => cb.value)
+    dogIds: allDogIds
   };
   
   try {
@@ -252,6 +300,7 @@ if (typeof document !== 'undefined') {
         editor.style.display = 'none';
       });
     }
+    
     
     // Lade verfügbare SerializedDogs beim Öffnen
     if (editor && editor.style.display !== 'none') {
