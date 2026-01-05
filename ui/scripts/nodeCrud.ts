@@ -322,7 +322,7 @@ async function deleteNode() {
       alert(successMessage);
       
       // Lade neueste Version der KennelConfig und lade Seite neu
-      window.location.href = \`/\${baseId}\`;
+      window.location.href = \`/edit/\${baseId}\`;
     } else {
       throw new Error(putResult.error || 'Fehler beim Speichern');
     }

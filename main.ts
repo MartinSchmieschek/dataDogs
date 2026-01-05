@@ -14,6 +14,7 @@ import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRoute
 import { KennelList } from './ui/kennelList';
 import { KennelEditor } from './ui/kennelEditor';
 import { StartupTest } from './StartupTest';
+import { runSeeds } from './seed';
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
 start().catch(e => {
@@ -32,31 +33,16 @@ async function start() {
     if ((nodesStore as any).init) await (nodesStore as any).init();
     if ((kennelsStore as any).init) await (kennelsStore as any).init();
 
-    // Seed: Ensure at least one SerializedDog exists in DB
-    const nodeSeeds = await nodesStore.findByType(SerializedDog.name);
-    if (!nodeSeeds || nodeSeeds.length === 0) {
-        const seedCfg = {
-            theRun: `
-                const response = await fetch("https://dummyjson.com/recipes");
-                const json = await response.json();
-                const retrive = RandomRecipesRetriever.difficulty;
-                return retrive;
-                `,
-            version: 1,
-        } as ISerializedDogConfig;
+    // Run Seeds
+    await runSeeds(nodesStore, kennelsStore);
 
-        await nodesStore.save({ id: 'seed-serialized-1-v1', type: SerializedDog.name, serializedDogConfig: seedCfg });
-        console.log('✅ Seeded initial SerializedDog into DB');
-    }
-
-    // Seed: Ensure at least one Kennel-Config exists in DB
     // Liste aller verfügbaren Basis-Dog-Klassen (für Instanziierung bei jedem Run)
     const allBaseDogClasses = [
+        TalkingDog,
         RandomRecipesRetriever,
         CountryFlagBlackLab,
         DishFlagBlackLab,
-        RandomEveryThingRetriever,
-        TalkingDog
+        RandomEveryThingRetriever
     ];
     
     // Erstelle Instanzen für die Kennel-Liste (nur für Anzeige)
@@ -71,25 +57,6 @@ async function start() {
         const instance = new DogClass();
         baseDogsMap.set(instance.name, DogClass);
     });
-    
-    const kennelSeeds = await kennelsStore.findByType('KennelConfig');
-    if (!kennelSeeds || kennelSeeds.length === 0) {
-        const defaultKennelConfig: IKennelConfig = {
-            id: 'default-kennel',
-            name: 'Default Kennel',
-            description: 'Standard-Kennel mit allen verfügbaren Dogs',
-            dogIds: allBaseDogs.map(dog => BASE_DOG_PREFIX + dog.name),
-            createdAt: new Date(),
-            updatedAt: new Date()
-        };
-
-        await kennelsStore.save({ 
-            id: defaultKennelConfig.id, 
-            type: 'KennelConfig', 
-            serializedDogConfig: JSON.stringify(defaultKennelConfig) 
-        });
-        console.log('✅ Seeded initial Kennel-Config into DB');
-    }
 
     const app = express();
     const port = 3000;

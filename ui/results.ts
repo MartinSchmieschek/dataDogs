@@ -688,7 +688,7 @@ async function handleDogSelection(selectedValue) {
     if (putResult.ok) {
       const savedId = putResult.id || putResult.data?.id;
       const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : baseId;
-      window.location.href = '/' + finalBaseId;
+      window.location.href = '/edit/' + finalBaseId;
     } else {
       throw new Error(putResult.error || 'Fehler beim Speichern');
     }
@@ -979,7 +979,7 @@ window.onload = ()=>{
           if (putResult.ok) {
             const savedId = putResult.id || putResult.data?.id;
             const finalBaseId = savedId ? savedId.replace(/-v\\d+$/, '') : baseId;
-            window.location.href = '/' + finalBaseId;
+            window.location.href = '/edit/' + finalBaseId;
           } else {
             throw new Error(putResult.error || 'Fehler beim Speichern');
           }

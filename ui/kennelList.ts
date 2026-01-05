@@ -145,7 +145,7 @@ export class KennelList {
             
             const result = await response.json();
             if (result.ok) {
-              window.location.href = '/' + data.id;
+              window.location.href = '/edit/' + data.id;
             } else {
               throw new Error(result.error || 'Fehler beim Erstellen');
             }
@@ -286,7 +286,7 @@ export class KennelList {
         
         const result = await response.json();
         if (result.ok) {
-          window.location.href = '/kennel/' + data.id;
+          window.location.href = '/edit/' + data.id;
         } else {
           throw new Error(result.error || 'Fehler beim Erstellen');
         }

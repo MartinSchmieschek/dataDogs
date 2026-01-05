@@ -517,7 +517,7 @@ async function updateVersionInKennelConfig(baseId, newVersionId) {
       alert('Version aktualisiert!');
       
       // Lade neueste Version der KennelConfig und lade Seite neu
-      window.location.href = \`/\${finalBaseId}\`;
+      window.location.href = \`/edit/\${finalBaseId}\`;
     } else {
       throw new Error(putResult.error || 'Fehler beim Speichern');
     }
