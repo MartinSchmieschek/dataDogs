@@ -8,7 +8,7 @@ import express from "express";
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { ISerializedDogConfig, SerializedDog } from './dogs/SerializedDog';
 import { Results, Waves } from './ui/results';
-import { KennelRun, IKennelConfig } from './core/KennelRun';
+import { KennelRun, IKennelConfig } from './KennelRun';
 import { Controller } from './api/Controller';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
 import { KennelList } from './ui/kennelList';

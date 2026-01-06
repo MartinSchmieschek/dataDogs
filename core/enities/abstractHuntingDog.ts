@@ -5,7 +5,6 @@ import { IHuntingSeason } from "./IHuntingSeason";
 
 export abstract class Dog<Y> implements IHuntingDog<Y>{
 
-    
     get collected(): Y|undefined{
         return this.result
     }
@@ -147,6 +146,117 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
 
     protected abstract yieldCollectorFactory:(season:IHuntingSeason) => Promise<Y>
 
+    /**
+     * Erstellt einen Proxy um season, der alle Property-Zugriffe auf collected von exhausted dogs trackt
+     */
+    private createTrackedSeason(season: IHuntingSeason): IHuntingSeason {
+        const readerInstance = this; // Die Instance, die gerade liest
+        const readerName = readerInstance.name;
+        const waveIndex = season.currentWaveIndex ?? season.wave.length; // Fallback auf wave.length falls currentWaveIndex nicht gesetzt
+        
+        // Hilfsfunktion: Erstellt einen rekursiven Proxy für verschachtelte Properties
+        const createTrackedObject = (obj: any, sourceInstance: IHuntingDog<unknown>, propertyPath: string = ''): any => {
+            if (obj === null || obj === undefined) return obj;
+            if (typeof obj !== 'object') return obj; // Primitives nicht tracken
+            
+            return new Proxy(obj, {
+                get(target, prop) {
+                    const propName = String(prop);
+                    const fullPropertyPath = propertyPath ? `${propertyPath}.${propName}` : propName;
+                    
+                    // Füge Tracking-Eintrag hinzu: Wave-Index, Reader-Instance, Source-Instance, Property-Pfad
+                    season.readTracking.push({
+                        waveIndex: waveIndex,
+                        readerInstance: readerInstance,
+                        sourceInstance: sourceInstance,
+                        propertyPath: fullPropertyPath
+                    });
+                    
+                    const value = (target as any)[prop];
+                    
+                    // Wenn Wert ein Objekt ist, wrappe es rekursiv
+                    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+                        return createTrackedObject(value, sourceInstance, fullPropertyPath);
+                    }
+                    
+                    return value;
+                }
+            });
+        };
+        
+        // Hilfsfunktion: Erstellt einen Proxy-Dog mit tracked collected
+        const createTrackedDog = (sourceInstance: IHuntingDog<unknown>) => {
+            return new Proxy(sourceInstance, {
+                get(sourceInstanceTarget, dogProp) {
+                    if (dogProp === 'collected') {
+                        const collected = sourceInstanceTarget.collected;
+                        if (collected === undefined) return undefined;
+                        
+                        const sourceName = sourceInstanceTarget.name;
+                        const sourceId = (sourceInstanceTarget as any).storageId || sourceName;
+                        
+                        // Proxy um collected-Objekt, trackt alle Property-Zugriffe rekursiv
+                        const trackedCollected = createTrackedObject(collected, sourceInstanceTarget, '');
+                        
+                        console.log(`[TRACK] ${readerName} greift auf collected von ${sourceName} (${sourceId}) zu`);
+                        return trackedCollected;
+                    }
+                    return (sourceInstanceTarget as any)[dogProp];
+                }
+            });
+        };
+        
+        // Proxy um season.exhausted Array
+        const trackedExhausted = new Proxy(season.exhausted, {
+            get(target, prop) {
+                // Für numerische Indizes (Array-Zugriff)
+                if (typeof prop === 'string' && !isNaN(Number(prop))) {
+                    const sourceInstance = target[Number(prop)];
+                    if (!sourceInstance) return undefined;
+                    return createTrackedDog(sourceInstance);
+                }
+                
+                // Für Array-Methoden (find, forEach, map, etc.)
+                const value = (target as any)[prop];
+                if (typeof value === 'function') {
+                    return function(...args: any[]) {
+                        const result = value.apply(target, args);
+                        
+                        // Wenn Ergebnis ein Array von Dogs ist (z.B. filter)
+                        if (Array.isArray(result)) {
+                            return result.map((item: any) => {
+                                // Prüfe ob es ein Dog ist
+                                if (item && typeof item === 'object' && 'name' in item && 'collected' in item) {
+                                    return createTrackedDog(item);
+                                }
+                                return item;
+                            });
+                        }
+                        
+                        // Wenn Ergebnis ein einzelner Dog ist (z.B. find)
+                        if (result && typeof result === 'object' && 'name' in result && 'collected' in result) {
+                            return createTrackedDog(result);
+                        }
+                        
+                        return result;
+                    };
+                }
+                
+                return value;
+            }
+        });
+        
+        // Proxy um season, der exhausted überschreibt
+        return new Proxy(season, {
+            get(target, prop) {
+                if (prop === 'exhausted') {
+                    return trackedExhausted;
+                }
+                return (target as any)[prop];
+            }
+        });
+    }
+
     private result:Y|undefined = undefined
     async collectYield(season:IHuntingSeason): Promise<Y> {
         if (this.result){
@@ -156,7 +266,9 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
                     return this.result
         } else {
             try {
-                this.result = await this.yieldCollectorFactory(season)
+                // wrap season here and the yield of dogs into a proxy to track the data reading
+                const trackedSeason = this.createTrackedSeason(season);
+                this.result = await this.yieldCollectorFactory(trackedSeason)
                 return this.result
             } catch(e){
                 throw e

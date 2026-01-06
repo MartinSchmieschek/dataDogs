@@ -1,6 +1,6 @@
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
-import { IKennelConfig } from '../core/KennelRun';
+import { IKennelConfig } from '../KennelRun';
 
 /**
  * Input für Create-Operation

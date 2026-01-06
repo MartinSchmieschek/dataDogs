@@ -1,6 +1,6 @@
 import { IStore } from './store/IStore';
 import { SerializedDog, ISerializedDogConfig } from './dogs/SerializedDog';
-import { IKennelConfig } from './core/KennelRun';
+import { IKennelConfig } from './KennelRun';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { RandomRecipesRetriever } from './dogs/RandomRecipesRetriever';
 import { CountryFlagBlackLab } from './dogs/CountryFlagBlackLab';

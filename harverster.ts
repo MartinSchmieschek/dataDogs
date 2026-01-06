@@ -1,7 +1,7 @@
 
-import { Dog } from "./enities/abstractHuntingDog";
-import { IHuntingDog } from "./enities/IHuntingDog";
-import { IHuntingSeason } from "./enities/IHuntingSeason";
+import { Dog } from "./core/enities/abstractHuntingDog";
+import { IHuntingDog } from "./core/enities/IHuntingDog";
+import { IHuntingSeason } from "./core/enities/IHuntingSeason";
 
 
 
@@ -29,7 +29,9 @@ export class SeasonRunner {
             withBeesInThePants: this.dogsWithBeesInthePants,
             maxRuns: this.maxWaves,
             runIndex: 0,
-            wave:[]
+            wave:[],
+            readTracking: [],
+            currentWaveIndex: 0
         }
     }
 
@@ -68,6 +70,10 @@ export class SeasonRunner {
     }
 
     private async letOutThePack (pack: IHuntingDog<unknown>[], season: IHuntingSeason):Promise<void> {
+        // Setze aktuellen Wave-Index basierend auf der Anzahl der bereits vorhandenen Waves
+        const currentWaveIndex = season.wave.length;
+        season.currentWaveIndex = currentWaveIndex;
+        
         console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
         await Promise.all(pack.map(dog => this.letOut(dog, season)));
 

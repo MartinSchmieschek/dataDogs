@@ -1,6 +1,6 @@
 import { IStore } from './store/IStore';
 import { SerializedDog, ISerializedDogConfig } from './dogs/SerializedDog';
-import { IKennelConfig } from './core/KennelRun';
+import { IKennelConfig } from './KennelRun';
 import { Controller } from './api/Controller';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 
@@ -354,7 +354,7 @@ export class StartupTest {
     private async testBaseDogsFormat(baseDogsMap: Map<string, any>): Promise<void> {
         const testName = 'BaseDogs: Format für API';
         try {
-            const { BASE_DOG_PREFIX } = await import('./core/KennelRun');
+            const { BASE_DOG_PREFIX } = await import('./KennelRun');
             
             for (const [name, DogClass] of baseDogsMap.entries()) {
                 const expectedId = BASE_DOG_PREFIX + name;

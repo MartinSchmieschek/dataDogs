@@ -1,8 +1,8 @@
-import { IHuntingDog as IDog } from './enities/IHuntingDog';
-import { SerializedDog } from '../dogs/SerializedDog';
+import { IHuntingDog as IDog } from './core/enities/IHuntingDog';
+import { SerializedDog } from './dogs/SerializedDog';
 import { SeasonRunner } from './harverster';
-import { Waves, NodeEntry } from '../ui/results';
-import { TypeDefBuilder } from '../ui/TypeDefBuilder';
+import { Waves, NodeEntry } from './ui/results';
+import { TypeDefBuilder } from './ui/TypeDefBuilder';
 
 /**
  * Präfix für Basis-Dog-IDs in dogIds
