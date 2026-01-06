@@ -6,6 +6,13 @@ import * as saveHandler from "./scripts/saveHandler";
 import * as nodeCrud from "./scripts/nodeCrud";
 import { JsStringBuilder } from "./utils/jsStringBuilder";
 
+export type ReadTrackingEntry = {
+  waveIndex: number;
+  readerInstanceName: string;
+  sourceInstanceName: string;
+  propertyPath: string;
+};
+
 export type NodeEntry = {
   id: string;
   name: string;
@@ -21,6 +28,10 @@ export type NodeEntry = {
     parentsRequired?: string[];
     parentsOptional?: string[];
   };
+  // Tracking: Welche Properties von welchen anderen Instances gelesen wurden
+  readFrom?: ReadTrackingEntry[];
+  // Tracking: Welche Properties von dieser Instance von anderen Instances gelesen wurden
+  readBy?: ReadTrackingEntry[];
 };
 
 export type Waves = NodeEntry[][];
@@ -458,6 +469,20 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
   <div id="serialized-dog-context" style="display: none;">
     <h3>VM Context</h3>
     <div id="context-editor" style="height: 300px; border: 1px solid #333;"></div>
+  </div>
+
+  <div id="read-tracking" style="display: none; margin: 20px 0;">
+    <h3>Property-Zugriffe</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px;">
+      <div>
+        <label><strong>Liest von:</strong></label>
+        <div id="read-from" style="max-height: 200px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000; font-size: 12px;"></div>
+      </div>
+      <div>
+        <label><strong>Wird gelesen von:</strong></label>
+        <div id="read-by" style="max-height: 200px; overflow-y: auto; border: 1px solid #333; padding: 10px; background: #000; font-size: 12px;"></div>
+      </div>
+    </div>
   </div>
 
   <div id="result-viewer" style="display: block;">

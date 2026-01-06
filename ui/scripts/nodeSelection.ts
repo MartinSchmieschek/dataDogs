@@ -47,6 +47,48 @@ export function buildNodeSelection(): string {
   const tsDiv = document.getElementById("serialized-dog-ts");
   const htmlDiv = document.getElementById("html-output");
   const htmlRender = document.getElementById("html-render");
+  const readTrackingDiv = document.getElementById("read-tracking");
+  const readFromDiv = document.getElementById("read-from");
+  const readByDiv = document.getElementById("read-by");
+  
+  // Update readTracking-Anzeige
+  const nodeData = nodeDataMap.get(nodeId);
+  if (readTrackingDiv && readFromDiv && readByDiv) {
+    const readFrom = nodeData?.readFrom || [];
+    const readBy = nodeData?.readBy || [];
+    
+    if (readFrom.length > 0 || readBy.length > 0) {
+      readTrackingDiv.style.display = "block";
+      
+      // Zeige readFrom (liest von anderen)
+      if (readFrom.length > 0) {
+        const readFromHtml = readFrom.map(entry => {
+          return \`<div style="margin-bottom: 8px; padding: 6px; background: #1a1a1a; border-left: 3px solid #4a9eff;">
+            <div style="color: #4a9eff; font-weight: bold;">Welle \${entry.waveIndex}: \${entry.sourceInstanceName}</div>
+            <div style="color: #888; font-size: 11px; margin-top: 4px;">\${entry.propertyPath}</div>
+          </div>\`;
+        }).join('');
+        readFromDiv.innerHTML = readFromHtml;
+      } else {
+        readFromDiv.innerHTML = '<div style="color: #888; font-style: italic;">Keine</div>';
+      }
+      
+      // Zeige readBy (wird von anderen gelesen)
+      if (readBy.length > 0) {
+        const readByHtml = readBy.map(entry => {
+          return \`<div style="margin-bottom: 8px; padding: 6px; background: #1a1a1a; border-left: 3px solid #ff6b6b;">
+            <div style="color: #ff6b6b; font-weight: bold;">Welle \${entry.waveIndex}: \${entry.readerInstanceName}</div>
+            <div style="color: #888; font-size: 11px; margin-top: 4px;">\${entry.propertyPath}</div>
+          </div>\`;
+        }).join('');
+        readByDiv.innerHTML = readByHtml;
+      } else {
+        readByDiv.innerHTML = '<div style="color: #888; font-style: italic;">Keine</div>';
+      }
+    } else {
+      readTrackingDiv.style.display = "none";
+    }
+  }
   
   if (isSerializedDog) {
     // Zeige Controls, Parents, Config, Context und TypeScript Editor

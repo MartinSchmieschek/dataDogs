@@ -58,6 +58,8 @@ function collectNodeData() {
         parentsRequired: parentsRequired,
         parentsOptional: parentsOptional,
         serializedDogConfig: config,
+        readFrom: node.readFrom || undefined,
+        readBy: node.readBy || undefined,
         // Übergib alle weiteren Daten aus dem Wave Entry
         ...node
       };

@@ -135,19 +135,60 @@ export class KennelRun {
 
         // Baue Wellen-Struktur
         const waves: Waves = [];
-        theHunt.wave.forEach((wave: any) => {
+        theHunt.wave.forEach((wave: any, waveIndex: number) => {
             // Remap Objects, that is no fun and schould be never done!
             waves.push(wave.map((entry: any) => {
+                const instance = entry.instance;
+                const instanceId = (instance instanceof SerializedDog) 
+                    ? (instance as SerializedDog<unknown>).storageId 
+                    : instance.name;
+                const instanceName = instance.name;
+                
+                // Sammle readTracking-Daten für diese Instance
+                const readFrom: any[] = []; // Properties, die diese Instance von anderen liest
+                const readBy: any[] = [];   // Properties dieser Instance, die von anderen gelesen werden
+                
+                theHunt.readTracking.forEach((trackingEntry: any) => {
+                    const readerName = trackingEntry.readerInstance.name;
+                    const sourceName = trackingEntry.sourceInstance.name;
+                    const readerId = (trackingEntry.readerInstance instanceof SerializedDog)
+                        ? (trackingEntry.readerInstance as SerializedDog<unknown>).storageId
+                        : trackingEntry.readerInstance.name;
+                    const sourceId = (trackingEntry.sourceInstance instanceof SerializedDog)
+                        ? (trackingEntry.sourceInstance as SerializedDog<unknown>).storageId
+                        : trackingEntry.sourceInstance.name;
+                    
+                    // readFrom: Diese Instance liest von anderen
+                    if (readerId === instanceId || readerName === instanceName) {
+                        readFrom.push({
+                            waveIndex: trackingEntry.waveIndex,
+                            readerInstanceName: readerName,
+                            sourceInstanceName: sourceName,
+                            propertyPath: trackingEntry.propertyPath
+                        });
+                    }
+                    
+                    // readBy: Andere lesen von dieser Instance
+                    if (sourceId === instanceId || sourceName === instanceName) {
+                        readBy.push({
+                            waveIndex: trackingEntry.waveIndex,
+                            readerInstanceName: readerName,
+                            sourceInstanceName: sourceName,
+                            propertyPath: trackingEntry.propertyPath
+                        });
+                    }
+                });
+                
                 //create Waves dog entry 
                 const nodeEntry = {
-                    id: (entry.instance instanceof SerializedDog) 
-                        ? (entry.instance as SerializedDog<unknown>).storageId 
-                        : entry.instance.name,
-                    name: entry.instance.name,
-                    result: entry.instance.collected,
-                    error: (entry.instance as any).__error || undefined,  // Fehler falls vorhanden
+                    id: instanceId,
+                    name: instanceName,
+                    result: instance.collected,
+                    error: (instance as any).__error || undefined,  // Fehler falls vorhanden
                     parentsOptional: [],
                     parentsRequired: [],
+                    readFrom: readFrom.length > 0 ? readFrom : undefined,
+                    readBy: readBy.length > 0 ? readBy : undefined,
                 } as NodeEntry;
 
                 // add additional codeTs if SerializedDog
