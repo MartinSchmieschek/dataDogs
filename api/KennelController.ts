@@ -20,6 +20,8 @@ export interface ISaveKennelInput extends IUpdateInput {
     name?: string;
     description?: string;
     dogIds?: string[];
+    defaultQuery?: Record<string, string>;
+    defaultBody?: any;
 }
 
 /**
@@ -54,7 +56,13 @@ export class KennelController extends AbstractController<IKennelConfig> {
             await this.store.save({ 
                 id, 
                 type: this.KENNEL_TYPE, 
-                serializedDogConfig: JSON.stringify(config)
+                name: config.name,
+                description: config.description,
+                dogIds: config.dogIds,
+                defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
+                defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                createdAt: config.createdAt?.toISOString(),
+                updatedAt: config.updatedAt?.toISOString()
             });
             
             // Verifiziere, dass die Config gespeichert wurde
@@ -99,6 +107,8 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 name: input.name !== undefined ? input.name : (existing?.name || undefined),
                 description: input.description !== undefined ? input.description : (existing?.description || undefined),
                 dogIds: input.dogIds !== undefined ? input.dogIds : (existing?.dogIds || []),
+                defaultQuery: input.defaultQuery !== undefined ? input.defaultQuery : (existing?.defaultQuery || undefined),
+                defaultBody: input.defaultBody !== undefined ? input.defaultBody : (existing?.defaultBody || undefined),
                 createdAt: existing?.createdAt || new Date(),
                 updatedAt: new Date()
             };
@@ -109,7 +119,13 @@ export class KennelController extends AbstractController<IKennelConfig> {
             await this.store.save({ 
                 id: input.id, 
                 type: this.KENNEL_TYPE, 
-                serializedDogConfig: JSON.stringify(config)
+                name: config.name,
+                description: config.description,
+                dogIds: config.dogIds,
+                defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
+                defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                createdAt: config.createdAt?.toISOString(),
+                updatedAt: config.updatedAt?.toISOString()
             });
             
             console.log(`[KennelController.save] Erfolgreich gespeichert: ${input.id}`);
@@ -125,15 +141,101 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Überschreibt list() um direkt r zu verwenden, nicht r.serializedDogConfig
+     */
+    async list(filter?: Partial<IKennelConfig>): Promise<IControllerResponse<IKennelConfig[]>> {
+        try {
+            const results = await this.store.findByType(this.entityType);
+            let entities = results.map((r: any) => {
+                const parsed = this.parseEntity(r); // Direkt r verwenden, nicht r.serializedDogConfig
+                // Stelle sicher, dass die ID aus dem Store-Objekt übernommen wird
+                if (r.id) {
+                    parsed.id = r.id;
+                }
+                return parsed;
+            });
+            
+            // Optional: Filter anwenden
+            if (filter) {
+                entities = entities.filter((entity: IKennelConfig) => {
+                    return Object.keys(filter).every(key => {
+                        return entity[key as keyof IKennelConfig] === filter[key as keyof IKennelConfig];
+                    });
+                });
+            }
+            
+            return { ok: true, data: entities };
+        } catch (error) {
+            return { ok: false, error: String(error), data: [] };
+        }
+    }
+
+    /**
      * Überschreibt parseEntity für Kennel-Configs
      */
     protected parseEntity(data: any): IKennelConfig {
-        const parsed = super.parseEntity(data);
-        // Stelle sicher, dass dogIds ein Array ist
-        if (parsed && !Array.isArray(parsed.dogIds)) {
-            parsed.dogIds = [];
+        // dogIds wird als JSON-String gespeichert, muss geparst werden
+        if (!data || typeof data !== 'object') {
+            throw new Error('parseEntity: data ist kein Objekt');
         }
-        return parsed as IKennelConfig;
+        
+        let dogIds: string[] = [];
+        if (data.dogIds !== null && data.dogIds !== undefined) {
+            if (typeof data.dogIds === 'string') {
+                if (data.dogIds.trim() !== '') {
+                    try {
+                        const parsed = JSON.parse(data.dogIds);
+                        dogIds = Array.isArray(parsed) ? parsed : [];
+                    } catch {
+                        dogIds = [];
+                    }
+                }
+            } else if (Array.isArray(data.dogIds)) {
+                dogIds = data.dogIds;
+            }
+        }
+        
+        let defaultQuery: Record<string, string> | undefined = undefined;
+        if (data.defaultQuery) {
+            if (typeof data.defaultQuery === 'string') {
+                try {
+                    defaultQuery = JSON.parse(data.defaultQuery);
+                } catch (e) {
+                    console.warn('[parseEntity] Fehler beim Parsen von defaultQuery:', e);
+                }
+            } else if (typeof data.defaultQuery === 'object') {
+                defaultQuery = data.defaultQuery;
+            }
+        }
+        
+        let defaultBody: any = undefined;
+        if (data.defaultBody !== null && data.defaultBody !== undefined) {
+            if (typeof data.defaultBody === 'string') {
+                try {
+                    defaultBody = JSON.parse(data.defaultBody);
+                } catch (e) {
+                    console.warn('[parseEntity] Fehler beim Parsen von defaultBody:', e);
+                }
+            } else {
+                defaultBody = data.defaultBody;
+            }
+        }
+        
+        // Stelle sicher, dass dogIds IMMER ein Array ist
+        if (!Array.isArray(dogIds)) {
+            dogIds = [];
+        }
+        
+        return {
+            id: data.id,
+            name: data.name,
+            description: data.description,
+            dogIds: dogIds, // Garantiert ein Array
+            defaultQuery,
+            defaultBody,
+            createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
+            updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined
+        } as IKennelConfig;
     }
 }
 

@@ -17,9 +17,11 @@ export function buildNodeSelection(): string {
 
   // Prüfe ob SerializedDog (hat _config) oder BaseDog
   const isSerializedDog = !!n._config;
-  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
+  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog', 'QueryRetriever', 'BodyRetriever'];
   const nodeName = n._json?.name || (n.dataset ? n.dataset.id : (n._nodeId || n.id || "unknown"));
   const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
+  const isQueryRetriever = nodeName === 'QueryRetriever';
+  const isBodyRetriever = nodeName === 'BodyRetriever';
   const canDelete = isSerializedDog || isBaseDog;
   
   // Prüfe ob Output HTML ist
@@ -40,6 +42,8 @@ export function buildNodeSelection(): string {
   // Zeige/Verstecke SerializedDog-spezifische UI-Elemente
   const controlsDiv = document.getElementById("serialized-dog-controls");
   const baseControlsDiv = document.getElementById("base-dog-controls");
+  const queryRetrieverDiv = document.getElementById("query-retriever-config");
+  const bodyRetrieverDiv = document.getElementById("body-retriever-config");
   const versionDiv = document.getElementById("serialized-dog-version");
   const parentsDiv = document.getElementById("serialized-dog-parents");
   const configDiv = document.getElementById("serialized-dog-config");
@@ -94,6 +98,8 @@ export function buildNodeSelection(): string {
     // Zeige Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "flex";
     if (baseControlsDiv) baseControlsDiv.style.display = "none";
+    if (queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
+    if (bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
     if (versionDiv) versionDiv.style.display = "block";
     if (parentsDiv) parentsDiv.style.display = "block";
     if (configDiv) configDiv.style.display = "block";
@@ -131,6 +137,26 @@ export function buildNodeSelection(): string {
     if (contextDiv) contextDiv.style.display = "none";
     if (tsDiv) tsDiv.style.display = "none";
     
+    // Spezielle UI für QueryRetriever
+    if (isQueryRetriever) {
+      if (queryRetrieverDiv) {
+        queryRetrieverDiv.style.display = "block";
+        updateQueryRetrieverConfig();
+      }
+      if (bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
+    } else if (isBodyRetriever) {
+      // Spezielle UI für BodyRetriever
+      if (bodyRetrieverDiv) {
+        bodyRetrieverDiv.style.display = "block";
+        updateBodyRetrieverConfig();
+      }
+      if (queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
+    } else {
+      // Verstecke Query/Body-Config für andere BaseDogs
+      if (queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
+      if (bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
+    }
+    
     // Zeige HTML Output falls vorhanden
     if (isHtml && htmlDiv && htmlRender) {
       htmlDiv.style.display = "block";
@@ -142,11 +168,17 @@ export function buildNodeSelection(): string {
     // Verstecke Controls, Parents, Config, Context und TypeScript Editor
     if (controlsDiv) controlsDiv.style.display = "none";
     if (baseControlsDiv) baseControlsDiv.style.display = "none";
+    if (queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
+    if (bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
     if (versionDiv) versionDiv.style.display = "none";
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
     if (contextDiv) contextDiv.style.display = "none";
     if (tsDiv) tsDiv.style.display = "none";
+    
+    // Verstecke Query/Body-Config auch für andere BaseDogs
+    if (!isQueryRetriever && queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
+    if (!isBodyRetriever && bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
     
     // Zeige HTML Output falls vorhanden
     if (isHtml && htmlDiv && htmlRender) {
@@ -649,6 +681,385 @@ function updateParentsSelection(selectedNode) {
       label.insertBefore(checkbox, label.firstChild);
       optionalContainer.appendChild(label);
     });
+  }
+}
+
+// Funktionen für QueryRetriever/BodyRetriever
+let queryRetrieverEditor = null;
+let bodyRetrieverEditor = null;
+
+function updateQueryRetrieverConfig() {
+  // Lade KennelConfig - immer frisch aus dem DOM
+  let kennelConfig = null;
+  try {
+    const kennelConfigScript = document.getElementById('kennel-config-data');
+    if (kennelConfigScript && kennelConfigScript.textContent) {
+      kennelConfig = JSON.parse(kennelConfigScript.textContent);
+    }
+  } catch (e) {
+    console.warn('[updateQueryRetrieverConfig] Fehler beim Laden:', e);
+    return;
+  }
+  
+  if (!kennelConfig) {
+    console.warn('[updateQueryRetrieverConfig] Keine KennelConfig gefunden');
+    return;
+  }
+  
+  const queryData = kennelConfig.defaultQuery || {};
+  const container = document.getElementById('query-retriever-chips');
+  if (!container) return;
+  
+  const keys = Object.keys(queryData);
+  if (keys.length === 0) {
+    container.innerHTML = '<div style="color: #666; text-align: center; width: 100%;">Keine Query-Parameter</div>';
+    return;
+  }
+  
+  // Leere Container
+  container.innerHTML = '';
+  
+  // Erstelle Chips direkt im DOM
+  keys.forEach(key => {
+    const value = queryData[key] || '';
+    // Escape für HTML-Attribute
+    const escapedKey = String(key).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const escapedValue = String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    
+    const chip = document.createElement('div');
+    chip.className = 'query-chip';
+    chip.setAttribute('data-key', escapedKey);
+    chip.setAttribute('data-value', escapedValue);
+    chip.style.cssText = 'display: flex; align-items: center; gap: 5px; padding: 4px 8px; background: #333; border: 1px solid #555; border-radius: 4px;';
+    
+    const keySpan = document.createElement('span');
+    keySpan.style.color = '#00cc00';
+    keySpan.textContent = key + ':';
+    chip.appendChild(keySpan);
+    
+    const valueSpan = document.createElement('span');
+    valueSpan.style.color = '#fff';
+    valueSpan.textContent = value;
+    chip.appendChild(valueSpan);
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '×';
+    removeBtn.style.cssText = 'padding: 2px 6px; background: #cc0000; color: #fff; border: none; cursor: pointer; border-radius: 3px; font-size: 12px;';
+    removeBtn.onclick = function() {
+      removeQueryChipFromRetriever(key);
+    };
+    chip.appendChild(removeBtn);
+    
+    container.appendChild(chip);
+  });
+}
+
+function updateBodyRetrieverConfig() {
+  // Lade KennelConfig
+  let kennelConfig = null;
+  try {
+    const kennelConfigScript = document.getElementById('kennel-config-data');
+    if (kennelConfigScript && kennelConfigScript.textContent) {
+      kennelConfig = JSON.parse(kennelConfigScript.textContent);
+    }
+  } catch (e) {
+    console.warn('[updateBodyRetrieverConfig] Fehler beim Laden:', e);
+  }
+  
+  const bodyData = kennelConfig?.defaultBody;
+  const bodyJson = bodyData ? JSON.stringify(bodyData, null, 2) : '';
+  const container = document.getElementById('body-retriever-editor');
+  if (!container) return;
+  
+  // Initialisiere Monaco Editor für Body
+  if (typeof monaco !== 'undefined' && monaco && monaco.editor) {
+    if (bodyRetrieverEditor) {
+      bodyRetrieverEditor.dispose();
+    }
+    bodyRetrieverEditor = monaco.editor.create(container, {
+      value: bodyJson,
+      language: 'json',
+      theme: 'vs-dark',
+      automaticLayout: true,
+      minimap: { enabled: false }
+    });
+  } else {
+    // Fallback: Textarea mit DOM-Element
+    container.innerHTML = '';
+    const textarea = document.createElement('textarea');
+    textarea.style.cssText = 'width: 100%; height: 100%; background: #000; color: #fff; border: none; padding: 10px; font-family: "Courier New", monospace; resize: none;';
+    textarea.value = bodyJson;
+    container.appendChild(textarea);
+  }
+}
+
+function removeQueryChipFromRetriever(key) {
+  // Lade KennelConfig
+  let kennelConfig = null;
+  try {
+    const kennelConfigScript = document.getElementById('kennel-config-data');
+    if (kennelConfigScript && kennelConfigScript.textContent) {
+      kennelConfig = JSON.parse(kennelConfigScript.textContent);
+    }
+  } catch (e) {
+    console.warn('[removeQueryChipFromRetriever] Fehler:', e);
+  }
+  
+  if (!kennelConfig) {
+    alert('KennelConfig nicht gefunden');
+    return;
+  }
+  
+  if (!kennelConfig.defaultQuery) {
+    kennelConfig.defaultQuery = {};
+  }
+  
+  delete kennelConfig.defaultQuery[key];
+  
+  // Aktualisiere auch die Kennel-Config im DOM-Script-Tag
+  const kennelConfigScript = document.getElementById('kennel-config-data');
+  if (kennelConfigScript) {
+    kennelConfigScript.textContent = JSON.stringify(kennelConfig);
+  }
+  
+  updateQueryRetrieverConfig();
+}
+
+window.removeQueryChipFromRetriever = removeQueryChipFromRetriever;
+
+// Event Listeners für QueryRetriever - werden in window.onload registriert
+function initQueryRetrieverListeners() {
+  const queryAddBtn = document.getElementById('query-retriever-add');
+  const querySaveBtn = document.getElementById('query-retriever-save');
+  const bodySaveBtn = document.getElementById('body-retriever-save');
+  
+  if (queryAddBtn) {
+    queryAddBtn.addEventListener('click', () => {
+      const keyInput = document.getElementById('query-retriever-key');
+      const valueInput = document.getElementById('query-retriever-value');
+      if (!keyInput || !valueInput) return;
+      
+      const key = keyInput.value.trim();
+      if (!key) {
+        alert('Key darf nicht leer sein');
+        return;
+      }
+      
+      // Lade KennelConfig
+      let kennelConfig = null;
+      try {
+        const kennelConfigScript = document.getElementById('kennel-config-data');
+        if (kennelConfigScript && kennelConfigScript.textContent) {
+          kennelConfig = JSON.parse(kennelConfigScript.textContent);
+        }
+      } catch (e) {
+        console.warn('[QueryAdd] Fehler:', e);
+      }
+      
+      if (!kennelConfig) {
+        alert('KennelConfig nicht gefunden');
+        return;
+      }
+      
+      if (!kennelConfig.defaultQuery) {
+        kennelConfig.defaultQuery = {};
+      }
+      
+      kennelConfig.defaultQuery[key] = valueInput.value.trim();
+      
+      // Aktualisiere auch die Kennel-Config im DOM-Script-Tag
+      const kennelConfigScript = document.getElementById('kennel-config-data');
+      if (kennelConfigScript) {
+        kennelConfigScript.textContent = JSON.stringify(kennelConfig);
+      }
+      
+      keyInput.value = '';
+      valueInput.value = '';
+      updateQueryRetrieverConfig();
+    });
+  }
+  
+  if (querySaveBtn) {
+    querySaveBtn.addEventListener('click', async () => {
+      // Sammle Query-Parameter
+      const queryData = {};
+      const queryChips = document.querySelectorAll('#query-retriever-chips .query-chip');
+      queryChips.forEach(chip => {
+        const key = chip.dataset.key;
+        const value = chip.dataset.value;
+        if (key) {
+          queryData[key] = value || '';
+        }
+      });
+      
+      await saveQueryRetrieverConfig(queryData);
+    });
+  }
+  
+  if (bodySaveBtn) {
+    bodySaveBtn.addEventListener('click', async () => {
+      let bodyData = null;
+      if (bodyRetrieverEditor) {
+        try {
+          const bodyText = bodyRetrieverEditor.getValue().trim();
+          if (bodyText) {
+            bodyData = JSON.parse(bodyText);
+          }
+        } catch (e) {
+          alert('Body ist kein gültiges JSON: ' + e.message);
+          return;
+        }
+      }
+      
+      await saveBodyRetrieverConfig(bodyData);
+    });
+  }
+}
+
+// Exportiere für window.onload
+if (typeof window !== 'undefined') {
+  window.initQueryRetrieverListeners = initQueryRetrieverListeners;
+}
+
+async function saveQueryRetrieverConfig(queryData) {
+  try {
+    // Lade KennelConfig
+    let kennelConfig = null;
+    let kennelId = null;
+    
+    try {
+      const kennelConfigScript = document.getElementById('kennel-config-data');
+      if (kennelConfigScript && kennelConfigScript.textContent) {
+        kennelConfig = JSON.parse(kennelConfigScript.textContent);
+        kennelId = kennelConfig?.id || null;
+      }
+    } catch (e) {
+      console.warn('[saveQueryRetrieverConfig] Fehler:', e);
+    }
+    
+    if (!kennelId) {
+      const pathParts = window.location.pathname.split('/').filter(p => p);
+      if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+        kennelId = pathParts[0];
+      }
+    }
+    
+    if (!kennelId) {
+      alert('KennelConfig nicht gefunden');
+      return;
+    }
+    
+    if (!kennelConfig || kennelConfig.id !== kennelId) {
+      const getResponse = await fetch('/api/kennels/' + kennelId);
+      if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
+      
+      const getResult = await getResponse.json();
+      if (!getResult.ok || !getResult.data) {
+        throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+      }
+      
+      kennelConfig = getResult.data;
+    }
+    
+    const updateData = {
+      id: kennelConfig.id.replace(/-v\\d+$/, ''),
+      name: kennelConfig.name,
+      description: kennelConfig.description,
+      dogIds: kennelConfig.dogIds || [],
+      defaultQuery: Object.keys(queryData).length > 0 ? queryData : undefined,
+      defaultBody: kennelConfig.defaultBody
+    };
+    
+    const putResponse = await fetch('/api/kennels/' + updateData.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!putResponse.ok) throw new Error('HTTP ' + putResponse.status);
+    
+    const putResult = await putResponse.json();
+    if (putResult.ok) {
+      alert('Query-Parameter gespeichert!');
+      // Seite neu laden um Änderungen zu sehen
+      location.reload();
+    } else {
+      throw new Error(putResult.error || 'Fehler beim Speichern');
+    }
+  } catch (err) {
+    console.error('[saveQueryRetrieverConfig] Fehler:', err);
+    alert('Fehler: ' + err.message);
+  }
+}
+
+async function saveBodyRetrieverConfig(bodyData) {
+  try {
+    // Lade KennelConfig
+    let kennelConfig = null;
+    let kennelId = null;
+    
+    try {
+      const kennelConfigScript = document.getElementById('kennel-config-data');
+      if (kennelConfigScript && kennelConfigScript.textContent) {
+        kennelConfig = JSON.parse(kennelConfigScript.textContent);
+        kennelId = kennelConfig?.id || null;
+      }
+    } catch (e) {
+      console.warn('[saveBodyRetrieverConfig] Fehler:', e);
+    }
+    
+    if (!kennelId) {
+      const pathParts = window.location.pathname.split('/').filter(p => p);
+      if (pathParts.length > 0 && pathParts[0] !== 'api' && pathParts[0] !== 'kennel') {
+        kennelId = pathParts[0];
+      }
+    }
+    
+    if (!kennelId) {
+      alert('KennelConfig nicht gefunden');
+      return;
+    }
+    
+    if (!kennelConfig || kennelConfig.id !== kennelId) {
+      const getResponse = await fetch('/api/kennels/' + kennelId);
+      if (!getResponse.ok) throw new Error('HTTP ' + getResponse.status);
+      
+      const getResult = await getResponse.json();
+      if (!getResult.ok || !getResult.data) {
+        throw new Error(getResult.error || 'KennelConfig nicht gefunden');
+      }
+      
+      kennelConfig = getResult.data;
+    }
+    
+    const updateData = {
+      id: kennelConfig.id.replace(/-v\\d+$/, ''),
+      name: kennelConfig.name,
+      description: kennelConfig.description,
+      dogIds: kennelConfig.dogIds || [],
+      defaultQuery: kennelConfig.defaultQuery,
+      defaultBody: bodyData !== null ? bodyData : undefined
+    };
+    
+    const putResponse = await fetch('/api/kennels/' + updateData.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    
+    if (!putResponse.ok) throw new Error('HTTP ' + putResponse.status);
+    
+    const putResult = await putResponse.json();
+    if (putResult.ok) {
+      alert('Body-Daten gespeichert!');
+      // Seite neu laden um Änderungen zu sehen
+      location.reload();
+    } else {
+      throw new Error(putResult.error || 'Fehler beim Speichern');
+    }
+  } catch (err) {
+    console.error('[saveBodyRetrieverConfig] Fehler:', err);
+    alert('Fehler: ' + err.message);
   }
 }`;
 }

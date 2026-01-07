@@ -62,10 +62,18 @@ export async function seedKennelConfig(kennelsStore: IStore): Promise<void> {
             updatedAt: new Date()
         };
 
+        // Speichere KennelConfig - dogIds wird in PrismaStore.save() automatisch zu JSON-String konvertiert
         await kennelsStore.save({ 
             id: defaultKennelConfig.id, 
             type: 'KennelConfig', 
-            serializedDogConfig: JSON.stringify(defaultKennelConfig) 
+            name: defaultKennelConfig.name,
+            description: defaultKennelConfig.description,
+            dogIds: defaultKennelConfig.dogIds, // Array - wird in PrismaStore.save() zu JSON-String konvertiert
+            // defaultQuery und defaultBody sind optional und werden nur gesetzt, wenn vorhanden
+            defaultQuery: defaultKennelConfig.defaultQuery ? JSON.stringify(defaultKennelConfig.defaultQuery) : undefined,
+            defaultBody: defaultKennelConfig.defaultBody ? JSON.stringify(defaultKennelConfig.defaultBody) : undefined,
+            createdAt: defaultKennelConfig.createdAt?.toISOString(),
+            updatedAt: defaultKennelConfig.updatedAt?.toISOString()
         });
         console.log('✅ Seeded initial Kennel-Config into DB');
     }

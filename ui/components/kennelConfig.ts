@@ -47,6 +47,14 @@ export function buildKennelConfigEditor(): string {
         <input type="checkbox" value="TalkingDog" class="base-dog-type">
         <span>TalkingDog</span>
       </label>
+      <label style="display: flex; align-items: center; gap: 5px;">
+        <input type="checkbox" value="QueryRetriever" class="base-dog-type">
+        <span>QueryRetriever</span>
+      </label>
+      <label style="display: flex; align-items: center; gap: 5px;">
+        <input type="checkbox" value="BodyRetriever" class="base-dog-type">
+        <span>BodyRetriever</span>
+      </label>
     </div>
   </div>
 
@@ -67,6 +75,25 @@ export function buildKennelConfigEditor(): string {
         </div>
       </div>
     </div>
+  </div>
+
+  <div style="margin-bottom: 20px;">
+    <label style="display: block; margin-bottom: 5px;"><strong>Default Query Parameters:</strong></label>
+    <p style="color: #999; font-size: 11px; margin-bottom: 5px;">Key-Value-Paare für Query-Parameter (werden an QueryRetriever übergeben)</p>
+    <div id="kennel-config-query-chips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding: 10px; border: 1px solid #333; background: #000; min-height: 40px;">
+      <div style="color: #666; text-align: center; width: 100%;">Keine Query-Parameter</div>
+    </div>
+    <div style="display: flex; gap: 5px;">
+      <input type="text" id="kennel-config-query-key" placeholder="Key" style="flex: 1; padding: 6px; background: #1a1a1a; color: #fff; border: 1px solid #333;">
+      <input type="text" id="kennel-config-query-value" placeholder="Value" style="flex: 1; padding: 6px; background: #1a1a1a; color: #fff; border: 1px solid #333;">
+      <button id="kennel-config-query-add" style="padding: 6px 12px; background: #0066cc; color: #fff; border: none; cursor: pointer;">Hinzufügen</button>
+    </div>
+  </div>
+
+  <div style="margin-bottom: 20px;">
+    <label style="display: block; margin-bottom: 5px;"><strong>Default Body (JSON):</strong></label>
+    <p style="color: #999; font-size: 11px; margin-bottom: 5px;">JSON-Daten für Body (werden an BodyRetriever übergeben)</p>
+    <div id="kennel-config-body-editor" style="height: 200px; border: 1px solid #333; background: #000;"></div>
   </div>
 
   <div style="display: flex; gap: 10px; margin-top: 20px;">

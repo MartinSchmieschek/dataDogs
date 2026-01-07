@@ -5,21 +5,64 @@ export class KennelList {
   /**
    * Erstellt HTML für die Kennel-Liste
    */
-  public static buildKennelListHtml(kennels: Array<{ id: string; name?: string; description?: string }>): string {
+  public static buildKennelListHtml(kennels: Array<{ id: string; name?: string; description?: string; defaultQuery?: Record<string, string>; defaultBody?: any }>): string {
     const kennelsHtml = kennels.length > 0
-      ? kennels.map(kennel => `
+      ? kennels.map(kennel => {
+          // Baue Query-String aus defaultQuery
+          let queryString = '';
+          if (kennel.defaultQuery) {
+            const params = new URLSearchParams();
+            for (const key in kennel.defaultQuery) {
+              if (kennel.defaultQuery.hasOwnProperty(key)) {
+                const value = kennel.defaultQuery[key];
+                if (value !== null && value !== undefined && value !== '') {
+                  params.append(key, String(value));
+                }
+              }
+            }
+            const paramString = params.toString();
+            if (paramString) {
+              queryString = '?' + paramString;
+            }
+          }
+          
+          // Ausführen-Link mit Query-Parametern
+          const executeUrl = '/' + kennel.id + queryString;
+          
+          // Für POST mit Body: JavaScript-Funktion
+          const hasBody = kennel.defaultBody !== null && kennel.defaultBody !== undefined;
+          const bodyJson = hasBody ? JSON.stringify(kennel.defaultBody).replace(/'/g, "\\'") : '';
+          // Query-Parameter als JavaScript-Objekt-Literal (nicht als JSON-String)
+          let queryJson = '{}';
+          if (kennel.defaultQuery && typeof kennel.defaultQuery === 'object' && Object.keys(kennel.defaultQuery).length > 0) {
+            const queryPairs = Object.keys(kennel.defaultQuery).map(key => {
+              const value = kennel.defaultQuery![key];
+              const escapedKey = String(key).replace(/'/g, "\\'").replace(/"/g, '\\"');
+              const escapedValue = String(value).replace(/'/g, "\\'").replace(/"/g, '\\"');
+              return `"${escapedKey}": "${escapedValue}"`;
+            });
+            queryJson = '{' + queryPairs.join(', ') + '}';
+          }
+          const executeButton = hasBody 
+            ? `<button onclick="executeKennelWithBody('${kennel.id}', ${bodyJson}, ${queryJson})" style="padding: 6px 12px; background: #0066cc; color: #fff; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">Ausführen (POST)</button>`
+            : `<a href="${executeUrl}" style="padding: 6px 12px; background: #0066cc; color: #fff; text-decoration: none; border-radius: 3px; font-size: 12px;">Ausführen</a>`;
+          
+          const descriptionHtml = kennel.description ? `<div style="color: #ccc; margin-top: 5px;">${kennel.description}</div>` : '';
+          
+          return `
         <div style="padding: 15px; margin-bottom: 10px; border: 1px solid #333; background: #1a1a1a; border-radius: 5px;">
           <h3 style="margin: 0 0 5px 0;">
-            <a href="/${kennel.id}" style="color: #0066cc; text-decoration: none;">${kennel.name || kennel.id}</a>
+            <a href="${executeUrl}" style="color: #0066cc; text-decoration: none;">${kennel.name || kennel.id}</a>
           </h3>
           <div style="color: #999; font-size: 12px; margin-bottom: 5px;">ID: ${kennel.id}</div>
-          ${kennel.description ? `<div style="color: #ccc; margin-top: 5px;">${kennel.description}</div>` : ''}
+          ${descriptionHtml}
           <div style="margin-top: 10px; display: flex; gap: 10px;">
-            <a href="/${kennel.id}" style="padding: 6px 12px; background: #0066cc; color: #fff; text-decoration: none; border-radius: 3px; font-size: 12px;">Ausführen</a>
+            ${executeButton}
             <a href="/edit/${kennel.id}" style="padding: 6px 12px; background: #666; color: #fff; text-decoration: none; border-radius: 3px; font-size: 12px;">Bearbeiten</a>
           </div>
         </div>
-      `).join('')
+      `;
+        }).join('')
       : '<div style="color: #666; text-align: center; padding: 40px;">Keine Kennels gefunden</div>';
 
     return `
@@ -256,7 +299,7 @@ export class KennelList {
       </div>
       <div class="form-group">
         <button type="submit" class="btn">Erstellen</button>
-        <a href="/kennel" class="btn btn-secondary" style="text-decoration: none; display: inline-block;">Abbrechen</a>
+        <a href="/" class="btn btn-secondary" style="text-decoration: none; display: inline-block;">Abbrechen</a>
       </div>
       <div id="error-message" class="error" style="display: none;"></div>
     </form>
@@ -296,6 +339,58 @@ export class KennelList {
         errorDiv.style.display = 'block';
       }
     });
+    
+    // Funktion für POST-Requests mit Body
+    function executeKennelWithBody(kennelId, bodyData, queryParams) {
+      // Baue URL mit Query-Parametern
+      let url = '/' + kennelId;
+      // queryParams sollte bereits ein Objekt sein (wird als JavaScript-Objekt-Literal übergeben)
+      if (queryParams && typeof queryParams === 'object' && Object.keys(queryParams).length > 0) {
+        const params = new URLSearchParams();
+        Object.keys(queryParams).forEach(key => {
+          const value = queryParams[key];
+          if (value !== null && value !== undefined) {
+            params.append(key, String(value));
+          }
+        });
+        const queryString = params.toString();
+        if (queryString) {
+          url += '?' + queryString;
+        }
+      }
+      
+      // Öffne leeres Fenster
+      const newWindow = window.open('about:blank', '_blank');
+      if (!newWindow) {
+        alert('Popup wurde blockiert');
+        return;
+      }
+      
+      // Mache POST-Request
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData)
+      })
+      .then(response => {
+        if (response.ok) {
+          return response.text();
+        }
+        throw new Error('Request fehlgeschlagen');
+      })
+      .then(html => {
+        // Schreibe HTML ins Fenster
+        newWindow.document.write(html);
+        newWindow.document.close();
+        // Setze URL mit Query-Parametern
+        newWindow.history.replaceState(null, '', url);
+      })
+      .catch(err => {
+        newWindow.close();
+        alert('Fehler beim Ausführen: ' + err.message);
+      });
+    }
+    window.executeKennelWithBody = executeKennelWithBody;
   </script>
 </body>
 </html>

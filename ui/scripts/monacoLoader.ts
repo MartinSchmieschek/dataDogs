@@ -1,4 +1,4 @@
-export function loadMonaco(cb) {
+export function loadMonaco(cb: () => void) {
   const s = document.createElement("script");
   s.src = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js";
   s.onload = () => {

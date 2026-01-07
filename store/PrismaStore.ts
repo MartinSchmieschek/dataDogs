@@ -26,39 +26,100 @@ export class PrismaStore implements IStore {
     const id = d?.id ?? Date.now().toString();
     const type = d?.type ?? (d?.constructor?.name ?? 'unknown');
 
-    // support two shapes:
-    // 1) { serializedDogConfig: {...}, id?:..., type?:... }
-    // 2) raw config object (the config itself)
-    let cfg: any;
-    if (d && d.serializedDogConfig !== undefined) {
-      // accept either string or object; normalize to object for manipulation
-      cfg = typeof d.serializedDogConfig === 'string' ? JSON.parse(d.serializedDogConfig) : d.serializedDogConfig;
-    } else {
-      cfg = typeof d === 'string' ? JSON.parse(d) : d;
+    // Erstelle Update-Objekt mit allen Feldern
+    const updateData: any = {
+      id,
+      type
+    };
+
+    // SerializedDog: speichere serializedDogConfig
+    if (d.serializedDogConfig !== undefined) {
+      updateData.serializedDogConfig = typeof d.serializedDogConfig === 'string' 
+        ? d.serializedDogConfig 
+        : JSON.stringify(d.serializedDogConfig);
     }
 
-    // Persist as string because SQLite schema uses String for serializedDogConfig
-    const dbValue = typeof cfg === 'string' ? cfg : JSON.stringify(cfg);
+    // KennelConfig: speichere direkte Felder
+    if (d.name !== undefined) updateData.name = d.name;
+    if (d.description !== undefined) updateData.description = d.description;
+    // dogIds als JSON-String speichern (SQLite unterstützt kein Array)
+    if (d.dogIds !== undefined) {
+      updateData.dogIds = JSON.stringify(d.dogIds);
+    }
+    if (d.defaultQuery !== undefined) {
+      updateData.defaultQuery = typeof d.defaultQuery === 'string' 
+        ? d.defaultQuery 
+        : JSON.stringify(d.defaultQuery);
+    }
+    if (d.defaultBody !== undefined) {
+      updateData.defaultBody = typeof d.defaultBody === 'string' 
+        ? d.defaultBody 
+        : JSON.stringify(d.defaultBody);
+    }
+    if (d.createdAt !== undefined) updateData.createdAt = d.createdAt;
+    if (d.updatedAt !== undefined) updateData.updatedAt = d.updatedAt;
 
     await this.prisma.dog.upsert({
       where: { id },
-      create: { id, type, serializedDogConfig: dbValue },
-      update: { type, serializedDogConfig: dbValue }
+      create: updateData,
+      update: updateData
     });
   }
 
   public async load(id: string): Promise<any> {
-    const row = await this.prisma.dog.findUnique({ where: { id } });
-    return row ? row.serializedDogConfig : null;
+    const row: any = await this.prisma.dog.findUnique({ where: { id } });
+    if (!row) return null;
+    
+    // KennelConfig: Wenn direkte Felder vorhanden sind (name, description, dogIds)
+    if (row.name !== null || row.description !== null || row.dogIds !== null) {
+      return {
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        description: row.description,
+        dogIds: row.dogIds, // JSON-String, wird in parseEntity() geparst
+        defaultQuery: row.defaultQuery,
+        defaultBody: row.defaultBody,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        serializedDogConfig: row.serializedDogConfig
+      };
+    }
+    
+    // SerializedDog: Gib nur serializedDogConfig zurück (String)
+    return row.serializedDogConfig;
   }
 
-  public async findByType(type: string): Promise<Array<{ id: string; serializedDogConfig: string }>> {
+  public async findByType(type: string): Promise<Array<any>> {
     const rows = await this.prisma.dog.findMany({ where: { type } });
-    // stored value is a string (JSON text). Return as-is.
-    return rows.map((r: any) => ({ id: r.id, serializedDogConfig: r.serializedDogConfig }));
+    // Gib immer vollständige Zeile zurück (mit id für Versionsverwaltung)
+    // Für KennelConfig: alle Felder
+    // Für SerializedDog: Objekt mit id und serializedDogConfig
+    return rows.map((r: any) => {
+      // Wenn direkte Felder vorhanden sind (KennelConfig), gib alle Felder zurück
+      if (r.name !== null || r.description !== null || r.dogIds !== null) {
+        return {
+          id: r.id,
+          type: r.type,
+          name: r.name,
+          description: r.description,
+          dogIds: r.dogIds,
+          defaultQuery: r.defaultQuery,
+          defaultBody: r.defaultBody,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          serializedDogConfig: r.serializedDogConfig
+        };
+      }
+      // Für SerializedDog: gib Objekt mit id und serializedDogConfig zurück
+      return {
+        id: r.id,
+        serializedDogConfig: r.serializedDogConfig
+      };
+    });
   }
 
-  public async findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<{ id: string; serializedDogConfig: string }>> {
+  public async findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<any>> {
     // Lade alle Entities des Typs
     let rows = await this.prisma.dog.findMany({ where: { type } });
     
@@ -81,12 +142,23 @@ export class PrismaStore implements IStore {
       }
     });
     
-    const result: Array<{ id: string; serializedDogConfig: string }> = [];
+    const result: Array<any> = [];
     
     // Lade spezifische Versionen direkt
     rows.forEach((r: any) => {
       if (specificVersionIds.has(r.id)) {
-        result.push({ id: r.id, serializedDogConfig: r.serializedDogConfig });
+        result.push({
+          id: r.id,
+          type: r.type,
+          name: r.name,
+          description: r.description,
+          dogIds: r.dogIds,
+          defaultQuery: r.defaultQuery,
+          defaultBody: r.defaultBody,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          serializedDogConfig: r.serializedDogConfig
+        });
       }
     });
     
@@ -117,7 +189,36 @@ export class PrismaStore implements IStore {
         
         if (versionsForBaseId.length > 0) {
           const latest = versionsForBaseId[0];
-          result.push({ id: latest.id, serializedDogConfig: latest.serializedDogConfig });
+          // Finde die vollständige Zeile aus rows
+          const fullRow: any = rows.find((r: any) => r.id === latest.id);
+          if (fullRow) {
+            result.push({
+              id: fullRow.id,
+              type: fullRow.type,
+              name: fullRow.name ?? null,
+              description: fullRow.description ?? null,
+              dogIds: fullRow.dogIds ?? null,
+              defaultQuery: fullRow.defaultQuery ?? null,
+              defaultBody: fullRow.defaultBody ?? null,
+              createdAt: fullRow.createdAt ?? null,
+              updatedAt: fullRow.updatedAt ?? null,
+              serializedDogConfig: fullRow.serializedDogConfig
+            });
+          } else {
+            // Fallback: verwende latest (für SerializedDogs)
+            result.push({
+              id: latest.id,
+              type: '',
+              name: null,
+              description: null,
+              dogIds: null,
+              defaultQuery: null,
+              defaultBody: null,
+              createdAt: null,
+              updatedAt: null,
+              serializedDogConfig: latest.serializedDogConfig
+            });
+          }
         }
       });
     

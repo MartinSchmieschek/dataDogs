@@ -76,7 +76,8 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
             if (!data) {
                 return { ok: false, error: `Entity mit ID ${id} nicht gefunden`, data: null };
             }
-            return { ok: true, data: this.parseEntity(data) };
+            const parsed = this.parseEntity(data);
+            return { ok: true, data: parsed };
         } catch (error) {
             return { ok: false, error: String(error), data: null };
         }

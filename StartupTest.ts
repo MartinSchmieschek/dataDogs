@@ -2,6 +2,7 @@ import { IStore } from './store/IStore';
 import { SerializedDog, ISerializedDogConfig } from './dogs/SerializedDog';
 import { IKennelConfig } from './KennelRun';
 import { Controller } from './api/Controller';
+import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 
 export interface TestResult {
@@ -21,7 +22,7 @@ export class StartupTest {
         nodesStore: IStore,
         kennelsStore: IStore,
         nodesController: Controller<ISerializedDogConfig>,
-        kennelsController: Controller<IKennelConfig>,
+        kennelsController: AbstractController<IKennelConfig>,
         baseDogsMap: Map<string, any>
     ): Promise<TestResult[]> {
         console.log('\n🧪 Starte Startup-Tests...\n');
@@ -66,7 +67,7 @@ export class StartupTest {
         nodesStore: IStore,
         kennelsStore: IStore,
         nodesController: Controller<ISerializedDogConfig>,
-        kennelsController: Controller<IKennelConfig>
+        kennelsController: AbstractController<IKennelConfig>
     ): Promise<void> {
         if (this.createdTestIds.length === 0) {
             return; // Keine Test-Daten erstellt
@@ -276,7 +277,7 @@ export class StartupTest {
     /**
      * Test: KennelConfig kann gelistet werden
      */
-    private async testKennelConfigList(controller: Controller<IKennelConfig>): Promise<void> {
+    private async testKennelConfigList(controller: AbstractController<IKennelConfig>): Promise<void> {
         const testName = 'KennelConfig: List';
         try {
             const result = await controller.list();
@@ -295,7 +296,7 @@ export class StartupTest {
     /**
      * Test: KennelConfig kann nach ID abgerufen werden
      */
-    private async testKennelConfigGetById(controller: Controller<IKennelConfig>): Promise<void> {
+    private async testKennelConfigGetById(controller: AbstractController<IKennelConfig>): Promise<void> {
         const testName = 'KennelConfig: GetById';
         try {
             // Versuche die default-kennel zu laden

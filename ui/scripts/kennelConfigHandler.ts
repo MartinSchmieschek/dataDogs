@@ -7,6 +7,7 @@ export function buildKennelConfigHandler(): string {
   return `
 let currentKennelConfig = null;
 let availableSerializedDogs = [];
+let bodyEditor = null;
 
 async function loadKennelConfig(id) {
   try {
@@ -19,7 +20,9 @@ async function loadKennelConfig(id) {
           name: '',
           description: '',
           dogIds: [],
-          baseDogTypes: []
+          baseDogTypes: [],
+          defaultQuery: {},
+          defaultBody: null
         };
         renderKennelConfig();
         return;
@@ -93,6 +96,12 @@ function renderKennelConfig() {
   
   // Render Selected Dogs
   renderSelectedDogs();
+  
+  // Render Query Chips
+  renderQueryChips();
+  
+  // Render Body Editor
+  renderBodyEditor();
 }
 
 function renderAvailableDogs() {
@@ -242,11 +251,38 @@ async function saveKennelConfig() {
     }
   });
   
+  // Sammle Query-Parameter
+  const queryData = {};
+  const queryChips = document.querySelectorAll('#kennel-config-query-chips .query-chip');
+  queryChips.forEach(chip => {
+    const key = chip.dataset.key;
+    const value = chip.dataset.value;
+    if (key) {
+      queryData[key] = value || '';
+    }
+  });
+  
+  // Sammle Body-Daten
+  let bodyData = null;
+  if (bodyEditor) {
+    try {
+      const bodyText = bodyEditor.getValue().trim();
+      if (bodyText) {
+        bodyData = JSON.parse(bodyText);
+      }
+    } catch (e) {
+      alert('Body ist kein gültiges JSON: ' + e.message);
+      return;
+    }
+  }
+  
   const config = {
     id: idInput?.value || currentKennelConfig.id,
     name: nameInput?.value || '',
     description: descInput?.value || '',
-    dogIds: allDogIds
+    dogIds: allDogIds,
+    defaultQuery: Object.keys(queryData).length > 0 ? queryData : undefined,
+    defaultBody: bodyData !== null ? bodyData : undefined
   };
   
   try {
@@ -274,6 +310,66 @@ async function saveKennelConfig() {
   }
 }
 
+function renderQueryChips() {
+  const container = document.getElementById('kennel-config-query-chips');
+  if (!container || !currentKennelConfig) return;
+  
+  const queryData = currentKennelConfig.defaultQuery || {};
+  const keys = Object.keys(queryData);
+  
+  if (keys.length === 0) {
+    container.innerHTML = '<div style="color: #666; text-align: center; width: 100%;">Keine Query-Parameter</div>';
+    return;
+  }
+  
+  container.innerHTML = keys.map(key => {
+    const value = queryData[key];
+    const escapedKey = key.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedValue = (value || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return \`
+      <div class="query-chip" data-key="\${escapedKey}" data-value="\${escapedValue}" style="display: flex; align-items: center; gap: 5px; padding: 4px 8px; background: #333; border: 1px solid #555; border-radius: 4px;">
+        <span style="color: #00cc00;">\${key}:</span>
+        <span style="color: #fff;">\${value || ''}</span>
+        <button onclick="removeQueryChip('\${escapedKey}')" style="padding: 2px 6px; background: #cc0000; color: #fff; border: none; cursor: pointer; border-radius: 3px; font-size: 12px;">×</button>
+      </div>
+    \`;
+  }).join('');
+}
+
+function renderBodyEditor() {
+  const container = document.getElementById('kennel-config-body-editor');
+  if (!container || !currentKennelConfig) return;
+  
+  const bodyData = currentKennelConfig.defaultBody;
+  const bodyJson = bodyData ? JSON.stringify(bodyData, null, 2) : '';
+  
+  // Initialisiere Monaco Editor für Body
+  if (typeof monaco !== 'undefined' && monaco && monaco.editor) {
+    if (bodyEditor) {
+      bodyEditor.dispose();
+    }
+    bodyEditor = monaco.editor.create(container, {
+      value: bodyJson,
+      language: 'json',
+      theme: 'vs-dark',
+      automaticLayout: true,
+      minimap: { enabled: false }
+    });
+  } else {
+    // Fallback: Textarea
+    container.innerHTML = \`<textarea style="width: 100%; height: 100%; background: #000; color: #fff; border: none; padding: 10px; font-family: 'Courier New', monospace; resize: none;">\${bodyJson}</textarea>\`;
+  }
+}
+
+window.removeQueryChip = function(key) {
+  if (!currentKennelConfig) return;
+  if (!currentKennelConfig.defaultQuery) {
+    currentKennelConfig.defaultQuery = {};
+  }
+  delete currentKennelConfig.defaultQuery[key];
+  renderQueryChips();
+};
+
 // Event Listeners
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
@@ -281,6 +377,7 @@ if (typeof document !== 'undefined') {
     const saveBtn = document.getElementById('kennel-config-save');
     const closeBtn = document.getElementById('kennel-config-close');
     const editor = document.getElementById('kennel-config-editor');
+    const queryAddBtn = document.getElementById('kennel-config-query-add');
     
     if (loadBtn) {
       loadBtn.addEventListener('click', () => {
@@ -301,10 +398,47 @@ if (typeof document !== 'undefined') {
       });
     }
     
+    if (queryAddBtn) {
+      queryAddBtn.addEventListener('click', () => {
+        const keyInput = document.getElementById('kennel-config-query-key');
+        const valueInput = document.getElementById('kennel-config-query-value');
+        if (!keyInput || !valueInput) return;
+        
+        const key = keyInput.value.trim();
+        if (!key) {
+          alert('Key darf nicht leer sein');
+          return;
+        }
+        
+        if (!currentKennelConfig) {
+          currentKennelConfig = { defaultQuery: {} };
+        }
+        if (!currentKennelConfig.defaultQuery) {
+          currentKennelConfig.defaultQuery = {};
+        }
+        
+        currentKennelConfig.defaultQuery[key] = valueInput.value.trim();
+        keyInput.value = '';
+        valueInput.value = '';
+        renderQueryChips();
+      });
+    }
     
     // Lade verfügbare SerializedDogs beim Öffnen
     if (editor && editor.style.display !== 'none') {
       loadAvailableSerializedDogs();
+    }
+    
+    // Initialisiere Body Editor nach Monaco-Laden
+    if (typeof window !== 'undefined') {
+      const initBodyEditor = () => {
+        if (typeof monaco !== 'undefined' && monaco && monaco.editor && currentKennelConfig) {
+          renderBodyEditor();
+        } else {
+          setTimeout(initBodyEditor, 100);
+        }
+      };
+      setTimeout(initBodyEditor, 500);
     }
   });
 }

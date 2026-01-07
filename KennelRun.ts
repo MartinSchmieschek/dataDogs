@@ -3,6 +3,8 @@ import { SerializedDog } from './dogs/SerializedDog';
 import { SeasonRunner } from './harverster';
 import { Waves, NodeEntry } from './ui/results';
 import { TypeDefBuilder } from './ui/TypeDefBuilder';
+import { QueryRetriever } from './dogs/QueryRetriever';
+import { BodyRetriever } from './dogs/BodyRetriever';
 
 /**
  * Präfix für Basis-Dog-IDs in dogIds
@@ -20,6 +22,8 @@ export interface IKennelConfig {
     name?: string;
     description?: string;
     dogIds: string[]; // Array von Dog-IDs: SerializedDogs (z.B. "my-dog-v1") oder Basis-Dogs (z.B. "base:RandomRecipesRetriever")
+    defaultQuery?: Record<string, string>; // Default Query-Parameter für den Editor
+    defaultBody?: any; // Default Body-Daten für den Editor
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -32,20 +36,28 @@ export class KennelRun {
     private config?: IKennelConfig;
     private baseDogClasses: Map<string, new () => IDog<unknown>>;
     private serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>>;
+    private queryData?: Record<string, string>;
+    private bodyData?: any;
 
     /**
      * @param configOrBaseDogs - Optional: Entweder eine IKennelConfig oder eine Liste von Basis-Dogs (wird aktuell nicht verwendet)
      * @param baseDogClasses - Map von BaseDog-Namen zu Klassen. Wird benötigt, um aus Config-Strings (z.B. "base:RandomRecipesRetriever") neue Instanzen zu erstellen.
      *                        Bei jedem fillKennel() werden neue Instanzen erstellt, damit keine Ergebnisse gecacht werden.
      * @param serializedDogFactory - Factory-Funktion, die SerializedDogs aus IDs erstellt. Bekommt ein Array von IDs und gibt ein Array von SerializedDogs zurück.
+     * @param queryData - Optional: Query-Parameter für QueryRetriever
+     * @param bodyData - Optional: Body-Daten für BodyRetriever
      */
     constructor(
         configOrBaseDogs?: IKennelConfig | Array<IDog<unknown>>, 
         baseDogClasses: Map<string, new () => IDog<unknown>> = new Map(),
-        serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => []
+        serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => [],
+        queryData?: Record<string, string>,
+        bodyData?: any
     ) {
         this.baseDogClasses = baseDogClasses;
         this.serializedDogFactory = serializedDogFactory;
+        this.queryData = queryData;
+        this.bodyData = bodyData;
         
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Es ist eine IKennelConfig
@@ -78,10 +90,23 @@ export class KennelRun {
         // Erstelle Basis-Dogs aus dogIds - IMMER neue Instanzen bei jedem fillKennel() (verhindert Caching)
         baseDogIds.forEach(baseDogId => {
             const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
+            
+            // BodyRetriever vorübergehend deaktiviert
+            if (typeName === 'BodyRetriever') {
+                console.log(`[KennelRun.fillKennel] BodyRetriever ist deaktiviert, überspringe`);
+                return; // Überspringe diesen Dog
+            }
+            
             const BaseDogClass = this.baseDogClasses.get(typeName);
             if (BaseDogClass) {
-                // Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
-                const baseDog = new BaseDogClass();
+                // Spezielle Behandlung für QueryRetriever und BodyRetriever
+                let baseDog: IDog<unknown>;
+                if (typeName === 'QueryRetriever') {
+                    baseDog = new QueryRetriever(this.queryData);
+                } else {
+                    // Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
+                    baseDog = new BaseDogClass();
+                }
                 kennel.push(baseDog);
                 console.log(`[KennelRun.fillKennel] Erstellt neue Basis-Dog-Instanz: ${typeName}`);
             } else {

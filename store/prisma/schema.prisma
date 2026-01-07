@@ -16,6 +16,13 @@ model Dog {
   type                 String
   // For SQLite we persist the serialized config as a string (JSON stored as text).
   // If you switch to Postgres you can change this field to `Json` for native JSONB support.
-  serializedDogConfig   String
-  createdAt            DateTime @default(now())
+  serializedDogConfig   String?
+  // Direkte Felder für KennelConfig (optional, da SerializedDogs diese nicht haben)
+  name                 String?
+  description          String?
+  dogIds               String?  // Array als JSON-String (SQLite unterstützt kein Array)
+  defaultQuery         String?  // JSON-String
+  defaultBody          String?  // JSON-String
+  createdAt            DateTime? @default(now())
+  updatedAt            DateTime?
 }

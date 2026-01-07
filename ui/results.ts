@@ -454,6 +454,27 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
     <button id="delete-from-kennel-base">Aus Kennel entfernen</button>
   </div>
 
+  <div id="query-retriever-config" style="display: none; margin: 20px 0; padding: 15px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px;">
+    <h3>Query Parameters</h3>
+    <p style="color: #999; font-size: 11px; margin-bottom: 10px;">Key-Value-Paare für Query-Parameter</p>
+    <div id="query-retriever-chips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding: 10px; border: 1px solid #333; background: #000; min-height: 40px;">
+      <div style="color: #666; text-align: center; width: 100%;">Keine Query-Parameter</div>
+    </div>
+    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+      <input type="text" id="query-retriever-key" placeholder="Key" style="flex: 1; padding: 6px; background: #000; color: #fff; border: 1px solid #333;">
+      <input type="text" id="query-retriever-value" placeholder="Value" style="flex: 1; padding: 6px; background: #000; color: #fff; border: 1px solid #333;">
+      <button id="query-retriever-add" style="padding: 6px 12px; background: #0066cc; color: #fff; border: none; cursor: pointer;">Hinzufügen</button>
+    </div>
+    <button id="query-retriever-save" style="padding: 8px 16px; background: #00cc00; color: #fff; border: none; cursor: pointer; font-weight: bold;">Speichern</button>
+  </div>
+
+  <div id="body-retriever-config" style="display: none; margin: 20px 0; padding: 15px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px;">
+    <h3>Body Data (JSON)</h3>
+    <p style="color: #999; font-size: 11px; margin-bottom: 10px;">JSON-Daten für Body</p>
+    <div id="body-retriever-editor" style="height: 200px; border: 1px solid #333; background: #000; margin-bottom: 10px;"></div>
+    <button id="body-retriever-save" style="padding: 8px 16px; background: #00cc00; color: #fff; border: none; cursor: pointer; font-weight: bold;">Speichern</button>
+  </div>
+
   <div id="html-output" style="display: none;">
     <h3>HTML Output</h3>
     <div id="html-render" style="border: 1px solid #333; padding: 10px; background: #fff; color: #000; min-height: 200px;"></div>
@@ -773,6 +794,11 @@ ${nodeCrud.buildNodeCrud()}
 // Init
 // ------------------------------------------------
 window.onload = ()=>{
+  // Initialisiere QueryRetriever/BodyRetriever Event Listeners
+  if (typeof window.initQueryRetrieverListeners === 'function') {
+    window.initQueryRetrieverListeners();
+  }
+  
   // Warte bis vis.js geladen ist
   function waitForVis() {
     if (typeof vis !== 'undefined' && vis.Network) {
