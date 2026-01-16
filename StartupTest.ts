@@ -4,6 +4,7 @@ import { IKennelConfig } from './KennelRun';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
+import { testTypeDefBuilder } from './ui/TypeDefBuilder.test';
 
 export interface TestResult {
     name: string;
@@ -28,6 +29,14 @@ export class StartupTest {
         console.log('\n🧪 Starte Startup-Tests...\n');
 
         try {
+            // TypeDefBuilder-Tests (wichtig für axiosClient-Problem)
+            try {
+                testTypeDefBuilder();
+                this.addResult('TypeDefBuilder: Alle Tests', true);
+            } catch (error) {
+                this.addResult('TypeDefBuilder: Alle Tests', false, String(error));
+            }
+            
             // Store-Tests
             await this.testStoreSaveAndLoad(nodesStore);
             await this.testStoreFindByType(nodesStore);
