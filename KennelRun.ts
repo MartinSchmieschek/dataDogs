@@ -90,19 +90,14 @@ export class KennelRun {
         // Erstelle Basis-Dogs aus dogIds - IMMER neue Instanzen bei jedem fillKennel() (verhindert Caching)
         baseDogIds.forEach(baseDogId => {
             const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
-            
-            // BodyRetriever vorübergehend deaktiviert
-            if (typeName === 'BodyRetriever') {
-                console.log(`[KennelRun.fillKennel] BodyRetriever ist deaktiviert, überspringe`);
-                return; // Überspringe diesen Dog
-            }
-            
             const BaseDogClass = this.baseDogClasses.get(typeName);
             if (BaseDogClass) {
                 // Spezielle Behandlung für QueryRetriever und BodyRetriever
                 let baseDog: IDog<unknown>;
                 if (typeName === 'QueryRetriever') {
                     baseDog = new QueryRetriever(this.queryData);
+                } else if (typeName === 'BodyRetriever') {
+                    baseDog = new BodyRetriever(this.bodyData);
                 } else {
                     // Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
                     baseDog = new BaseDogClass();
