@@ -4,6 +4,7 @@ import { IKennelConfig } from './KennelRun';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
+import { TypeDefBuilder } from './ui/TypeDefBuilder';
 
 export interface TestResult {
     name: string;
@@ -45,6 +46,9 @@ export class StartupTest {
             // BaseDogs-Tests
             await this.testBaseDogsAvailability(baseDogsMap);
             await this.testBaseDogsFormat(baseDogsMap);
+            
+            // TypeDefBuilder-Tests
+            await this.testTypeDefBuilder();
             
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
@@ -362,6 +366,165 @@ export class StartupTest {
                 if (!expectedId.startsWith(BASE_DOG_PREFIX)) {
                     throw new Error(`BaseDog ${name} hat kein korrektes Präfix: ${expectedId}`);
                 }
+            }
+            
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: TypeDefBuilder generiert korrekte Type-Definitionen
+     */
+    private async testTypeDefBuilder(): Promise<void> {
+        const testName = 'TypeDefBuilder: Type-Definitionen';
+        try {
+            // Test 1: Einfacher Context mit Primitives
+            const simpleCtx = {
+                name: 'test',
+                age: 25,
+                active: true
+            };
+            const simpleResult = TypeDefBuilder.buildContextLib('SimpleNode', simpleCtx);
+            
+            // Validierung: Primitives
+            if (!simpleResult.includes('declare global')) {
+                throw new Error('Fehlende declare global Blocks');
+            }
+            if (!simpleResult.includes('export type Node_SimpleNode')) {
+                throw new Error('Fehlender export type mit Node_ prefix');
+            }
+            if (!simpleResult.includes('name: string')) {
+                throw new Error('String-Typ nicht korrekt konvertiert');
+            }
+            if (!simpleResult.includes('age: number')) {
+                throw new Error('Number-Typ nicht korrekt konvertiert');
+            }
+            if (!simpleResult.includes('active: boolean')) {
+                throw new Error('Boolean-Typ nicht korrekt konvertiert');
+            }
+            
+            // Test 2: Arrays
+            const arrayCtx = {
+                tags: ['tag1', 'tag2'],
+                numbers: [1, 2, 3],
+                emptyArray: []
+            };
+            const arrayResult = TypeDefBuilder.buildContextLib('ArrayNode', arrayCtx);
+            
+            if (!arrayResult.includes('tags: string[]')) {
+                throw new Error('String-Array nicht korrekt konvertiert');
+            }
+            if (!arrayResult.includes('numbers: number[]')) {
+                throw new Error('Number-Array nicht korrekt konvertiert');
+            }
+            if (!arrayResult.includes('emptyArray: any[]')) {
+                throw new Error('Leeres Array sollte als any[] behandelt werden');
+            }
+            
+            // Test 3: Objects und verschachtelte Strukturen
+            const objectCtx = {
+                user: {
+                    id: 1,
+                    profile: {
+                        name: 'John',
+                        email: 'john@example.com'
+                    }
+                },
+                emptyObj: {}
+            };
+            const objectResult = TypeDefBuilder.buildContextLib('ObjectNode', objectCtx);
+            
+            if (!objectResult.includes('user: {')) {
+                throw new Error('Object-Typ nicht erkannt');
+            }
+            if (!objectResult.includes('id: number')) {
+                throw new Error('Verschachtelte Properties nicht korrekt');
+            }
+            if (!objectResult.includes('profile: {')) {
+                throw new Error('Verschachtelte Objects nicht korrekt');
+            }
+            if (!objectResult.includes('emptyObj: {}')) {
+                throw new Error('Leeres Object sollte als {} behandelt werden');
+            }
+            
+            // Test 4: Functions
+            const functionCtx = {
+                handler: (a: any, b: any) => a + b,
+                noArgs: () => {},
+                threeArgs: (x: any, y: any, z: any) => x + y + z
+            };
+            const functionResult = TypeDefBuilder.buildContextLib('FunctionNode', functionCtx);
+            
+            if (!functionResult.includes('handler: (arg0: any, arg1: any) => any')) {
+                throw new Error('Function mit Parametern nicht korrekt konvertiert');
+            }
+            if (!functionResult.includes('noArgs: () => any')) {
+                throw new Error('Function ohne Parameter nicht korrekt konvertiert');
+            }
+            if (!functionResult.includes('threeArgs: (arg0: any, arg1: any, arg2: any) => any')) {
+                throw new Error('Function mit mehreren Parametern nicht korrekt konvertiert');
+            }
+            
+            // Test 5: Null-Werte
+            const nullCtx = {
+                value: null,
+                data: 'test'
+            };
+            const nullResult = TypeDefBuilder.buildContextLib('NullNode', nullCtx);
+            
+            if (!nullResult.includes('value: null')) {
+                throw new Error('Null-Wert nicht korrekt als "null" typisiert');
+            }
+            
+            // Test 6: Komplexer Context (Kombination aller Typen)
+            const complexCtx = {
+                string: 'test',
+                number: 42,
+                boolean: true,
+                nullValue: null,
+                array: [1, 2, 3],
+                emptyArray: [],
+                object: {
+                    nested: {
+                        deep: 'value'
+                    },
+                    array: ['a', 'b']
+                },
+                emptyObject: {},
+                func: (x: any) => x,
+                fetch: fetch,
+                console: console
+            };
+            const complexResult = TypeDefBuilder.buildContextLib('ComplexNode-123', complexCtx);
+            
+            // Validierung: Type-Name sollte sicher sein (Sonderzeichen ersetzt)
+            if (!complexResult.includes('export type Node_ComplexNode_123')) {
+                throw new Error('Type-Name sollte Sonderzeichen ersetzen');
+            }
+            
+            // Validierung: Alle Typen sollten vorhanden sein
+            if (!complexResult.includes('string: string') || 
+                !complexResult.includes('number: number') ||
+                !complexResult.includes('boolean: boolean') ||
+                !complexResult.includes('nullValue: null') ||
+                !complexResult.includes('array: number[]') ||
+                !complexResult.includes('emptyArray: any[]') ||
+                !complexResult.includes('object: {') ||
+                !complexResult.includes('emptyObject: {}')) {
+                throw new Error('Nicht alle Typen im komplexen Context korrekt konvertiert');
+            }
+            
+            // Validierung: Global declarations für Context-Keys
+            if (!complexResult.includes('declare global')) {
+                throw new Error('Fehlende global declarations für Context-Keys');
+            }
+            
+            // Validierung: buildGlobals sollte declare global Statements enthalten
+            const globalDeclarations = (complexResult.match(/declare global/g) || []).length;
+            if (globalDeclarations < 1) {
+                throw new Error('Zu wenige declare global Blocks');
             }
             
             this.addResult(testName, true);
