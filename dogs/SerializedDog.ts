@@ -33,54 +33,76 @@ export class SerializedDog<T> extends Dog<T> {
         this.kennelRef = kennel;
     }
 
-    public get simpleVmContext(): Record<string, any> | undefined{
-        let justContext:any = {
-            fetch:fetch,
-            console,
-            }
-        this.requiredYieldsContext.forEach((value, key) => {
-            justContext[key] = value
-        })
-        
-        // Füge required/optional Parents aus Config hinzu (für Monaco Editor)
-        // Diese werden zur Laufzeit aus season.exhausted gefüllt, aber für Type Definitions
-        // brauchen wir die Info aus dem Kennel
-        if (this.kennelRef) {
-            const parentsRequired = this.config.parentsRequired || [];
-            parentsRequired.forEach((parentId: string) => {
-                const parentDog = this.kennelRef!.find(dog => {
-                    if (dog instanceof SerializedDog) {
-                        return (dog as SerializedDog<unknown>).storageId === parentId;
-                    }
-                    return dog.name === parentId;
-                });
-                if (parentDog) {
-                    // Nutze Parent-Name (CamelCase) als Variablennamen
-                    const safeName = parentDog.name;
-                    // Für Type Definitions: verwende einen Platzhalter-Typ
-                    justContext[safeName] = parentDog.collected || {};
-                }
-            });
-            
-            const parentsOptional = this.config.parentsOptional || [];
-            parentsOptional.forEach((parentId: string) => {
-                const parentDog = this.kennelRef!.find(dog => {
-                    if (dog instanceof SerializedDog) {
-                        return (dog as SerializedDog<unknown>).storageId === parentId;
-                    }
-                    return dog.name === parentId;
-                });
-                if (parentDog) {
-                    // Nutze Parent-Name (CamelCase) als Variablennamen
-                    const safeName = parentDog.name;
-                    // Für Type Definitions: verwende einen Platzhalter-Typ
-                    justContext[safeName] = parentDog.collected || {};
-                }
-            });
+    /**
+     * Erstellt das Basis-Context-Objekt mit Standard-Keys (fetch, console)
+     * Wird von simpleVmContext verwendet, um synchron mit runExternalCode zu bleiben
+     */
+    protected buildBaseContext(): Record<string, any> {
+        return {
+            fetch: fetch,
+            console: console,
+        };
+    }
+
+    /**
+     * Merged Parent-Dogs in das Context-Objekt
+     * @param contextObj Das Basis-Context-Objekt, in das die Dogs gemerged werden
+     * @param parentSource Die Datenquelle für die Parent-Dogs (kennelRef oder season.exhausted)
+     * @param useExhausted Wenn true, nutzt season.exhausted (für Laufzeit), wenn false, nutzt kennelRef (für Type-Definitionen)
+     */
+    private mergeParentDogsIntoContext(
+        contextObj: Record<string, any>,
+        parentSource: Array<IHuntingDog<unknown>> | null,
+        useExhausted: boolean = false
+    ): void {
+        if (!parentSource) {
+            return;
         }
+
+        const parentsRequired = this.config.parentsRequired || [];
+        const parentsOptional = this.config.parentsOptional || [];
+        const allParentIds = [...parentsRequired, ...parentsOptional];
+
+        allParentIds.forEach((parentId: string) => {
+            // Finde Dog anhand ID (storageId für SerializedDogs, name für andere)
+            const parentDog = parentSource.find(dog => {
+                if (dog instanceof SerializedDog) {
+                    return (dog as SerializedDog<unknown>).storageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+
+            if (parentDog) {
+                const dogName = parentDog.name;
+
+                if (useExhausted) {
+                    // Für Laufzeit: Nur wenn collected !== undefined
+                    if (parentDog.collected !== undefined) {
+                        contextObj[dogName] = parentDog.collected;
+                        this.requiredYieldsContext.set(dogName, parentDog.collected);
+                    }
+                } else {
+                    // Für Type-Definitionen: Verwende collected || {} als Platzhalter
+                    contextObj[dogName] = parentDog.collected || {};
+                }
+            }
+        });
+    }
+
+    public get simpleVmContext(): Record<string, any> | undefined{
+        // Nutze dasselbe Basis-Context-Objekt wie runExternalCode (fetch, console)
+        const justContext = this.buildBaseContext();
         
-        return justContext
+        // Merge requiredYieldsContext (falls bereits vorhanden, z.B. nach vorherigen Runs)
+        this.requiredYieldsContext.forEach((value, key) => {
+            justContext[key] = value;
+        });
         
+        // Merge Parent-Dogs aus kennelRef (für Type-Definitionen)
+        // Nutzt collected || {} als Platzhalter für Type-Definitionen
+        this.mergeParentDogsIntoContext(justContext, this.kennelRef, false);
+        
+        return justContext;
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
