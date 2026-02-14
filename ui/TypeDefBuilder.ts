@@ -22,27 +22,11 @@ export class TypeDefBuilder {
     });
 
     return `
-
-
-declare global {
-  type Test = {
-    id: number;
-    name: string;
-    difficulty: string;
-  };
-
-  const test: Test;
-}
-
 ${globalVars}
-
-
 
 export type ${typeName} = ${typeBody};
 
 ${this.buildGlobals(typeName, ctx)}
-
-
 
 `;
   }
@@ -63,7 +47,7 @@ ${this.buildGlobals(typeName, ctx)}
     return Object.keys(ctx)
       .map(
         key =>
-          `declare global ${key}: ${typeName}["${key}"];`
+          `declare global {\n  const ${key}: ${typeName}["${key}"];\n}`
       )
       .join("\n");
   }
