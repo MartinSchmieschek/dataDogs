@@ -492,6 +492,11 @@ body { margin:0; background:#0d0d11; color:#eee; font-family:monospace; }
     <div id="context-editor" style="height: 300px; border: 1px solid #333;"></div>
   </div>
 
+  <div id="serialized-dog-typedef" style="display: none;">
+    <h3>Type Definitions (für Editor)</h3>
+    <div id="typedef-editor" style="height: 300px; border: 1px solid #333;"></div>
+  </div>
+
   <div id="read-tracking" style="display: none; margin: 20px 0;">
     <h3>Property-Zugriffe</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px;">

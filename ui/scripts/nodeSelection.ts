@@ -48,6 +48,7 @@ export function buildNodeSelection(): string {
   const parentsDiv = document.getElementById("serialized-dog-parents");
   const configDiv = document.getElementById("serialized-dog-config");
   const contextDiv = document.getElementById("serialized-dog-context");
+  const typedefDiv = document.getElementById("serialized-dog-typedef");
   const tsDiv = document.getElementById("serialized-dog-ts");
   const htmlDiv = document.getElementById("html-output");
   const htmlRender = document.getElementById("html-render");
@@ -107,6 +108,14 @@ export function buildNodeSelection(): string {
       contextDiv.style.display = "block";
       updateContextEditor(JSON.stringify(n._ctx, null, 2));
     }
+    if (typedefDiv) {
+      typedefDiv.style.display = "block";
+      if (n._ctxTypeDef) {
+        updateTypeDefEditor(n._ctxTypeDef);
+      } else {
+        updateTypeDefEditor("// Keine Type-Definitionen verfügbar");
+      }
+    }
     if (tsDiv) tsDiv.style.display = "block";
     
     // Für SerializedDogs: Zeige HTML Output falls vorhanden (zusätzlich zum Editor)
@@ -135,6 +144,7 @@ export function buildNodeSelection(): string {
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
     if (contextDiv) contextDiv.style.display = "none";
+    if (typedefDiv) typedefDiv.style.display = "none";
     if (tsDiv) tsDiv.style.display = "none";
     
     // Spezielle UI für QueryRetriever
@@ -174,6 +184,7 @@ export function buildNodeSelection(): string {
     if (parentsDiv) parentsDiv.style.display = "none";
     if (configDiv) configDiv.style.display = "none";
     if (contextDiv) contextDiv.style.display = "none";
+    if (typedefDiv) typedefDiv.style.display = "none";
     if (tsDiv) tsDiv.style.display = "none";
     
     // Verstecke Query/Body-Config auch für andere BaseDogs
@@ -363,6 +374,23 @@ function updateConfigEditor(jsonString) {
     });
   } else if (configEditor) {
     configEditor.setValue(jsonString);
+  }
+}
+
+function updateTypeDefEditor(typeDefString) {
+  const editorEl = document.getElementById("typedef-editor");
+  if (!editorEl) return;
+  
+  if (!typeDefEditor && typeof monaco !== 'undefined' && monaco && monaco.editor) {
+    typeDefEditor = monaco.editor.create(editorEl, {
+      value: typeDefString,
+      language: "typescript",
+      theme: "vs-dark",
+      automaticLayout: true,
+      readOnly: true
+    });
+  } else if (typeDefEditor) {
+    typeDefEditor.setValue(typeDefString);
   }
 }
 
@@ -687,6 +715,7 @@ function updateParentsSelection(selectedNode) {
 // Funktionen für QueryRetriever/BodyRetriever
 let queryRetrieverEditor = null;
 let bodyRetrieverEditor = null;
+let typeDefEditor = null;
 
 function updateQueryRetrieverConfig() {
   // Lade KennelConfig - immer frisch aus dem DOM
