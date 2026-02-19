@@ -11,3 +11,4 @@ node_modules/@prisma/
 
 # env
 .env
+.cursor/debug.log

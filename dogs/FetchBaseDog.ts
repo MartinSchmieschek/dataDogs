@@ -34,3 +34,4 @@ export abstract class FetchBaseDog<T> extends Dog<T> {
     };
 }
 
+

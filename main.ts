@@ -4,11 +4,6 @@ import { CountryFlagBlackLab } from "./dogs/CountryFlagBlackLab";
 import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
 import { QueryRetriever } from './dogs/QueryRetriever';
 import { BodyRetriever } from './dogs/BodyRetriever';
-import { WarframeAlertsRetriever } from './dogs/warDogs/WarframeAlertsRetriever';
-import { WarframeFissuresRetriever } from './dogs/warDogs/WarframeFissuresRetriever';
-import { WarframeSortieRetriever } from './dogs/warDogs/WarframeSortieRetriever';
-import { WarframeCyclesRetriever } from './dogs/warDogs/WarframeCyclesRetriever';
-import { WarframeEventsRetriever } from './dogs/warDogs/WarframeEventsRetriever';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
@@ -52,12 +47,7 @@ async function start() {
         DishFlagBlackLab,
         RandomEveryThingRetriever,
         QueryRetriever,
-        BodyRetriever,
-        WarframeAlertsRetriever,
-        WarframeFissuresRetriever,
-        WarframeSortieRetriever,
-        WarframeCyclesRetriever,
-        WarframeEventsRetriever
+        BodyRetriever
     ];
     
     // Erstelle Instanzen für die Kennel-Liste (nur für Anzeige)
@@ -381,12 +371,10 @@ async function start() {
             });
             
             // Body-Daten: Request-Body überschreibt defaultBody
-            // BodyRetriever vorübergehend deaktiviert
-            // let bodyData = kennelConfig.defaultBody;
-            // if (req.body && Object.keys(req.body).length > 0) {
-            //     bodyData = req.body;
-            // }
-            let bodyData = undefined;
+            let bodyData = kennelConfig.defaultBody;
+            if (req.body && Object.keys(req.body).length > 0) {
+                bodyData = req.body;
+            }
             
             // Factory-Funktion für SerializedDogs
             const serializedDogFactory = async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {

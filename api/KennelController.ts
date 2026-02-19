@@ -141,6 +141,22 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Überschreibt getById um sicherzustellen, dass parseEntity korrekt aufgerufen wird
+     */
+    async getById(id: string): Promise<IControllerResponse<IKennelConfig | null>> {
+        try {
+            const data = await this.store.load(id);
+            if (!data) {
+                return { ok: false, error: `Entity mit ID ${id} nicht gefunden`, data: null };
+            }
+            const parsed = this.parseEntity(data);
+            return { ok: true, data: parsed };
+        } catch (error) {
+            return { ok: false, error: String(error), data: null };
+        }
+    }
+
+    /**
      * Überschreibt list() um direkt r zu verwenden, nicht r.serializedDogConfig
      */
     async list(filter?: Partial<IKennelConfig>): Promise<IControllerResponse<IKennelConfig[]>> {
@@ -186,7 +202,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                     try {
                         const parsed = JSON.parse(data.dogIds);
                         dogIds = Array.isArray(parsed) ? parsed : [];
-                    } catch {
+                    } catch (e) {
                         dogIds = [];
                     }
                 }
