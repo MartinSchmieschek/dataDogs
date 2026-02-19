@@ -334,9 +334,8 @@ function initNetwork() {
       
       const config = nodeData.serializedDogConfig || null;
       const isSerializedDog = !!config;
-      const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
-      const nodeName = nodeData.name || nodeId;
-      const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
+      // Alle Nodes ohne serializedDogConfig sind BaseDogs und können gelöscht werden
+      const isBaseDog = !isSerializedDog;
       const canDelete = isSerializedDog || isBaseDog;
       
       if (canDelete) {
@@ -631,14 +630,17 @@ async function deleteNodeFromNetwork(nodeId) {
   // Erstelle temporäres Element-Objekt für deleteNode
   const tempEl = {
     dataset: { id: nodeData.id },
-    _json: nodeData.result,
+    _json: {
+      name: nodeData.name || nodeData.id,
+      result: nodeData.result
+    },
     _ctx: nodeData.vmContext,
     _ctxTypeDef: nodeData.vmContextTypeDef,
     _ts: nodeData.codeTs,
     _req: nodeData.parentsRequired,
     _opt: nodeData.parentsOptional,
     _nodeId: nodeData.id,
-    _config: nodeData.serializedDogConfig
+    _config: nodeData.serializedDogConfig || null
   };
   
   // Setze selectedNodeElement für deleteNode

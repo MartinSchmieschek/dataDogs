@@ -17,9 +17,9 @@ export function buildNodeSelection(): string {
 
   // Prüfe ob SerializedDog (hat _config) oder BaseDog
   const isSerializedDog = !!n._config;
-  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog', 'QueryRetriever', 'BodyRetriever'];
+  // Basis-Dogs haben keinen _config, alle Dogs ohne _config sind BaseDogs
   const nodeName = n._json?.name || (n.dataset ? n.dataset.id : (n._nodeId || n.id || "unknown"));
-  const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
+  const isBaseDog = !isSerializedDog;
   const isQueryRetriever = nodeName === 'QueryRetriever';
   const isBodyRetriever = nodeName === 'BodyRetriever';
   const canDelete = isSerializedDog || isBaseDog;
@@ -127,8 +127,9 @@ export function buildNodeSelection(): string {
     
     // Parents-Auswahl aktualisieren
     updateParentsSelection(n);
-  } else if (isBaseDog) {
-    // Für BaseDogs: Zeige BaseDog-Controls, verstecke SerializedDog-spezifische Controls
+  } else {
+    // Für alle anderen Nodes (BaseDogs oder unbekannte Nodes): Zeige BaseDog-Controls
+    // Alle Nodes ohne _config werden als BaseDogs behandelt
     if (controlsDiv) controlsDiv.style.display = "none";
     if (baseControlsDiv) baseControlsDiv.style.display = "flex";
     if (versionDiv) versionDiv.style.display = "none";
@@ -156,29 +157,6 @@ export function buildNodeSelection(): string {
       if (queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
       if (bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
     }
-    
-    // Zeige HTML Output falls vorhanden
-    if (isHtml && htmlDiv && htmlRender) {
-      htmlDiv.style.display = "block";
-      htmlRender.innerHTML = result;
-    } else if (htmlDiv) {
-      htmlDiv.style.display = "none";
-    }
-  } else {
-    // Verstecke Controls, Parents, Config, Context und TypeScript Editor
-    if (controlsDiv) controlsDiv.style.display = "none";
-    if (baseControlsDiv) baseControlsDiv.style.display = "none";
-    if (queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
-    if (bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
-    if (versionDiv) versionDiv.style.display = "none";
-    if (parentsDiv) parentsDiv.style.display = "none";
-    if (configDiv) configDiv.style.display = "none";
-    if (contextDiv) contextDiv.style.display = "none";
-    if (tsDiv) tsDiv.style.display = "none";
-    
-    // Verstecke Query/Body-Config auch für andere BaseDogs
-    if (!isQueryRetriever && queryRetrieverDiv) queryRetrieverDiv.style.display = "none";
-    if (!isBodyRetriever && bodyRetrieverDiv) bodyRetrieverDiv.style.display = "none";
     
     // Zeige HTML Output falls vorhanden
     if (isHtml && htmlDiv && htmlRender) {

@@ -51,14 +51,8 @@ async function moveNodeToFirst() {
 
   // Prüfe ob SerializedDog (hat _config) oder Basis-Dog
   const isSerializedDog = !!activeNode._config;
-  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
-  const nodeName = activeNode._json?.name || nodeId;
-  const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
-  
-  if (!isSerializedDog && !isBaseDog) {
-    alert("Diese Node kann nicht verschoben werden (nur SerializedDogs oder Basis-Dogs)");
-    return;
-  }
+  // Basis-Dogs haben keinen _config, alle Dogs ohne _config sind BaseDogs
+  const isBaseDog = !isSerializedDog;
 
   try {
     // Lade KennelConfig
@@ -176,16 +170,8 @@ async function deleteNode() {
 
   // Prüfe ob SerializedDog (hat _config) oder Basis-Dog (hat keinen _config)
   const isSerializedDog = !!activeNode._config;
-  // Basis-Dogs haben keinen _config, aber einen Namen der einem Dog-Typ entspricht
-  // Mögliche Basis-Dog-Typen: RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever, TalkingDog
-  const possibleBaseDogTypes = ['RandomRecipesRetriever', 'CountryFlagBlackLab', 'DishFlagBlackLab', 'RandomEveryThingRetriever', 'TalkingDog'];
-  const nodeName = activeNode._json?.name || nodeId;
-  const isBaseDog = !isSerializedDog && possibleBaseDogTypes.includes(nodeName);
-  
-  if (!isSerializedDog && !isBaseDog) {
-    alert("Diese Node kann nicht aus der KennelConfig entfernt werden (nur SerializedDogs oder Basis-Dogs)");
-    return;
-  }
+  // Basis-Dogs haben keinen _config, alle Dogs ohne _config sind BaseDogs
+  const isBaseDog = !isSerializedDog;
 
   const confirmMessage = isSerializedDog 
     ? "SerializedDog wirklich aus der KennelConfig entfernen?"
@@ -262,12 +248,39 @@ async function deleteNode() {
       console.log('[DeleteNode] Entferne SerializedDog:', nodeId);
       console.log('[DeleteNode] Vorher dogIds:', dogIds);
       console.log('[DeleteNode] Nachher dogIds:', filteredDogIds);
-    } else if (isBaseDog) {
+    } else {
       // Entferne Basis-Dog aus dogIds (hat Präfix "base:")
       // Der nodeId sollte der Name des Basis-Dog-Typs sein (z.B. "RandomRecipesRetriever")
       const nodeName = activeNode._json?.name || nodeId;
-      const baseDogId = 'base:' + nodeName;
-      filteredDogIds = dogIds.filter(id => id !== baseDogId);
+      
+      // Mögliche Formate für BaseDog-IDs in dogIds:
+      // - "base:RandomRecipesRetriever" (Standard)
+      // - nodeId könnte auch bereits "base:..." sein
+      // - nodeId könnte auch nur der Name sein (ohne "base:")
+      
+      // Sammle alle möglichen IDs, die dieser BaseDog entsprechen könnten
+      const possibleIds = new Set();
+      
+      // 1. Standard-Format: "base:" + nodeName
+      possibleIds.add('base:' + nodeName);
+      
+      // 2. Falls nodeId bereits "base:..." ist
+      if (nodeId.startsWith('base:')) {
+        possibleIds.add(nodeId);
+      }
+      
+      // 3. Falls nodeName != nodeId, auch "base:" + nodeId versuchen
+      if (nodeName !== nodeId) {
+        possibleIds.add('base:' + nodeId);
+      }
+      
+      // Entferne alle IDs, die einer der möglichen IDs entsprechen
+      filteredDogIds = dogIds.filter(id => {
+        // Nur BaseDogs entfernen (haben "base:" Präfix)
+        if (!id.startsWith('base:')) return true;
+        // Entferne wenn id einer der möglichen IDs entspricht
+        return !possibleIds.has(id);
+      });
 
       if (filteredDogIds.length === dogIds.length) {
         alert("Basis-Dog ist nicht in der KennelConfig");
@@ -275,7 +288,7 @@ async function deleteNode() {
       }
       
       somethingRemoved = true;
-      console.log('[DeleteNode] Entferne Basis-Dog:', nodeName);
+      console.log('[DeleteNode] Entferne Basis-Dog:', nodeName, 'mögliche IDs:', Array.from(possibleIds));
       console.log('[DeleteNode] Vorher dogIds:', dogIds);
       console.log('[DeleteNode] Nachher dogIds:', filteredDogIds);
     }
