@@ -1,5 +1,4 @@
-import { Dog } from "../core/enities/abstractHuntingDog";
-import { IHuntingSeason } from "../core/enities/IHuntingSeason";
+import { Dog, IHuntingSeason } from "datadogs";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
 export class CountryFlagBlackLab extends Dog<string>{

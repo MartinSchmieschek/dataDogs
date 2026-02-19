@@ -9,3 +9,5 @@ export interface IHuntingDog<Y> {
     collectYield(collection:IHuntingSeason):Promise<Y>
     get collected(): Y|undefined
 }
+
+

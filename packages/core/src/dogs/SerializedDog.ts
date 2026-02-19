@@ -1,8 +1,17 @@
-import { Dog } from "../core/enities/abstractHuntingDog";
-import { DogClass, IHuntingDog } from "../core/enities/IHuntingDog";
-import { IHuntingSeason } from "../core/enities/IHuntingSeason";
+import { Dog } from "../core/entities/abstractHuntingDog";
+import { DogClass, IHuntingDog } from "../core/entities/IHuntingDog";
+import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import * as vm from "vm";
-import { IUpdateInput } from "../api/AbstractController";
+
+/**
+ * Input-DTO für Update/Save-Operationen
+ * Wird von SerializedDog verwendet, um die Konfiguration zu definieren
+ */
+export interface IUpdateInput {
+    id?: string;
+    version?: number;  // Versionsnummer für Versionierung
+    [key: string]: any;
+}
 
 /**
  * Konfiguration für SerializedDog
@@ -312,3 +321,5 @@ export class SerializedDog<T> extends Dog<T> {
 
 
 }
+
+

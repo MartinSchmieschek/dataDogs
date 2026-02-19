@@ -1,6 +1,6 @@
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
-import { IKennelConfig } from '../KennelRun';
+import { IKennelConfig } from 'datadogs';
 
 /**
  * Input für Create-Operation

@@ -1,5 +1,4 @@
-import { Dog } from "../core/enities/abstractHuntingDog";
-import { IHuntingSeason } from "../core/enities/IHuntingSeason";
+import { Dog, IHuntingSeason } from "datadogs";
 
 export class RandomEveryThingRetriever extends Dog<any> {
 

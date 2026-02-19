@@ -8,9 +8,14 @@ import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
-import { ISerializedDogConfig, SerializedDog } from './dogs/SerializedDog';
-import { Results, Waves } from './ui/results';
-import { KennelRun, IKennelConfig } from './KennelRun';
+import { WarframeAlertsRetriever } from './dogs/Kubrow/WarframeAlertsRetriever';
+import { WarframeCyclesRetriever } from './dogs/Kubrow/WarframeCyclesRetriever';
+import { WarframeEventsRetriever } from './dogs/Kubrow/WarframeEventsRetriever';
+import { WarframeFissuresRetriever } from './dogs/Kubrow/WarframeFissuresRetriever';
+import { WarframeSortieRetriever } from './dogs/Kubrow/WarframeSortieRetriever';
+import { ISerializedDogConfig, SerializedDog, KennelRun, IKennelConfig, IHuntingSeason, IWaveEntry, BASE_DOG_PREFIX } from 'datadogs';
+import { Results, Waves, NodeEntry } from './ui/results';
+import { TypeDefBuilder } from './ui/TypeDefBuilder';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
@@ -18,6 +23,103 @@ import { KennelList } from './ui/kennelList';
 import { KennelEditor } from './ui/kennelEditor';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed';
+
+// Hilfsfunktion: Konvertiert IHuntingSeason zu Waves (UI-Format)
+function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
+    const waves: Waves = [];
+    theHunt.wave.forEach((wave: IWaveEntry[], waveIndex: number) => {
+        // Remap Objects, that is no fun and schould be never done!
+        waves.push(wave.map((entry: IWaveEntry) => {
+            const instance = entry.instance;
+            const instanceId = (instance instanceof SerializedDog) 
+                ? (instance as SerializedDog<unknown>).storageId 
+                : instance.name;
+            const instanceName = instance.name;
+            
+            // Sammle readTracking-Daten für diese Instance
+            const readFrom: any[] = []; // Properties, die diese Instance von anderen liest
+            const readBy: any[] = [];   // Properties dieser Instance, die von anderen gelesen werden
+            
+            theHunt.readTracking.forEach((trackingEntry: any) => {
+                const readerName = trackingEntry.readerInstance.name;
+                const sourceName = trackingEntry.sourceInstance.name;
+                const readerId = (trackingEntry.readerInstance instanceof SerializedDog)
+                    ? (trackingEntry.readerInstance as SerializedDog<unknown>).storageId
+                    : trackingEntry.readerInstance.name;
+                const sourceId = (trackingEntry.sourceInstance instanceof SerializedDog)
+                    ? (trackingEntry.sourceInstance as SerializedDog<unknown>).storageId
+                    : trackingEntry.sourceInstance.name;
+                
+                // readFrom: Diese Instance liest von anderen
+                if (readerId === instanceId || readerName === instanceName) {
+                    readFrom.push({
+                        waveIndex: trackingEntry.waveIndex,
+                        readerInstanceName: readerName,
+                        sourceInstanceName: sourceName,
+                        propertyPath: trackingEntry.propertyPath
+                    });
+                }
+                
+                // readBy: Andere lesen von dieser Instance
+                if (sourceId === instanceId || sourceName === instanceName) {
+                    readBy.push({
+                        waveIndex: trackingEntry.waveIndex,
+                        readerInstanceName: readerName,
+                        sourceInstanceName: sourceName,
+                        propertyPath: trackingEntry.propertyPath
+                    });
+                }
+            });
+            
+            //create Waves dog entry 
+            const nodeEntry = {
+                id: instanceId,
+                name: instanceName,
+                result: instance.collected,
+                error: (instance as any).__error || undefined,  // Fehler falls vorhanden
+                parentsOptional: [],
+                parentsRequired: [],
+                readFrom: readFrom.length > 0 ? readFrom : undefined,
+                readBy: readBy.length > 0 ? readBy : undefined,
+            } as NodeEntry;
+
+            // add additional codeTs if SerializedDog
+            if (entry.instance instanceof SerializedDog) {
+                const seDog = entry.instance as SerializedDog<unknown>;
+                nodeEntry.codeTs = seDog.instanceConfig.theRun;
+                const vmCtx = seDog.simpleVmContext || {};
+                nodeEntry.vmContext = vmCtx; // Füge vmContext hinzu
+                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx);
+                // Übergebe die vollständige Config an die UI (aus DB, nicht aus Runtime)
+                nodeEntry.serializedDogConfig = {
+                    theRun: seDog.instanceConfig.theRun,
+                    version: seDog.instanceConfig.version,
+                    parentsRequired: seDog.instanceConfig.parentsRequired || [],
+                    parentsOptional: seDog.instanceConfig.parentsOptional || []
+                };
+                // Nutze die Config-Werte für parentsRequired/Optional (aus DB)
+                nodeEntry.parentsRequired = seDog.instanceConfig.parentsRequired || [];
+                nodeEntry.parentsOptional = seDog.instanceConfig.parentsOptional || [];
+            } else {
+                // Für nicht-SerializedDogs: nutze Runtime-Werte
+                nodeEntry.parentsOptional = [...entry.optionalRequiresFrom ? entry.optionalRequiresFrom.map((r: any) => {
+                    return (r.instance instanceof SerializedDog) 
+                        ? (r.instance as SerializedDog<unknown>).storageId 
+                        : r.instance.name;
+                }) : []];
+                nodeEntry.parentsRequired = [...entry.requiresFrom ? entry.requiresFrom.map((r: any) => {
+                    return (r.instance instanceof SerializedDog) 
+                        ? (r.instance as SerializedDog<unknown>).storageId 
+                        : r.instance.name;
+                }) : []];
+            }
+
+            return nodeEntry;
+        }));
+    });
+
+    return waves;
+}
 
 // ENTRY: start wird als erstes aufgerufen beim Programmstart
 start().catch(e => {
@@ -47,14 +149,18 @@ async function start() {
         DishFlagBlackLab,
         RandomEveryThingRetriever,
         QueryRetriever,
-        BodyRetriever
+        BodyRetriever,
+        WarframeAlertsRetriever,
+        WarframeCyclesRetriever,
+        WarframeEventsRetriever,
+        WarframeFissuresRetriever,
+        WarframeSortieRetriever
     ];
     
     // Erstelle Instanzen für die Kennel-Liste (nur für Anzeige)
     const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
     
-    // Präfix für BaseDog-IDs (lokal definiert, nicht aus core importiert)
-    const BASE_DOG_PREFIX = 'base:';
+    // BASE_DOG_PREFIX wird jetzt aus datadogs importiert
     
     // Map von BaseDog-Namen zu Klassen (für KennelRun - erstellt neue Instanzen bei jedem Run)
     const baseDogsMap = new Map<string, new () => any>();
@@ -198,7 +304,8 @@ async function start() {
             const kennelRun = new KennelRun(kennelConfig, baseDogsMap, serializedDogFactory, queryData, bodyData);
             
             try {
-                const waves = await kennelRun.run();
+                const season = await kennelRun.run();
+                const waves = convertSeasonToWaves(season);
                 const html = Results.buildWavesHtml(waves, kennelConfig);
                 res.setHeader('Content-Type', 'text/html; charset=utf-8');
                 res.send(html);
@@ -279,7 +386,8 @@ async function start() {
             
             // Führe Kennel aus mit Query-Daten
             const kennelRun = new KennelRun(kennelConfig, baseDogsMap, serializedDogFactory, queryData, undefined);
-            const waves = await kennelRun.run();
+            const season = await kennelRun.run();
+            const waves = convertSeasonToWaves(season);
             
             if (!waves || waves.length === 0) {
                 res.status(404).json({ error: 'Keine Hunde im Rudel gefunden' });
@@ -389,7 +497,8 @@ async function start() {
             
             // Führe Kennel aus mit Query- und Body-Daten
             const kennelRun = new KennelRun(kennelConfig, baseDogsMap, serializedDogFactory, queryData, bodyData);
-            const waves = await kennelRun.run();
+            const season = await kennelRun.run();
+            const waves = convertSeasonToWaves(season);
             
             if (!waves || waves.length === 0) {
                 res.status(404).json({ error: 'Keine Hunde im Rudel gefunden' });

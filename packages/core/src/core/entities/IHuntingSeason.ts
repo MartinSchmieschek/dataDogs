@@ -1,4 +1,3 @@
-
 import { DogClass, IHuntingDog } from "./IHuntingDog";
 
 export interface IWaveEntry {
@@ -26,3 +25,5 @@ export interface IHuntingSeason{
     // Aktueller Wave-Index, wird während der Ausführung gesetzt
     currentWaveIndex?: number;
 }
+
+

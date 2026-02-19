@@ -1,15 +1,13 @@
-import { Dog } from "../../core/enities/abstractHuntingDog";
-import { IHuntingDog } from "../../core/enities/IHuntingDog";
-import { IHuntingSeason } from "../../core/enities/IHuntingSeason";
+import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 import { FoodPornRetriever } from "../FoodPornRetriever";
 import { RandomEveryThingRetriever } from "../RandomEverthingRetriever";
 import { RandomRecipesRetriever } from "../RandomRecipesRetriever";
-import { LayoutRenderer } from "../../core/renderer/LayoutRenderer";
-import { ButtonFragment } from "../../core/renderer/fragments/ButtonFragment";
-import { GestureFragment } from "../../core/renderer/fragments/GestureFragment";
-import { TinderLayout, TinderLayoutEnum } from "../../core/renderer/layouts/tinderLayout";
-import { SwipeLeftGestureFragment } from "../../core/renderer/fragments/SwipeLeftGestureFragment";
-import { SwipeRightGestureFragment } from "../../core/renderer/fragments/SwipeRightGestureFragment";
+import { LayoutRenderer } from "./renderer/LayoutRenderer";
+import { ButtonFragment } from "./renderer/fragments/ButtonFragment";
+import { GestureFragment } from "./renderer/fragments/GestureFragment";
+import { TinderLayout, TinderLayoutEnum } from "./renderer/layouts/tinderLayout";
+import { SwipeLeftGestureFragment } from "./renderer/fragments/SwipeLeftGestureFragment";
+import { SwipeRightGestureFragment } from "./renderer/fragments/SwipeRightGestureFragment";
 import { DishFlagBlackLab } from "../DishFlagBlackLab";
 
 export class TalkingDog extends Dog<string> {

@@ -1,7 +1,7 @@
 
-import { Dog } from "./core/enities/abstractHuntingDog";
-import { IHuntingDog } from "./core/enities/IHuntingDog";
-import { IHuntingSeason } from "./core/enities/IHuntingSeason";
+import { Dog } from "./core/entities/abstractHuntingDog";
+import { IHuntingDog } from "./core/entities/IHuntingDog";
+import { IHuntingSeason } from "./core/entities/IHuntingSeason";
 
 
 
@@ -102,7 +102,6 @@ export class SeasonRunner {
 
 
 
-
         console.log("dog with bees in the pants:" + this.dogsWithBeesInthePants.map(dog => "<" + dog.name + ">").join(", "))
 
 
@@ -156,3 +155,5 @@ export class SeasonRunner {
         return this.season
     }
 }
+
+

@@ -1,6 +1,4 @@
-import { Dog } from "../core/enities/abstractHuntingDog";
-import { IHuntingDog } from "../core/enities/IHuntingDog";
-import { IHuntingSeason } from "../core/enities/IHuntingSeason";
+import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 
 /**
  * Abstrakte Basis-Klasse für Dogs, die Daten über Fetch-Requests von APIs abrufen.

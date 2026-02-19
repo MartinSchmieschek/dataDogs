@@ -1,13 +1,10 @@
 import { IStore } from './store/IStore';
-import { SerializedDog, ISerializedDogConfig } from './dogs/SerializedDog';
-import { IKennelConfig } from './KennelRun';
+import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX } from 'datadogs';
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { RandomRecipesRetriever } from './dogs/RandomRecipesRetriever';
 import { CountryFlagBlackLab } from './dogs/CountryFlagBlackLab';
 import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
 import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
-
-const BASE_DOG_PREFIX = 'base:';
 
 /**
  * Seeded initial SerializedDog in die Datenbank

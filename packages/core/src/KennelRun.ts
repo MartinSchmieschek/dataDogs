@@ -1,10 +1,7 @@
-import { IHuntingDog as IDog } from './core/enities/IHuntingDog';
+import { IHuntingDog as IDog } from './core/entities/IHuntingDog';
 import { SerializedDog } from './dogs/SerializedDog';
 import { SeasonRunner } from './harverster';
-import { Waves, NodeEntry } from './ui/results';
-import { TypeDefBuilder } from './ui/TypeDefBuilder';
-import { QueryRetriever } from './dogs/QueryRetriever';
-import { BodyRetriever } from './dogs/BodyRetriever';
+import { IHuntingSeason } from './core/entities/IHuntingSeason';
 
 /**
  * Präfix für Basis-Dog-IDs in dogIds
@@ -99,10 +96,15 @@ export class KennelRun {
             
             const BaseDogClass = this.baseDogClasses.get(typeName);
             if (BaseDogClass) {
-                // Spezielle Behandlung für QueryRetriever und BodyRetriever
+                // Spezielle Behandlung für QueryRetriever - benötigt queryData
+                // Für andere Dogs: Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
                 let baseDog: IDog<unknown>;
                 if (typeName === 'QueryRetriever') {
-                    baseDog = new QueryRetriever(this.queryData);
+                    // QueryRetriever benötigt queryData - muss vom Hauptprojekt bereitgestellt werden
+                    // Wir können hier nicht direkt QueryRetriever importieren, da es im Hauptprojekt ist
+                    // Der Aufrufer muss eine spezielle Factory-Funktion bereitstellen oder QueryRetriever selbst erstellen
+                    console.warn(`[KennelRun.fillKennel] QueryRetriever benötigt queryData - sollte vom Hauptprojekt erstellt werden`);
+                    return; // Überspringe, da wir QueryRetriever nicht direkt erstellen können
                 } else {
                     // Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
                     baseDog = new BaseDogClass();
@@ -146,8 +148,9 @@ export class KennelRun {
     /**
      * Führt die Jagd/Wellen aus
      * @param kennel - Optional: Wenn nicht angegeben, wird fillKennel() aufgerufen
+     * @returns IHuntingSeason mit den Ergebnissen
      */
-    public async runSeason(kennel?: Array<IDog<unknown>>): Promise<Waves> {
+    public async runSeason(kennel?: Array<IDog<unknown>>): Promise<IHuntingSeason> {
         // Wenn kein Kennel übergeben wurde, lade es
         if (!kennel) {
             kennel = await this.fillKennel();
@@ -158,106 +161,14 @@ export class KennelRun {
 
         console.log(theHunt);
 
-        // Baue Wellen-Struktur
-        const waves: Waves = [];
-        theHunt.wave.forEach((wave: any, waveIndex: number) => {
-            // Remap Objects, that is no fun and schould be never done!
-            waves.push(wave.map((entry: any) => {
-                const instance = entry.instance;
-                const instanceId = (instance instanceof SerializedDog) 
-                    ? (instance as SerializedDog<unknown>).storageId 
-                    : instance.name;
-                const instanceName = instance.name;
-                
-                // Sammle readTracking-Daten für diese Instance
-                const readFrom: any[] = []; // Properties, die diese Instance von anderen liest
-                const readBy: any[] = [];   // Properties dieser Instance, die von anderen gelesen werden
-                
-                theHunt.readTracking.forEach((trackingEntry: any) => {
-                    const readerName = trackingEntry.readerInstance.name;
-                    const sourceName = trackingEntry.sourceInstance.name;
-                    const readerId = (trackingEntry.readerInstance instanceof SerializedDog)
-                        ? (trackingEntry.readerInstance as SerializedDog<unknown>).storageId
-                        : trackingEntry.readerInstance.name;
-                    const sourceId = (trackingEntry.sourceInstance instanceof SerializedDog)
-                        ? (trackingEntry.sourceInstance as SerializedDog<unknown>).storageId
-                        : trackingEntry.sourceInstance.name;
-                    
-                    // readFrom: Diese Instance liest von anderen
-                    if (readerId === instanceId || readerName === instanceName) {
-                        readFrom.push({
-                            waveIndex: trackingEntry.waveIndex,
-                            readerInstanceName: readerName,
-                            sourceInstanceName: sourceName,
-                            propertyPath: trackingEntry.propertyPath
-                        });
-                    }
-                    
-                    // readBy: Andere lesen von dieser Instance
-                    if (sourceId === instanceId || sourceName === instanceName) {
-                        readBy.push({
-                            waveIndex: trackingEntry.waveIndex,
-                            readerInstanceName: readerName,
-                            sourceInstanceName: sourceName,
-                            propertyPath: trackingEntry.propertyPath
-                        });
-                    }
-                });
-                
-                //create Waves dog entry 
-                const nodeEntry = {
-                    id: instanceId,
-                    name: instanceName,
-                    result: instance.collected,
-                    error: (instance as any).__error || undefined,  // Fehler falls vorhanden
-                    parentsOptional: [],
-                    parentsRequired: [],
-                    readFrom: readFrom.length > 0 ? readFrom : undefined,
-                    readBy: readBy.length > 0 ? readBy : undefined,
-                } as NodeEntry;
-
-                // add additional codeTs if SerializedDog
-                if (entry.instance instanceof SerializedDog) {
-                    const seDog = entry.instance as SerializedDog<unknown>;
-                    nodeEntry.codeTs = seDog.instanceConfig.theRun;
-                    const vmCtx = seDog.simpleVmContext || {};
-                    nodeEntry.vmContext = vmCtx; // Füge vmContext hinzu
-                    nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx);
-                    // Übergebe die vollständige Config an die UI (aus DB, nicht aus Runtime)
-                    nodeEntry.serializedDogConfig = {
-                        theRun: seDog.instanceConfig.theRun,
-                        version: seDog.instanceConfig.version,
-                        parentsRequired: seDog.instanceConfig.parentsRequired || [],
-                        parentsOptional: seDog.instanceConfig.parentsOptional || []
-                    };
-                    // Nutze die Config-Werte für parentsRequired/Optional (aus DB)
-                    nodeEntry.parentsRequired = seDog.instanceConfig.parentsRequired || [];
-                    nodeEntry.parentsOptional = seDog.instanceConfig.parentsOptional || [];
-                } else {
-                    // Für nicht-SerializedDogs: nutze Runtime-Werte
-                    nodeEntry.parentsOptional = [...entry.optionalRequiresFrom ? entry.optionalRequiresFrom.map((r: any) => {
-                        return (r.instance instanceof SerializedDog) 
-                            ? (r.instance as SerializedDog<unknown>).storageId 
-                            : r.instance.name;
-                    }) : []];
-                    nodeEntry.parentsRequired = [...entry.requiresFrom ? entry.requiresFrom.map((r: any) => {
-                        return (r.instance instanceof SerializedDog) 
-                            ? (r.instance as SerializedDog<unknown>).storageId 
-                            : r.instance.name;
-                    }) : []];
-                }
-
-                return nodeEntry;
-            }));
-        });
-
-        return waves;
+        return theHunt;
     }
 
     /**
      * Führt einen kompletten Run aus (fillKennel + runSeason)
+     * @returns IHuntingSeason mit den Ergebnissen
      */
-    public async run(): Promise<Waves> {
+    public async run(): Promise<IHuntingSeason> {
         const kennel = await this.fillKennel();
         return await this.runSeason(kennel);
     }
@@ -269,4 +180,5 @@ export class KennelRun {
         return /-v\d+$/.test(id);
     }
 }
+
 

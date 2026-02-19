@@ -118,6 +118,7 @@ ${this.buildStyles()}
       <select id="available-dogs-select" style="width: 100%; padding: 8px; background: #000; color: #fff; border: 1px solid #333;">
         <option value="">Dog hinzufügen...</option>
       </select>
+      ${kennelConfig?.id ? `<button id="view-result-btn" style="width: 100%; margin-top: 10px; padding: 8px; background: #0066cc; color: #fff; border: 1px solid #333; cursor: pointer; font-family: monospace;">Zum Ergebnis</button>` : ''}
     </div>
     <div id="network-container"></div>
   </div>
@@ -1047,6 +1048,15 @@ window.onload = ()=>{
       if (availableDogsSelect) {
         availableDogsSelect.addEventListener('change', (e) => {
           handleDogSelection(e.target.value);
+        });
+      }
+      
+      // View Result Button
+      const viewResultBtn = document.getElementById('view-result-btn');
+      if (viewResultBtn && currentKennelId) {
+        viewResultBtn.addEventListener('click', () => {
+          const baseId = currentKennelId.replace(/-v\\d+$/, '');
+          window.location.href = '/' + baseId;
         });
       }
       
