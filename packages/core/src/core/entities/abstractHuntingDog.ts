@@ -279,3 +279,4 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
 }
 
 
+
