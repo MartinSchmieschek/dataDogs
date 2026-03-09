@@ -10,7 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Martin",
-  "license": "",
+  "license": "UNLICENSED",
+  "private":"true"
   "dependencies": {
     "datadogs": "file:./packages/core",
     "@prisma/client": "^5.5.0",
