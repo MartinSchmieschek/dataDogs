@@ -9,7 +9,7 @@
   },
   "author": "Martin",
   "license": "UNLICENSED",
-  "private":"true"
+  "private": true,
   "dependencies": {
     "vm2": "^3.10.0"
   },

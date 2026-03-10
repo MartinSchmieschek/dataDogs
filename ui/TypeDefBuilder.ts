@@ -1,3 +1,5 @@
+import { CompilerCache } from './CompilerCache';
+
 export class TypeDefBuilder {
 
   // =====================================================
@@ -5,11 +7,25 @@ export class TypeDefBuilder {
   // =====================================================
   public static buildContextLib(rawName: string, ctx: any): string {
     const typeName = this.safeTypeName(rawName);
+    let interfaceDefs = "";
+
+    for (const value of Object.values(ctx)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const proto = Object.getPrototypeOf(value);
+        if (proto && proto !== Object.prototype) {
+          const className = value.constructor?.name;
+          if (className && className !== 'Object') {
+            const classType = CompilerCache.getClassType(className);
+            if (classType?.referencedInterfaces) {
+              interfaceDefs += classType.referencedInterfaces + "\n";
+            }
+          }
+        }
+      }
+    }
 
     const typeBody = this.valueToType(ctx, 1);
 
-
-    // make global declarations for ctx keys
     let globalVars = "";
     Object.keys(ctx).forEach(key => {
       globalVars += `
@@ -22,6 +38,7 @@ export class TypeDefBuilder {
     });
 
     return `
+${interfaceDefs}
 ${globalVars}
 
 export type ${typeName} = ${typeBody};
@@ -78,10 +95,23 @@ ${this.buildGlobals(typeName, ctx)}
       }
 
       case "object": {
-        const entries: [string, any][] = Object.entries(value);
-
         const proto = Object.getPrototypeOf(value);
+
         if (proto && proto !== Object.prototype) {
+          const className = value.constructor?.name;
+          if (className && className !== 'Object') {
+            const classType = CompilerCache.getClassType(className);
+            if (classType) {
+              const lines = Object.entries(classType.members).map(
+                ([k, v]) => `${pad(indent)}${k}: ${v};`
+              );
+              if (!lines.length) return "{}";
+              return `{\n${lines.join("\n")}\n${pad(indent - 1)}}`;
+            }
+          }
+
+          // Fallback: runtime inspection for class instances without compiler info
+          const entries: [string, any][] = Object.entries(value);
           for (const key of Object.getOwnPropertyNames(proto)) {
             if (key === 'constructor') continue;
             const desc = Object.getOwnPropertyDescriptor(proto, key);
@@ -97,8 +127,16 @@ ${this.buildGlobals(typeName, ctx)}
               entries.push([key, desc.value]);
             }
           }
+
+          if (!entries.length) return "{}";
+          const lines = entries.map(
+            ([k, v]) => `${pad(indent)}${k}: ${this.valueToType(v, indent + 1)};`
+          );
+          return `{\n${lines.join("\n")}\n${pad(indent - 1)}}`;
         }
 
+        // Plain objects
+        const entries: [string, any][] = Object.entries(value);
         if (!entries.length) return "{}";
 
         const lines = entries.map(
