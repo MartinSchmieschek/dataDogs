@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Martin",
-  "license": "",
+  "license": "UNLICENSED",
+  "private":"true"
   "dependencies": {
     "vm2": "^3.10.0"
   },
