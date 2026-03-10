@@ -72,11 +72,33 @@ ${this.buildGlobals(typeName, ctx)}
           { length: value.length },
           (_, i) => `arg${i}: any`
         ).join(", ");
-        return `(${args}) => any`;
+        const isAsync = value.constructor?.name === 'AsyncFunction';
+        const returnType = isAsync ? 'Promise<any>' : 'any';
+        return `(${args}) => ${returnType}`;
       }
 
       case "object": {
-        const entries = Object.entries(value);
+        const entries: [string, any][] = Object.entries(value);
+
+        const proto = Object.getPrototypeOf(value);
+        if (proto && proto !== Object.prototype) {
+          for (const key of Object.getOwnPropertyNames(proto)) {
+            if (key === 'constructor') continue;
+            const desc = Object.getOwnPropertyDescriptor(proto, key);
+            if (!desc) continue;
+
+            if (desc.get) {
+              try {
+                entries.push([key, desc.get.call(value)]);
+              } catch {
+                entries.push([key, undefined]);
+              }
+            } else if (typeof desc.value === 'function') {
+              entries.push([key, desc.value]);
+            }
+          }
+        }
+
         if (!entries.length) return "{}";
 
         const lines = entries.map(

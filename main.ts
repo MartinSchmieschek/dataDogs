@@ -9,10 +9,6 @@ import { PrismaStore } from './store/PrismaStore';
 import express from "express";
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { WarframeAlertsRetriever } from './dogs/Kubrow/WarframeAlertsRetriever';
-import { WarframeCyclesRetriever } from './dogs/Kubrow/WarframeCyclesRetriever';
-import { WarframeEventsRetriever } from './dogs/Kubrow/WarframeEventsRetriever';
-import { WarframeFissuresRetriever } from './dogs/Kubrow/WarframeFissuresRetriever';
-import { WarframeSortieRetriever } from './dogs/Kubrow/WarframeSortieRetriever';
 import { ISerializedDogConfig, SerializedDog, KennelRun, IKennelConfig, IHuntingSeason, IWaveEntry, BASE_DOG_PREFIX } from 'datadogs';
 import { Results, Waves, NodeEntry } from './ui/results';
 import { TypeDefBuilder } from './ui/TypeDefBuilder';
@@ -150,11 +146,7 @@ async function start() {
         RandomEveryThingRetriever,
         QueryRetriever,
         BodyRetriever,
-        WarframeAlertsRetriever,
-        WarframeCyclesRetriever,
-        WarframeEventsRetriever,
-        WarframeFissuresRetriever,
-        WarframeSortieRetriever
+        WarframeAlertsRetriever
     ];
     
     // Erstelle Instanzen für die Kennel-Liste (nur für Anzeige)
