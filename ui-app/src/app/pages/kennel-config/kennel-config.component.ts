@@ -194,7 +194,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
 
     const defaultQuery: Record<string, string> = {};
     this.queryParams().forEach(p => {
-      if (p.key) defaultQuery[p.key.toLowerCase()] = p.value;
+      if (p.key) defaultQuery[p.key.toLowerCase()] = p.value.toLowerCase();
     });
 
     let defaultBody: any = undefined;

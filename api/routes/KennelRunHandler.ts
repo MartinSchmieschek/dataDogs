@@ -63,10 +63,11 @@ export class KennelRunHandler {
     private mergeQueryParams(defaults: Record<string, string> | undefined, reqQuery: Record<string, any>): Record<string, string> {
         const result: Record<string, string> = {};
         if (defaults) {
-            Object.entries(defaults).forEach(([k, v]) => { result[k.toLowerCase()] = v; });
+            Object.entries(defaults).forEach(([k, v]) => { result[k.toLowerCase()] = String(v).toLowerCase(); });
         }
         Object.keys(reqQuery).forEach(key => {
-            result[key.toLowerCase()] = typeof reqQuery[key] === 'string' ? reqQuery[key] : String(reqQuery[key]);
+            const val = typeof reqQuery[key] === 'string' ? reqQuery[key] : String(reqQuery[key]);
+            result[key.toLowerCase()] = val.toLowerCase();
         });
         return result;
     }
@@ -118,7 +119,7 @@ export class KennelRunHandler {
 
             const rawDefaults = config.defaultQuery || {};
             const query: Record<string, string> = {};
-            Object.entries(rawDefaults).forEach(([k, v]) => { query[k.toLowerCase()] = v; });
+            Object.entries(rawDefaults).forEach(([k, v]) => { query[k.toLowerCase()] = String(v).toLowerCase(); });
             const body = req.body && Object.keys(req.body).length > 0
                 ? req.body
                 : config.defaultBody;
