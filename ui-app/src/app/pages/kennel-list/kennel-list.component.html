@@ -1,0 +1,46 @@
+<div class="container">
+  @if (loading()) {
+    <app-loading-indicator />
+  }
+
+  <h1>Kennel Liste</h1>
+
+  <button class="create-btn" (click)="showCreateForm.set(!showCreateForm())">
+    + Neuen Kennel erstellen
+  </button>
+
+  @if (showCreateForm()) {
+    <app-kennel-form
+      (submitted)="onCreateKennel($event)"
+      (cancelled)="showCreateForm.set(false)" />
+  }
+
+  @if (error()) {
+    <div class="error">{{ error() }}</div>
+  }
+
+  <div class="kennel-list">
+    @for (kennel of kennels(); track kennel.id) {
+      <div class="kennel-card">
+        <h3>
+          <a [routerLink]="['/kennel', kennel.id]">{{ kennel.name || kennel.id }}</a>
+        </h3>
+        <div class="kennel-id">ID: {{ kennel.id }}</div>
+        @if (kennel.description) {
+          <div class="kennel-desc">{{ kennel.description }}</div>
+        }
+        <div class="kennel-actions">
+          @if (hasBody(kennel)) {
+            <button class="btn-execute" (click)="executeWithBody(kennel)">Ausführen (POST)</button>
+          } @else {
+            <a class="btn-execute" [href]="getExecuteUrl(kennel)" target="_blank">Ausführen</a>
+          }
+          <a class="btn-edit" [routerLink]="['/kennel', kennel.id, 'edit']">Bearbeiten</a>
+          <a class="btn-waves" [routerLink]="['/kennel', kennel.id]">Waves</a>
+        </div>
+      </div>
+    } @empty {
+      <div class="empty">Keine Kennels gefunden</div>
+    }
+  </div>
+</div>

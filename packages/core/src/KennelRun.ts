@@ -87,26 +87,14 @@ export class KennelRun {
         // Erstelle Basis-Dogs aus dogIds - IMMER neue Instanzen bei jedem fillKennel() (verhindert Caching)
         baseDogIds.forEach(baseDogId => {
             const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
-            
-            // BodyRetriever vorübergehend deaktiviert
-            if (typeName === 'BodyRetriever') {
-                console.log(`[KennelRun.fillKennel] BodyRetriever ist deaktiviert, überspringe`);
-                return; // Überspringe diesen Dog
-            }
-            
             const BaseDogClass = this.baseDogClasses.get(typeName);
             if (BaseDogClass) {
-                // Spezielle Behandlung für QueryRetriever - benötigt queryData
-                // Für andere Dogs: Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
                 let baseDog: IDog<unknown>;
                 if (typeName === 'QueryRetriever') {
-                    // QueryRetriever benötigt queryData - muss vom Hauptprojekt bereitgestellt werden
-                    // Wir können hier nicht direkt QueryRetriever importieren, da es im Hauptprojekt ist
-                    // Der Aufrufer muss eine spezielle Factory-Funktion bereitstellen oder QueryRetriever selbst erstellen
-                    console.warn(`[KennelRun.fillKennel] QueryRetriever benötigt queryData - sollte vom Hauptprojekt erstellt werden`);
-                    return; // Überspringe, da wir QueryRetriever nicht direkt erstellen können
+                    baseDog = new (BaseDogClass as any)(this.queryData || {});
+                } else if (typeName === 'BodyRetriever') {
+                    baseDog = new (BaseDogClass as any)(this.bodyData);
                 } else {
-                    // Erstelle IMMER neue Instanz - verhindert Caching von Ergebnissen
                     baseDog = new BaseDogClass();
                 }
                 kennel.push(baseDog);

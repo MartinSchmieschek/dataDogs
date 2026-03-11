@@ -3,14 +3,20 @@ export interface IStore {
   load(id: string): Promise<any>;
   findByType(type: string): Promise<Array<{ id: string; serializedDogConfig: string }>>;
   /**
-   * Findet die neuesten Versionen aller Entities eines Typs
-   * Gruppiert nach Basis-ID und gibt nur die neueste Version zurück
+   * Findet die neuesten Versionen aller Entities eines Typs.
+   * Extrahiert immer die Basis-ID und gibt die neueste Version zurück.
    * @param type - Der Entity-Typ (z.B. SerializedDog.name)
-   * @param ids - Optional: Array von IDs (kann Basis-IDs oder spezifische Version-IDs sein)
-   *              - Wenn eine ID eine Version enthält (z.B. "seed-serialized-1-v2"), wird genau diese Version geladen
-   *              - Wenn eine ID keine Version enthält (z.B. "seed-serialized-1"), wird die neueste Version geladen
-   * @returns Array von Entities - spezifische Versionen wenn angegeben, sonst neueste Versionen
+   * @param ids - Optional: Array von IDs (Basis-IDs oder versionierte IDs).
+   *              Die Basis-ID wird extrahiert und die neueste Version geladen.
    */
   findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<{ id: string; serializedDogConfig: string }>>;
+
+  /**
+   * Gibt alle Versionen einer Entity zurück, sortiert nach Version (neueste zuerst).
+   * @param type - Der Entity-Typ
+   * @param baseId - Basis-ID (ohne Versionssuffix)
+   */
+  findAllVersions(type: string, baseId: string): Promise<Array<{ id: string; version: number; serializedDogConfig: string }>>;
+
   delete(id: string): Promise<void>;
 }

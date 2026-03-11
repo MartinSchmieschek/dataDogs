@@ -1,0 +1,110 @@
+<div class="container">
+  @if (loading()) {
+    <app-loading-indicator />
+  }
+
+  <a [routerLink]="['/kennel', kennelId]" class="back-link">← Zurück zum Kennel</a>
+  <h1>Kennel Editor: {{ kennelId }}</h1>
+
+  @if (error()) {
+    <div class="error">{{ error() }}</div>
+  }
+
+  @if (config()) {
+    <div class="editor-section">
+      <div class="form-group">
+        <label>Name:</label>
+        <input [(ngModel)]="name" placeholder="Kennel Name">
+      </div>
+
+      <div class="form-group">
+        <label>Description:</label>
+        <textarea [(ngModel)]="description" rows="3" placeholder="Beschreibung"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Base Dog Types:</label>
+        <div class="base-dogs">
+          @for (dogType of baseDogTypes; track dogType) {
+            <label class="checkbox-label">
+              <input type="checkbox"
+                [checked]="isBaseDogSelected(dogType)"
+                (change)="toggleBaseDog(dogType)">
+              <span>{{ dogType }}</span>
+            </label>
+          }
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>SerializedDogs (dogIds):</label>
+        <div class="dogs-grid">
+          <div class="dogs-column">
+            <label class="column-label">Verfügbare SerializedDogs:</label>
+            <div class="dogs-list">
+              @for (dog of getAvailableSerializedDogs(); track dog.id) {
+                <div class="dog-item" (click)="addDogId(dog.id)">
+                  <span>{{ dog.id }}</span>
+                  <button class="btn-add">+</button>
+                </div>
+              } @empty {
+                <div class="empty-list">Keine verfügbar</div>
+              }
+            </div>
+          </div>
+          <div class="dogs-column">
+            <label class="column-label">Ausgewählte Hunde (Reihenfolge = Ausführungsreihenfolge):</label>
+            <p class="hint">Der erste Hund liefert die Ergebnisse über /kennel/:id</p>
+            <div class="dogs-list">
+              @for (dogId of selectedDogIds(); track dogId; let i = $index) {
+                <div class="dog-item selected">
+                  <span>{{ dogId }}</span>
+                  <div class="dog-actions">
+                    @if (i > 0) {
+                      <button class="btn-move" (click)="moveDogToFirst(dogId)" title="An erste Stelle">⬆</button>
+                    }
+                    <button class="btn-remove" (click)="removeDogId(dogId)">×</button>
+                  </div>
+                </div>
+              } @empty {
+                <div class="empty-list">Keine ausgewählt</div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Default Query Parameters:</label>
+        <div class="query-chips">
+          @for (param of queryParams(); track $index; let i = $index) {
+            <div class="chip">
+              <span>{{ param.key }}={{ param.value }}</span>
+              <button (click)="removeQueryParam(i)">×</button>
+            </div>
+          } @empty {
+            <div class="empty-chips">Keine Query-Parameter</div>
+          }
+        </div>
+        <div class="query-add">
+          <input [(ngModel)]="newQueryKey" placeholder="Key">
+          <input [(ngModel)]="newQueryValue" placeholder="Value">
+          <button class="btn-primary" (click)="addQueryParam()">Hinzufügen</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Default Body (JSON):</label>
+        <p class="hint">JSON-Daten für Body (werden an BodyRetriever übergeben)</p>
+        <div #bodyEditorContainer class="body-editor"></div>
+      </div>
+
+      <div class="save-actions">
+        <button class="btn-save" (click)="save()" [disabled]="saving()">
+          {{ saving() ? 'Speichert...' : 'Speichern' }}
+        </button>
+        <a [routerLink]="['/kennel', kennelId]" class="btn-secondary">Zurück zum Kennel</a>
+      </div>
+    </div>
+  }
+</div>

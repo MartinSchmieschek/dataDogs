@@ -128,41 +128,14 @@ export class PrismaStore implements IStore {
       return this.getLatestVersionsForAll(rows);
     }
     
-    // Trenne spezifische Version-IDs von Basis-IDs
-    const specificVersionIds = new Set<string>();
+    // Immer Basis-ID extrahieren und neueste Version laden
     const baseIdsForLatest = new Set<string>();
-    
     ids.forEach(id => {
-      if (this.isVersionedId(id)) {
-        // Spezifische Version-ID - lade genau diese
-        specificVersionIds.add(id);
-      } else {
-        // Basis-ID - lade neueste Version
-        baseIdsForLatest.add(id);
-      }
+      baseIdsForLatest.add(this.extractBaseId(id));
     });
     
     const result: Array<any> = [];
     
-    // Lade spezifische Versionen direkt
-    rows.forEach((r: any) => {
-      if (specificVersionIds.has(r.id)) {
-        result.push({
-          id: r.id,
-          type: r.type,
-          name: r.name,
-          description: r.description,
-          dogIds: r.dogIds,
-          defaultQuery: r.defaultQuery,
-          defaultBody: r.defaultBody,
-          createdAt: r.createdAt,
-          updatedAt: r.updatedAt,
-          serializedDogConfig: r.serializedDogConfig
-        });
-      }
-    });
-    
-      // Für jede Basis-ID, finde die neueste Version
       baseIdsForLatest.forEach(baseId => {
         const versionsForBaseId = rows
           .filter((row: any) => {
@@ -274,6 +247,25 @@ export class PrismaStore implements IStore {
   private extractBaseId(id: string): string {
     const match = id.match(/^(.+)-v(\d+)$/);
     return match ? match[1] : id;
+  }
+
+  public async findAllVersions(type: string, baseId: string): Promise<Array<{ id: string; version: number; serializedDogConfig: string }>> {
+    const rows = await this.prisma.dog.findMany({ where: { type } });
+
+    return rows
+      .filter((r: any) => this.extractBaseId(r.id) === baseId)
+      .map((r: any) => {
+        let version = 0;
+        try {
+          const config = typeof r.serializedDogConfig === 'string'
+            ? JSON.parse(r.serializedDogConfig)
+            : r.serializedDogConfig;
+          const match = r.id.match(/-v(\d+)$/);
+          version = config.version || (match ? parseInt(match[1], 10) : 0);
+        } catch { /* ignore */ }
+        return { id: r.id, version, serializedDogConfig: r.serializedDogConfig };
+      })
+      .sort((a, b) => b.version - a.version);
   }
 
   public async delete(id: string): Promise<void> {

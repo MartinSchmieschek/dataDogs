@@ -1,0 +1,70 @@
+<div class="viewer-layout"
+  (dragover)="onGlobalDragOver()"
+  (dragend)="onGlobalDragEnd()"
+  (drop)="onGlobalDragEnd()">
+  @if (loading()) {
+    <app-loading-indicator />
+  }
+
+  <header class="viewer-header">
+    <a routerLink="/" class="back-link">← Kennel-Liste</a>
+    <h1>{{ kennelConfig()?.name || kennelId }}</h1>
+    <div class="header-actions">
+      <button class="btn-reload" (click)="loadWaves()">⟳ Neu laden</button>
+      <a [routerLink]="['/kennel', kennelId, 'edit']" class="btn-edit">Bearbeiten</a>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="error-bar">{{ error() }}</div>
+  }
+
+  <div class="viewer-content">
+    <div class="toolbar-pane">
+      <app-dog-toolbar
+        [availableDogs]="availableDogs()"
+        (newDogRequested)="createNewDog()" />
+    </div>
+
+    <div
+      class="network-pane"
+      [class.with-panel]="selectedDog()"
+      [class.drag-over]="isDragOver">
+
+      @if (isDragging) {
+        <div class="drop-overlay"
+          (dragover)="onDragOver($event)"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event)">
+          @if (isDragOver) {
+            <span class="drop-label">Dog hier ablegen</span>
+          }
+        </div>
+      }
+
+      @if (waves()) {
+        <app-vis-network
+          [waves]="waves()!"
+          (dogSelected)="onDogSelected($event)"
+          (dogDeleted)="onDogDeleted($event)" />
+      } @else if (!loading()) {
+        <div class="empty-network">
+          <p>Keine Dogs im Kennel.</p>
+          <p>Ziehe einen Dog aus der Toolbar hierher.</p>
+        </div>
+      }
+    </div>
+
+    @if (selectedDog()) {
+      <div class="side-panel-pane">
+        <app-dog-side-panel
+          [dog]="selectedDog()!"
+          [allDogs]="flatDogList()"
+          (saved)="loadWaves()"
+          (deleted)="onDogDeleted($event)"
+          (movedToFirst)="onDogMovedToFirst($event)"
+          (closed)="closeSidePanel()" />
+      </div>
+    }
+  </div>
+</div>

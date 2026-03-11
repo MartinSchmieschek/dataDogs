@@ -3,7 +3,7 @@ import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX } f
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
-import { TypeDefBuilder } from './ui/TypeDefBuilder';
+import { TypeDefBuilder } from './services/TypeDefBuilder';
 
 export interface TestResult {
     name: string;

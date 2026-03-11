@@ -1,220 +1,180 @@
 # Data Hunt
 
-A data aggregation platform that collects, processes, and combines data from various sources. Dogs are sent out to hunt for data - processing units ("Dogs") are organized in configurations ("Kennels") and executed in dependency order ("Waves").
+> Send the dogs. They know the wilderness. You just sort through what they drag back.
 
-## Overview
+A data aggregation platform built on a simple idea: dogs hunt data. You breed them, organize them in Kennels, and send them out in Waves. They raid APIs, chew through request bodies, stalk databases, and haul everything back to you.
 
-A Node.js application that enables:
+---
 
-- **Data Aggregation**: Collect data from various sources (APIs, databases, etc.)
-- **Dynamic Code Execution**: Execute custom TypeScript code in a secure VM environment
-- **Dependency Management**: Automatic resolution of dependencies between processing units
-- **Version Control**: Full version control for custom code units
-- **Data Flow Tracking**: Track which data is read by which units
-
-## Concepts
+## The Pack
 
 ### Dogs
 
-Dogs are the fundamental data processing units. There are two types:
+Every dog is a data hunter. Two breeds:
 
-#### BaseDogs
-Predefined dogs implemented in code:
-- **RandomRecipesRetriever**: Fetches random recipes from APIs
-- **QueryRetriever**: Extracts query parameters from HTTP requests
-- **BodyRetriever**: Extracts body data from HTTP requests
-- **CountryFlagBlackLab**: Loads country flag data
-- **DishFlagBlackLab**: Loads dish flag data
-- **RandomEveryThingRetriever**: Fetches random data from various APIs
-- **TalkingDog**: Example dog for demonstrations
+**BaseDogs** -- Built-in breeds that ship with the platform. Plug-and-play. They know how to fetch recipes, parse query params, extract request bodies, hit random APIs. New breeds drop in as classes -- no configuration needed. Think of them as plugins.
 
-#### SerializedDogs
-Custom dogs whose code is stored as TypeScript strings in the database:
-- Code is executed at runtime in a VM environment
-- Support full TypeScript syntax
-- Have access to results from parent dogs via VM context
-- Are versioned (e.g., "node-v1", "node-v2")
+**SerializedDogs** -- Your custom-bred hunters. TypeScript code stored in the database, executed at runtime in a VM sandbox. Full `async/await`, access to parent dogs' catches via VM context, and automatic IntelliSense in the UI. Every save breeds a new version. No ancestor is ever lost.
 
 ### Kennels
 
-A kennel is a configuration that defines:
-- Which dogs to execute (`dogIds`)
-- Default query parameters (`defaultQuery`)
-- Default body data (`defaultBody`)
+A Kennel is a pack configuration. It defines:
+- Which dogs to unleash (`dogIds` -- both BaseDogs and SerializedDogs)
+- Default query parameters (scent markers for the hunt)
+- Default body data (provisions, fed to BodyRetriever)
 - Name and description
-
-Kennels are stored in the database and can be managed via the API.
 
 ### Waves
 
-Dogs are executed in "waves":
-- **Wave 1**: All dogs without dependencies
-- **Wave 2**: All dogs whose dependencies were fulfilled in Wave 1
-- **Wave N**: Additional waves until all dogs are executed
+Dogs don't all run at once. They go out in waves:
+- **Wave 1** -- Dogs with no dependencies. First into the wilderness.
+- **Wave 2** -- Dogs that depend on Wave 1's catch. They follow the trails.
+- **Wave N** -- Until every dog has run.
 
-Execution order is automatically calculated based on dependencies.
+The engine calculates wave order automatically from the dependency graph.
 
 ### Dependencies
 
-Dogs can have dependencies on other dogs:
+Dogs can depend on other dogs' catches:
+- **Required** -- Must run first. The dog won't hunt without this data.
+- **Optional** -- Used if available, skipped if not. The dog adapts.
 
-- **Required Parents**: Must be executed before this dog runs
-- **Optional Parents**: Used if available, but don't block execution
+Referenced by ID: `base:QueryRetriever` for BaseDogs, `my-dog-v1` or `my-dog` (latest version) for SerializedDogs.
 
-Dependencies are referenced by IDs:
-- BaseDogs: `base:RandomRecipesRetriever`
-- SerializedDogs: `node-v1` or `node` (latest version)
+---
 
-## Features
+## What It Does
 
-### 1. Data Aggregation
+**Custom TypeScript execution** -- Write hunting logic in TypeScript. It runs in a Node.js VM with access to parent results as globals. Sandboxed. Async. Dangerous enough to be useful.
 
-The app collects data from various sources:
-- HTTP APIs (via `fetch`)
-- Query parameters from requests
-- Body data from requests
-- Results from other dogs
-
-### 2. TypeScript Code Execution
-
-SerializedDogs execute custom TypeScript code:
-- Code runs in a Node.js VM environment
-- Security through VM isolation
-- Access to parent dog results as global variables
-- Support for `async/await`
-
-Example:
 ```typescript
-const result = await fetch('https://api.example.com/data');
-const processed = result.map(item => item.value * 2);
-return processed;
+const recipes = await fetch('https://api.example.com/recipes');
+const filtered = recipes.filter(r => r.rating > 4);
+return { topRecipes: filtered, count: filtered.length };
 ```
 
-### 3. Version Control
+**Automatic versioning** -- Every save creates a new version (`dog-v1`, `dog-v2`, ...). Old versions stay in the database. Latest is loaded by default. Browse any ancestor from the UI.
 
-SerializedDogs are automatically versioned:
-- Saving creates a new version (e.g., `node-v2`)
-- Old versions are preserved
-- Latest version is automatically loaded if no specific version is specified
-- Specific versions can be referenced by full ID
+**Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data flow traceability.
 
-### 4. Dependency Tracking
+**Public endpoints** -- Every Kennel gets a URL. `GET /my-kennel` runs the pack and returns the lead dog's result. Pass query params or POST a body -- the dogs pick it up.
 
-The app automatically tracks:
-- Which dogs depend on which other dogs
-- Which wave a dog was executed in
-- Which properties were read from which dogs (read tracking)
+---
 
-### 5. Read Tracking
+## API
 
-Every access to data from parent dogs is tracked:
-- Which property was read?
-- From which dog was it read?
-- In which wave did the access occur?
+### Kennels
 
-This enables complete traceability of data flow.
+| Method | Endpoint | What it does |
+|--------|----------|-------------|
+| `GET` | `/api/kennels` | List all Kennels |
+| `GET` | `/api/kennels/:id` | Load a Kennel config |
+| `POST` | `/api/kennels` | Create a new Kennel |
+| `PUT` | `/api/kennels/:id` | Update a Kennel |
+| `DELETE` | `/api/kennels/:id` | Delete a Kennel |
+| `GET/POST` | `/api/kennels/:id/run` | Run a Kennel, return Waves + config |
+| `GET/POST` | `/api/kennels/:id/execute` | Run a Kennel, return lead dog's result |
 
-## API Endpoints
+### Dogs (Nodes)
 
-### Kennel Endpoints
+| Method | Endpoint | What it does |
+|--------|----------|-------------|
+| `GET` | `/api/nodes` | List all dogs (BaseDogs + SerializedDogs) |
+| `GET` | `/api/nodes/:id` | Load a specific dog/version |
+| `GET` | `/api/nodes/:id/versions` | List all versions of a dog |
+| `POST` | `/api/nodes` | Breed a new SerializedDog |
+| `POST` | `/save?id=:id` | Save code + parents (creates new version) |
+| `DELETE` | `/api/nodes/:id` | Put a dog down |
 
-- `GET /` - List all kennels
-- `GET /edit/:kennelId` - Editor UI for a kennel
-- `GET /:kennelId` - Execute a kennel and return the first dog's result
-- `POST /:kennelId` - Execute a kennel with body data
+### Public
 
-### API Endpoints
+| Method | Endpoint | What it does |
+|--------|----------|-------------|
+| `GET` | `/:kennelId` | Run Kennel, return lead dog's result |
+| `POST` | `/:kennelId` | Same, with body data |
 
-- `GET /api/nodes` - List all nodes (BaseDogs + SerializedDogs)
-- `GET /api/nodes/:id` - Load a node
-- `POST /api/nodes` - Create a new SerializedDog
-- `PUT /api/nodes/:id` - Update a SerializedDog (creates new version)
-- `DELETE /api/nodes/:id` - Delete a node
+---
 
-- `GET /api/kennels` - List all kennels
-- `GET /api/kennels/:id` - Load a kennel
-- `POST /api/kennels` - Create a new kennel
-- `PUT /api/kennels/:id` - Update a kennel (creates new version)
-- `DELETE /api/kennels/:id` - Delete a kennel
+## Tech Stack
 
-## Technology Stack
+| Layer | Tech |
+|-------|------|
+| Backend | Express.js, TypeScript, Node.js VM |
+| Database | Prisma ORM, SQLite (swappable to PostgreSQL) |
+| Frontend | Angular 18, Monaco Editor, vis-network |
+| Core | `datadogs` package (local, in `packages/core`) |
 
-- **Express.js**: Web framework for HTTP server
-- **TypeScript**: Typed programming language
-- **Prisma**: ORM for database access
-- **SQLite**: Database (can be extended to PostgreSQL)
-- **Node.js VM**: Secure code execution for SerializedDogs
-- **Monaco Editor**: Code editor in UI (via CDN)
+---
 
-## Installation
+## Getting Started
 
 ```bash
 npm install
+npm run dev
+```
+
+Backend starts on `:3000`, UI on `:4200`. Open the UI -- the lodge is warm.
+
+Or backend only:
+
+```bash
 npm run prisma:sync
 npm start
 ```
 
-The app runs on `http://localhost:3000`.
-
-## Usage
-
-### 1. Create a Kennel
-
-Create a kennel via API or UI:
+### Quick Hunt
 
 ```bash
+# Create a Kennel
 curl -X POST http://localhost:3000/api/kennels \
   -H "Content-Type: application/json" \
-  -d '{
-    "id": "my-kennel",
-    "name": "My Kennel",
-    "dogIds": ["base:RandomRecipesRetriever"]
-  }'
-```
+  -d '{"id": "my-kennel", "name": "First Hunt", "dogIds": ["base:RandomRecipesRetriever"]}'
 
-### 2. Create a SerializedDog
-
-Create a custom dog:
-
-```bash
-curl -X POST http://localhost:3000/api/nodes \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "my-node",
-    "theRun": "return { message: \"Hello World\" };"
-  }'
-```
-
-### 3. Execute a Kennel
-
-Execute a kennel:
-
-```bash
+# Unleash it
 curl http://localhost:3000/my-kennel
 ```
 
-## Architecture
+Or skip the terminal -- the [UI](ui-app/README.md) does all of this with a few clicks.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture diagrams and data flow descriptions.
+---
 
 ## Development
 
 ### Startup Tests
 
-The app automatically runs tests on startup:
-- Store functionality
-- Controller functionality
-- BaseDogs availability
-- TypeDefBuilder functionality
-- SerializedDog functionality
+The app runs a test suite on every boot -- store ops, controller CRUD, BaseDog availability, TypeDefBuilder, SerializedDog execution. All must pass before the server starts listening.
 
 ### Seeds
 
-Seed data is automatically loaded on startup (if available):
-- Example SerializedDogs
-- Example Kennels
+Example Kennels and SerializedDogs are seeded automatically on startup if the database is fresh.
+
+### Project Structure
+
+```
+main.ts                       Entry point
+api/
+  Controller.ts               Generic CRUD controller with versioning
+  KennelController.ts         Kennel-specific controller
+  AbstractController.ts       Base class for all controllers
+  routes/
+    ConfigRouteHandler.ts     REST routes + /save endpoint
+    KennelRunHandler.ts       Run/execute/public endpoints
+  utils/
+    versioning.ts             Version ID extraction and generation
+store/
+  IStore.ts                   Store interface
+  PrismaStore.ts              Prisma/SQLite implementation
+services/
+  WavesConverter.ts           Converts execution results to Wave format
+  TypeDefBuilder.ts           Generates TypeScript definitions for VM context
+  CompilerCache.ts            Caches compiled TypeScript
+dogs/                         BaseDog implementations (plugin-like)
+packages/core/                datadogs library (Dog, Kennel, Wave engine)
+ui-app/                       Angular frontend (see ui-app/README.md)
+```
+
+---
 
 ## License
 
-See LICENSE file (if available).
-
+UNLICENSED. Private project.

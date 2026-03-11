@@ -147,8 +147,23 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     }
 
     /**
+     * Gibt alle Versionen einer Entity zurück (neueste zuerst)
+     */
+    async getVersions(baseId: string): Promise<Array<{ id: string; version: number; config: any }>> {
+        const versions = await this.store.findAllVersions(this.entityType, baseId);
+        return versions.map(v => {
+            let config: any = {};
+            try {
+                config = typeof v.serializedDogConfig === 'string'
+                    ? JSON.parse(v.serializedDogConfig)
+                    : v.serializedDogConfig;
+            } catch { /* ignore */ }
+            return { id: v.id, version: v.version, config };
+        });
+    }
+
+    /**
      * Parst eine Entity aus dem Store-Format
-     * Muss von abgeleiteten Klassen überschrieben werden, falls spezielle Parsing-Logik benötigt wird
      */
     protected parseEntity(data: any): T {
         if (typeof data === 'string') {

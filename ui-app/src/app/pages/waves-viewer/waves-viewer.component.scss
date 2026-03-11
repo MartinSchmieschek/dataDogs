@@ -1,0 +1,155 @@
+.viewer-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+}
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #333;
+  background: #0a0a0a;
+  flex-shrink: 0;
+
+  h1 {
+    margin: 0;
+    font-size: 18px;
+    flex: 1;
+  }
+}
+
+.back-link {
+  color: #0066cc;
+  text-decoration: none;
+  white-space: nowrap;
+  &:hover { color: #0099ff; }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-reload, .btn-edit {
+  padding: 4px 10px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  border-radius: 3px;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-reload { background: #555; }
+.btn-edit { background: #666; }
+
+.error-bar {
+  padding: 8px 16px;
+  background: #330000;
+  color: #ff6666;
+  font-size: 13px;
+  border-bottom: 1px solid #550000;
+}
+
+.viewer-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.toolbar-pane {
+  width: 180px;
+  min-width: 180px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.network-pane {
+  flex: 1;
+  transition: flex 0.2s ease;
+  position: relative;
+
+  &.with-panel {
+    flex: 0.6;
+  }
+
+  &.drag-over {
+    box-shadow: inset 0 0 30px rgba(0, 102, 204, 0.25);
+  }
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.network-pane.drag-over .drop-overlay {
+  background: rgba(0, 40, 80, 0.3);
+}
+
+.drop-label {
+  font-size: 16px;
+  color: rgba(0, 153, 255, 0.7);
+  font-family: 'Courier New', monospace;
+  pointer-events: none;
+  text-shadow: 0 0 20px rgba(0, 153, 255, 0.3);
+  padding: 12px 24px;
+  border: 2px dashed rgba(0, 153, 255, 0.4);
+  border-radius: 8px;
+  background: rgba(0, 20, 40, 0.6);
+}
+
+.side-panel-pane {
+  flex: 0.4;
+  min-width: 350px;
+  max-width: 600px;
+}
+
+.empty-network {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #555;
+  text-align: center;
+  font-size: 13px;
+  background: #0a0a0a;
+
+  p { margin: 4px 0; }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #666;
+  text-align: center;
+  padding: 40px;
+
+  p { margin: 5px 0; }
+}
+
+.btn-edit-large {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background: #0066cc;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 5px;
+  font-family: 'Courier New', monospace;
+}

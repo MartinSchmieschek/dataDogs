@@ -1,0 +1,90 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  position: relative;
+}
+
+h1 {
+  border-bottom: 2px solid #333;
+  padding-bottom: 10px;
+}
+
+.create-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  background: #00cc00;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  margin-bottom: 20px;
+
+  &:hover { background: #00ff00; }
+}
+
+.error {
+  color: #f00;
+  margin: 10px 0;
+}
+
+.kennel-list {
+  margin-top: 20px;
+}
+
+.kennel-card {
+  padding: 15px;
+  margin-bottom: 10px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  border-radius: 5px;
+
+  h3 {
+    margin: 0 0 5px 0;
+    a {
+      color: #0066cc;
+      text-decoration: none;
+      &:hover { color: #0099ff; }
+    }
+  }
+}
+
+.kennel-id {
+  color: #999;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.kennel-desc {
+  color: #ccc;
+  margin-top: 5px;
+}
+
+.kennel-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+.btn-execute, .btn-edit, .btn-waves {
+  padding: 6px 12px;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 3px;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+
+.btn-execute { background: #0066cc; }
+.btn-edit { background: #666; }
+.btn-waves { background: #553399; }
+
+.empty {
+  color: #666;
+  text-align: center;
+  padding: 40px;
+}

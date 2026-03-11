@@ -49,6 +49,11 @@ export class ConfigRouteHandler {
      * @param basePath - Basis-Pfad (z.B. '/api')
      */
     registerRoutes(app: any, basePath: string = '/api'): void {
+        // GET /api/:subpath/:id/versions - Alle Versionen einer Entity
+        app.get(`${basePath}/:subpath/:id/versions`, async (req: Request, res: Response) => {
+            await this.handleGetVersions(req, res);
+        });
+
         // GET /api/:subpath - Liste aller Configs
         app.get(`${basePath}/:subpath`, async (req: Request, res: Response) => {
             await this.handleList(req, res);
@@ -195,15 +200,13 @@ export class ConfigRouteHandler {
                 return;
             }
 
-            // Konvertiere zu ISerializedDogConfig Format (tsCode -> theRun)
-            // Merge mit vorhandener Config, falls vorhanden
             const existingConfig = req.body.serializedDogConfig || {};
             const input = {
+                ...existingConfig,
                 id,
-                theRun: tsCode,  // Konvertiere tsCode zu theRun
-                parentsRequired: req.body.parentsRequired !== undefined ? req.body.parentsRequired : (existingConfig.parentsRequired || []),
-                parentsOptional: req.body.parentsOptional !== undefined ? req.body.parentsOptional : (existingConfig.parentsOptional || []),
-                ...existingConfig  // Merge mit vorhandener Config (theRun wird überschrieben)
+                theRun: tsCode,
+                parentsRequired: req.body.parentsRequired ?? existingConfig.parentsRequired ?? [],
+                parentsOptional: req.body.parentsOptional ?? existingConfig.parentsOptional ?? [],
             };
 
             // Controller hat jetzt automatische Versionsverwaltung
@@ -267,6 +270,29 @@ export class ConfigRouteHandler {
             }
         } catch (e) {
             console.error(`[ConfigRouteHandler.handleDelete] Fehler:`, e);
+            res.status(500).json({ error: String(e) });
+        }
+    }
+
+    /**
+     * Handler für GET /api/:subpath/:id/versions
+     */
+    private async handleGetVersions(req: Request, res: Response): Promise<void> {
+        try {
+            const subpath = req.params.subpath;
+            const id = req.params.id;
+            const controller = this.registry.get(subpath);
+
+            if (!controller) {
+                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                return;
+            }
+
+            const baseId = id.replace(/-v\d+$/, '');
+            const versions = await controller.getVersions(baseId);
+            res.status(200).json({ ok: true, data: versions });
+        } catch (e) {
+            console.error(`[ConfigRouteHandler.handleGetVersions] Fehler:`, e);
             res.status(500).json({ error: String(e) });
         }
     }
