@@ -9,6 +9,8 @@ import { PrismaStore } from './store/PrismaStore';
 import express from "express";
 import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { WarframeAlertsRetriever } from './dogs/Kubrow/WarframeAlertsRetriever';
+import { BloodhoundRouteRetriever } from './dogs/Bloodhound/BloodhoundRouteRetriever';
+import { BloodhoundIsochroneRetriever } from './dogs/Bloodhound/BloodhoundIsochroneRetriever';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from 'datadogs';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
@@ -41,7 +43,9 @@ async function start() {
         RandomEveryThingRetriever,
         QueryRetriever,
         BodyRetriever,
-        WarframeAlertsRetriever
+        WarframeAlertsRetriever,
+        BloodhoundRouteRetriever,
+        BloodhoundIsochroneRetriever
     ];
 
     const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());

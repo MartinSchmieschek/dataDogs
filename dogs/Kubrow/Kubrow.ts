@@ -21,6 +21,8 @@ import {
 import { ForumFirstPost } from './ForumFirstPost';
 import { PostTopic } from './PostTopic';
 import { enrichDateFields } from './DateFieldHandler';
+import type { IMissionDetails } from './interfaces/missionDetails';
+import staticWorld from './static.world.json';
 
 const FORUM_TOPIC_PREFIX = 'forums.warframe.com/topic/';
 
@@ -309,6 +311,40 @@ export class Kubrow {
 
     get primeAccessState(): string | undefined {
         return this.raw?.PrimeAccessAvailability?.State;
+    }
+
+    // ── Static World (Mission Details) ─────────────────────
+
+    getMissionDetails(): IMissionDetails[] {
+        return staticWorld as IMissionDetails[];
+    }
+
+    getMissionByName(name: string): IMissionDetails | undefined {
+        const lower = name.toLowerCase();
+        return this.getMissionDetails().find(m => m.Name.toLowerCase() === lower);
+    }
+
+    getMissionsByPlanet(planet: string): IMissionDetails[] {
+        const lower = planet.toLowerCase();
+        return this.getMissionDetails().filter(m => m.Planet.toLowerCase() === lower);
+    }
+
+    getMissionsByType(type: string): IMissionDetails[] {
+        const lower = type.toLowerCase();
+        return this.getMissionDetails().filter(m => m.Type.toLowerCase() === lower);
+    }
+
+    getMissionsByEnemy(enemy: string): IMissionDetails[] {
+        const lower = enemy.toLowerCase();
+        return this.getMissionDetails().filter(m => {
+            const e = m.Enemy;
+            if (Array.isArray(e)) return e.some(f => f.toLowerCase().includes(lower));
+            return e.toLowerCase().includes(lower);
+        });
+    }
+
+    getMissionByInternalName(internalName: string): IMissionDetails | undefined {
+        return this.getMissionDetails().find(m => m.InternalName === internalName);
     }
 
     private ensureHttps(url: string): string {
