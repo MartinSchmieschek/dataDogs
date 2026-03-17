@@ -45,12 +45,14 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
 
   private wrapCode(rawCode: string): string {
     const unwrapped = this.unwrapCode(rawCode);
-    return 'async function run() {\n' + unwrapped + '\n}';
+    return 'async function run(): Promise<__ExpectedReturn> {\n' + unwrapped + '\n}';
   }
+
+  private readonly RUN_SIGNATURE = /^async function run\(\)(?:\s*:\s*Promise<[^>]*>)?\s*\{/;
 
   private unwrapCode(code: string): string {
     let trimmed = code.trim();
-    while (trimmed.startsWith('async function run() {')) {
+    while (this.RUN_SIGNATURE.test(trimmed)) {
       let depth = 0;
       const startPos = trimmed.indexOf('{');
       if (startPos === -1) break;
@@ -77,7 +79,7 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
     const isSerialized = !!this.dog.codeTs;
     const content = isSerialized
       ? this.wrapCode(this.dog.codeTs!)
-      : JSON.stringify(this.dog.result, null, 2);
+      : (JSON.stringify(this.dog.result, null, 2) ?? '// no result');
     const language = isSerialized ? 'typescript' : 'json';
 
     if (this.editor) {

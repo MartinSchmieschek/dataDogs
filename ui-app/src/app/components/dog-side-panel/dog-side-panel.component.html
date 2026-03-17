@@ -47,7 +47,19 @@
     }
 
     <app-edit-section title="Result">
-      <pre class="result-json">{{ dog.result | json }}</pre>
+      @if (resultIsHtml) {
+        <div class="result-toolbar">
+          <button class="btn-view-mode" (click)="cycleResultView()">{{ resultViewLabel }}</button>
+        </div>
+      }
+      @if (showHtmlPreview) {
+        <iframe class="result-html-frame"
+          [srcdoc]="resultHtmlSrc"
+          sandbox="allow-scripts"
+          referrerpolicy="no-referrer"></iframe>
+      } @else {
+        <pre class="result-json">{{ dog.result | json }}</pre>
+      }
     </app-edit-section>
 
     @if (isSerialized) {

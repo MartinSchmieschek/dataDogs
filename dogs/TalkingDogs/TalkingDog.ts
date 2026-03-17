@@ -1,28 +1,28 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 import { FoodPornRetriever } from "../FoodPornRetriever";
-import { RandomEveryThingRetriever } from "../RandomEverthingRetriever";
-import { RandomRecipesRetriever } from "../RandomRecipesRetriever";
-import { LayoutRenderer } from "./renderer/LayoutRenderer";
-import { ButtonFragment } from "./renderer/fragments/ButtonFragment";
-import { GestureFragment } from "./renderer/fragments/GestureFragment";
-import { TinderLayout, TinderLayoutEnum } from "./renderer/layouts/tinderLayout";
-import { SwipeLeftGestureFragment } from "./renderer/fragments/SwipeLeftGestureFragment";
-import { SwipeRightGestureFragment } from "./renderer/fragments/SwipeRightGestureFragment";
 import { DishFlagBlackLab } from "../DishFlagBlackLab";
+import { LayoutInputPact } from "./LayoutInputPact";
+import { LayoutRenderer } from "./renderer/LayoutRenderer";
+import { TinderLayout } from "./renderer/layouts/tinderLayout";
+import { BiographyLayout } from "./renderer/layouts/BiographyLayout";
+import { RecipeLayout } from "./renderer/layouts/RecipeLayout";
+import { ArticleLayout } from "./renderer/fragments/ArticleLayout";
+import { GalleryLayout } from "./renderer/fragments/GalleryLayout";
+import type { ILayoutInput } from "./renderer/layouts/ILayoutInput";
+import type { LayoutBase } from "./renderer/layouts/LayoutBase";
 
 export class TalkingDog extends Dog<string> {
 
     get required() {
-                return [
-            RandomRecipesRetriever,
-            RandomEveryThingRetriever,
+        return [
+            LayoutInputPact,
         ]
     }
 
     get optional() {
-            return [
+        return [
             FoodPornRetriever,
-                        DishFlagBlackLab
+            DishFlagBlackLab
         ]
     }
 
@@ -30,48 +30,29 @@ export class TalkingDog extends Dog<string> {
         return TalkingDog.name
     }
 
-    
+    protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<string> = async (season: IHuntingSeason) => {
+        const mimicDog = season.exhausted.find(d => this.matchesParent(LayoutInputPact, d));
+        if (!mimicDog || !mimicDog.collected) {
+            throw new Error('TalkingDog: LayoutInputProvider not found or has no data');
+        }
 
-    // Here goes the rendering magic!
-    protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<string> = (season: IHuntingSeason) => {
-        return new Promise((res, rej) => {
+        const input = mimicDog.collected as ILayoutInput;
+        let layout: LayoutBase<any>;
 
-        
+        switch (input.type) {
+            case 'tinder':    layout = new TinderLayout(); break;
+            case 'biography': layout = new BiographyLayout(); break;
+            case 'recipe':    layout = new RecipeLayout(); break;
+            case 'article':   layout = new ArticleLayout(); break;
+            case 'gallery':   layout = new GalleryLayout(); break;
+            default:
+                throw new Error(`TalkingDog: Unknown layout type '${(input as any).type}'`);
+        }
 
-            const allOtherShitDog = season.exhausted.find(item => item instanceof RandomEveryThingRetriever)
-            let name: string = allOtherShitDog?.collected?.characters.name!;
-            let description: string = allOtherShitDog?.collected?.characters.gender ?? '';
-            let dogimage = allOtherShitDog?.collected?.woof.url!
+        layout.populate(input);
 
-
-              
-            const layout = new TinderLayout();
-
-            // Inhalte befüllen
-            const image = layout.get(TinderLayoutEnum.PresentationImage);
-            if (image && "imageUrl" in image) image.imageUrl = dogimage;
-            
-            const title = layout.get(TinderLayoutEnum.Title);
-            if (title && "text" in title) title.text = name;
-            
-
-            // Button-Aktion
-            const next = layout.get(TinderLayoutEnum.Next);
-            if (next) {
-              (next as ButtonFragment).action = () => window.location.reload();
-            }
-
-            // swipes
-            const l = layout.find(item => (item instanceof SwipeLeftGestureFragment || item instanceof SwipeRightGestureFragment))
-            l.forEach(item => {
-                (item as GestureFragment).action = () => window.location.reload();
-            })
-
-            const renderer = new LayoutRenderer();
-            const html = renderer.render(layout);
-
-            res(html)
-        })
+        const renderer = new LayoutRenderer();
+        return renderer.render(layout);
     }
 
 }

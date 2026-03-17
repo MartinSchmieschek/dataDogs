@@ -26,6 +26,7 @@ export class DogSidePanelComponent implements OnChanges {
 
   private dogService = inject(DogService);
 
+  resultViewMode = signal<'auto' | 'html' | 'raw'>('auto');
   parentsRequired = signal<string[]>([]);
   parentsOptional = signal<string[]>([]);
   saving = signal(false);
@@ -170,5 +171,41 @@ export class DogSidePanelComponent implements OnChanges {
 
   moveToFirst() {
     this.movedToFirst.emit(this.dog.id);
+  }
+
+  get resultIsHtml(): boolean {
+    const r = this.dog?.result;
+    if (typeof r !== 'string') return false;
+    const trimmed = r.trim();
+    return trimmed.startsWith('<html') ||
+      trimmed.startsWith('<!DOCTYPE') ||
+      trimmed.startsWith('<!doctype') ||
+      (trimmed.startsWith('<') && trimmed.includes('</'));
+  }
+
+  get showHtmlPreview(): boolean {
+    const mode = this.resultViewMode();
+    if (mode === 'html') return true;
+    if (mode === 'raw') return false;
+    return this.resultIsHtml;
+  }
+
+  get resultHtmlSrc(): string {
+    if (!this.resultIsHtml) return '';
+    return this.dog.result;
+  }
+
+  cycleResultView() {
+    const current = this.resultViewMode();
+    if (current === 'auto') this.resultViewMode.set('raw');
+    else if (current === 'raw') this.resultViewMode.set('html');
+    else this.resultViewMode.set('auto');
+  }
+
+  get resultViewLabel(): string {
+    const mode = this.resultViewMode();
+    if (mode === 'raw') return 'Raw';
+    if (mode === 'html') return 'HTML';
+    return 'Auto';
   }
 }

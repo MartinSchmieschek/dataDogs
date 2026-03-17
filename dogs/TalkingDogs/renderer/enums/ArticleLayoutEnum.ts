@@ -1,7 +1,6 @@
 export enum ArticleLayoutEnum {
-    HeaderImage,
-    Headline,
-    Paragraph,
-    ReadMore,
+    HeaderImage = "HeaderImage",
+    Headline = "Headline",
+    Paragraph = "Paragraph",
+    ReadMore = "ReadMore",
   }
-  

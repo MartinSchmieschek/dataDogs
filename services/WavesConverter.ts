@@ -89,7 +89,7 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                 nodeEntry.codeTs = seDog.instanceConfig.theRun;
                 const vmCtx = seDog.simpleVmContext || {};
                 nodeEntry.vmContext = vmCtx;
-                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx);
+                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx, entry.instance);
                 nodeEntry.serializedDogConfig = {
                     theRun: seDog.instanceConfig.theRun,
                     version: seDog.instanceConfig.version,

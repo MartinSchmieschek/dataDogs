@@ -10,4 +10,10 @@ export { SeasonRunner } from './harverster';
 // SerializedDog
 export { SerializedDog, ISerializedDogConfig, IUpdateInput } from './dogs/SerializedDog';
 
+// Pacts
+export { createPact } from './dogs/createPact';
+
+// MimicDog
+export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
+
 

@@ -18,6 +18,9 @@ import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRoute
 import { KennelRunHandler } from './api/routes/KennelRunHandler';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed';
+import { LayoutInputPact } from './dogs/TalkingDogs/LayoutInputPact';
+import { IsochroneInputPact, RouteInputPact } from './dogs/Bloodhound/pacts';
+import { TypeDefBuilder } from './services/TypeDefBuilder';
 
 start().catch(e => {
     console.error('Failed to start', e);
@@ -45,7 +48,7 @@ async function start() {
         BodyRetriever,
         WarframeAlertsRetriever,
         BloodhoundRouteRetriever,
-        BloodhoundIsochroneRetriever
+        BloodhoundIsochroneRetriever,
     ];
 
     const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
@@ -55,6 +58,29 @@ async function start() {
         const instance = new DogClass();
         baseDogsMap.set(instance.name, DogClass);
     });
+
+    const allPacts = [LayoutInputPact, IsochroneInputPact, RouteInputPact];
+    allPacts.forEach(PactClass => {
+        const instance = new PactClass();
+        baseDogsMap.set(instance.name, PactClass);
+    });
+
+    TypeDefBuilder.registerPactReturnType('LayoutInputProvider', `
+interface ITinderInput { type: 'tinder'; imageUrl: string; title: string; description?: string; }
+interface IBiographyInput { type: 'biography'; imageUrl: string; name: string; birthInfo: string; story: string; }
+interface IRecipeInput { type: 'recipe'; imageUrl: string; title: string; ingredients: string[]; steps: string[]; }
+interface IArticleInput { type: 'article'; imageUrl: string; headline: string; paragraph: string; }
+interface IGalleryInput { type: 'gallery'; title: string; thumbnailUrl: string; }
+type ILayoutInput = ITinderInput | IBiographyInput | IRecipeInput | IArticleInput | IGalleryInput;
+`);
+    TypeDefBuilder.registerPactReturnType('IsochroneInputProvider', `
+interface IIsochroneInput { lat: number; lng: number; profile: string; range: number; }
+type IIsochroneInputReturn = IIsochroneInput;
+`);
+    TypeDefBuilder.registerPactReturnType('RouteInputProvider', `
+interface IRouteInput { startLat: number; startLng: number; endLat: number; endLng: number; profile: string; }
+type IRouteInputReturn = IRouteInput;
+`);
 
     const app = express();
     const port = 3000;

@@ -1,8 +1,19 @@
 import { CompilerCache } from './CompilerCache';
+import { MimicDog } from 'datadogs';
 
 export class TypeDefBuilder {
 
-    public static buildContextLib(rawName: string, ctx: any): string {
+    private static pactReturnTypes: Map<string, string> = new Map();
+
+    /**
+     * Registriert den erwarteten Return-Type fuer einen Pact-Namen.
+     * Wird von aussen aufgerufen, z.B. beim Startup.
+     */
+    public static registerPactReturnType(pactName: string, typeDefinition: string): void {
+        this.pactReturnTypes.set(pactName, typeDefinition);
+    }
+
+    public static buildContextLib(rawName: string, ctx: any, dog?: any): string {
         const typeName = this.safeTypeName(rawName);
         let interfaceDefs = "";
 
@@ -34,8 +45,25 @@ export class TypeDefBuilder {
       `;
         });
 
+        let mimicReturnDefs = '';
+        let expectedReturnAlias = 'type __ExpectedReturn = any;';
+        if (dog && dog instanceof MimicDog && (dog as MimicDog<unknown>).imitatesName) {
+            const pactType = this.pactReturnTypes.get((dog as MimicDog<unknown>).imitatesName);
+            if (pactType) {
+                mimicReturnDefs = pactType;
+                const lastTypeLine = pactType.trim().split('\n').pop()?.trim() ?? '';
+                const match = lastTypeLine.match(/^type\s+(\w+)\s*=/);
+                if (match) {
+                    expectedReturnAlias = `type __ExpectedReturn = ${match[1]};`;
+                }
+            }
+        }
+
+        const mimicGlobalBlock = `declare global {\n${mimicReturnDefs}\n${expectedReturnAlias}\n}`;
+
         return `
 ${interfaceDefs}
+${mimicGlobalBlock}
 ${globalVars}
 
 export type ${typeName} = ${typeBody};

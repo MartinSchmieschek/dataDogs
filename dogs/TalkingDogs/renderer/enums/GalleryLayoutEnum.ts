@@ -1,6 +1,5 @@
 export enum GalleryLayoutEnum {
-    Title,
-    Thumbnails,
-    OpenGallery,
+    Title = "Title",
+    Thumbnails = "Thumbnails",
+    OpenGallery = "OpenGallery",
   }
-  

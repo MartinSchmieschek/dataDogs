@@ -1,5 +1,6 @@
 import { IHuntingDog as IDog } from './core/entities/IHuntingDog';
 import { SerializedDog } from './dogs/SerializedDog';
+import { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
 
@@ -127,10 +128,120 @@ export class KennelRun {
             }
         });
 
+        // Auto-Mimic: Resolve MimicDog imitates + resolve unerfuellte Pact-Requirements
+        kennel.forEach(dog => {
+            if (dog instanceof MimicDog) {
+                (dog as MimicDog<unknown>).resolveImitates(this.baseDogClasses);
+            }
+        });
+
+        await this.autoMimic(kennel);
+
         const baseDogsCount = baseDogIds.length;
         const serializedDogsCount = kennel.length - baseDogsCount;
         console.log(`[KennelRun.fillKennel] Kennel gefüllt mit ${kennel.length} Dogs (${baseDogsCount} baseDogs + ${serializedDogsCount} SerializedDogs)`);
         return kennel;
+    }
+
+    /**
+     * Auto-Mimic Logik:
+     * - Pact-Dependency → MimicDog erstellen (mit gespeichertem Code falls vorhanden)
+     * - Required Nicht-Pact → BaseDog aus baseDogClasses erstellen
+     * - Optional Nicht-Pact → ignorieren (areOptionalParentsReady handhabt das)
+     * - Echter Dog UND Mimic fuer dieselbe Klasse → Mimic entfernen
+     */
+    private async autoMimic(kennel: Array<IDog<unknown>>): Promise<void> {
+        const requiredClasses = new Set<new (...args: any[]) => IDog<unknown>>();
+        const allDependencyClasses = new Set<new (...args: any[]) => IDog<unknown>>();
+
+        for (const dog of kennel) {
+            if ('required' in dog && Array.isArray((dog as any).required)) {
+                for (const reqClass of (dog as any).required) {
+                    requiredClasses.add(reqClass);
+                    allDependencyClasses.add(reqClass);
+                }
+            }
+            if ('optional' in dog && Array.isArray((dog as any).optional)) {
+                for (const optClass of (dog as any).optional) {
+                    allDependencyClasses.add(optClass);
+                }
+            }
+        }
+
+        const pactsNeedingMimic: Array<new (...args: any[]) => IDog<unknown>> = [];
+
+        for (const depClass of allDependencyClasses) {
+            const isPact = (depClass as any).__isPact === true;
+            const hasMimic = kennel.some(d =>
+                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesClasses.includes(depClass)
+            );
+            const hasReal = kennel.some(d =>
+                !(d instanceof MimicDog) && d instanceof depClass
+            );
+
+            if (hasReal && hasMimic) {
+                const mimicIdx = kennel.findIndex(d =>
+                    d instanceof MimicDog && (d as MimicDog<unknown>).imitatesClasses.includes(depClass)
+                );
+                if (mimicIdx >= 0) {
+                    console.log(`[KennelRun.autoMimic] Echter Dog vorhanden, entferne Mimic fuer ${depClass.name}`);
+                    kennel.splice(mimicIdx, 1);
+                }
+                continue;
+            }
+
+            if (hasReal || hasMimic) continue;
+
+            if (isPact) {
+                pactsNeedingMimic.push(depClass);
+            } else if (requiredClasses.has(depClass)) {
+                const BaseDogClass = this.baseDogClasses.get(depClass.name);
+                if (BaseDogClass) {
+                    const baseDog = new BaseDogClass();
+                    kennel.push(baseDog);
+                    console.log(`[KennelRun.autoMimic] Auto-erstellt BaseDog '${depClass.name}' (required)`);
+                }
+            }
+        }
+
+        if (pactsNeedingMimic.length === 0) return;
+
+        const mimicIds = pactsNeedingMimic.map(cls => `auto-mimic-${cls.name}`);
+        let savedDogs: SerializedDog<unknown>[] = [];
+        try {
+            savedDogs = await this.serializedDogFactory(mimicIds);
+        } catch (e) {
+            // Keine gespeicherten Mimics gefunden — ist OK
+        }
+
+        for (const depClass of pactsNeedingMimic) {
+            const mimicId = `auto-mimic-${depClass.name}`;
+            const savedDog = savedDogs.find(d => d.storageId.replace(/-v\d+$/, '') === mimicId);
+
+            let mimicConfig: IMimicDogConfig;
+            let storageId: string;
+
+            if (savedDog) {
+                mimicConfig = {
+                    ...savedDog.instanceConfig,
+                    imitates: depClass.name,
+                };
+                storageId = savedDog.storageId;
+                console.log(`[KennelRun.autoMimic] Gespeicherten MimicDog geladen fuer '${depClass.name}' (${storageId})`);
+            } else {
+                mimicConfig = {
+                    theRun: `throw new Error("MimicDog for '${depClass.name}' needs user code");`,
+                    imitates: depClass.name,
+                };
+                storageId = mimicId;
+                console.log(`[KennelRun.autoMimic] Neuen MimicDog erstellt fuer Pact '${depClass.name}'`);
+            }
+
+            const mimic = new MimicDog<unknown>(mimicConfig, storageId);
+            mimic.resolveImitates(this.baseDogClasses);
+            mimic.setKennelRef(kennel);
+            kennel.push(mimic);
+        }
     }
 
     /**

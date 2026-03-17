@@ -117,9 +117,7 @@ export class KennelRunHandler {
                 return;
             }
 
-            const rawDefaults = config.defaultQuery || {};
-            const query: Record<string, string> = {};
-            Object.entries(rawDefaults).forEach(([k, v]) => { query[k.toLowerCase()] = String(v).toLowerCase(); });
+            const query = this.mergeQueryParams(config.defaultQuery, req.query);
             const body = req.body && Object.keys(req.body).length > 0
                 ? req.body
                 : config.defaultBody;

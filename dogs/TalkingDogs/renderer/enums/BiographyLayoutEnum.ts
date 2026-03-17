@@ -1,7 +1,6 @@
 export enum BiographyLayoutEnum {
-    Portrait,
-    Name,
-    BirthInfo,
-    Story,
+    Portrait = "Portrait",
+    Name = "Name",
+    BirthInfo = "BirthInfo",
+    Story = "Story",
   }
-  

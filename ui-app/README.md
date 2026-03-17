@@ -41,9 +41,10 @@ A **dependency graph** maps out every dog in the pack. Nodes cluster by wave -- 
 Click any dog. The **Side Panel** cracks open and you see everything: what they brought back, the code that drives them, who they depend on, who feeds off their haul.
 
 From the top bar:
+- **Query / Body** -- Toggle the inline params panel. Edit query key/value pairs and body JSON without leaving the Waves view. Changes get sent with the next reload. Hit "Speichern & Neu laden" to persist them to the Kennel config. A dirty dot shows unsaved tweaks.
 - **Draft** an existing dog into the pack
 - **Breed** a new one on the spot
-- **Re-run** the whole hunt for fresh spoils
+- **Re-run** the whole hunt for fresh spoils (sends current query/body params along)
 - **Reconfigure** the Kennel
 
 The lead dog -- first in the list -- delivers the prize at the public endpoint. Choose wisely.
@@ -73,7 +74,7 @@ Click a dog in the Waves Viewer and it opens up. Everything about that animal, i
 
 **Code** -- The dog's instincts, written in TypeScript. A full Monaco editor with IntelliSense -- type definitions are generated from the dog's hunting context, so autocomplete knows exactly what parent data is in reach. BaseDogs show their raw catch as read-only JSON.
 
-**Result** -- The spoils. Raw JSON, straight from the last hunt. What this dog dragged back.
+**Result** -- The spoils. When a dog brings back JSON, you see it raw. When a dog brings back HTML -- like TalkingDog's rendered layouts -- the result view fires up a sandboxed iframe and renders it live. A toggle button cycles between Auto, Raw, and HTML mode. Auto detects the format and picks the right view.
 
 **Parents** -- The bloodline. Checkboxes for every other dog in the Kennel. Mark each as Required (must hunt first) or Optional (used if they ran, ignored if they didn't). This is what shapes the Waves.
 
@@ -87,10 +88,14 @@ Click a dog in the Waves Viewer and it opens up. Everything about that animal, i
 AppComponent
   +-- KennelListComponent           /
   +-- WavesViewerComponent          /kennel/:id
-  |     +-- VisNetworkComponent
+  |     +-- DogToolbarComponent          (drag & drop dog selection)
+  |     +-- VisNetworkComponent          (dependency graph)
+  |     +-- Inline Params Panel          (query/body editing)
   |     +-- DogSidePanelComponent
-  |           +-- EditSectionComponent   (reusable collapsible wrapper)
-  |           +-- DogEditorComponent     (Monaco)
+  |           +-- VersionTimelineComponent (version history)
+  |           +-- EditSectionComponent     (reusable collapsible wrapper)
+  |           +-- DogEditorComponent       (Monaco)
+  |           +-- HTML Result Preview      (sandboxed iframe for HTML results)
   +-- KennelConfigComponent         /kennel/:id/edit
 ```
 

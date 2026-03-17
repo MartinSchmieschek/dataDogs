@@ -108,6 +108,34 @@
   padding: 8px;
 }
 
+.result-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.btn-view-mode {
+  background: #222;
+  border: 1px solid #444;
+  color: #aaa;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  &:hover { color: #fff; border-color: #888; }
+}
+
+.result-html-frame {
+  width: 100%;
+  min-height: 350px;
+  border: 1px solid #333;
+  border-radius: 3px;
+  background: #fff;
+}
+
 .result-json {
   margin: 0;
   font-size: 12px;

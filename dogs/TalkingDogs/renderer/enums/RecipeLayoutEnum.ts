@@ -1,7 +1,6 @@
 export enum RecipeLayoutEnum {
-    Image,
-    Title,
-    Ingredients,
-    Steps,
+    Image = "Image",
+    Title = "Title",
+    Ingredients = "Ingredients",
+    Steps = "Steps",
   }
-  

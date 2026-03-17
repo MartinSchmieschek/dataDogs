@@ -1,5 +1,5 @@
 import { IStore } from './store/IStore';
-import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX } from 'datadogs';
+import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX, Dog, IHuntingDog, createPact, MimicDog, IMimicDogConfig, KennelRun } from 'datadogs';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
@@ -52,6 +52,18 @@ export class StartupTest {
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
             await this.testAllVersionsInList(nodesController);
+            
+            // Pact & MimicDog Tests
+            await this.testCreatePact();
+            await this.testMimicDogImitatesPact(baseDogsMap);
+            await this.testMatchesParentRecognizesMimic(baseDogsMap);
+            await this.testFillKennelAutoMimicForPact(baseDogsMap);
+            await this.testFillKennelAutoMimicForOptionalPact(baseDogsMap);
+            await this.testFillKennelAutoMimicForRequiredAndOptionalPacts(baseDogsMap);
+            await this.testFillKennelRealBaseDogInsteadOfMimic(baseDogsMap);
+            await this.testFillKennelMimicRemovedWhenRealDogPresent(baseDogsMap);
+            await this.testRunSeasonWithMimicConsumerRuns(baseDogsMap);
+            await this.testTalkingDogAllDependenciesResolved(baseDogsMap);
         } finally {
             // Cleanup: Lösche alle erstellten Test-Daten
             await this.cleanupTestData(nodesStore, kennelsStore, nodesController, kennelsController);
@@ -637,6 +649,497 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         }
         // Cleanup wird zentral am Ende durchgeführt
+    }
+
+    // ===== Pact & MimicDog Tests =====
+
+    /**
+     * Test: createPact erzeugt gueltige Dog-Klasse
+     */
+    private async testCreatePact(): Promise<void> {
+        const testName = 'Pact: createPact erzeugt gueltige Dog-Klasse';
+        try {
+            const TestPact = createPact<{ value: number }>('TestPact');
+
+            if (TestPact.name !== 'TestPact') {
+                throw new Error(`Erwarteter Name 'TestPact', erhalten: '${TestPact.name}'`);
+            }
+
+            if ((TestPact as any).__isPact !== true) {
+                throw new Error('__isPact ist nicht true');
+            }
+
+            const instance = new TestPact();
+            if (!(instance instanceof Dog)) {
+                throw new Error('Instanz ist kein instanceof Dog');
+            }
+
+            if (instance.name !== 'TestPact') {
+                throw new Error(`Instanz-Name falsch: '${instance.name}'`);
+            }
+
+            let threwError = false;
+            try {
+                await instance.collectYield({
+                    exhausted: [], withBeesInThePants: [],
+                    maxRuns: 0, runIndex: 0, wave: [], readTracking: [], currentWaveIndex: 0
+                });
+            } catch (e: any) {
+                if (e.message.includes('requires a MimicDog')) {
+                    threwError = true;
+                }
+            }
+            if (!threwError) {
+                throw new Error('yieldCollectorFactory sollte Error werfen');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: MimicDog imitiert Pact-Klasse
+     */
+    private async testMimicDogImitatesPact(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'MimicDog: imitiert Pact-Klasse';
+        try {
+            const TestPact = createPact<{ v: number }>('MimicTestPact');
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('MimicTestPact', TestPact);
+
+            const mimicConfig: IMimicDogConfig = {
+                theRun: 'return { v: 42 };',
+                imitates: 'MimicTestPact',
+            };
+            const mimic = new MimicDog<{ v: number }>(mimicConfig, 'test-mimic-1');
+            mimic.resolveImitates(extendedMap);
+
+            if (!mimic.imitatesClasses.includes(TestPact)) {
+                throw new Error('imitatesClasses enthaelt nicht die Pact-Klasse');
+            }
+
+            if (mimic.imitatesName !== 'MimicTestPact') {
+                throw new Error(`imitatesName falsch: '${mimic.imitatesName}'`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: matchesParent erkennt Mimic via imitatesClasses
+     */
+    private async testMatchesParentRecognizesMimic(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'MimicDog: matchesParent erkennt Mimic';
+        try {
+            const TestPact = createPact<string>('MatchTestPact');
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('MatchTestPact', TestPact);
+
+            const mimicConfig: IMimicDogConfig = {
+                theRun: 'return "hello";',
+                imitates: 'MatchTestPact',
+            };
+            const mimic = new MimicDog<string>(mimicConfig, 'test-mimic-match');
+            mimic.resolveImitates(extendedMap);
+
+            class ConsumerDog extends Dog<void> {
+                get name() { return 'ConsumerDog'; }
+                get required() { return [TestPact]; }
+                get optional() { return []; }
+                protected yieldCollectorFactory = async () => {};
+            }
+            const consumer = new ConsumerDog();
+
+            // Simuliere eine Season mit dem Mimic in exhausted
+            const season = {
+                exhausted: [mimic as IHuntingDog<unknown>],
+                withBeesInThePants: [consumer as IHuntingDog<unknown>],
+                maxRuns: 2,
+                runIndex: 0,
+                wave: [],
+                readTracking: [],
+                currentWaveIndex: 0
+            };
+
+            if (!consumer.isReady(season)) {
+                throw new Error('Consumer sollte ready sein wenn Mimic in exhausted ist');
+            }
+
+            // Ohne Mimic: nicht ready
+            const seasonEmpty = {
+                exhausted: [] as IHuntingDog<unknown>[],
+                withBeesInThePants: [consumer as IHuntingDog<unknown>],
+                maxRuns: 2,
+                runIndex: 0,
+                wave: [],
+                readTracking: [],
+                currentWaveIndex: 0
+            };
+            if (consumer.isReady(seasonEmpty)) {
+                throw new Error('Consumer sollte NICHT ready sein ohne Mimic');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: fillKennel erstellt Auto-Mimic fuer Pact-Requirement
+     */
+    private async testFillKennelAutoMimicForPact(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: Auto-Mimic bei Pact';
+        try {
+            const AutoPact = createPact<number>('AutoMimicTestPact');
+
+            class NeedyDog extends Dog<void> {
+                get name() { return 'NeedyDog'; }
+                get required() { return [AutoPact]; }
+                get optional() { return []; }
+                protected yieldCollectorFactory = async () => {};
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('NeedyDog', NeedyDog);
+            extendedMap.set('AutoMimicTestPact', AutoPact);
+
+            const config: IKennelConfig = {
+                id: 'test-auto-mimic-kennel',
+                dogIds: ['base:NeedyDog'],
+            };
+
+            const kennelRun = new KennelRun(config, extendedMap);
+            const kennel = await kennelRun.fillKennel();
+
+            const hasMimic = kennel.some(d =>
+                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesName === 'AutoMimicTestPact'
+            );
+
+            if (!hasMimic) {
+                throw new Error('MimicDog wurde nicht automatisch erstellt');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: fillKennel erstellt Auto-Mimic fuer optional Pact-Requirement
+     */
+    private async testFillKennelAutoMimicForOptionalPact(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: Auto-Mimic bei optional Pact';
+        try {
+            const OptionalPact = createPact<string>('OptionalMimicTestPact');
+
+            class OptionalConsumerDog extends Dog<void> {
+                get name() { return 'OptionalConsumerDog'; }
+                get required() { return [] as (new (...args: any[]) => IHuntingDog<unknown>)[]; }
+                get optional() { return [OptionalPact]; }
+                protected yieldCollectorFactory = async () => {};
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('OptionalConsumerDog', OptionalConsumerDog);
+            extendedMap.set('OptionalMimicTestPact', OptionalPact);
+
+            const config: IKennelConfig = {
+                id: 'test-optional-mimic-kennel',
+                dogIds: ['base:OptionalConsumerDog'],
+            };
+
+            const kennelRun = new KennelRun(config, extendedMap);
+            const kennel = await kennelRun.fillKennel();
+
+            const hasMimic = kennel.some(d =>
+                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesName === 'OptionalMimicTestPact'
+            );
+
+            if (!hasMimic) {
+                throw new Error('MimicDog wurde nicht automatisch fuer optional Pact erstellt');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: fillKennel erstellt Auto-Mimics fuer required UND optional Pacts gleichzeitig
+     */
+    private async testFillKennelAutoMimicForRequiredAndOptionalPacts(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: Auto-Mimic bei required + optional Pacts';
+        try {
+            const ReqPact = createPact<number>('ReqMimicTestPact');
+            const OptPact = createPact<string>('OptMimicTestPact2');
+
+            class DualConsumerDog extends Dog<void> {
+                get name() { return 'DualConsumerDog'; }
+                get required() { return [ReqPact]; }
+                get optional() { return [OptPact]; }
+                protected yieldCollectorFactory = async () => {};
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('DualConsumerDog', DualConsumerDog);
+            extendedMap.set('ReqMimicTestPact', ReqPact);
+            extendedMap.set('OptMimicTestPact2', OptPact);
+
+            const config: IKennelConfig = {
+                id: 'test-dual-mimic-kennel',
+                dogIds: ['base:DualConsumerDog'],
+            };
+
+            const kennelRun = new KennelRun(config, extendedMap);
+            const kennel = await kennelRun.fillKennel();
+
+            const hasReqMimic = kennel.some(d =>
+                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesName === 'ReqMimicTestPact'
+            );
+            const hasOptMimic = kennel.some(d =>
+                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesName === 'OptMimicTestPact2'
+            );
+
+            if (!hasReqMimic) {
+                throw new Error('MimicDog fuer required Pact fehlt');
+            }
+            if (!hasOptMimic) {
+                throw new Error('MimicDog fuer optional Pact fehlt');
+            }
+
+            const mimicCount = kennel.filter(d => d instanceof MimicDog).length;
+            if (mimicCount < 2) {
+                throw new Error(`Erwartet: mindestens 2 Mimics, gefunden: ${mimicCount}`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: fillKennel erstellt echten BaseDog statt Mimic (kein Pact)
+     */
+    private async testFillKennelRealBaseDogInsteadOfMimic(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: Echter BaseDog statt Mimic';
+        try {
+            class RealProvider extends Dog<string> {
+                get name() { return 'RealProvider'; }
+                get required() { return []; }
+                get optional() { return []; }
+                protected yieldCollectorFactory = async () => 'data';
+            }
+
+            class RealConsumer extends Dog<void> {
+                get name() { return 'RealConsumer'; }
+                get required() { return [RealProvider]; }
+                get optional() { return []; }
+                protected yieldCollectorFactory = async () => {};
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('RealConsumer', RealConsumer);
+            extendedMap.set('RealProvider', RealProvider);
+
+            const config: IKennelConfig = {
+                id: 'test-real-basedog-kennel',
+                dogIds: ['base:RealConsumer'],
+            };
+
+            const kennelRun = new KennelRun(config, extendedMap);
+            const kennel = await kennelRun.fillKennel();
+
+            const hasReal = kennel.some(d => d instanceof RealProvider);
+            const hasMimic = kennel.some(d => d instanceof MimicDog);
+
+            if (!hasReal) {
+                throw new Error('Echter BaseDog wurde nicht hinzugefuegt');
+            }
+            if (hasMimic) {
+                throw new Error('MimicDog sollte nicht erstellt werden fuer echte Klasse');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: fillKennel entfernt Mimic wenn echter Dog vorhanden
+     */
+    private async testFillKennelMimicRemovedWhenRealDogPresent(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: Mimic entfernt wenn echter Dog da';
+        try {
+            const PriorityPact = createPact<string>('PriorityTestPact');
+
+            class PriorityConsumer extends Dog<void> {
+                get name() { return 'PriorityConsumer'; }
+                get required() { return [PriorityPact]; }
+                get optional() { return []; }
+                protected yieldCollectorFactory = async () => {};
+            }
+
+            class RealPriorityDog extends PriorityPact {
+                get name() { return 'RealPriorityDog'; }
+                get required() { return [] as (new (...args: any[]) => IHuntingDog<unknown>)[]; }
+                get optional() { return [] as (new (...args: any[]) => IHuntingDog<unknown>)[]; }
+                protected yieldCollectorFactory = async () => 'real data';
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('PriorityConsumer', PriorityConsumer);
+            extendedMap.set('PriorityTestPact', PriorityPact);
+            extendedMap.set('RealPriorityDog', RealPriorityDog);
+
+            const config: IKennelConfig = {
+                id: 'test-priority-kennel',
+                dogIds: ['base:PriorityConsumer', 'base:RealPriorityDog'],
+            };
+
+            const kennelRun = new KennelRun(config, extendedMap);
+            const kennel = await kennelRun.fillKennel();
+
+            const mimicCount = kennel.filter(d => d instanceof MimicDog).length;
+            const realCount = kennel.filter(d => d instanceof RealPriorityDog).length;
+
+            if (mimicCount > 0) {
+                throw new Error('Mimic sollte entfernt worden sein da echter Dog vorhanden');
+            }
+            if (realCount !== 1) {
+                throw new Error(`Erwartet: 1 echter Dog, gefunden: ${realCount}`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Kompletter Run mit manuell erstelltem Mimic — Consumer laeuft in spaeterer Wave
+     */
+    private async testRunSeasonWithMimicConsumerRuns(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'runSeason: Consumer laeuft mit Mimic in spaeterer Wave';
+        try {
+            const RunPact = createPact<{ v: number }>('RunTestPact');
+
+            class RunConsumerDog extends Dog<number> {
+                get name() { return 'RunConsumerDog'; }
+                get required() { return [RunPact]; }
+                get optional() { return [] as (new (...args: any[]) => IHuntingDog<unknown>)[]; }
+                protected yieldCollectorFactory = async (season: any) => {
+                    const provider = season.exhausted.find((d: any) => this.matchesParent(RunPact, d));
+                    return provider?.collected?.v ?? -1;
+                };
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('RunConsumerDog', RunConsumerDog);
+            extendedMap.set('RunTestPact', RunPact);
+
+            const mimicConfig: IMimicDogConfig = {
+                theRun: 'return { v: 42 };',
+                imitates: 'RunTestPact',
+            };
+            const mimic = new MimicDog<{ v: number }>(mimicConfig, 'run-test-mimic');
+            mimic.resolveImitates(extendedMap);
+
+            const consumer = new RunConsumerDog();
+            const kennel: IHuntingDog<unknown>[] = [mimic, consumer];
+            mimic.setKennelRef(kennel);
+
+            const config: IKennelConfig = {
+                id: 'test-run-mimic-kennel',
+                dogIds: [],
+            };
+            const kennelRun = new KennelRun(config, extendedMap);
+            const season = await kennelRun.runSeason(kennel);
+
+            if (season.wave.length < 2) {
+                throw new Error(`Erwartet: mindestens 2 Waves, gefunden: ${season.wave.length}`);
+            }
+
+            const consumerInWaves = season.wave.some(wave =>
+                wave.some(entry => entry.instance.name === 'RunConsumerDog')
+            );
+            if (!consumerInWaves) {
+                throw new Error('RunConsumerDog ist in keiner Wave erschienen');
+            }
+
+            const consumerDog = season.exhausted.find(d => d.name === 'RunConsumerDog');
+            if (!consumerDog || consumerDog.collected !== 42) {
+                throw new Error(`Consumer collected erwartet: 42, erhalten: ${consumerDog?.collected}`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: TalkingDog — alle Dependencies (required Pacts + optional BaseDogs) werden aufgeloest
+     */
+    private async testTalkingDogAllDependenciesResolved(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'TalkingDog: Alle Dependencies im Kennel nach fillKennel';
+        try {
+            const config: IKennelConfig = {
+                id: 'test-talkingdog-kennel',
+                dogIds: ['base:TalkingDog'],
+            };
+
+            const kennelRun = new KennelRun(config, baseDogsMap);
+            const kennel = await kennelRun.fillKennel();
+
+            const talkingDog = kennel.find(d => d.name === 'TalkingDog');
+            if (!talkingDog) {
+                throw new Error('TalkingDog nicht im Kennel');
+            }
+
+            const requiredClasses = (talkingDog as any).required as any[];
+            const optionalClasses = (talkingDog as any).optional as any[];
+            const allDeps = [...requiredClasses, ...optionalClasses];
+
+            const missing: string[] = [];
+            for (const depClass of allDeps) {
+                const isPact = (depClass as any).__isPact === true;
+                const fulfilled = kennel.some(d => {
+                    if (d === talkingDog) return false;
+                    if (d instanceof MimicDog && isPact) {
+                        return (d as MimicDog<unknown>).imitatesClasses.includes(depClass);
+                    }
+                    return d instanceof depClass;
+                });
+                if (!fulfilled) {
+                    missing.push(depClass.name || 'unknown');
+                }
+            }
+
+            if (missing.length > 0) {
+                throw new Error(`Fehlende Dependencies fuer TalkingDog: ${missing.join(', ')}`);
+            }
+
+            const hasMimicForPact = kennel.some(d =>
+                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesName === 'LayoutInputProvider'
+            );
+            if (!hasMimicForPact) {
+                throw new Error('Kein MimicDog fuer LayoutInputProvider im Kennel');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
     }
 
     /**

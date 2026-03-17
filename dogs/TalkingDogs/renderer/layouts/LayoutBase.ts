@@ -1,10 +1,13 @@
 // LayoutBase.ts
 
 import { FragmentBase } from "../fragments/FragmentBase";
+import { ILayoutInput } from "./ILayoutInput";
 
 
 export abstract class LayoutBase<E extends string> {
   protected fragments = new Map<E, FragmentBase>();
+
+  abstract populate(input: ILayoutInput): void;
 
   get(id: E): FragmentBase | undefined {
     return this.fragments.get(id);

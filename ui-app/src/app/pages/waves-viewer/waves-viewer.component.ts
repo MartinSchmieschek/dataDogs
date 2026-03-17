@@ -1,5 +1,6 @@
 import { Component, inject, signal, OnInit, computed } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { KennelService } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
@@ -14,7 +15,7 @@ import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.co
   selector: 'app-waves-viewer',
   standalone: true,
   imports: [
-    RouterLink,
+    RouterLink, FormsModule,
     VisNetworkComponent, DogSidePanelComponent,
     LoadingIndicatorComponent, DogToolbarComponent
   ],
@@ -37,6 +38,14 @@ export class WavesViewerComponent implements OnInit {
   isDragging = false;
   private dragEndTimer: any = null;
 
+  paramsOpen = false;
+  queryParams = signal<Array<{ key: string; value: string }>>([]);
+  bodyJson = signal('{}');
+  newQueryKey = '';
+  newQueryValue = '';
+  paramsSaving = signal(false);
+  paramsDirty = signal(false);
+
   flatDogList = computed(() => {
     const w = this.waves();
     if (!w) return [];
@@ -53,11 +62,19 @@ export class WavesViewerComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
 
-    this.kennelService.run(this.kennelId).subscribe({
+    const query = this.buildQueryRecord();
+    let body: any = undefined;
+    try {
+      const raw = this.bodyJson().trim();
+      if (raw && raw !== '{}') body = JSON.parse(raw);
+    } catch { /* invalid JSON - ignore, send without body */ }
+
+    this.kennelService.run(this.kennelId, body, query).subscribe({
       next: (res) => {
         if (res.ok) {
           this.waves.set(res.waves);
           this.kennelConfig.set(res.kennelConfig);
+          this.syncParamsFromConfig(res.kennelConfig);
 
           const sel = this.selectedDog();
           if (sel) {
@@ -67,12 +84,91 @@ export class WavesViewerComponent implements OnInit {
         } else {
           this.error.set(res.error ?? 'Fehler beim Laden');
           this.kennelConfig.set(res.kennelConfig ?? null);
+          if (res.kennelConfig) this.syncParamsFromConfig(res.kennelConfig);
         }
         this.loading.set(false);
       },
       error: (err) => {
         this.error.set(err.error?.error ?? err.message);
         this.loading.set(false);
+      }
+    });
+  }
+
+  private syncParamsFromConfig(config: IKennelConfig) {
+    if (!this.paramsDirty()) {
+      if (config.defaultQuery) {
+        this.queryParams.set(
+          Object.entries(config.defaultQuery).map(([key, value]) => ({ key, value }))
+        );
+      } else {
+        this.queryParams.set([]);
+      }
+      this.bodyJson.set(config.defaultBody ? JSON.stringify(config.defaultBody, null, 2) : '{}');
+    }
+  }
+
+  private buildQueryRecord(): Record<string, string> {
+    const result: Record<string, string> = {};
+    this.queryParams().forEach(p => {
+      if (p.key.trim()) result[p.key] = p.value;
+    });
+    return result;
+  }
+
+  addQueryParam() {
+    if (this.newQueryKey.trim()) {
+      this.queryParams.set([...this.queryParams(), { key: this.newQueryKey, value: this.newQueryValue }]);
+      this.newQueryKey = '';
+      this.newQueryValue = '';
+      this.paramsDirty.set(true);
+    }
+  }
+
+  removeQueryParam(index: number) {
+    const params = [...this.queryParams()];
+    params.splice(index, 1);
+    this.queryParams.set(params);
+    this.paramsDirty.set(true);
+  }
+
+  onQueryParamChange() {
+    this.paramsDirty.set(true);
+  }
+
+  onBodyJsonChange() {
+    this.paramsDirty.set(true);
+  }
+
+  saveParams() {
+    this.paramsSaving.set(true);
+    const defaultQuery: Record<string, string> = {};
+    this.queryParams().forEach(p => {
+      if (p.key.trim()) defaultQuery[p.key] = p.value;
+    });
+
+    let defaultBody: any = undefined;
+    try {
+      const raw = this.bodyJson().trim();
+      if (raw) defaultBody = JSON.parse(raw);
+    } catch {
+      this.error.set('Body ist kein gültiges JSON');
+      this.paramsSaving.set(false);
+      return;
+    }
+
+    this.kennelService.update(this.kennelId, {
+      defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
+      defaultBody,
+    }).subscribe({
+      next: () => {
+        this.paramsSaving.set(false);
+        this.paramsDirty.set(false);
+        this.loadWaves();
+      },
+      error: (err) => {
+        this.paramsSaving.set(false);
+        this.error.set(err.message);
       }
     });
   }

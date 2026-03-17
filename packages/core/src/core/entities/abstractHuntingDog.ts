@@ -36,7 +36,7 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
         let optionalIntersections:{instance:IHuntingDog<unknown>, constructor:DogClass<IHuntingDog<unknown>>}[] = []
         exhausted.forEach(e => {
             requiredDogs.forEach(t => {
-                if (e instanceof t){
+                if (this.matchesParent(t, e)){
                     requiredIntersections.push({
                         constructor:t,
                         instance:e
@@ -45,7 +45,7 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
             })
 
             optionalDogs.forEach(t => {
-                if (e instanceof t){
+                if (this.matchesParent(t, e)){
                     optionalIntersections.push({
                         constructor:t,
                         instance:e
@@ -65,7 +65,11 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
      * Standard-Implementierung prüft nur, ob die Instanz eine Instanz der gegebenen Klasse ist.
      */
     protected matchesParent(parentClass: DogClass<IHuntingDog<unknown>>, instance: IHuntingDog<unknown>): boolean {
-        return instance instanceof parentClass;
+        if (instance instanceof parentClass) return true;
+        if ('imitatesClasses' in instance) {
+            return (instance as any).imitatesClasses.includes(parentClass);
+        }
+        return false;
     }
 
     /**
@@ -92,41 +96,23 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
     }
 
     /**
-     * Prüft, ob alle optional Parents bereits in exhausted sind (nicht in derselben Welle laufen).
-     * Verwendet matchesParent für instanz-spezifische Prüfung.
+     * Prüft optional Parents — wartet NUR auf solche, die tatsächlich im Kennel sind.
+     * Optionals die nicht im Kennel existieren werden ignoriert (sind ja optional).
      */
     protected areOptionalParentsReady(season: IHuntingSeason): boolean {
         const optionalDogs = this.optional;
-        const optionalCount = optionalDogs.length;
-        
-        if (optionalCount === 0) {
-            return true;
-        }
-        
-        // Prüfe, ob ein optional Parent noch in withBeesInThePants ist (noch nicht gelaufen)
-        // Wenn ja, ist dieser Hund noch nicht ready (optional Parents müssen in vorheriger Welle laufen)
+        if (optionalDogs.length === 0) return true;
+
         for (const optionalClass of optionalDogs) {
-            const stillRunning = season.withBeesInThePants.some(dog => this.matchesParent(optionalClass, dog));
-            if (stillRunning) {
-                return false;
-            }
+            const inKennel =
+                season.withBeesInThePants.some(d => this.matchesParent(optionalClass, d)) ||
+                season.exhausted.some(d => this.matchesParent(optionalClass, d));
+
+            if (!inKennel) continue;
+
+            const isExhausted = season.exhausted.some(d => this.matchesParent(optionalClass, d));
+            if (!isExhausted) return false;
         }
-        
-        // Prüfe, ob alle optional Parents bereits in exhausted sind
-        let foundCount = 0;
-        for (const optionalClass of optionalDogs) {
-            const found = season.exhausted.some(dog => this.matchesParent(optionalClass, dog));
-            if (found) {
-                foundCount++;
-            }
-        }
-        
-        // Wenn noch Runs möglich sind und nicht alle optional Parents gefunden wurden, warte
-        // (aber nur wenn sie nicht mehr in withBeesInThePants sind - das wurde oben bereits geprüft)
-        if (season.runIndex < season.maxRuns && foundCount < optionalCount) {
-            return false;
-        }
-        
         return true;
     }
 

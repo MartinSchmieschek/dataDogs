@@ -34,7 +34,7 @@
   gap: 8px;
 }
 
-.btn-reload, .btn-edit {
+.btn-reload, .btn-edit, .btn-params {
   padding: 4px 10px;
   border: none;
   cursor: pointer;
@@ -48,6 +48,134 @@
 
 .btn-reload { background: #555; }
 .btn-edit { background: #666; }
+
+.btn-params {
+  background: #2a2a3a;
+  border: 1px solid #444;
+  position: relative;
+  &.active { background: #3a3a5a; border-color: #6cf; color: #6cf; }
+}
+
+.dirty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #f80;
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.params-panel {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #0d0d14;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.params-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.params-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  font-weight: bold;
+}
+
+.query-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.query-entry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.param-input {
+  background: #1a1a24;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 3px 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  border-radius: 2px;
+  &.key { width: 100px; }
+  &.value { flex: 1; min-width: 80px; }
+  &:focus { border-color: #6cf; outline: none; }
+}
+
+.param-eq { color: #666; font-size: 12px; }
+
+.btn-remove-param, .btn-add-param {
+  background: none;
+  border: 1px solid #444;
+  color: #999;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  &:hover { color: #fff; border-color: #888; }
+}
+
+.btn-remove-param:hover { color: #f66; border-color: #f66; }
+.btn-add-param:hover { color: #6f6; border-color: #6f6; }
+
+.body-textarea {
+  background: #1a1a24;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 6px 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  border-radius: 2px;
+  resize: vertical;
+  min-height: 50px;
+  &:focus { border-color: #6cf; outline: none; }
+}
+
+.params-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: flex-end;
+}
+
+.btn-save-params {
+  padding: 5px 12px;
+  background: #264d26;
+  border: 1px solid #3a6b3a;
+  color: #8f8;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  border-radius: 3px;
+  &:hover { background: #2e5e2e; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.params-hint {
+  font-size: 10px;
+  color: #555;
+}
 
 .error-bar {
   padding: 8px 16px;

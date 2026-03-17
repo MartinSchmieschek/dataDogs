@@ -10,10 +10,55 @@
     <a routerLink="/" class="back-link">← Kennel-Liste</a>
     <h1>{{ kennelConfig()?.name || kennelId }}</h1>
     <div class="header-actions">
+      <button class="btn-params" [class.active]="paramsOpen" (click)="paramsOpen = !paramsOpen">
+        Query / Body
+        @if (paramsDirty()) { <span class="dirty-dot"></span> }
+      </button>
       <button class="btn-reload" (click)="loadWaves()">⟳ Neu laden</button>
       <a [routerLink]="['/kennel', kennelId, 'edit']" class="btn-edit">Bearbeiten</a>
     </div>
   </header>
+
+  @if (paramsOpen) {
+    <div class="params-panel">
+      <div class="params-section">
+        <label class="params-label">Query Parameter</label>
+        <div class="query-entries">
+          @for (param of queryParams(); track $index; let i = $index) {
+            <div class="query-entry">
+              <input class="param-input key" [(ngModel)]="param.key"
+                placeholder="Key" (ngModelChange)="onQueryParamChange()">
+              <span class="param-eq">=</span>
+              <input class="param-input value" [(ngModel)]="param.value"
+                placeholder="Value" (ngModelChange)="onQueryParamChange()">
+              <button class="btn-remove-param" (click)="removeQueryParam(i)">×</button>
+            </div>
+          }
+          <div class="query-entry add-row">
+            <input class="param-input key" [(ngModel)]="newQueryKey"
+              placeholder="Neuer Key" (keyup.enter)="addQueryParam()">
+            <span class="param-eq">=</span>
+            <input class="param-input value" [(ngModel)]="newQueryValue"
+              placeholder="Value" (keyup.enter)="addQueryParam()">
+            <button class="btn-add-param" (click)="addQueryParam()">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="params-section">
+        <label class="params-label">Body (JSON)</label>
+        <textarea class="body-textarea"
+          [ngModel]="bodyJson()"
+          (ngModelChange)="bodyJson.set($event); onBodyJsonChange()"
+          rows="4" spellcheck="false"></textarea>
+      </div>
+      <div class="params-actions">
+        <button class="btn-save-params" (click)="saveParams()" [disabled]="paramsSaving()">
+          {{ paramsSaving() ? 'Speichert...' : 'Speichern & Neu laden' }}
+        </button>
+        <span class="params-hint">Query/Body werden beim "Neu laden" mitgesendet</span>
+      </div>
+    </div>
+  }
 
   @if (error()) {
     <div class="error-bar">{{ error() }}</div>

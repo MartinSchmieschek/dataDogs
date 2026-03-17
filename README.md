@@ -41,6 +41,42 @@ Dogs can depend on other dogs' catches:
 
 Referenced by ID: `base:QueryRetriever` for BaseDogs, `my-dog-v1` or `my-dog` (latest version) for SerializedDogs.
 
+### Pacts
+
+A Pact is a trust-based agreement between dogs. Instead of requiring a specific Dog class, a Dog can require a Pact -- a lightweight pledge that defines *what data shape* is needed, not *who provides it*. You trust your dogs to honor their word.
+
+```typescript
+const LayoutInputPact = createPact<ILayoutInput>('LayoutInputProvider');
+```
+
+Pacts are created with `createPact<T>(name)`. They produce a valid Dog class marked with `__isPact: true`. They cannot run on their own -- they exist purely to declare a data dependency.
+
+### MimicDog
+
+A MimicDog is a SerializedDog that *imitates* a Pact. It sits between raw data sources (upstream) and consumers (downstream), transforming data into the shape the Pact promises.
+
+- Inherits from SerializedDog -- has `parentsRequired`, `parentsOptional`, custom `theRun` code
+- Config field `imitates: string` names the Pact it fulfills
+- Property `imitatesClasses` returns the resolved Pact class(es)
+- The Wave system treats it as if it *were* that Pact
+- Cascadable: one MimicDog can depend on another -- forming data pipelines as Dog chains
+
+### Auto-Mimic
+
+When a Dog requires a Pact that no one in the Kennel fulfills, the system automatically creates a MimicDog placeholder. When a real Dog that fulfills the Pact is added to the Kennel, the Mimic steps aside. When that real Dog is removed and the requirement is a Pact, the Mimic steps back in.
+
+Core rule: **Who requires via a Pact accepts Mimics. Who requires a real class demands the real Dog.**
+
+### Data Pipelines
+
+Mimics act as transformers between raw-data Dogs and consumer Dogs:
+
+```
+Wave 1: [RandomRecipesRetriever, RandomEverythingRetriever]  →  raw data
+Wave 2: [MimicDog (honors: LayoutInputProvider)]              →  normalized ILayoutInput
+Wave 3: [TalkingDog (trusts: LayoutInputProvider)]            →  rendered HTML
+```
+
 ---
 
 ## What It Does
@@ -58,6 +94,10 @@ return { topRecipes: filtered, count: filtered.length };
 **Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data flow traceability.
 
 **Public endpoints** -- Every Kennel gets a URL. `GET /my-kennel` runs the pack and returns the lead dog's result. Pass query params or POST a body -- the dogs pick it up.
+
+**Inline Kennel params** -- Edit query parameters and body data directly from the Waves Viewer. No more navigating back to the config page to tweak a scent marker. Change it, hit reload, see the result. Save it when it's right.
+
+**HTML result rendering** -- When a dog brings back HTML (like TalkingDog's rendered layouts), the result view renders it live in a sandboxed iframe. Toggle between the HTML preview and the raw JSON with one click.
 
 ---
 

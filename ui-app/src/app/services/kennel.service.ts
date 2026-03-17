@@ -43,11 +43,17 @@ export class KennelService {
     return this.http.delete<ApiResponse>(`${this.baseUrl}/${id}`);
   }
 
-  run(id: string, body?: any): Observable<RunResponse> {
-    if (body) {
-      return this.http.post<RunResponse>(`${this.baseUrl}/${id}/run`, body);
+  run(id: string, body?: any, query?: Record<string, string>): Observable<RunResponse> {
+    let params = new HttpParams();
+    if (query) {
+      Object.entries(query).forEach(([key, value]) => {
+        params = params.set(key, value);
+      });
     }
-    return this.http.get<RunResponse>(`${this.baseUrl}/${id}/run`);
+    if (body && Object.keys(body).length > 0) {
+      return this.http.post<RunResponse>(`${this.baseUrl}/${id}/run`, body, { params });
+    }
+    return this.http.get<RunResponse>(`${this.baseUrl}/${id}/run`, { params });
   }
 
   execute(id: string, body?: any, query?: Record<string, string>): Observable<any> {
