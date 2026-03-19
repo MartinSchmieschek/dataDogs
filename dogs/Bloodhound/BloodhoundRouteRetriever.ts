@@ -2,10 +2,15 @@ import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
 import { BloodhoundRouteQueryPact, type BloodhoundRouteQuery } from "./pacts";
+import { getBaseDogIcon } from '../baseDogIcons';
 
 export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
     get name(): string {
         return BloodhoundRouteRetriever.name;
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(BloodhoundRouteRetriever.name);
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

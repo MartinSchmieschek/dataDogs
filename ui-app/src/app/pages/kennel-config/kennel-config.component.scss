@@ -93,6 +93,7 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 6px 8px;
   margin-bottom: 4px;
   border: 1px solid #333;
@@ -104,12 +105,68 @@ h1 {
 
   &.selected {
     border-color: #0066cc;
+    cursor: default;
+    &:hover { background: transparent; }
+
+    &.first-slot {
+      border-color: #3a6e9a;
+    }
+  }
+
+  app-dog-display {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.lead-star {
+  flex-shrink: 0;
+  color: #e6b800;
+  font-size: 18px;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(230, 184, 0, 0.4);
+  user-select: none;
+}
+
+.lead-badge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #bde;
+  background: #1a3048;
+  border: 1px solid #3a6e9a;
+  border-radius: 3px;
+}
+
+.order-rank {
+  flex-shrink: 0;
+  min-width: 1.4rem;
+  text-align: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: #666;
+
+  &.muted {
+    color: #555;
+    font-weight: 600;
   }
 }
 
 .dog-actions {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn-move.lead-action {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-color: #3a6e9a;
+  color: #9cf;
 }
 
 .btn-add, .btn-remove, .btn-move {

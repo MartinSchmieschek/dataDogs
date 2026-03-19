@@ -11,7 +11,7 @@ export { SeasonRunner } from './harverster';
 export { SerializedDog, ISerializedDogConfig, IUpdateInput } from './dogs/SerializedDog';
 
 // Pacts
-export { createPact } from './dogs/createPact';
+export { createPact, type CreatePactFromSourceOptions } from './dogs/createPact';
 
 // MimicDog
 export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';

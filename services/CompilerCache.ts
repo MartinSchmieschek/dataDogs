@@ -97,12 +97,132 @@ export class CompilerCache {
         name: string
     ): ts.InterfaceDeclaration | null {
         let found: ts.InterfaceDeclaration | null = null;
-        ts.forEachChild(sourceFile, (node) => {
+        const visit = (node: ts.Node) => {
+            if (found) return;
             if (ts.isInterfaceDeclaration(node) && node.name.text === name) {
                 found = node;
+                return;
             }
-        });
+            ts.forEachChild(node, visit);
+        };
+        visit(sourceFile);
         return found;
+    }
+
+    private static findNamedTypeDeclarationInSourceFile(
+        sourceFile: ts.SourceFile,
+        name: string
+    ): ts.InterfaceDeclaration | ts.TypeAliasDeclaration | ts.EnumDeclaration | null {
+        let found: ts.InterfaceDeclaration | ts.TypeAliasDeclaration | ts.EnumDeclaration | null = null;
+        const visit = (node: ts.Node) => {
+            if (found) return;
+            if (ts.isInterfaceDeclaration(node) && node.name.text === name) {
+                found = node;
+                return;
+            }
+            if (ts.isTypeAliasDeclaration(node) && node.name.text === name) {
+                found = node;
+                return;
+            }
+            if (ts.isEnumDeclaration(node) && node.name.text === name) {
+                found = node;
+                return;
+            }
+            ts.forEachChild(node, visit);
+        };
+        visit(sourceFile);
+        return found;
+    }
+
+    private static findNamedTypeDeclaration(
+        program: ts.Program,
+        name: string
+    ): ts.InterfaceDeclaration | ts.TypeAliasDeclaration | ts.EnumDeclaration | null {
+        for (const sourceFile of program.getSourceFiles()) {
+            if (sourceFile.isDeclarationFile) continue;
+            const decl = this.findNamedTypeDeclarationInSourceFile(sourceFile, name);
+            if (decl) return decl;
+        }
+        return null;
+    }
+
+    private static readonly pactPrinter = ts.createPrinter({ removeComments: true });
+
+    private static enumNodeToPactDef(node: ts.EnumDeclaration): string {
+        const text = this.pactPrinter.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile()).trim();
+        const name = node.name.text;
+        return `${text}\ntype ${name}Return = ${name};`;
+    }
+
+    private static typeAliasNodeToPactDef(
+        checker: ts.TypeChecker,
+        node: ts.TypeAliasDeclaration,
+        program: ts.Program
+    ): string {
+        const name = node.name.text;
+        const symbol = checker.getSymbolAtLocation(node.name);
+        if (!symbol) {
+            throw new Error(`[CompilerCache] Kein Symbol für Type-Alias "${name}".`);
+        }
+        const declared = checker.getDeclaredTypeOfSymbol(symbol);
+        const collected = new Set<string>();
+        this.collectReferencedTypes(checker, declared, collected);
+        collected.delete(name);
+
+        const interfaceDefs: string[] = [];
+        for (const typeName of [...collected].sort()) {
+            const def = this.emitInterfaceDefinition(checker, typeName, program);
+            if (def) interfaceDefs.push(def);
+        }
+
+        const aliasText = this.pactPrinter.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile()).trim();
+        if (interfaceDefs.length) {
+            return `${interfaceDefs.join('\n\n')}\n\n${aliasText}\ntype ${name}Return = ${name};`;
+        }
+        return `${aliasText}\ntype ${name}Return = ${name};`;
+    }
+
+    private static buildPactReturnTypeDef(
+        symbolName: string,
+        program: ts.Program,
+        checker: ts.TypeChecker
+    ): string {
+        const decl = this.findNamedTypeDeclaration(program, symbolName);
+        if (!decl) {
+            throw new Error(
+                `[CompilerCache] Pact-Quelltyp "${symbolName}" nicht gefunden. Prüfe Schreibweise und ob die Quell-Datei über tsconfig.json eingebunden ist (nicht nur Deklarationen in node_modules).`
+            );
+        }
+        if (ts.isInterfaceDeclaration(decl)) {
+            const iface = this.interfaceNodeToString(checker, decl);
+            return `${iface}\ntype ${symbolName}Return = ${symbolName};`;
+        }
+        if (ts.isEnumDeclaration(decl)) {
+            return this.enumNodeToPactDef(decl);
+        }
+        if (ts.isTypeAliasDeclaration(decl)) {
+            return this.typeAliasNodeToPactDef(checker, decl, program);
+        }
+        throw new Error(`[CompilerCache] Unsupported declaration for Pact-Quelltyp "${symbolName}".`);
+    }
+
+    /**
+     * Löst mehrere Pact-Return-Typ-Strings in einem einzigen ts.Program auf (Performance).
+     */
+    static getPactReturnTypeDefsBatch(symbolNames: string[]): Map<string, string> {
+        const result = new Map<string, string>();
+        const unique = [...new Set(symbolNames)];
+        if (unique.length === 0) return result;
+        const { program, checker } = this.createProgram();
+        for (const symbolName of unique) {
+            result.set(symbolName, this.buildPactReturnTypeDef(symbolName, program, checker));
+        }
+        return result;
+    }
+
+    static getPactReturnTypeDef(symbolName: string): string {
+        const { program, checker } = this.createProgram();
+        return this.buildPactReturnTypeDef(symbolName, program, checker);
     }
 
     private static interfaceNodeToString(

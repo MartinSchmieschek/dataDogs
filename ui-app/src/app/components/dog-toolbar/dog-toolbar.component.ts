@@ -1,9 +1,11 @@
 import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { DogInfo, isBaseDog } from '../../models/dog.model';
+import { DogDisplayComponent } from '../dog-display/dog-display.component';
 
 @Component({
   selector: 'app-dog-toolbar',
   standalone: true,
+  imports: [DogDisplayComponent],
   template: `
     <div class="toolbar">
       <div class="toolbar-header">Dogs</div>
@@ -21,7 +23,11 @@ import { DogInfo, isBaseDog } from '../../models/dog.model';
                 draggable="true"
                 (dragstart)="onDragStart($event, dog)">
                 <div class="drag-handle">⠿</div>
-                <span class="item-name">{{ getDogLabel(dog) }}</span>
+                <app-dog-display
+                  class="item-name"
+                  [label]="getDogLabel(dog)"
+                  [icon]="dog.icon"
+                  variant="toolbar" />
               </div>
             } @empty {
               <div class="empty-hint">Keine BaseDogs</div>
@@ -43,7 +49,11 @@ import { DogInfo, isBaseDog } from '../../models/dog.model';
                 draggable="true"
                 (dragstart)="onDragStart($event, dog)">
                 <div class="drag-handle">⠿</div>
-                <span class="item-name">{{ dog.id }}</span>
+                <app-dog-display
+                  class="item-name"
+                  [label]="dog.id"
+                  [icon]="dog.icon"
+                  variant="toolbar" />
               </div>
             } @empty {
               <div class="empty-hint">Keine SerializedDogs</div>
@@ -154,10 +164,8 @@ import { DogInfo, isBaseDog } from '../../models/dog.model';
     }
 
     .item-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
       min-width: 0;
+      flex: 1;
     }
 
     .empty-hint {

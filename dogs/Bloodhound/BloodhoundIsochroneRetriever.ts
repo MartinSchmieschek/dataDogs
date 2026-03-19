@@ -2,10 +2,15 @@ import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
+import { getBaseDogIcon } from '../baseDogIcons';
 
 export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult> {
     get name(): string {
         return BloodhoundIsochroneRetriever.name;
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(BloodhoundIsochroneRetriever.name);
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

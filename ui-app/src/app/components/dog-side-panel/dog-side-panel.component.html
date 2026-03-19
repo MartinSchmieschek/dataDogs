@@ -1,6 +1,11 @@
 <div class="side-panel">
   <div class="panel-header">
-    <h3>{{ dog.name }}</h3>
+    <h3 class="panel-title">
+      @if (isCurrentLead) {
+        <span class="panel-lead-star" title="Lead-Hund">★</span>
+      }
+      <app-dog-display [label]="dog.name" [icon]="dog.icon" variant="stacked" />
+    </h3>
     <span class="dog-type">{{ isSerialized ? 'SerializedDog' : 'BaseDog' }}</span>
     @if (isSerialized && currentVersion) {
       <span class="version-badge">v{{ currentVersion }}</span>
@@ -10,6 +15,18 @@
 
   @if (dog.error) {
     <div class="dog-error">Fehler: {{ dog.error }}</div>
+  }
+
+  @if (kennelLeadControlsEnabled) {
+    <div class="kennel-lead-strip">
+      @if (isCurrentLead) {
+        <span class="lead-star-strip" aria-hidden="true">★</span>
+        <span class="lead-strip-text"><strong>Lead</strong> — API-Antwort kommt von diesem Hund.</span>
+      } @else {
+        <button type="button" class="btn-lead-strip" (click)="moveToFirst()">Lead werden</button>
+        <span class="lead-strip-hint">Diesen Hunt an die Spitze von <code>dogIds</code> setzen.</span>
+      }
+    </div>
   }
 
   @if (isSerialized) {
@@ -24,7 +41,9 @@
         <span class="save-success">Gespeichert!</span>
       }
       <span class="spacer"></span>
-      <button class="btn-action" (click)="moveToFirst()" title="An erste Stelle">⬆</button>
+      @if (!kennelLeadControlsEnabled) {
+        <button class="btn-action" (click)="moveToFirst()" title="Lead werden — diesen Hunt an die Spitze von dogIds (API-Ergebnis)">Lead</button>
+      }
       <button class="btn-action btn-danger" (click)="deleteDog()" title="Löschen">✕</button>
     </div>
   }

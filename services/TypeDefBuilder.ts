@@ -14,14 +14,31 @@ export class TypeDefBuilder {
     }
 
     /**
-     * Registriert alle Pact-Klassen: liest name und __pactReturnTypeDef von jeder Klasse
-     * und uebernimmt die Typ-Definition aus dem Pact (Single Source of Truth im Interface).
+     * Registriert alle Pact-Klassen: liest name, __pactReturnTypeDef oder __pactSourceTypeName.
+     * Bei fromSourceType wird der Typ-String einmal pro Batch aus dem CompilerCache geladen.
      */
     public static registerPacts(pactClasses: (new () => { name: string })[]): void {
+        const fromSource: { pactName: string; sourceTypeName: string }[] = [];
         for (const PactClass of pactClasses) {
             const instance = new PactClass();
             const typeDef = (PactClass as any).__pactReturnTypeDef as string | undefined;
-            if (typeDef) this.pactReturnTypes.set(instance.name, typeDef);
+            const sourceTypeName = (PactClass as any).__pactSourceTypeName as string | undefined;
+            if (typeDef) {
+                this.pactReturnTypes.set(instance.name, typeDef);
+            } else if (sourceTypeName) {
+                fromSource.push({ pactName: instance.name, sourceTypeName });
+            }
+        }
+        if (fromSource.length === 0) return;
+        const defs = CompilerCache.getPactReturnTypeDefsBatch(fromSource.map((e) => e.sourceTypeName));
+        for (const { pactName, sourceTypeName } of fromSource) {
+            const resolved = defs.get(sourceTypeName);
+            if (!resolved) {
+                throw new Error(
+                    `[TypeDefBuilder] Kein Typ-String für Pact "${pactName}" (Quelle: ${sourceTypeName}).`
+                );
+            }
+            this.pactReturnTypes.set(pactName, resolved);
         }
     }
 

@@ -1,4 +1,5 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
+import { getBaseDogIcon } from './baseDogIcons';
 
 export class QueryRetriever extends Dog<Record<string, string>> {
     private queryData: Record<string, string> = {};
@@ -23,6 +24,10 @@ export class QueryRetriever extends Dog<Record<string, string>> {
 
     get name(): string {
         return QueryRetriever.name;
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(QueryRetriever.name);
     }
 
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<Record<string, string>> = 

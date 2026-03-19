@@ -1,4 +1,5 @@
 import { Dog, IHuntingSeason } from "datadogs";
+import { getBaseDogIcon } from './baseDogIcons';
 
 export class RandomEveryThingRetriever extends Dog<any> {
 
@@ -42,6 +43,10 @@ export class RandomEveryThingRetriever extends Dog<any> {
 
     get name() {
         return RandomEveryThingRetriever.name
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(RandomEveryThingRetriever.name);
     }
 
 }

@@ -19,10 +19,16 @@ Every dog is a data hunter. Two breeds:
 ### Kennels
 
 A Kennel is a pack configuration. It defines:
-- Which dogs to unleash (`dogIds` -- both BaseDogs and SerializedDogs)
+- Which dogs to unleash (`dogIds` -- both BaseDogs and SerializedDogs). **Order matters for one thing:** the **first** entry is the [lead dog](#lead-dog) — public URLs return that dog’s yield. (Wave scheduling itself still comes from the dependency graph — see [Waves](#waves) and [Pacts](#pacts).)
 - Default query parameters (scent markers for the hunt)
 - Default body data (provisions, fed to BodyRetriever)
 - Name and description
+
+### Lead dog
+
+The **first** entry in `dogIds` is the **lead**. Public Kennel URLs return **that** dog’s yield — `GET /:kennelId` and `GET /api/kennels/:id/execute` answer with the lead’s catch. That is the one slot that matters for “which result is *the* result.”
+
+Execution **waves** are still computed from **dependencies and Pacts** (required/optional parents, Mimics, auto-Mimic). The lead does not replace that machinery: the graph decides who runs when and who must honor which Pact. The lead answers a separate question: **whose output is surfaced as the API response** — usually the consumer or pipeline end you care about, while the rest of the pack does the work upstream so Pacts line up.
 
 ### Waves
 
@@ -46,10 +52,12 @@ Referenced by ID: `base:QueryRetriever` for BaseDogs, `my-dog-v1` or `my-dog` (l
 A Pact is a trust-based agreement between dogs. Instead of requiring a specific Dog class, a Dog can require a Pact -- a lightweight pledge that defines *what data shape* is needed, not *who provides it*. You trust your dogs to honor their word.
 
 ```typescript
-const LayoutInputPact = createPact<ILayoutInput>('LayoutInputProvider');
+const LayoutInputPact = createPact<ILayoutInput>('LayoutInputProvider', {
+  fromSourceType: 'ILayoutInput',
+});
 ```
 
-Pacts are created with `createPact<T>(name)`. They produce a valid Dog class marked with `__isPact: true`. They cannot run on their own -- they exist purely to declare a data dependency.
+Pacts are created with `createPact<T>(name)` or with an optional second argument: a legacy type-definition string, or `{ fromSourceType: 'YourInterfaceOrTypeName' }` so the editor/VM types are derived from your TypeScript sources at startup (see `TypeDefBuilder.registerPacts`). They produce a valid Dog class marked with `__isPact: true`. They cannot run on their own -- they exist purely to declare a data dependency.
 
 ### MimicDog
 

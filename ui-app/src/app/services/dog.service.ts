@@ -42,6 +42,7 @@ export class DogService {
   create(data: {
     baseId: string;
     tsCode: string;
+    icon?: string;
     parentsRequired?: string[];
     parentsOptional?: string[];
   }): Observable<ApiResponse> {
@@ -50,6 +51,7 @@ export class DogService {
 
   save(id: string, data: {
     tsCode: string;
+    icon?: string;
     parentsRequired?: string[];
     parentsOptional?: string[];
   }): Observable<ApiResponse> {

@@ -11,6 +11,7 @@ import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
 import { WarframeAlertsRetriever } from './dogs/Kubrow/WarframeAlertsRetriever';
 import { BloodhoundRouteRetriever } from './dogs/Bloodhound/BloodhoundRouteRetriever';
 import { BloodhoundIsochroneRetriever } from './dogs/Bloodhound/BloodhoundIsochroneRetriever';
+import { OsmLandmarksRetriever } from './dogs/OpenStreetMap/OsmLandmarksRetriever';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from 'datadogs';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
@@ -20,6 +21,7 @@ import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed';
 import { LayoutInputPact } from './dogs/TalkingDogs/renderer/layouts/ILayoutInput';
 import { BloodhoundRouteQueryPact, BloodhoundIsochronePact } from './dogs/Bloodhound/pacts';
+import { NearbyLandmarksPact } from './dogs/OpenStreetMap/pacts';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 
 start().catch(e => {
@@ -49,6 +51,7 @@ async function start() {
         WarframeAlertsRetriever,
         BloodhoundRouteRetriever,
         BloodhoundIsochroneRetriever,
+        OsmLandmarksRetriever,
     ];
 
     const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
@@ -59,7 +62,7 @@ async function start() {
         baseDogsMap.set(instance.name, DogClass);
     });
 
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
@@ -92,7 +95,8 @@ async function start() {
             const baseDogsList = allBaseDogs.map(dog => ({
                 id: BASE_DOG_PREFIX + dog.name,
                 name: dog.name,
-                type: 'BaseDog'
+                type: 'BaseDog',
+                icon: dog.icon,
             }));
 
             res.status(200).json({ ok: true, data: [...baseDogsList, ...serializedDogs] });

@@ -10,6 +10,7 @@ import { ArticleLayout } from "./renderer/fragments/ArticleLayout";
 import { GalleryLayout } from "./renderer/fragments/GalleryLayout";
 import type { ILayoutInput } from "./renderer/layouts/ILayoutInput";
 import type { LayoutBase } from "./renderer/layouts/LayoutBase";
+import { getBaseDogIcon } from '../baseDogIcons';
 
 export class TalkingDog extends Dog<string> {
 
@@ -28,6 +29,10 @@ export class TalkingDog extends Dog<string> {
 
     get name(): string {
         return TalkingDog.name
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(TalkingDog.name);
     }
 
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<string> = async (season: IHuntingSeason) => {

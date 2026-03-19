@@ -1,5 +1,6 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
+import { getBaseDogIcon } from './baseDogIcons';
 
 export class DishFlagBlackLab extends Dog<string>{
 
@@ -12,6 +13,10 @@ export class DishFlagBlackLab extends Dog<string>{
 
     get name(): string {
         return DishFlagBlackLab.name
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(DishFlagBlackLab.name);
     }
 
     protected yieldCollectorFactory: (season:IHuntingSeason) => Promise<string> = (season:IHuntingSeason) => {

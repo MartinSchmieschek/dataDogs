@@ -14,7 +14,68 @@
   border-bottom: 1px solid #333;
   flex-shrink: 0;
 
-  h3 { margin: 0; flex: 1; font-size: 15px; }
+  h3 {
+    margin: 0;
+    flex: 1;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+}
+
+.panel-lead-star {
+  flex-shrink: 0;
+  color: #e6b800;
+  font-size: 20px;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(230, 184, 0, 0.35);
+}
+
+.kennel-lead-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #2a3544;
+  background: #0e1218;
+  flex-shrink: 0;
+}
+
+.lead-star-strip {
+  color: #e6b800;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.lead-strip-text {
+  font-size: 12px;
+  color: #9ab;
+  line-height: 1.35;
+  code { font-size: 10px; color: #8ac; }
+}
+
+.lead-strip-hint {
+  font-size: 11px;
+  color: #666;
+  code { font-size: 10px; color: #888; }
+}
+
+.btn-lead-strip {
+  padding: 5px 12px;
+  border: 1px solid #3a6e9a;
+  border-radius: 4px;
+  background: #1a3048;
+  color: #bde;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  &:hover {
+    border-color: #6cf;
+    color: #fff;
+  }
 }
 
 .dog-type {

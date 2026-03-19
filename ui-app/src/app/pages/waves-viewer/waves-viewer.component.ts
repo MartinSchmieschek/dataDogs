@@ -5,11 +5,13 @@ import { KennelService } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { DogEntry, Waves } from '../../models/dog-entry.model';
-import { DogInfo } from '../../models/dog.model';
+import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
+import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
 import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-panel.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.component';
+import { findKennelDogIndex } from '../../utils/kennel-dog-id-match';
 
 @Component({
   selector: 'app-waves-viewer',
@@ -17,7 +19,7 @@ import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.co
   imports: [
     RouterLink, FormsModule,
     VisNetworkComponent, DogSidePanelComponent,
-    LoadingIndicatorComponent, DogToolbarComponent
+    LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
@@ -189,19 +191,53 @@ export class WavesViewerComponent implements OnInit {
   }
 
   onDogMovedToFirst(dogId: string) {
+    this.reorderKennelDogIds(ids => {
+      const idx = findKennelDogIndex(ids, dogId);
+      if (idx <= 0) return ids;
+      const copy = [...ids];
+      const [entry] = copy.splice(idx, 1);
+      return [entry, ...copy];
+    });
+  }
+
+  /** Dropdown: gewählter Kennel-dogIds-Eintrag wird Lead (Index 0). */
+  onLeadDropdownChange(leadKennelId: string) {
+    this.reorderKennelDogIds(ids => {
+      const idx = ids.indexOf(leadKennelId);
+      if (idx <= 0) return ids;
+      const copy = [...ids];
+      const [entry] = copy.splice(idx, 1);
+      return [entry, ...copy];
+    });
+  }
+
+  /** Reihenfolge in der Config ändern und neu laden */
+  private reorderKennelDogIds(mutate: (ids: string[]) => string[]) {
     const config = this.kennelConfig();
     if (!config) return;
-
-    const currentDogIds = [...(config.dogIds ?? [])];
-    const baseId = dogId.replace(/-v\d+$/, '');
-    const idx = currentDogIds.findIndex(id => id.replace(/-v\d+$/, '') === baseId);
-    if (idx > 0) {
-      const [entry] = currentDogIds.splice(idx, 1);
-      currentDogIds.unshift(entry);
-      this.kennelService.update(this.kennelId, { dogIds: currentDogIds }).subscribe({
-        next: () => this.loadWaves(),
-      });
+    const before = [...(config.dogIds ?? [])];
+    const after = mutate(before);
+    if (after.length === before.length && after.every((id, i) => id === before[i])) {
+      return;
     }
+    this.kennelService.update(this.kennelId, { dogIds: after }).subscribe({
+      next: () => this.loadWaves(),
+    });
+  }
+
+  kennelDogLabel(dogId: string): string {
+    return dogId.startsWith('base:') ? dogId.slice('base:'.length) : dogId;
+  }
+
+  iconForKennelDogId(dogId: string): string | undefined {
+    const dogs = this.availableDogs();
+    if (dogId.startsWith('base:')) {
+      const name = dogId.slice('base:'.length);
+      const d = dogs.find((x): x is BaseDogInfo => isBaseDog(x) && x.name === name);
+      return d?.icon;
+    }
+    const d = dogs.find((x): x is SerializedDogInfo => !isBaseDog(x) && x.id === dogId);
+    return d?.icon;
   }
 
   closeSidePanel() {

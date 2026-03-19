@@ -4,8 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { KennelService } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
-import { DogInfo, isBaseDog } from '../../models/dog.model';
+import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
+import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 
 declare const monaco: any;
 
@@ -18,12 +19,15 @@ const BASE_DOG_TYPES = [
   'QueryRetriever',
   'BodyRetriever',
   'WarframeAlertsRetriever',
+  'BloodhoundRouteRetriever',
+  'BloodhoundIsochroneRetriever',
+  'OsmLandmarksRetriever',
 ];
 
 @Component({
   selector: 'app-kennel-config',
   standalone: true,
-  imports: [FormsModule, RouterLink, LoadingIndicatorComponent],
+  imports: [FormsModule, RouterLink, LoadingIndicatorComponent, DogDisplayComponent],
   templateUrl: './kennel-config.component.html',
   styleUrls: ['./kennel-config.component.scss']
 })
@@ -43,8 +47,8 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   config = signal<IKennelConfig | null>(null);
   name = '';
   description = '';
-  selectedBaseDogs = signal<Set<string>>(new Set());
-  selectedDogIds = signal<string[]>([]);
+  /** Eine Liste: Reihenfolge = Ausführungsreihenfolge; Index 0 = API-Ergebnis-Hund */
+  orderedDogIds = signal<string[]>([]);
   availableDogs = signal<DogInfo[]>([]);
   queryParams = signal<Array<{ key: string; value: string }>>([]);
   newQueryKey = '';
@@ -73,17 +77,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
           this.name = cfg.name ?? '';
           this.description = cfg.description ?? '';
 
-          const baseDogs = new Set<string>();
-          const serializedIds: string[] = [];
-          (cfg.dogIds ?? []).forEach(id => {
-            if (id.startsWith('base:')) {
-              baseDogs.add(id.replace('base:', ''));
-            } else {
-              serializedIds.push(id);
-            }
-          });
-          this.selectedBaseDogs.set(baseDogs);
-          this.selectedDogIds.set(serializedIds);
+          this.orderedDogIds.set([...(cfg.dogIds ?? [])]);
 
           if (cfg.defaultQuery) {
             this.queryParams.set(
@@ -132,41 +126,78 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   }
 
   toggleBaseDog(dogName: string) {
-    const current = new Set(this.selectedBaseDogs());
-    if (current.has(dogName)) {
-      current.delete(dogName);
+    const id = `base:${dogName}`;
+    const cur = this.orderedDogIds();
+    if (cur.includes(id)) {
+      this.orderedDogIds.set(cur.filter(x => x !== id));
     } else {
-      current.add(dogName);
+      this.orderedDogIds.set([...cur, id]);
     }
-    this.selectedBaseDogs.set(current);
   }
 
   isBaseDogSelected(dogName: string): boolean {
-    return this.selectedBaseDogs().has(dogName);
+    return this.orderedDogIds().includes(`base:${dogName}`);
   }
 
   addDogId(dogId: string) {
-    const current = this.selectedDogIds();
-    if (!current.includes(dogId)) {
-      this.selectedDogIds.set([...current, dogId]);
+    const cur = this.orderedDogIds();
+    if (!cur.includes(dogId)) {
+      this.orderedDogIds.set([...cur, dogId]);
     }
   }
 
-  removeDogId(dogId: string) {
-    this.selectedDogIds.set(this.selectedDogIds().filter(id => id !== dogId));
+  removeKennelDogId(dogId: string) {
+    this.orderedDogIds.set(this.orderedDogIds().filter(id => id !== dogId));
   }
 
   moveDogToFirst(dogId: string) {
-    const current = this.selectedDogIds();
-    const idx = current.indexOf(dogId);
+    const cur = this.orderedDogIds();
+    const idx = cur.indexOf(dogId);
     if (idx > 0) {
-      const updated = [dogId, ...current.filter(id => id !== dogId)];
-      this.selectedDogIds.set(updated);
+      const copy = cur.filter(id => id !== dogId);
+      this.orderedDogIds.set([dogId, ...copy]);
     }
+  }
+
+  moveDogUp(dogId: string) {
+    const cur = [...this.orderedDogIds()];
+    const idx = cur.indexOf(dogId);
+    if (idx <= 0) return;
+    [cur[idx - 1], cur[idx]] = [cur[idx], cur[idx - 1]];
+    this.orderedDogIds.set(cur);
+  }
+
+  moveDogDown(dogId: string) {
+    const cur = [...this.orderedDogIds()];
+    const idx = cur.indexOf(dogId);
+    if (idx < 0 || idx >= cur.length - 1) return;
+    [cur[idx + 1], cur[idx]] = [cur[idx], cur[idx + 1]];
+    this.orderedDogIds.set(cur);
   }
 
   getAvailableSerializedDogs(): DogInfo[] {
     return this.availableDogs().filter(d => !isBaseDog(d));
+  }
+
+  iconForBaseType(dogType: string): string | undefined {
+    const d = this.availableDogs().find((x): x is BaseDogInfo => isBaseDog(x) && x.name === dogType);
+    return d?.icon;
+  }
+
+  iconForSerializedId(id: string): string | undefined {
+    const d = this.availableDogs().find((x): x is SerializedDogInfo => !isBaseDog(x) && x.id === id);
+    return d?.icon;
+  }
+
+  kennelDogLabel(dogId: string): string {
+    return dogId.startsWith('base:') ? dogId.slice('base:'.length) : dogId;
+  }
+
+  iconForKennelDogId(dogId: string): string | undefined {
+    if (dogId.startsWith('base:')) {
+      return this.iconForBaseType(dogId.slice('base:'.length));
+    }
+    return this.iconForSerializedId(dogId);
   }
 
   addQueryParam() {
@@ -187,10 +218,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
     this.saving.set(true);
     this.error.set(null);
 
-    const dogIds = [
-      ...Array.from(this.selectedBaseDogs()).map(name => `base:${name}`),
-      ...this.selectedDogIds(),
-    ];
+    const dogIds = [...this.orderedDogIds()];
 
     const defaultQuery: Record<string, string> = {};
     this.queryParams().forEach(p => {

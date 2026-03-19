@@ -2,6 +2,7 @@ import { FetchBaseDog } from "../FetchBaseDog";
 import type { IWarframeWorldState } from "./interfaces/warframeWorldState";
 import { Kubrow } from "./Kubrow";
 import { IHuntingSeason } from "datadogs";
+import { getBaseDogIcon } from '../baseDogIcons';
 
 export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
     get apiUrl(): string {
@@ -10,6 +11,10 @@ export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
 
     get name(): string {
         return WarframeAlertsRetriever.name;
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(WarframeAlertsRetriever.name);
     }
 
     protected override yieldCollectorFactory = async (_season: IHuntingSeason): Promise<Kubrow> => {

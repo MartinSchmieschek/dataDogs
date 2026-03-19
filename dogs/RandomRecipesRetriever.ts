@@ -1,4 +1,5 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
+import { getBaseDogIcon } from './baseDogIcons';
 
 export interface MockData {
 
@@ -41,6 +42,10 @@ export class RandomRecipesRetriever extends Dog<MockData>{
     }
     get name(){
         return RandomRecipesRetriever.name
+    }
+
+    get icon(): string | undefined {
+        return getBaseDogIcon(RandomRecipesRetriever.name);
     }
 
 }

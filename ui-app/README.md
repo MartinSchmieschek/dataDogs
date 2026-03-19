@@ -16,6 +16,8 @@ Out there, data lives scattered across APIs, databases, endpoints, request bodie
 
 This UI is your lodge. Warm, dark, glowing screens. From here you breed new dogs, train them with custom TypeScript, chain them to the ones that ran before, and watch the whole pack tear through the wilderness wave by wave. Everything they bring back -- you see it here. Every dependency, every bite of data, every trail they followed.
 
+**Product model** (lead vs waves) lives in the [root README](../README.md): **Waves** = who runs when (dependency graph + Pacts). **Lead** = first entry in `dogIds` = whose result the public Kennel URL returns. Don’t confuse the graph with the lead slot.
+
 ---
 
 ## The Grounds
@@ -36,18 +38,18 @@ Some packs carry provisions (a default body). Those go out as POST hunts. The re
 
 The hunt, live.
 
-A **dependency graph** maps out every dog in the pack. Nodes cluster by wave -- first wave hits the ground, second wave follows their trails, third wave picks the bones. Lines between them show who depends on whose catch.
+A **dependency graph** maps out every dog in the pack. Nodes cluster by wave -- first wave hits the ground, second wave follows their trails, third wave picks the bones. Lines between them show who depends on whose catch. That layout follows the **dependency graph** (required/optional parents, Pacts, Mimics) — same story as [Waves](../README.md#waves) in the root README.
+
+**Lead dog** -- At the top of this screen, a **Lead** strip lists `dogIds` in config order. Only the **first** entry is the lead: the public Kennel URL returns **that** dog’s result (`GET /:kennelId`, `GET /api/kennels/:id/execute`). Use **Lead werden** to promote another dog without mistaking wave order for “who answers the API.” Details: [Lead dog](../README.md#lead-dog).
 
 Click any dog. The **Side Panel** cracks open and you see everything: what they brought back, the code that drives them, who they depend on, who feeds off their haul.
 
 From the top bar:
 - **Query / Body** -- Toggle the inline params panel. Edit query key/value pairs and body JSON without leaving the Waves view. Changes get sent with the next reload. Hit "Speichern & Neu laden" to persist them to the Kennel config. A dirty dot shows unsaved tweaks.
-- **Draft** an existing dog into the pack
+- **Draft** an existing dog into the pack (appended to `dogIds`; reorder in config or use **Lead werden**)
 - **Breed** a new one on the spot
 - **Re-run** the whole hunt for fresh spoils (sends current query/body params along)
 - **Reconfigure** the Kennel
-
-The lead dog -- first in the list -- delivers the prize at the public endpoint. Choose wisely.
 
 ---
 
@@ -56,7 +58,7 @@ The lead dog -- first in the list -- delivers the prize at the public endpoint. 
 Where you assemble the pack before the hunt.
 
 - **BaseDogs** -- Battle-tested breeds. Toggle them on: RandomRecipesRetriever, QueryRetriever, BodyRetriever, and more. They know their job.
-- **SerializedDogs** -- Your custom-bred hunters. Pick them, order them. The one at the top delivers the final haul.
+- **Pack list (`dogIds`)** -- One ordered list (Base + Serialized). The **first** row is the [lead dog](../README.md#lead-dog): public URL result. **Lead werden** / ordering edits change that; wave execution is still graph-driven.
 - **Default Query Params** -- Scent markers. Key/value pairs baked into every hunt.
 - **Default Body** -- Provisions for the pack. A Monaco JSON editor for POST body data, fed straight to BodyRetriever.
 
@@ -68,7 +70,7 @@ Lock it in. Go watch the Waves.
 
 Click a dog in the Waves Viewer and it opens up. Everything about that animal, in collapsible sections:
 
-**Save Bar** -- Pinned at the top. One button saves the dog's code and its bloodline (parent config) in a single shot. Promote it to lead dog or put it down -- both one click away.
+**Save Bar** -- Pinned at the top. One button saves the dog's code and its bloodline (parent config) in a single shot. **Lead** promotes this dog to first in `dogIds` (see [Lead dog](../README.md#lead-dog)); delete retires it.
 
 **Version Selector** -- Dogs evolve. Every save breeds a new version. The dropdown lets you look back at any ancestor -- load its code, its dependencies, see how it used to hunt. Saving from an old version breeds a new one. No history is ever lost.
 

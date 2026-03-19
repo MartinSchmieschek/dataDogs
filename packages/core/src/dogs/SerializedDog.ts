@@ -20,6 +20,8 @@ export interface IUpdateInput {
 export interface ISerializedDogConfig extends IUpdateInput {
     theRun: string;  // Der TypeScript-Code, der ausgeführt wird (required, nicht optional)
     // version ist in IUpdateInput definiert
+    /** Optional display glyph (e.g. emoji) for UI */
+    icon?: string;
     parentsRequired?: string[];  // Node-IDs der required Eltern
     parentsOptional?: string[];  // Node-IDs der optional Eltern
     // Unterstützt auch tsCode/code als Alternative zu theRun (wird in ConfigRouteHandler gemappt)
@@ -178,6 +180,11 @@ export class SerializedDog<T> extends Dog<T> {
         // Konvertiere storageId zu CamelCase (z.B. "node-v2" -> "NodeV2")
         const camelCaseId = this.toCamelCase(this.storageId);
         return camelCaseId;
+    }
+
+    get icon(): string | undefined {
+        const c = this.config as ISerializedDogConfig;
+        return typeof c?.icon === 'string' ? c.icon : undefined;
     }
     
     private toCamelCase(id: string): string {

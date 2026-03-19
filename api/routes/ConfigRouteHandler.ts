@@ -163,7 +163,8 @@ export class ConfigRouteHandler {
                     theRun: tsCode,  // Konvertiere tsCode zu theRun
                     parentsRequired: input.parentsRequired || [],
                     parentsOptional: input.parentsOptional || [],
-                    version: 1
+                    version: 1,
+                    ...(typeof req.body.icon === 'string' ? { icon: req.body.icon } : {}),
                 };
             }
 
@@ -207,6 +208,9 @@ export class ConfigRouteHandler {
                 theRun: tsCode,
                 parentsRequired: req.body.parentsRequired ?? existingConfig.parentsRequired ?? [],
                 parentsOptional: req.body.parentsOptional ?? existingConfig.parentsOptional ?? [],
+                ...(req.body.icon !== undefined
+                    ? { icon: req.body.icon === '' ? undefined : req.body.icon }
+                    : {}),
             };
 
             // Controller hat jetzt automatische Versionsverwaltung

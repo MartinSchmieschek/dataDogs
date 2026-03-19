@@ -2,6 +2,7 @@ export interface BaseDogInfo {
   id: string;
   name: string;
   type: 'BaseDog';
+  icon?: string;
 }
 
 export interface SerializedDogInfo {
@@ -9,6 +10,7 @@ export interface SerializedDogInfo {
   type?: string;
   theRun: string;
   version?: number;
+  icon?: string;
   parentsRequired?: string[];
   parentsOptional?: string[];
 }

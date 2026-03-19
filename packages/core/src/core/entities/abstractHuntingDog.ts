@@ -9,6 +9,10 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
         return this.result
     }
 
+    get icon(): string | undefined {
+        return undefined;
+    }
+
     abstract get name():string
 
     abstract get required():(new (...args: any[]) => IHuntingDog<unknown>)[]

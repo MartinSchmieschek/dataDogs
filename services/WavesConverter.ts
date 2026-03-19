@@ -1,4 +1,4 @@
-import { IHuntingSeason, IWaveEntry, SerializedDog } from 'datadogs';
+import { IHuntingSeason, IWaveEntry, IHuntingDog, SerializedDog } from 'datadogs';
 import { TypeDefBuilder } from './TypeDefBuilder';
 
 export type ReadTrackingEntry = {
@@ -11,6 +11,7 @@ export type ReadTrackingEntry = {
 export type NodeEntry = {
     id: string;
     name: string;
+    icon?: string;
     result: any;
     error?: string;
     codeTs?: string;
@@ -76,6 +77,9 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
             const nodeEntry = {
                 id: instanceId,
                 name: instanceName,
+                icon: (instance instanceof SerializedDog
+                    ? (instance as SerializedDog<unknown>).icon
+                    : (instance as IHuntingDog<unknown>).icon) ?? undefined,
                 result: instance.collected,
                 error: (instance as any).__error || undefined,
                 parentsOptional: [],
@@ -94,7 +98,10 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                     theRun: seDog.instanceConfig.theRun,
                     version: seDog.instanceConfig.version,
                     parentsRequired: seDog.instanceConfig.parentsRequired || [],
-                    parentsOptional: seDog.instanceConfig.parentsOptional || []
+                    parentsOptional: seDog.instanceConfig.parentsOptional || [],
+                    ...(typeof seDog.instanceConfig.icon === 'string'
+                        ? { icon: seDog.instanceConfig.icon }
+                        : {}),
                 };
                 nodeEntry.parentsRequired = seDog.instanceConfig.parentsRequired || [];
                 nodeEntry.parentsOptional = seDog.instanceConfig.parentsOptional || [];

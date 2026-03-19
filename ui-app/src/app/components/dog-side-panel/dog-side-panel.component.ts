@@ -3,14 +3,16 @@ import { FormsModule } from '@angular/forms';
 import { JsonPipe } from '@angular/common';
 import { DogEntry } from '../../models/dog-entry.model';
 import { DogEditorComponent } from '../dog-editor/dog-editor.component';
+import { DogDisplayComponent } from '../dog-display/dog-display.component';
 import { EditSectionComponent } from '../edit-section/edit-section.component';
 import { VersionTimelineComponent, TimelineVersion } from '../version-timeline/version-timeline.component';
 import { DogService, VersionEntry } from '../../services/dog.service';
+import { graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
 
 @Component({
   selector: 'app-dog-side-panel',
   standalone: true,
-  imports: [FormsModule, JsonPipe, DogEditorComponent, EditSectionComponent, VersionTimelineComponent],
+  imports: [FormsModule, JsonPipe, DogEditorComponent, DogDisplayComponent, EditSectionComponent, VersionTimelineComponent],
   templateUrl: './dog-side-panel.component.html',
   styleUrls: ['./dog-side-panel.component.scss']
 })
@@ -19,6 +21,10 @@ export class DogSidePanelComponent implements OnChanges {
 
   @Input() dog!: DogEntry;
   @Input() allDogs: DogEntry[] = [];
+  /** Erster Eintrag in `kennelConfig.dogIds` (Lead-Slot); für Stern/Strip-Matching. */
+  @Input() kennelLeadDogIdsSlot: string | null = null;
+  /** Wenn true: Lead-Strip oben; Save-Bar versteckt den doppelten Lead-Button. */
+  @Input() kennelLeadControlsEnabled = false;
   @Output() saved = new EventEmitter<void>();
   @Output() deleted = new EventEmitter<string>();
   @Output() movedToFirst = new EventEmitter<string>();
@@ -43,6 +49,13 @@ export class DogSidePanelComponent implements OnChanges {
 
   get isSerialized(): boolean {
     return !!this.dog?.codeTs;
+  }
+
+  get isCurrentLead(): boolean {
+    if (!this.kennelLeadControlsEnabled || !this.kennelLeadDogIdsSlot || !this.dog) {
+      return false;
+    }
+    return graphNodeIdMatchesKennelDogId(this.dog.id, this.kennelLeadDogIdsSlot);
   }
 
   get availableParents(): DogEntry[] {
@@ -140,6 +153,7 @@ export class DogSidePanelComponent implements OnChanges {
 
     this.dogService.save(this.dog.id, {
       tsCode: code,
+      icon: this.dog.icon,
       parentsRequired: this.parentsRequired(),
       parentsOptional: this.parentsOptional(),
     }).subscribe({

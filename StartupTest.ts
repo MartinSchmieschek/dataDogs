@@ -4,6 +4,8 @@ import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { CompilerCache } from './services/CompilerCache';
+import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from './dogs/Bloodhound/pacts';
 
 export interface TestResult {
     name: string;
@@ -48,7 +50,8 @@ export class StartupTest {
             
             // TypeDefBuilder-Tests
             await this.testTypeDefBuilder();
-            
+            await this.testPactFromSourceType();
+
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
             await this.testAllVersionsInList(nodesController);
@@ -538,6 +541,42 @@ export class StartupTest {
                 throw new Error('Zu wenige declare global Blocks');
             }
             
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Pact mit fromSourceType — CompilerCache liefert Typ-String, TypeDefBuilder/ MimicDog-Kontext enthält erwartete Symbole.
+     */
+    private async testPactFromSourceType(): Promise<void> {
+        const testName = 'Pact: fromSourceType (CompilerCache → TypeDefBuilder)';
+        try {
+            const batch = CompilerCache.getPactReturnTypeDefsBatch(['BloodhoundIsochroneInput']);
+            const def = batch.get('BloodhoundIsochroneInput');
+            if (!def) {
+                throw new Error('Batch liefert keinen Eintrag für BloodhoundIsochroneInput');
+            }
+            if (!def.includes('lat') || !def.includes('range') || !def.includes('BloodhoundIsochroneInputReturn')) {
+                throw new Error('Generierter Typ-String enthält nicht die erwarteten Member bzw. Return-Alias');
+            }
+
+            const mimicConfig: IMimicDogConfig = {
+                theRun: 'return { lat: "0", lng: "0", range: "100" };',
+                imitates: 'BloodhoundIsochroneProvider',
+            };
+            const mimic = new MimicDog<BloodhoundIsochroneInput>(mimicConfig, 'pact-source-test-mimic');
+            mimic.resolveImitates(new Map([['BloodhoundIsochroneProvider', BloodhoundIsochronePact]]));
+
+            const lib = TypeDefBuilder.buildContextLib('PactSourceNode', {}, mimic);
+            if (!lib.includes('BloodhoundIsochroneInput')) {
+                throw new Error('buildContextLib enthält nicht BloodhoundIsochroneInput');
+            }
+            if (!lib.includes('__ExpectedReturn')) {
+                throw new Error('__ExpectedReturn fehlt im generierten Lib-String');
+            }
+
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

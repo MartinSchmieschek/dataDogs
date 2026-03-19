@@ -8,6 +8,7 @@ export interface ReadTrackingEntry {
 export interface DogEntry {
   id: string;
   name: string;
+  icon?: string;
   result: any;
   error?: string;
   codeTs?: string;
@@ -18,6 +19,7 @@ export interface DogEntry {
   serializedDogConfig?: {
     theRun: string;
     version?: number;
+    icon?: string;
     parentsRequired?: string[];
     parentsOptional?: string[];
   };

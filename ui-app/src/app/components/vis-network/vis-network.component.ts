@@ -1,128 +1,826 @@
 import {
+
   Component, Input, Output, EventEmitter,
-  ElementRef, ViewChild, OnChanges, OnDestroy, SimpleChanges
+
+  ElementRef, ViewChild, OnChanges, SimpleChanges, OnDestroy,
+
+  computed, signal
+
 } from '@angular/core';
+
 import { DogEntry, Waves } from '../../models/dog-entry.model';
-import { Network, DataSet } from 'vis-network/standalone';
+
+import { EdgeReadPropsOverlayComponent } from '../edge-read-props-overlay/edge-read-props-overlay.component';
+
+import { GraphDogNodeComponent } from '../graph-dog-node/graph-dog-node.component';
+
+import {
+
+  buildGraphViewModel,
+
+  cleanParentId,
+
+  GRAPH_NODE_H,
+
+  GRAPH_NODE_W,
+
+  type RenderNode,
+
+} from './graph-layout';
+
+import { graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
+
+
+
+export interface EdgeReadOverlayVM {
+
+  key: string;
+
+  left: number;
+
+  top: number;
+
+  parentName: string;
+
+  paths: string[];
+
+}
+
+
+
+/**
+
+ * Dependency-Graph: SVG-Kanten + Angular-Knoten, gemeinsames Pan/Zoom.
+
+ * Knoten per Drag verschiebbar (manuelle Positionen pro id), wie vis dragNodes.
+
+ */
 
 @Component({
+
   selector: 'app-vis-network',
+
   standalone: true,
-  template: `<div #networkContainer class="network-container"></div>`,
+
+  imports: [EdgeReadPropsOverlayComponent, GraphDogNodeComponent],
+
+  template: `
+
+    <div
+
+      class="viewport"
+
+      #viewport
+
+      [class.panning]="isPanning"
+
+      (pointerdown)="onViewportPointerDown($event)"
+
+      (pointermove)="onViewportPointerMove($event)"
+
+      (pointerup)="onViewportPointerUp($event)"
+
+      (pointercancel)="onViewportPointerUp($event)"
+
+      (wheel)="onWheel($event)">
+
+      @if (viewModel(); as vm) {
+
+        <div
+
+          class="canvas"
+
+          [style.transform]="canvasTransform()"
+
+          [style.width.px]="vm.contentWidth"
+
+          [style.height.px]="vm.contentHeight">
+
+          <svg
+
+            class="edge-svg"
+
+            [attr.width]="vm.contentWidth"
+
+            [attr.height]="vm.contentHeight"
+
+            aria-hidden="true">
+
+            <defs>
+
+              <marker
+
+                [attr.id]="svgMarkerPrefix + '-req'"
+
+                markerWidth="10"
+
+                markerHeight="7"
+
+                refX="10"
+
+                refY="3.5"
+
+                orient="auto"
+
+                markerUnits="strokeWidth">
+
+                <polygon points="0 0, 10 3.5, 0 7" fill="#cc0000" />
+
+              </marker>
+
+              <marker
+
+                [attr.id]="svgMarkerPrefix + '-opt'"
+
+                markerWidth="10"
+
+                markerHeight="7"
+
+                refX="10"
+
+                refY="3.5"
+
+                orient="auto"
+
+                markerUnits="strokeWidth">
+
+                <polygon points="0 0, 10 3.5, 0 7" fill="#0066cc" />
+
+              </marker>
+
+            </defs>
+
+            @for (e of vm.renderEdges; track e.key) {
+
+              <line
+
+                [attr.x1]="e.rx1"
+
+                [attr.y1]="e.ry1"
+
+                [attr.x2]="e.rx2"
+
+                [attr.y2]="e.ry2"
+
+                [attr.stroke]="e.optional ? '#0066cc' : '#cc0000'"
+
+                [attr.stroke-width]="e.optional ? 1.5 : 2"
+
+                [attr.stroke-dasharray]="e.optional ? '7 5' : null"
+
+                [attr.marker-end]="markerEndUrl(e.optional)"
+
+                stroke-linecap="round"
+
+                stroke-linejoin="round"
+
+                fill="none" />
+
+            }
+
+          </svg>
+
+          @for (n of vm.renderNodes; track n.id) {
+
+            <div
+
+              class="graph-node-slot"
+
+              [class.dragging]="draggingNodeId === n.id"
+
+              [style.width.px]="nodeW"
+
+              [style.height.px]="nodeH"
+
+              [style.left.px]="n.rx"
+
+              [style.top.px]="n.ry"
+
+              (pointerdown)="onNodePointerDown($event, n)"
+
+              (click)="onNodeClick(n.dog, $event)">
+
+              <app-graph-dog-node
+
+                [label]="n.dog.name"
+
+                [icon]="n.dog.icon"
+
+                [selected]="isNodeSelected(n.id)"
+
+                [hasError]="!!n.dog.error"
+
+                [isSerialized]="!!n.dog.codeTs"
+
+                [isLead]="isNodeLead(n.id)" />
+
+            </div>
+
+          }
+
+          @for (o of edgeReadOverlays(); track o.key) {
+
+            <div
+
+              class="edge-read-slot"
+
+              [style.left.px]="o.left"
+
+              [style.top.px]="o.top">
+
+              <app-edge-read-props-overlay [parentName]="o.parentName" [paths]="o.paths" />
+
+            </div>
+
+          }
+
+        </div>
+
+      }
+
+    </div>
+
+  `,
+
   styles: [`
+
     :host { display: block; width: 100%; height: 100%; }
-    .network-container { width: 100%; height: 100%; background: #0a0a0a; }
+
+    .viewport {
+
+      width: 100%;
+
+      height: 100%;
+
+      overflow: hidden;
+
+      background: #0a0a0a;
+
+      position: relative;
+
+      touch-action: none;
+
+      user-select: none;
+
+      cursor: grab;
+
+    }
+
+    .viewport.panning { cursor: grabbing; }
+
+    .canvas {
+
+      position: relative;
+
+      transform-origin: 0 0;
+
+      will-change: transform;
+
+    }
+
+    .edge-svg {
+
+      position: absolute;
+
+      left: 0;
+
+      top: 0;
+
+      z-index: 0;
+
+      pointer-events: none;
+
+      overflow: visible;
+
+    }
+
+    .graph-node-slot {
+
+      position: absolute;
+
+      z-index: 1;
+
+      box-sizing: border-box;
+
+      cursor: move;
+
+      touch-action: none;
+
+    }
+
+    .graph-node-slot.dragging { cursor: grabbing; }
+
+    .edge-read-slot {
+
+      position: absolute;
+
+      z-index: 2;
+
+      transform: translate(-50%, -50%);
+
+      pointer-events: none;
+
+    }
+
   `]
+
 })
+
 export class VisNetworkComponent implements OnChanges, OnDestroy {
-  @ViewChild('networkContainer', { static: true }) containerRef!: ElementRef;
+
+  @ViewChild('viewport') viewportRef!: ElementRef<HTMLElement>;
+
+
 
   @Input() waves: Waves = [];
+
+  @Input() selectedDog: DogEntry | null = null;
+
+  @Input() flatDogs: DogEntry[] = [];
+
   @Output() dogSelected = new EventEmitter<DogEntry>();
+
   @Output() dogDeleted = new EventEmitter<string>();
 
-  private network: Network | null = null;
-  private dogMap = new Map<string, DogEntry>();
+  /** Erster Eintrag in kennel.dogIds — für Lead-Stern am Knoten */
+  @Input() kennelLeadDogIdsSlot: string | null = null;
+
+
+
+  readonly nodeW = GRAPH_NODE_W;
+
+  readonly nodeH = GRAPH_NODE_H;
+
+  readonly svgMarkerPrefix = `arr-${Math.random().toString(36).slice(2, 11)}`;
+
+
+
+  private readonly wavesRef = signal<Waves>([]);
+
+  /** Manuelle Weltkoordinaten (Top-Left), überschreibt Auto-Layout pro Knoten-id */
+
+  readonly manualPositions = signal<Map<string, { x: number; y: number }>>(new Map());
+
+
+
+  private readonly selectedRef = signal<DogEntry | null>(null);
+
+  private readonly flatDogsRef = signal<DogEntry[]>([]);
+
+
+
+  viewModel = computed(() =>
+
+    buildGraphViewModel(this.wavesRef(), this.manualPositions())
+
+  );
+
+
+
+  panX = signal(0);
+
+  panY = signal(0);
+
+  zoom = signal(1);
+
+
+
+  isPanning = false;
+
+  private panGrab: { sx: number; sy: number; px: number; py: number } | null = null;
+
+
+
+  draggingNodeId: string | null = null;
+
+  private nodeDragLast: { cx: number; cy: number } | null = null;
+
+  private nodeDragSuppressedClick = false;
+
+
+
+  private readonly onDocPointerMove = (e: PointerEvent) => this.onNodePointerMoveDoc(e);
+
+  private readonly onDocPointerUp = (e: PointerEvent) => this.onNodePointerUpDoc(e);
+
+
+
+  canvasTransform = computed(() => {
+
+    const x = this.panX();
+
+    const y = this.panY();
+
+    const z = this.zoom();
+
+    return `translate(${x}px, ${y}px) scale(${z})`;
+
+  });
+
+
+
+  edgeReadOverlays = computed((): EdgeReadOverlayVM[] => {
+
+    const sel = this.selectedRef();
+
+    const vm = this.viewModel();
+
+    const flat = this.flatDogsRef();
+
+    if (!sel || !vm) return [];
+
+
+
+    const out: EdgeReadOverlayVM[] = [];
+
+    for (const seg of vm.renderEdges) {
+
+      if (seg.toId !== sel.id) continue;
+
+      const parentMeta =
+
+        flat.find(d => d.id === seg.fromId) ?? vm.dogMap.get(seg.fromId);
+
+      const parentName = parentMeta?.name ?? seg.fromId;
+
+      const paths = this.pathsFromParent(sel, seg.fromId, vm.dogMap, flat);
+
+      const mx = (seg.rx1 + seg.rx2) / 2;
+
+      const my = (seg.ry1 + seg.ry2) / 2;
+
+      out.push({
+
+        key: `read-${seg.key}`,
+
+        left: mx,
+
+        top: my,
+
+        parentName,
+
+        paths,
+
+      });
+
+    }
+
+    return out;
+
+  });
+
+
 
   ngOnChanges(changes: SimpleChanges) {
+
+    this.selectedRef.set(this.selectedDog);
+
+    this.flatDogsRef.set(this.flatDogs ?? []);
+
+
+
     if (changes['waves']) {
-      this.renderNetwork();
-    }
-  }
 
-  ngOnDestroy() {
-    this.network?.destroy();
-  }
+      this.wavesRef.set(this.waves ?? []);
 
-  private renderNetwork() {
-    this.dogMap.clear();
+      const baseIds = new Set(
 
-    const nodes: any[] = [];
-    const edges: any[] = [];
+        (this.waves ?? [])
 
-    this.waves.forEach((wave, waveIndex) => {
-      wave.forEach(dog => {
-        this.dogMap.set(dog.id, dog);
+          .flat()
 
-        const hasError = !!dog.error;
-        const isSerializedDog = !!dog.codeTs;
+          .map(d => d.id)
 
-        nodes.push({
-          id: dog.id,
-          label: dog.name,
-          level: waveIndex,
-          color: {
-            background: hasError ? '#cc0000' : (isSerializedDog ? '#1a3a5c' : '#2a2a2a'),
-            border: hasError ? '#ff0000' : (isSerializedDog ? '#0066cc' : '#555'),
-            highlight: { background: '#003366', border: '#0099ff' },
-          },
-          font: { color: '#fff', size: 14 },
-          shape: 'box',
-          margin: 10,
-        });
-
-        (dog.parentsRequired ?? []).forEach(parentId => {
-          const cleanId = parentId.startsWith('base:') ? parentId.substring(5) : parentId;
-          edges.push({
-            from: cleanId,
-            to: dog.id,
-            color: { color: '#cc0000', highlight: '#ff0000' },
-            arrows: 'to',
-            dashes: false,
-            width: 2,
-          });
-        });
-
-        (dog.parentsOptional ?? []).forEach(parentId => {
-          const cleanId = parentId.startsWith('base:') ? parentId.substring(5) : parentId;
-          edges.push({
-            from: cleanId,
-            to: dog.id,
-            color: { color: '#0066cc', highlight: '#0099ff' },
-            arrows: 'to',
-            dashes: true,
-            width: 1,
-          });
-        });
-      });
-    });
-
-    const nodesDataSet = new DataSet(nodes);
-    const edgesDataSet = new DataSet(edges);
-
-    if (this.network) {
-      this.network.setData({ nodes: nodesDataSet, edges: edgesDataSet });
-    } else {
-      this.network = new Network(
-        this.containerRef.nativeElement,
-        { nodes: nodesDataSet, edges: edgesDataSet },
-        {
-          layout: {
-            hierarchical: {
-              enabled: true,
-              direction: 'LR',
-              sortMethod: 'directed',
-              levelSeparation: 200,
-              nodeSpacing: 100,
-            },
-          },
-          physics: { enabled: false },
-          interaction: {
-            hover: true,
-            selectConnectedEdges: true,
-          },
-        }
       );
 
-      this.network.on('click', (params: any) => {
-        if (params.nodes.length > 0) {
-          const nodeId = params.nodes[0];
-          const dog = this.dogMap.get(nodeId);
-          if (dog) {
-            this.dogSelected.emit(dog);
-          }
-        }
-      });
+      const pruned = new Map<string, { x: number; y: number }>();
+
+      for (const [id, pos] of this.manualPositions()) {
+
+        if (baseIds.has(id)) pruned.set(id, pos);
+
+      }
+
+      this.manualPositions.set(pruned);
+
+
+
+      if (baseIds.size > 0) {
+
+        setTimeout(() => this.fitView(), 0);
+
+      } else {
+
+        this.panX.set(0);
+
+        this.panY.set(0);
+
+        this.zoom.set(1);
+
+      }
+
     }
+
   }
+
+
+
+  ngOnDestroy() {
+
+    this.detachNodeDragListeners();
+
+  }
+
+
+
+  private detachNodeDragListeners() {
+
+    document.removeEventListener('pointermove', this.onDocPointerMove);
+
+    document.removeEventListener('pointerup', this.onDocPointerUp);
+
+    document.removeEventListener('pointercancel', this.onDocPointerUp);
+
+  }
+
+
+
+  markerEndUrl(optional: boolean): string {
+
+    const s = optional ? 'opt' : 'req';
+
+    return `url(#${this.svgMarkerPrefix}-${s})`;
+
+  }
+
+
+
+  isNodeSelected(id: string): boolean {
+
+    return this.selectedRef()?.id === id;
+
+  }
+
+
+
+  isNodeLead(graphNodeId: string): boolean {
+
+    const slot = this.kennelLeadDogIdsSlot;
+
+    if (!slot) return false;
+
+    return graphNodeIdMatchesKennelDogId(graphNodeId, slot);
+
+  }
+
+
+
+  onNodePointerDown(e: PointerEvent, n: RenderNode) {
+
+    if (e.button !== 0) return;
+
+    e.stopPropagation();
+
+    e.preventDefault();
+
+    this.draggingNodeId = n.id;
+
+    this.nodeDragLast = { cx: e.clientX, cy: e.clientY };
+
+    this.nodeDragSuppressedClick = false;
+
+    document.addEventListener('pointermove', this.onDocPointerMove, { passive: false });
+
+    document.addEventListener('pointerup', this.onDocPointerUp);
+
+    document.addEventListener('pointercancel', this.onDocPointerUp);
+
+  }
+
+
+
+  private onNodePointerMoveDoc(e: PointerEvent) {
+
+    if (!this.draggingNodeId || !this.nodeDragLast) return;
+
+    e.preventDefault();
+
+    const z = this.zoom();
+
+    const dx = (e.clientX - this.nodeDragLast.cx) / z;
+
+    const dy = (e.clientY - this.nodeDragLast.cy) / z;
+
+    if (Math.hypot(dx * z, dy * z) > 4) {
+
+      this.nodeDragSuppressedClick = true;
+
+    }
+
+    this.nodeDragLast = { cx: e.clientX, cy: e.clientY };
+
+
+
+    const vm = this.viewModel();
+
+    if (!vm) return;
+
+    const wn = vm.worldNodes.find(x => x.id === this.draggingNodeId);
+
+    if (!wn) return;
+
+
+
+    const next = new Map(this.manualPositions());
+
+    const cur = next.get(this.draggingNodeId) ?? { x: wn.x, y: wn.y };
+
+    next.set(this.draggingNodeId, { x: cur.x + dx, y: cur.y + dy });
+
+    this.manualPositions.set(next);
+
+  }
+
+
+
+  private onNodePointerUpDoc(_e: PointerEvent) {
+
+    this.detachNodeDragListeners();
+
+    this.draggingNodeId = null;
+
+    this.nodeDragLast = null;
+
+  }
+
+
+
+  onNodeClick(dog: DogEntry, e: MouseEvent) {
+
+    e.stopPropagation();
+
+    if (this.nodeDragSuppressedClick) {
+
+      this.nodeDragSuppressedClick = false;
+
+      return;
+
+    }
+
+    this.dogSelected.emit(dog);
+
+  }
+
+
+
+  onViewportPointerDown(e: PointerEvent) {
+
+    if (e.button !== 0) return;
+
+    const t = e.target as HTMLElement;
+
+    if (t.closest('.graph-node-slot')) return;
+
+
+
+    this.isPanning = true;
+
+    this.panGrab = {
+
+      sx: e.clientX,
+
+      sy: e.clientY,
+
+      px: this.panX(),
+
+      py: this.panY(),
+
+    };
+
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+  }
+
+
+
+  onViewportPointerMove(e: PointerEvent) {
+
+    if (!this.isPanning || !this.panGrab) return;
+
+    e.preventDefault();
+
+    const g = this.panGrab;
+
+    this.panX.set(g.px + e.clientX - g.sx);
+
+    this.panY.set(g.py + e.clientY - g.sy);
+
+  }
+
+
+
+  onViewportPointerUp(_e: PointerEvent) {
+
+    this.isPanning = false;
+
+    this.panGrab = null;
+
+  }
+
+
+
+  onWheel(e: WheelEvent) {
+
+    e.preventDefault();
+
+    const z = this.zoom();
+
+    const factor = e.deltaY > 0 ? 0.92 : 1.08;
+
+    const nz = Math.min(2.5, Math.max(0.3, z * factor));
+
+    this.zoom.set(nz);
+
+  }
+
+
+
+  private fitView() {
+
+    const vm = this.viewModel();
+
+    const vp = this.viewportRef?.nativeElement;
+
+    if (!vm || !vp) return;
+
+
+
+    const vw = vp.clientWidth;
+
+    const vh = vp.clientHeight;
+
+    if (vw < 8 || vh < 8) return;
+
+
+
+    const cw = vm.contentWidth;
+
+    const ch = vm.contentHeight;
+
+    const margin = 0.9;
+
+    const z = Math.min(vw / cw, vh / ch, 1.25) * margin;
+
+    const nz = Math.max(0.35, Math.min(2.5, z));
+
+    this.zoom.set(nz);
+
+    this.panX.set((vw - cw * nz) / 2);
+
+    this.panY.set((vh - ch * nz) / 2);
+
+  }
+
+
+
+  private pathsFromParent(
+
+    selected: DogEntry,
+
+    parentId: string,
+
+    dogMap: Map<string, DogEntry>,
+
+    flat: DogEntry[]
+
+  ): string[] {
+
+    if (!selected.readFrom?.length) return [];
+
+    const pid = cleanParentId(parentId);
+
+    const parent = flat.find(d => d.id === pid) ?? dogMap.get(pid);
+
+    if (!parent) return [];
+
+    const name = parent.name;
+
+    return [
+
+      ...new Set(
+
+        selected.readFrom
+
+          .filter(r => r.sourceInstanceName === name)
+
+          .map(r => r.propertyPath)
+
+      ),
+
+    ];
+
+  }
+
 }
+
+
