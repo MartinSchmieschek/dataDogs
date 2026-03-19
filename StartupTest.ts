@@ -6,6 +6,7 @@ import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from './dogs/Bloodhound/pacts';
+import { NearbyLandmarksPact } from './dogs/OpenStreetMap/pacts';
 
 export interface TestResult {
     name: string;
@@ -569,12 +570,47 @@ export class StartupTest {
             const mimic = new MimicDog<BloodhoundIsochroneInput>(mimicConfig, 'pact-source-test-mimic');
             mimic.resolveImitates(new Map([['BloodhoundIsochroneProvider', BloodhoundIsochronePact]]));
 
-            const lib = TypeDefBuilder.buildContextLib('PactSourceNode', {}, mimic);
+            const pactKey = 'pact-source-test-mimic';
+            const expectedAlias = TypeDefBuilder.expectedReturnAliasTypeName(pactKey);
+            const lib = TypeDefBuilder.buildContextLib('PactSourceNode', {}, mimic, pactKey);
             if (!lib.includes('BloodhoundIsochroneInput')) {
                 throw new Error('buildContextLib enthält nicht BloodhoundIsochroneInput');
             }
-            if (!lib.includes('__ExpectedReturn')) {
-                throw new Error('__ExpectedReturn fehlt im generierten Lib-String');
+            if (!lib.includes(expectedAlias)) {
+                throw new Error(`Erwarteter Return-Alias ${expectedAlias} fehlt im generierten Lib-String`);
+            }
+
+            // OSM Landmarks: eigener Quell-Typ (nicht BloodhoundIsochroneInput)
+            const batchLm = CompilerCache.getPactReturnTypeDefsBatch(['OsmLandmarksQueryInput']);
+            const defLm = batchLm.get('OsmLandmarksQueryInput');
+            if (!defLm) {
+                throw new Error('Batch liefert keinen Eintrag für OsmLandmarksQueryInput');
+            }
+            if (defLm.includes('BloodhoundIsochroneInput')) {
+                throw new Error('OsmLandmarksQueryInput-Def darf kein BloodhoundIsochroneInput enthalten');
+            }
+            if (!defLm.includes('preset') || !defLm.includes('OsmLandmarksQueryInputReturn')) {
+                throw new Error('OsmLandmarksQueryInput-Def unvollständig');
+            }
+
+            const mimicLm: IMimicDogConfig = {
+                theRun: 'return { lat: "0", lng: "0" };',
+                imitates: 'NearbyLandmarksQueryProvider',
+            };
+            const mimicLandmarks = new MimicDog(mimicLm, 'pact-osm-test-mimic');
+            mimicLandmarks.resolveImitates(
+                new Map<string, new () => IHuntingDog<unknown>>([
+                    ['BloodhoundIsochroneProvider', BloodhoundIsochronePact],
+                    ['NearbyLandmarksQueryProvider', NearbyLandmarksPact],
+                ])
+            );
+            const osmKey = 'pact-osm-test-key';
+            const libLm = TypeDefBuilder.buildContextLib('OsmPactNode', {}, mimicLandmarks, osmKey);
+            if (!libLm.includes('OsmLandmarksQueryInput')) {
+                throw new Error('buildContextLib für Landmarks-Mimic enthält nicht OsmLandmarksQueryInput');
+            }
+            if (libLm.includes('BloodhoundIsochroneInput')) {
+                throw new Error('buildContextLib für Landmarks-Mimic darf kein BloodhoundIsochroneInput enthalten');
             }
 
             this.addResult(testName, true);

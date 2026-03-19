@@ -17,6 +17,8 @@ export type NodeEntry = {
     codeTs?: string;
     vmContext?: Record<string, any>;
     vmContextTypeDef?: string;
+    /** Name des Return-Type-Alias im Kontext-Lib (pro Instanz eindeutig). */
+    vmExpectedReturnTypeName?: string;
     parentsRequired?: string[];
     parentsOptional?: string[];
     serializedDogConfig?: {
@@ -93,7 +95,13 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                 nodeEntry.codeTs = seDog.instanceConfig.theRun;
                 const vmCtx = seDog.simpleVmContext || {};
                 nodeEntry.vmContext = vmCtx;
-                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(seDog.name, vmCtx, entry.instance);
+                nodeEntry.vmExpectedReturnTypeName = TypeDefBuilder.expectedReturnAliasTypeName(instanceId);
+                nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(
+                    seDog.name,
+                    vmCtx,
+                    entry.instance,
+                    instanceId
+                );
                 nodeEntry.serializedDogConfig = {
                     theRun: seDog.instanceConfig.theRun,
                     version: seDog.instanceConfig.version,

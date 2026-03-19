@@ -45,7 +45,8 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
 
   private wrapCode(rawCode: string): string {
     const unwrapped = this.unwrapCode(rawCode);
-    return 'async function run(): Promise<__ExpectedReturn> {\n' + unwrapped + '\n}';
+    const ret = this.dog.vmExpectedReturnTypeName ?? '__ExpectedReturn';
+    return `async function run(): Promise<${ret}> {\n${unwrapped}\n}`;
   }
 
   private readonly RUN_SIGNATURE = /^async function run\(\)(?:\s*:\s*Promise<[^>]*>)?\s*\{/;

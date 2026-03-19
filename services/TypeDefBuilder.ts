@@ -6,6 +6,17 @@ export class TypeDefBuilder {
     private static pactReturnTypes: Map<string, string> = new Map();
 
     /**
+     * Eindeutiger TypeScript-Alias pro Hund-Instanz, damit sich globale `declare global`-Blöcke
+     * in Monaco nicht gegenseitig überschreiben (vorher überall `__ExpectedReturn`).
+     */
+    public static expectedReturnAliasTypeName(uniqueInstanceKey: string): string {
+        const sanitized = String(uniqueInstanceKey)
+            .replace(/[^a-zA-Z0-9_]/g, '_')
+            .replace(/^[^a-zA-Z_]/, '_');
+        return `ExpectedReturn_${sanitized || 'Instance'}`;
+    }
+
+    /**
      * Registriert den erwarteten Return-Type fuer einen Pact-Namen.
      * Wird von aussen aufgerufen, z.B. beim Startup.
      */
@@ -42,8 +53,12 @@ export class TypeDefBuilder {
         }
     }
 
-    public static buildContextLib(rawName: string, ctx: any, dog?: any): string {
+    public static buildContextLib(rawName: string, ctx: any, dog?: any, uniqueInstanceKey?: string): string {
         const typeName = this.safeTypeName(rawName);
+        const expectedReturnTypeName =
+            uniqueInstanceKey != null && uniqueInstanceKey !== ''
+                ? this.expectedReturnAliasTypeName(uniqueInstanceKey)
+                : '__ExpectedReturn';
         let interfaceDefs = "";
 
         for (const value of Object.values(ctx)) {
@@ -75,7 +90,7 @@ export class TypeDefBuilder {
         });
 
         let mimicReturnDefs = '';
-        let expectedReturnAlias = 'type __ExpectedReturn = any;';
+        let expectedReturnAlias = `type ${expectedReturnTypeName} = any;`;
         if (dog && dog instanceof MimicDog && (dog as MimicDog<unknown>).imitatesName) {
             const pactType = this.pactReturnTypes.get((dog as MimicDog<unknown>).imitatesName);
             if (pactType) {
@@ -83,7 +98,7 @@ export class TypeDefBuilder {
                 const lastTypeLine = pactType.trim().split('\n').pop()?.trim() ?? '';
                 const match = lastTypeLine.match(/^type\s+(\w+)\s*=/);
                 if (match) {
-                    expectedReturnAlias = `type __ExpectedReturn = ${match[1]};`;
+                    expectedReturnAlias = `type ${expectedReturnTypeName} = ${match[1]};`;
                 }
             }
         }

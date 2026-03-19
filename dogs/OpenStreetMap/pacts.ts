@@ -1,14 +1,20 @@
 import { createPact } from "datadogs";
 
-/** Query-Parameter für OsmLandmarksRetriever (QueryRetriever liefert lowercase-Keys). */
-export interface NearbyLandmarksQuery {
+/**
+ * Pflicht-Query für OsmLandmarksRetriever (QueryRetriever/Mimic: lowercase-Keys).
+ * Eigenständiger Typname — nicht mit BloodhoundIsochroneInput verwechseln.
+ */
+export interface OsmLandmarksQueryInput {
     lat: string;
     lng: string;
     radius?: string;
     preset?: string;
 }
 
-export const NearbyLandmarksPact = createPact<NearbyLandmarksQuery>(
+/** @deprecated Alias — nutze OsmLandmarksQueryInput */
+export type NearbyLandmarksQuery = OsmLandmarksQueryInput;
+
+export const NearbyLandmarksPact = createPact<OsmLandmarksQueryInput>(
     "NearbyLandmarksQueryProvider",
-    { fromSourceType: "NearbyLandmarksQuery" }
+    { fromSourceType: "OsmLandmarksQueryInput" }
 );

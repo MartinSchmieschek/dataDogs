@@ -14,6 +14,8 @@ export interface DogEntry {
   codeTs?: string;
   vmContext?: Record<string, any>;
   vmContextTypeDef?: string;
+  /** Pro-Instanz Return-Alias im TS-Kontext (Monaco), z. B. ExpectedReturn_base_foo */
+  vmExpectedReturnTypeName?: string;
   parentsRequired?: string[];
   parentsOptional?: string[];
   serializedDogConfig?: {

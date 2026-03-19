@@ -1,5 +1,5 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
-import { NearbyLandmarksPact, type NearbyLandmarksQuery } from "./pacts";
+import { NearbyLandmarksPact, type OsmLandmarksQueryInput } from "./pacts";
 import {
     clampRadiusM,
     fetchNearbyLandmarks,
@@ -28,7 +28,7 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> {
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmLandmarksResult> => {
         const queryDog = season.exhausted.find((d) => this.matchesParent(NearbyLandmarksPact, d));
         const query =
-            (queryDog?.collected as NearbyLandmarksQuery | undefined) ?? ({} as NearbyLandmarksQuery);
+            (queryDog?.collected as OsmLandmarksQueryInput | undefined) ?? ({} as OsmLandmarksQueryInput);
 
         const lat = parseFloat(query.lat);
         const lng = parseFloat(query.lng);
