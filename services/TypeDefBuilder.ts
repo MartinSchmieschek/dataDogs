@@ -13,6 +13,18 @@ export class TypeDefBuilder {
         this.pactReturnTypes.set(pactName, typeDefinition);
     }
 
+    /**
+     * Registriert alle Pact-Klassen: liest name und __pactReturnTypeDef von jeder Klasse
+     * und uebernimmt die Typ-Definition aus dem Pact (Single Source of Truth im Interface).
+     */
+    public static registerPacts(pactClasses: (new () => { name: string })[]): void {
+        for (const PactClass of pactClasses) {
+            const instance = new PactClass();
+            const typeDef = (PactClass as any).__pactReturnTypeDef as string | undefined;
+            if (typeDef) this.pactReturnTypes.set(instance.name, typeDef);
+        }
+    }
+
     public static buildContextLib(rawName: string, ctx: any, dog?: any): string {
         const typeName = this.safeTypeName(rawName);
         let interfaceDefs = "";

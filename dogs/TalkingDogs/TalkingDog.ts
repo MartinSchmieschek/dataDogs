@@ -1,7 +1,7 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
 import { FoodPornRetriever } from "../FoodPornRetriever";
 import { DishFlagBlackLab } from "../DishFlagBlackLab";
-import { LayoutInputPact } from "./LayoutInputPact";
+import { LayoutInputPact } from "./renderer/layouts/ILayoutInput";
 import { LayoutRenderer } from "./renderer/LayoutRenderer";
 import { TinderLayout } from "./renderer/layouts/tinderLayout";
 import { BiographyLayout } from "./renderer/layouts/BiographyLayout";

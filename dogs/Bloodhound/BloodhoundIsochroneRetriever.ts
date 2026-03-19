@@ -1,5 +1,5 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
-import { QueryRetriever } from "../QueryRetriever";
+import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
 
@@ -9,7 +9,7 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [QueryRetriever];
+        return [BloodhoundIsochronePact];
     }
 
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
@@ -17,13 +17,13 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
     }
 
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<BloodhoundIsochroneResult> => {
-        const queryDog = season.exhausted.find(d => d.name === QueryRetriever.name);
-        const query = (queryDog?.collected as Record<string, string>) ?? {};
+        const queryDog = season.exhausted.find(d => this.matchesParent(BloodhoundIsochronePact, d));
+        const input: BloodhoundIsochroneInput = (queryDog?.collected as BloodhoundIsochroneInput | undefined) ?? { lat: '', lng: '', range: '' };
 
-        const lat = parseFloat(query['lat']);
-        const lng = parseFloat(query['lng']);
-        const profile = query['profile'] || 'foot-walking';
-        const range = parseInt(query['range']);
+        const lat = parseFloat(input.lat);
+        const lng = parseFloat(input.lng);
+        const profile = input.profile ?? 'foot-walking';
+        const range = parseInt(input.range, 10);
 
         if (isNaN(lat) || isNaN(lng) || isNaN(range)) {
             throw new Error('BloodhoundIsochroneRetriever: Missing required query params (lat, lng, range)');

@@ -1,7 +1,7 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "datadogs";
-import { QueryRetriever } from "../QueryRetriever";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
+import { BloodhoundRouteQueryPact, type BloodhoundRouteQuery } from "./pacts";
 
 export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
     get name(): string {
@@ -9,7 +9,7 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [QueryRetriever];
+        return [BloodhoundRouteQueryPact];
     }
 
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
@@ -17,8 +17,8 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
     }
 
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<BloodhoundRouteResult> => {
-        const queryDog = season.exhausted.find(d => d.name === QueryRetriever.name);
-        const query = (queryDog?.collected as Record<string, string>) ?? {};
+        const queryDog = season.exhausted.find(d => this.matchesParent(BloodhoundRouteQueryPact, d));
+        const query = (queryDog?.collected as BloodhoundRouteQuery | undefined) ?? ({} as BloodhoundRouteQuery);
 
         const startLat = parseFloat(query['startlat']);
         const startLng = parseFloat(query['startlng']);

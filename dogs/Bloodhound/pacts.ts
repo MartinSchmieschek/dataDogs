@@ -1,19 +1,37 @@
 import { createPact } from "datadogs";
 
-export interface IIsochroneInput {
-    lat: number;
-    lng: number;
-    profile: string;
-    range: number;
+/** Query-Parameter für BloodhoundRouteRetriever (QueryRetriever liefert lowercase-Keys). */
+export interface BloodhoundRouteQuery {
+    startlat: string;
+    startlng: string;
+    endlat: string;
+    endlng: string;
+    profile?: string;
 }
 
-export interface IRouteInput {
-    startLat: number;
-    startLng: number;
-    endLat: number;
-    endLng: number;
-    profile: string;
+const BLOODHOUND_ROUTE_QUERY_TYPE_DEF = `
+interface BloodhoundRouteQuery { startlat: string; startlng: string; endlat: string; endlng: string; profile?: string; }
+type BloodhoundRouteQueryReturn = BloodhoundRouteQuery;
+`;
+
+export interface BloodhoundIsochroneInput {
+    lat: string;
+    lng: string;
+    profile?: string;
+    range: string;
 }
 
-export const IsochroneInputPact = createPact<IIsochroneInput>('IsochroneInputProvider');
-export const RouteInputPact = createPact<IRouteInput>('RouteInputProvider');
+const BLOODHOUND_ISOCHRONE_INPUT_TYPE_DEF = `
+interface BloodhoundIsochroneInput { lat: string; lng: string; profile?: string; range: string; }
+type BloodhoundIsochroneInputReturn = BloodhoundIsochroneInput;
+`;
+
+export const BloodhoundRouteQueryPact = createPact<BloodhoundRouteQuery>(
+    "BloodhoundQueryProvider",
+    BLOODHOUND_ROUTE_QUERY_TYPE_DEF
+);
+
+export const BloodhoundIsochronePact = createPact<BloodhoundIsochroneInput>(
+    "BloodhoundIsochroneProvider",
+    BLOODHOUND_ISOCHRONE_INPUT_TYPE_DEF
+);
