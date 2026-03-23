@@ -1,0 +1,30 @@
+.parents-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.parent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.parent-name {
+  flex: 1;
+  color: #ccc;
+}
+
+.parent-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #999;
+
+  input {
+    cursor: pointer;
+  }
+}

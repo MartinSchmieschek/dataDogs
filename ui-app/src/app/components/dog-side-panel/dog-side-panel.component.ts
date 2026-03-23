@@ -1,23 +1,32 @@
 import { Component, Input, Output, EventEmitter, signal, inject, ViewChild, OnChanges, computed } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { JsonPipe } from '@angular/common';
 import { DogEntry } from '../../models/dog-entry.model';
-import { DogEditorComponent } from '../dog-editor/dog-editor.component';
 import { DogDisplayComponent } from '../dog-display/dog-display.component';
-import { EditSectionComponent } from '../edit-section/edit-section.component';
 import { VersionTimelineComponent, TimelineVersion } from '../version-timeline/version-timeline.component';
 import { DogService, VersionEntry } from '../../services/dog.service';
 import { graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
+import { DogSidePanelCodeArtifactComponent } from './artifacts/dog-side-panel-code-artifact.component';
+import { DogSidePanelVmTypedefArtifactComponent } from './artifacts/dog-side-panel-vm-typedef-artifact.component';
+import { DogSidePanelResultArtifactComponent } from './artifacts/dog-side-panel-result-artifact.component';
+import { DogSidePanelParentsArtifactComponent } from './artifacts/dog-side-panel-parents-artifact.component';
+import { DogSidePanelReadTrackingArtifactComponent } from './artifacts/dog-side-panel-read-tracking-artifact.component';
 
 @Component({
   selector: 'app-dog-side-panel',
   standalone: true,
-  imports: [FormsModule, JsonPipe, DogEditorComponent, DogDisplayComponent, EditSectionComponent, VersionTimelineComponent],
+  imports: [
+    DogDisplayComponent,
+    VersionTimelineComponent,
+    DogSidePanelCodeArtifactComponent,
+    DogSidePanelVmTypedefArtifactComponent,
+    DogSidePanelResultArtifactComponent,
+    DogSidePanelParentsArtifactComponent,
+    DogSidePanelReadTrackingArtifactComponent,
+  ],
   templateUrl: './dog-side-panel.component.html',
   styleUrls: ['./dog-side-panel.component.scss']
 })
 export class DogSidePanelComponent implements OnChanges {
-  @ViewChild(DogEditorComponent) dogEditor?: DogEditorComponent;
+  @ViewChild(DogSidePanelCodeArtifactComponent) codeArtifact?: DogSidePanelCodeArtifactComponent;
 
   @Input() dog!: DogEntry;
   @Input() allDogs: DogEntry[] = [];
@@ -32,7 +41,6 @@ export class DogSidePanelComponent implements OnChanges {
 
   private dogService = inject(DogService);
 
-  resultViewMode = signal<'auto' | 'html' | 'raw'>('auto');
   parentsRequired = signal<string[]>([]);
   parentsOptional = signal<string[]>([]);
   saving = signal(false);
@@ -144,7 +152,7 @@ export class DogSidePanelComponent implements OnChanges {
     this.saveError.set(null);
     this.saveSuccess.set(false);
 
-    const code = this.dogEditor?.getCurrentCode();
+    const code = this.codeArtifact?.getCurrentCode();
     if (code == null) {
       this.saving.set(false);
       this.saveError.set('Editor nicht bereit');
@@ -185,41 +193,5 @@ export class DogSidePanelComponent implements OnChanges {
 
   moveToFirst() {
     this.movedToFirst.emit(this.dog.id);
-  }
-
-  get resultIsHtml(): boolean {
-    const r = this.dog?.result;
-    if (typeof r !== 'string') return false;
-    const trimmed = r.trim();
-    return trimmed.startsWith('<html') ||
-      trimmed.startsWith('<!DOCTYPE') ||
-      trimmed.startsWith('<!doctype') ||
-      (trimmed.startsWith('<') && trimmed.includes('</'));
-  }
-
-  get showHtmlPreview(): boolean {
-    const mode = this.resultViewMode();
-    if (mode === 'html') return true;
-    if (mode === 'raw') return false;
-    return this.resultIsHtml;
-  }
-
-  get resultHtmlSrc(): string {
-    if (!this.resultIsHtml) return '';
-    return this.dog.result;
-  }
-
-  cycleResultView() {
-    const current = this.resultViewMode();
-    if (current === 'auto') this.resultViewMode.set('raw');
-    else if (current === 'raw') this.resultViewMode.set('html');
-    else this.resultViewMode.set('auto');
-  }
-
-  get resultViewLabel(): string {
-    const mode = this.resultViewMode();
-    if (mode === 'raw') return 'Raw';
-    if (mode === 'html') return 'HTML';
-    return 'Auto';
   }
 }

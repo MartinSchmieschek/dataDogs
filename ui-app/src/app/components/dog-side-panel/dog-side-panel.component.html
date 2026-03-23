@@ -59,70 +59,24 @@
   }
 
   <div class="sections-scroll">
-    @if (editorDog(); as editDog) {
-      <app-edit-section title="Code">
-        <app-dog-editor [dog]="editDog" />
-      </app-edit-section>
-    }
-
-    <app-edit-section title="Result">
-      @if (resultIsHtml) {
-        <div class="result-toolbar">
-          <button class="btn-view-mode" (click)="cycleResultView()">{{ resultViewLabel }}</button>
-        </div>
-      }
-      @if (showHtmlPreview) {
-        <iframe class="result-html-frame"
-          [srcdoc]="resultHtmlSrc"
-          sandbox="allow-scripts"
-          referrerpolicy="no-referrer"></iframe>
-      } @else {
-        <pre class="result-json">{{ dog.result | json }}</pre>
-      }
-    </app-edit-section>
-
+    <app-dog-side-panel-code-artifact [dog]="editorDog()" />
+    <app-dog-side-panel-vm-typedef-artifact [typeDef]="dog.vmContextTypeDef" />
+    <app-dog-side-panel-result-artifact [result]="dog.result" />
     @if (isSerialized) {
-      <app-edit-section title="Parents">
-        <div class="parents-list">
-          @for (parent of availableParents; track parent.id) {
-            <div class="parent-item">
-              <span class="parent-name">{{ parent.name }}</span>
-              <label class="parent-checkbox">
-                <input type="checkbox"
-                  [checked]="isParentRequired(parent.id)"
-                  (click)="toggleParentRequired(parent.id)">
-                Req
-              </label>
-              <label class="parent-checkbox">
-                <input type="checkbox"
-                  [checked]="isParentOptional(parent.id)"
-                  (click)="toggleParentOptional(parent.id)">
-                Opt
-              </label>
-            </div>
-          }
-        </div>
-      </app-edit-section>
+      <app-dog-side-panel-parents-artifact
+        [availableParents]="availableParents"
+        [requiredIds]="parentsRequired()"
+        [optionalIds]="parentsOptional()"
+        (toggleRequired)="toggleParentRequired($event)"
+        (toggleOptional)="toggleParentOptional($event)" />
     }
-
-    @if (dog.readFrom && dog.readFrom.length > 0) {
-      <app-edit-section title="Liest von" [collapsed]="true">
-        @for (entry of dog.readFrom; track $index) {
-          <div class="tracking-entry">
-            {{ entry.sourceInstanceName }}.{{ entry.propertyPath }}
-          </div>
-        }
-      </app-edit-section>
-    }
-
-    @if (dog.readBy && dog.readBy.length > 0) {
-      <app-edit-section title="Gelesen von" [collapsed]="true">
-        @for (entry of dog.readBy; track $index) {
-          <div class="tracking-entry">
-            {{ entry.readerInstanceName }} → .{{ entry.propertyPath }}
-          </div>
-        }
-      </app-edit-section>
-    }
+    <app-dog-side-panel-read-tracking-artifact
+      title="Liest von"
+      mode="readFrom"
+      [entries]="dog.readFrom ?? []" />
+    <app-dog-side-panel-read-tracking-artifact
+      title="Gelesen von"
+      mode="readBy"
+      [entries]="dog.readBy ?? []" />
   </div>
 </div>

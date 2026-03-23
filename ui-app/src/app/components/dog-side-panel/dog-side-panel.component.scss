@@ -1,9 +1,18 @@
-.side-panel {
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   height: 100%;
+}
+
+.side-panel {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #111;
-  border-left: 1px solid #333;
+  border-left: none;
 }
 
 .panel-header {
@@ -169,73 +178,3 @@
   padding: 8px;
 }
 
-.result-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 6px;
-}
-
-.btn-view-mode {
-  background: #222;
-  border: 1px solid #444;
-  color: #aaa;
-  padding: 2px 8px;
-  cursor: pointer;
-  border-radius: 2px;
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  &:hover { color: #fff; border-color: #888; }
-}
-
-.result-html-frame {
-  width: 100%;
-  min-height: 350px;
-  border: 1px solid #333;
-  border-radius: 3px;
-  background: #fff;
-}
-
-.result-json {
-  margin: 0;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #ccc;
-}
-
-.parents-list {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.parent-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
-  font-size: 12px;
-}
-
-.parent-name {
-  flex: 1;
-  color: #ccc;
-}
-
-.parent-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  color: #999;
-
-  input { cursor: pointer; }
-}
-
-.tracking-entry {
-  font-size: 11px;
-  color: #888;
-  padding: 2px 0;
-}
