@@ -8,23 +8,28 @@ import { DogEntry, Waves } from '../../models/dog-entry.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
+import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
 import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-panel.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.component';
 import { findKennelDogIndex } from '../../utils/kennel-dog-id-match';
+import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 
 @Component({
   selector: 'app-waves-viewer',
   standalone: true,
   imports: [
     RouterLink, FormsModule,
-    VisNetworkComponent, DogSidePanelComponent,
+    GraphCanvasScaleComponent, VisNetworkComponent, DogSidePanelComponent,
     LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
 })
 export class WavesViewerComponent implements OnInit {
+  /** Skalierung des Dependency-Graphen (Wrapper = „neuer Canvas“). */
+  readonly graphCanvasScale = 0.5;
+
   private route = inject(ActivatedRoute);
   private kennelService = inject(KennelService);
   private dogService = inject(DogService);
@@ -33,6 +38,8 @@ export class WavesViewerComponent implements OnInit {
   waves = signal<Waves | null>(null);
   kennelConfig = signal<IKennelConfig | null>(null);
   selectedDog = signal<DogEntry | null>(null);
+  /** Vom Graph-Fächer: welche Section im Side-Panel aktiv starten soll. */
+  panelInitialSection = signal<DogPanelSectionId | null>(null);
   loading = signal(false);
   error = signal<string | null>(null);
   availableDogs = signal<DogInfo[]>([]);
@@ -182,7 +189,13 @@ export class WavesViewerComponent implements OnInit {
   }
 
   onDogSelected(dog: DogEntry) {
+    this.panelInitialSection.set(null);
     this.selectedDog.set(dog);
+  }
+
+  onDogSectionEdit(ev: { dog: DogEntry; section: DogPanelSectionId }) {
+    this.panelInitialSection.set(ev.section);
+    this.selectedDog.set(ev.dog);
   }
 
   onDogDeleted(dogId: string) {
@@ -241,6 +254,7 @@ export class WavesViewerComponent implements OnInit {
   }
 
   closeSidePanel() {
+    this.panelInitialSection.set(null);
     this.selectedDog.set(null);
   }
 

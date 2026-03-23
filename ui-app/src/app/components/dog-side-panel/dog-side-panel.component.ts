@@ -1,14 +1,24 @@
-import { Component, Input, Output, EventEmitter, signal, inject, ViewChild, OnChanges, computed } from '@angular/core';
+import {
+  Component, Input, Output, EventEmitter, signal, inject, ViewChild, OnChanges, SimpleChanges, computed,
+} from '@angular/core';
 import { DogEntry } from '../../models/dog-entry.model';
 import { DogDisplayComponent } from '../dog-display/dog-display.component';
 import { VersionTimelineComponent, TimelineVersion } from '../version-timeline/version-timeline.component';
 import { DogService, VersionEntry } from '../../services/dog.service';
 import { graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
+import {
+  DogPanelSectionId,
+  buildDogPanelSections,
+  DEFAULT_PANEL_SECTION,
+} from '../../utils/dog-panel-sections';
 import { DogSidePanelCodeArtifactComponent } from './artifacts/dog-side-panel-code-artifact.component';
 import { DogSidePanelVmTypedefArtifactComponent } from './artifacts/dog-side-panel-vm-typedef-artifact.component';
 import { DogSidePanelResultArtifactComponent } from './artifacts/dog-side-panel-result-artifact.component';
 import { DogSidePanelParentsArtifactComponent } from './artifacts/dog-side-panel-parents-artifact.component';
 import { DogSidePanelReadTrackingArtifactComponent } from './artifacts/dog-side-panel-read-tracking-artifact.component';
+
+export type { DogPanelSectionId } from '../../utils/dog-panel-sections';
+export { DEFAULT_PANEL_SECTION } from '../../utils/dog-panel-sections';
 
 @Component({
   selector: 'app-dog-side-panel',
@@ -23,7 +33,7 @@ import { DogSidePanelReadTrackingArtifactComponent } from './artifacts/dog-side-
     DogSidePanelReadTrackingArtifactComponent,
   ],
   templateUrl: './dog-side-panel.component.html',
-  styleUrls: ['./dog-side-panel.component.scss']
+  styleUrls: ['../../styles/dog-node-card.scss', './dog-side-panel.component.scss'],
 })
 export class DogSidePanelComponent implements OnChanges {
   @ViewChild(DogSidePanelCodeArtifactComponent) codeArtifact?: DogSidePanelCodeArtifactComponent;
@@ -34,12 +44,24 @@ export class DogSidePanelComponent implements OnChanges {
   @Input() kennelLeadDogIdsSlot: string | null = null;
   /** Wenn true: Lead-Strip oben; Save-Bar versteckt den doppelten Lead-Button. */
   @Input() kennelLeadControlsEnabled = false;
+  /** Vom Graph-Fächer gesetzt: diese Section sofort aktiv. */
+  @Input() initialSection: DogPanelSectionId | null = null;
   @Output() saved = new EventEmitter<void>();
   @Output() deleted = new EventEmitter<string>();
   @Output() movedToFirst = new EventEmitter<string>();
   @Output() closed = new EventEmitter<void>();
 
   private dogService = inject(DogService);
+
+  private readonly dogSignal = signal<DogEntry | null>(null);
+
+  /** Welche Edit-Section unten sichtbar ist (Kreis-Buttons am Dog-Hub). */
+  readonly activeSection = signal<DogPanelSectionId | null>(null);
+
+  readonly availableSections = computed(() => {
+    const d = this.dogSignal();
+    return d ? buildDogPanelSections(d) : [];
+  });
 
   parentsRequired = signal<string[]>([]);
   parentsOptional = signal<string[]>([]);
@@ -75,8 +97,9 @@ export class DogSidePanelComponent implements OnChanges {
     return match ? parseInt(match[1], 10) : 0;
   }
 
-  ngOnChanges() {
-    if (this.dog) {
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['dog'] && this.dog) {
+      this.dogSignal.set(this.dog);
       this.parentsRequired.set([...(this.dog.parentsRequired ?? [])]);
       this.parentsOptional.set([...(this.dog.parentsOptional ?? [])]);
       this.editorDog.set(this.dog);
@@ -84,7 +107,33 @@ export class DogSidePanelComponent implements OnChanges {
       if (this.isSerialized) {
         this.loadVersions();
       }
+      this.syncActiveSection();
     }
+    if (changes['initialSection'] && this.initialSection != null) {
+      const ids = this.availableSections().map((s) => s.id);
+      if (ids.includes(this.initialSection)) {
+        this.activeSection.set(this.initialSection);
+      }
+    }
+  }
+
+  private syncActiveSection(): void {
+    const ids = this.availableSections().map((s) => s.id);
+    const cur = this.activeSection();
+    if (cur === null || !ids.includes(cur)) {
+      const next = ids.includes(DEFAULT_PANEL_SECTION)
+        ? DEFAULT_PANEL_SECTION
+        : (ids[0] ?? null);
+      this.activeSection.set(next);
+    }
+  }
+
+  selectSection(id: DogPanelSectionId): void {
+    this.activeSection.set(id);
+  }
+
+  isSectionActive(id: DogPanelSectionId): boolean {
+    return this.activeSection() === id;
   }
 
   private loadVersions() {

@@ -6,15 +6,18 @@ import { EditSectionComponent } from '../../edit-section/edit-section.component'
   standalone: true,
   imports: [EditSectionComponent],
   template: `
-    @if (typeDef?.trim()) {
-      <app-edit-section title="VM-Kontext (Typen, Monaco)" [collapsed]="collapsed">
+    <app-edit-section title="VM-Kontext (Typen, Monaco)" [collapsed]="collapsed" [hideHeader]="hideHeader">
+      @if (typeDef?.trim()) {
         <pre class="typedef-pre">{{ typeDef }}</pre>
-      </app-edit-section>
-    }
+      } @else {
+        <div class="typedef-empty">Kein VM-Kontext</div>
+      }
+    </app-edit-section>
   `,
   styleUrls: ['./dog-side-panel-vm-typedef-artifact.component.scss'],
 })
 export class DogSidePanelVmTypedefArtifactComponent {
   @Input() typeDef: string | undefined;
   @Input() collapsed = true;
+  @Input() hideHeader = false;
 }

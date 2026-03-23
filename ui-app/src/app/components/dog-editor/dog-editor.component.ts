@@ -10,14 +10,13 @@ declare const monaco: any;
   selector: 'app-dog-editor',
   standalone: true,
   template: `
-    <div class="editor-wrapper">
+    <div
+      class="editor-wrapper dog-node-card"
+      [class.dog-node-card--serialized]="!!dog.codeTs">
       <div #editorContainer class="editor-container"></div>
     </div>
   `,
-  styles: [`
-    .editor-wrapper { display: flex; flex-direction: column; height: 100%; }
-    .editor-container { flex: 1; min-height: 300px; }
-  `]
+  styleUrls: ['../../styles/dog-node-card.scss', './dog-editor.component.scss'],
 })
 export class DogEditorComponent implements OnChanges, OnDestroy {
   @ViewChild('editorContainer', { static: true }) containerRef!: ElementRef;

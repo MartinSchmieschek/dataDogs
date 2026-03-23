@@ -1,23 +1,17 @@
 import { Component, Input } from '@angular/core';
+import { DogReadPropsDisplayComponent } from '../dog-read-props-display/dog-read-props-display.component';
 
 /**
- * Kompakte Karte für Property-Pfade, die entlang einer Kante (Pfeil) vom Parent zum selektierten Node gelesen werden.
+ * Kompakte Karte für Property-Pfade entlang einer Kante (Spur / Track zum Parent).
  */
 @Component({
   selector: 'app-edge-read-props-overlay',
   standalone: true,
+  imports: [DogReadPropsDisplayComponent],
   template: `
     <div class="edge-read-card">
-      <div class="edge-read-label">Liest von · {{ parentName }}</div>
-      @if (paths.length > 0) {
-        <ul class="edge-read-list">
-          @for (p of paths; track p) {
-            <li><code>{{ p }}</code></li>
-          }
-        </ul>
-      } @else {
-        <div class="edge-read-empty">Keine getrackten Property-Zugriffe</div>
-      }
+      <div class="edge-read-label">Spur · {{ parentName }}</div>
+      <app-dog-read-props-display [paths]="paths" />
     </div>
   `,
   styles: [`
@@ -36,24 +30,6 @@ import { Component, Input } from '@angular/core';
       letter-spacing: 0.04em;
       color: #8ab;
       margin-bottom: 4px;
-    }
-    .edge-read-list {
-      margin: 0;
-      padding: 0 0 0 14px;
-      font-size: 10px;
-      color: #c8d8e8;
-      line-height: 1.35;
-    }
-    code {
-      font-family: 'Courier New', monospace;
-      font-size: 10px;
-      color: #9df;
-      word-break: break-all;
-    }
-    .edge-read-empty {
-      font-size: 10px;
-      color: #666;
-      font-style: italic;
     }
   `]
 })

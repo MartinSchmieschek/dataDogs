@@ -1,0 +1,86 @@
+.read-props-glass {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(18, 22, 28, 0.55);
+  border: 1px solid rgba(90, 110, 140, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .read-props-glass {
+    background: rgba(22, 26, 32, 0.96);
+  }
+}
+
+.read-props-clip {
+  overflow: hidden;
+}
+
+.read-props-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.read-props-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #c8d8e8;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.read-props-item + .read-props-item {
+  margin-top: 4px;
+}
+
+.read-props-pile {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0.9;
+}
+
+.read-props-code {
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 11px;
+  color: #9df;
+}
+
+.read-props-empty {
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
+}
+
+.read-props-fade {
+  pointer-events: none;
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 22px;
+  height: 28px;
+  background: linear-gradient(
+    to bottom,
+    rgba(18, 22, 28, 0),
+    rgba(18, 22, 28, 0.92)
+  );
+}
+
+.read-props-ellipsis {
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(200, 216, 232, 0.85);
+  letter-spacing: 0.05em;
+}

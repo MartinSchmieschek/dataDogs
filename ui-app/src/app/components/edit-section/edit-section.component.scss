@@ -1,0 +1,44 @@
+.edit-section {
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.edit-section--no-header .section-body {
+  border-top: none;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.2);
+  &:hover {
+    background: rgba(0, 0, 0, 0.35);
+  }
+}
+
+.toggle {
+  font-size: 10px;
+  color: #666;
+  width: 12px;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-body {
+  padding: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.section-body.hidden {
+  display: none;
+}

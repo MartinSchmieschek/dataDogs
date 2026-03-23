@@ -4,9 +4,12 @@ import { DogEntry, Waves } from '../../models/dog-entry.model';
 export const GRAPH_NODE_W = 160;
 export const GRAPH_NODE_H = 100;
 
-const COL_GAP = 72;
-const ROW_GAP = 20;
-const PADDING = 48;
+/** Horizontaler Abstand zwischen Wellen-Spalten */
+const COL_GAP = 120;
+/** Vertikaler Abstand zwischen Knoten in derselben Welle */
+const ROW_GAP = 48;
+/** Außenrand um den Graphen */
+const PADDING = 56;
 
 export interface PlacedNode {
   id: string;

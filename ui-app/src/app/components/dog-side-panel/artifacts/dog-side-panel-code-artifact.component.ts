@@ -9,7 +9,7 @@ import { EditSectionComponent } from '../../edit-section/edit-section.component'
   imports: [EditSectionComponent, DogEditorComponent],
   template: `
     @if (dog?.codeTs) {
-      <app-edit-section title="Code">
+      <app-edit-section title="Code" [hideHeader]="hideHeader">
         <app-dog-editor [dog]="dog!" />
       </app-edit-section>
     }
@@ -17,6 +17,7 @@ import { EditSectionComponent } from '../../edit-section/edit-section.component'
 })
 export class DogSidePanelCodeArtifactComponent {
   @Input() dog: DogEntry | null = null;
+  @Input() hideHeader = false;
 
   @ViewChild(DogEditorComponent) private dogEditor?: DogEditorComponent;
 

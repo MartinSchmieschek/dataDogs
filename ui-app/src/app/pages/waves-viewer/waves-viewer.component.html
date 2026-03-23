@@ -111,13 +111,17 @@
       }
 
       @if (waves()) {
-        <app-vis-network
-          [waves]="waves()!"
-          [selectedDog]="selectedDog()"
-          [flatDogs]="flatDogList()"
-          [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
-          (dogSelected)="onDogSelected($event)"
-          (dogDeleted)="onDogDeleted($event)" />
+        <app-graph-canvas-scale [scale]="graphCanvasScale">
+          <app-vis-network
+            [waves]="waves()!"
+            [selectedDog]="selectedDog()"
+            [flatDogs]="flatDogList()"
+            [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
+            [canvasScale]="graphCanvasScale"
+            (dogSelected)="onDogSelected($event)"
+            (dogSectionEdit)="onDogSectionEdit($event)"
+            (dogDeleted)="onDogDeleted($event)" />
+        </app-graph-canvas-scale>
       } @else if (!loading()) {
         <div class="empty-network">
           <p>Keine Dogs im Kennel.</p>
@@ -130,6 +134,7 @@
       <div class="side-panel-pane">
         <app-dog-side-panel
           [dog]="selectedDog()!"
+          [initialSection]="panelInitialSection()"
           [allDogs]="flatDogList()"
           [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
           [kennelLeadControlsEnabled]="!!(kennelConfig()?.dogIds?.length)"

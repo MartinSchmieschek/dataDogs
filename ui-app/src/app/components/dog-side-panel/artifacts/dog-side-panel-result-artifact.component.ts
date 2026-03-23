@@ -18,26 +18,30 @@ declare const monaco: any;
   standalone: true,
   imports: [EditSectionComponent],
   template: `
-    <app-edit-section title="Result">
+    <app-edit-section title="Result" [hideHeader]="hideHeader">
       @if (resultIsHtml) {
         <div class="result-toolbar">
           <button type="button" class="btn-view-mode" (click)="cycleResultView()">{{ resultViewLabel() }}</button>
         </div>
       }
       @if (showHtmlPreview()) {
-        <iframe class="result-html-frame"
+        <iframe class="result-html-frame dog-node-card"
           [srcdoc]="resultHtmlSrc"
           sandbox="allow-scripts"
           referrerpolicy="no-referrer"></iframe>
       } @else {
-        <div #monacoHost class="result-monaco-host"></div>
+        <div #monacoHost class="result-monaco-host dog-node-card"></div>
       }
     </app-edit-section>
   `,
-  styleUrls: ['./dog-side-panel-result-artifact.component.scss'],
+  styleUrls: [
+    '../../../styles/dog-node-card.scss',
+    './dog-side-panel-result-artifact.component.scss',
+  ],
 })
 export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() result: unknown;
+  @Input() hideHeader = false;
 
   @ViewChild('monacoHost') monacoHost?: ElementRef<HTMLDivElement>;
 

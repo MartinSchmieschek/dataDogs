@@ -59,24 +59,64 @@
   }
 
   <div class="sections-scroll">
-    <app-dog-side-panel-code-artifact [dog]="editorDog()" />
-    <app-dog-side-panel-vm-typedef-artifact [typeDef]="dog.vmContextTypeDef" />
-    <app-dog-side-panel-result-artifact [result]="dog.result" />
-    @if (isSerialized) {
-      <app-dog-side-panel-parents-artifact
-        [availableParents]="availableParents"
-        [requiredIds]="parentsRequired()"
-        [optionalIds]="parentsOptional()"
-        (toggleRequired)="toggleParentRequired($event)"
-        (toggleOptional)="toggleParentOptional($event)" />
-    }
-    <app-dog-side-panel-read-tracking-artifact
-      title="Liest von"
-      mode="readFrom"
-      [entries]="dog.readFrom ?? []" />
-    <app-dog-side-panel-read-tracking-artifact
-      title="Gelesen von"
-      mode="readBy"
-      [entries]="dog.readBy ?? []" />
+    <div class="section-tabs" role="tablist" aria-label="Bereiche">
+      @for (s of availableSections(); track s.id) {
+        <button
+          type="button"
+          class="section-tab"
+          [class.section-tab--active]="isSectionActive(s.id)"
+          (click)="selectSection(s.id)"
+          [attr.aria-label]="s.label"
+          [attr.title]="s.label">
+          <span class="section-tab-icon" aria-hidden="true">{{ s.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="edit-view">
+      @if (dog.codeTs) {
+        <div
+          class="panel-section-pane"
+          [class.panel-section-pane--offscreen]="!isSectionActive('code')">
+          <app-dog-side-panel-code-artifact [dog]="editorDog()" [hideHeader]="true" />
+        </div>
+      }
+      <div
+        class="panel-section-pane"
+        [class.panel-section-pane--offscreen]="!isSectionActive('result')">
+        <app-dog-side-panel-result-artifact [result]="dog.result" [hideHeader]="true" />
+      </div>
+      @if (activeSection() === 'vm') {
+        <app-dog-side-panel-vm-typedef-artifact
+          [typeDef]="dog.vmContextTypeDef"
+          [collapsed]="false"
+          [hideHeader]="true" />
+      }
+      @if (isSerialized && activeSection() === 'parents') {
+        <app-dog-side-panel-parents-artifact
+          [availableParents]="availableParents"
+          [requiredIds]="parentsRequired()"
+          [optionalIds]="parentsOptional()"
+          [hideHeader]="true"
+          (toggleRequired)="toggleParentRequired($event)"
+          (toggleOptional)="toggleParentOptional($event)" />
+      }
+      @if (activeSection() === 'readFrom') {
+        <app-dog-side-panel-read-tracking-artifact
+          title="Spur"
+          mode="readFrom"
+          [entries]="dog.readFrom ?? []"
+          [collapsed]="false"
+          [hideHeader]="true" />
+      }
+      @if (activeSection() === 'readBy') {
+        <app-dog-side-panel-read-tracking-artifact
+          title="Folgt"
+          mode="readBy"
+          [entries]="dog.readBy ?? []"
+          [collapsed]="false"
+          [hideHeader]="true" />
+      }
+    </div>
   </div>
 </div>

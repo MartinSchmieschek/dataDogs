@@ -29,6 +29,7 @@ import {
 } from './graph-layout';
 
 import { graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
+import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 
 
 
@@ -106,50 +107,6 @@ export interface EdgeReadOverlayVM {
 
             aria-hidden="true">
 
-            <defs>
-
-              <marker
-
-                [attr.id]="svgMarkerPrefix + '-req'"
-
-                markerWidth="10"
-
-                markerHeight="7"
-
-                refX="10"
-
-                refY="3.5"
-
-                orient="auto"
-
-                markerUnits="strokeWidth">
-
-                <polygon points="0 0, 10 3.5, 0 7" fill="#cc0000" />
-
-              </marker>
-
-              <marker
-
-                [attr.id]="svgMarkerPrefix + '-opt'"
-
-                markerWidth="10"
-
-                markerHeight="7"
-
-                refX="10"
-
-                refY="3.5"
-
-                orient="auto"
-
-                markerUnits="strokeWidth">
-
-                <polygon points="0 0, 10 3.5, 0 7" fill="#0066cc" />
-
-              </marker>
-
-            </defs>
-
             @for (e of vm.renderEdges; track e.key) {
 
               <line
@@ -167,8 +124,6 @@ export interface EdgeReadOverlayVM {
                 [attr.stroke-width]="e.optional ? 1.5 : 2"
 
                 [attr.stroke-dasharray]="e.optional ? '7 5' : null"
-
-                [attr.marker-end]="markerEndUrl(e.optional)"
 
                 stroke-linecap="round"
 
@@ -202,6 +157,8 @@ export interface EdgeReadOverlayVM {
 
               <app-graph-dog-node
 
+                [dog]="n.dog"
+
                 [label]="n.dog.name"
 
                 [icon]="n.dog.icon"
@@ -212,7 +169,11 @@ export interface EdgeReadOverlayVM {
 
                 [isSerialized]="!!n.dog.codeTs"
 
-                [isLead]="isNodeLead(n.id)" />
+                [isLead]="isNodeLead(n.id)"
+
+                [showSectionFan]="isNodeSelected(n.id)"
+
+                (sectionEditRequested)="onDogSectionFan($event, n.dog)" />
 
             </div>
 
@@ -306,6 +267,8 @@ export interface EdgeReadOverlayVM {
 
       touch-action: none;
 
+      overflow: visible;
+
     }
 
     .graph-node-slot.dragging { cursor: grabbing; }
@@ -340,18 +303,22 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   @Output() dogSelected = new EventEmitter<DogEntry>();
 
+  /** Klick auf roten Fächer-Button am Knoten: Panel mit gewählter Section öffnen. */
+  @Output() dogSectionEdit = new EventEmitter<{ dog: DogEntry; section: DogPanelSectionId }>();
+
   @Output() dogDeleted = new EventEmitter<string>();
 
   /** Erster Eintrag in kennel.dogIds — für Lead-Stern am Knoten */
   @Input() kennelLeadDogIdsSlot: string | null = null;
+
+  /** Zusammen mit app-graph-canvas-scale (z. B. 0.5): Pointer-Deltas mit 1/scale korrigieren. */
+  @Input() canvasScale = 1;
 
 
 
   readonly nodeW = GRAPH_NODE_W;
 
   readonly nodeH = GRAPH_NODE_H;
-
-  readonly svgMarkerPrefix = `arr-${Math.random().toString(36).slice(2, 11)}`;
 
 
 
@@ -545,12 +512,9 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 
 
-  markerEndUrl(optional: boolean): string {
-
-    const s = optional ? 'opt' : 'req';
-
-    return `url(#${this.svgMarkerPrefix}-${s})`;
-
+  private canvasScaleInv(): number {
+    const s = this.canvasScale;
+    return s > 0 ? 1 / s : 1;
   }
 
 
@@ -607,9 +571,11 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     const z = this.zoom();
 
-    const dx = (e.clientX - this.nodeDragLast.cx) / z;
+    const inv = this.canvasScaleInv();
 
-    const dy = (e.clientY - this.nodeDragLast.cy) / z;
+    const dx = ((e.clientX - this.nodeDragLast.cx) * inv) / z;
+
+    const dy = ((e.clientY - this.nodeDragLast.cy) * inv) / z;
 
     if (Math.hypot(dx * z, dy * z) > 4) {
 
@@ -671,7 +637,9 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   }
 
-
+  onDogSectionFan(section: DogPanelSectionId, dog: DogEntry): void {
+    this.dogSectionEdit.emit({ dog, section });
+  }
 
   onViewportPointerDown(e: PointerEvent) {
 
@@ -711,9 +679,11 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     const g = this.panGrab;
 
-    this.panX.set(g.px + e.clientX - g.sx);
+    const inv = this.canvasScaleInv();
 
-    this.panY.set(g.py + e.clientY - g.sy);
+    this.panX.set(g.px + (e.clientX - g.sx) * inv);
+
+    this.panY.set(g.py + (e.clientY - g.sy) * inv);
 
   }
 
