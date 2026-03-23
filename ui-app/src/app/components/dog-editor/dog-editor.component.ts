@@ -77,32 +77,36 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
   private initOrUpdateEditor() {
     if (typeof monaco === 'undefined') return;
 
-    const isSerialized = !!this.dog.codeTs;
-    const content = isSerialized
-      ? this.wrapCode(this.dog.codeTs!)
-      : (JSON.stringify(this.dog.result, null, 2) ?? '// no result');
-    const language = isSerialized ? 'typescript' : 'json';
+    if (!this.dog.codeTs) {
+      this.editor?.dispose();
+      this.editor = null;
+      this.extraLib?.dispose();
+      this.extraLib = null;
+      return;
+    }
+
+    const content = this.wrapCode(this.dog.codeTs);
 
     if (this.editor) {
       const model = this.editor.getModel();
       if (model) {
-        monaco.editor.setModelLanguage(model, language);
+        monaco.editor.setModelLanguage(model, 'typescript');
         model.setValue(content);
       }
     } else {
       this.editor = monaco.editor.create(this.containerRef.nativeElement, {
         value: content,
-        language,
+        language: 'typescript',
         theme: 'vs-dark',
         minimap: { enabled: false },
         automaticLayout: true,
         scrollBeyondLastLine: false,
         fontSize: 13,
-        readOnly: !isSerialized,
+        readOnly: false,
       });
     }
 
-    this.editor.updateOptions({ readOnly: !isSerialized });
+    this.editor.updateOptions({ readOnly: false });
 
     this.extraLib?.dispose();
     if (this.dog.vmContextTypeDef) {
