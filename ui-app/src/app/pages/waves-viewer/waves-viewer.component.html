@@ -61,7 +61,16 @@
   }
 
   @if (error()) {
-    <div class="error-bar">{{ error() }}</div>
+    <div
+      class="error-bar comfort-error-trigger"
+      role="button"
+      tabindex="0"
+      title="Klick: kurzes Video"
+      (click)="onComfortVideoClick()"
+      (keydown.enter)="onComfortVideoClick()"
+      (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
+      {{ error() }}
+    </div>
   }
 
   @if (kennelConfig(); as kCfg) {
@@ -111,17 +120,20 @@
       }
 
       @if (waves()) {
-        <app-graph-canvas-scale [scale]="graphCanvasScale">
-          <app-vis-network
-            [waves]="waves()!"
-            [selectedDog]="selectedDog()"
-            [flatDogs]="flatDogList()"
-            [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
-            [canvasScale]="graphCanvasScale"
-            (dogSelected)="onDogSelected($event)"
-            (dogSectionEdit)="onDogSectionEdit($event)"
-            (dogDeleted)="onDogDeleted($event)" />
-        </app-graph-canvas-scale>
+        <div class="network-graph-stack">
+          <app-void-mythic-backdrop />
+          <app-graph-canvas-scale class="network-graph-scale" [scale]="graphCanvasScale">
+            <app-vis-network
+              [waves]="waves()!"
+              [selectedDog]="selectedDog()"
+              [flatDogs]="flatDogList()"
+              [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
+              [canvasScale]="graphCanvasScale"
+              (dogSelected)="onDogSelected($event)"
+              (dogSectionEdit)="onDogSectionEdit($event)"
+              (dogDeleted)="onDogDeleted($event)" />
+          </app-graph-canvas-scale>
+        </div>
       } @else if (!loading()) {
         <div class="empty-network">
           <p>Keine Dogs im Kennel.</p>

@@ -1,4 +1,13 @@
 import { createPact } from "datadogs";
+import type { LandmarksOverpassFacet } from "./overpassLandmarks";
+
+export {
+    DEFAULT_LANDMARKS_FACETS,
+    LandmarksOverpassFacet,
+    /** @deprecated */
+    LandmarksPreset,
+    OsmLandmarkElementType,
+} from "./overpassLandmarks";
 
 /**
  * Pflicht-Query für OsmLandmarksRetriever (QueryRetriever/Mimic: lowercase-Keys).
@@ -8,7 +17,8 @@ export interface OsmLandmarksQueryInput {
     lat: string;
     lng: string;
     radius?: string;
-    preset?: string;
+    /** Welche OSM-Facetten abfragen; weglassen = Tourism + Historic (siehe DEFAULT_LANDMARKS_FACETS). */
+    preset?: LandmarksOverpassFacet[];
 }
 
 /** @deprecated Alias — nutze OsmLandmarksQueryInput */

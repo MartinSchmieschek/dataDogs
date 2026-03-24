@@ -8,19 +8,21 @@ import { DogEntry, Waves } from '../../models/dog-entry.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
+import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
 import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-panel.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.component';
 import { findKennelDogIndex } from '../../utils/kennel-dog-id-match';
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
+import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 
 @Component({
   selector: 'app-waves-viewer',
   standalone: true,
   imports: [
     RouterLink, FormsModule,
-    GraphCanvasScaleComponent, VisNetworkComponent, DogSidePanelComponent,
+    GraphCanvasScaleComponent, VoidMythicBackdropComponent, VisNetworkComponent, DogSidePanelComponent,
     LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent
   ],
   templateUrl: './waves-viewer.component.html',
@@ -33,6 +35,7 @@ export class WavesViewerComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private kennelService = inject(KennelService);
   private dogService = inject(DogService);
+  private errorVideoPopup = inject(ErrorVideoPopupService);
 
   kennelId = '';
   waves = signal<Waves | null>(null);
@@ -65,6 +68,10 @@ export class WavesViewerComponent implements OnInit {
     this.kennelId = this.route.snapshot.params['id'];
     this.loadWaves();
     this.loadAvailableDogs();
+  }
+
+  onComfortVideoClick(): void {
+    this.errorVideoPopup.openPopup(this.error());
   }
 
   loadWaves() {

@@ -1,3 +1,10 @@
+/*
+ * Layering: Hintergründe/Dekor liegen in eigenen Komponenten mit
+ * `position: absolute; inset: 0; z-index: 0` in einem relativ positionierten Stack;
+ * interaktive Inhalte darüber mit `z-index: 1+`. So bestimmt das Layout die Fläche,
+ * nicht der Viewport allein.
+ */
+
 * {
   box-sizing: border-box;
 }
@@ -28,4 +35,13 @@ a {
   background: #333;
   border-radius: 4px;
   &:hover { background: #555; }
+}
+
+/* Klick auf Fehlermeldungen öffnet Comfort-Video-Popup */
+.comfort-error-trigger {
+  cursor: pointer;
+  user-select: none;
+}
+.comfort-error-trigger:hover {
+  filter: brightness(1.06);
 }

@@ -1,7 +1,8 @@
-import { SerializedDog, IKennelConfig, KennelRun } from 'datadogs';
+import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun } from 'datadogs';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
+import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
 
 export interface IKennelRunDeps {
     kennelsController: KennelController;
@@ -39,6 +40,10 @@ export class KennelRunHandler {
                 const config = typeof sd.serializedDogConfig === 'string'
                     ? JSON.parse(sd.serializedDogConfig)
                     : sd.serializedDogConfig;
+                const imitates = (config as IMimicDogConfig).imitates;
+                if (typeof imitates === 'string' && imitates.length > 0) {
+                    return new MimicDog(config as IMimicDogConfig, sd.id);
+                }
                 return new SerializedDog(config, sd.id);
             });
         };
@@ -54,7 +59,8 @@ export class KennelRunHandler {
             this.deps.baseDogsMap,
             this.createSerializedDogFactory(),
             query || {},
-            body
+            body,
+            kennelVmGlobalsSuppliers
         );
         const season = await kennelRun.run();
         return convertSeasonToWaves(season);

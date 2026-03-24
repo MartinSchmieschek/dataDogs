@@ -1,5 +1,5 @@
 import { IHuntingDog as IDog } from './core/entities/IHuntingDog';
-import { SerializedDog } from './dogs/SerializedDog';
+import { SerializedDog, type SerializedDogVmGlobalsSupplier } from './dogs/SerializedDog';
 import { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
@@ -36,6 +36,7 @@ export class KennelRun {
     private serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>>;
     private queryData?: Record<string, string>;
     private bodyData?: any;
+    private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
 
     /**
      * @param configOrBaseDogs - Optional: Entweder eine IKennelConfig oder eine Liste von Basis-Dogs (wird aktuell nicht verwendet)
@@ -44,18 +45,21 @@ export class KennelRun {
      * @param serializedDogFactory - Factory-Funktion, die SerializedDogs aus IDs erstellt. Bekommt ein Array von IDs und gibt ein Array von SerializedDogs zurück.
      * @param queryData - Optional: Query-Parameter für QueryRetriever
      * @param bodyData - Optional: Body-Daten für BodyRetriever
+     * @param vmGlobalsSuppliers - App-spezifische VM-Globals (z. B. Pact-Enums); der Core kennt keine konkreten Typen.
      */
     constructor(
         configOrBaseDogs?: IKennelConfig | Array<IDog<unknown>>, 
         baseDogClasses: Map<string, new () => IDog<unknown>> = new Map(),
         serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => [],
         queryData?: Record<string, string>,
-        bodyData?: any
+        bodyData?: any,
+        vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = []
     ) {
         this.baseDogClasses = baseDogClasses;
         this.serializedDogFactory = serializedDogFactory;
         this.queryData = queryData;
         this.bodyData = bodyData;
+        this.vmGlobalsSuppliers = vmGlobalsSuppliers;
         
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Es ist eine IKennelConfig
@@ -136,6 +140,14 @@ export class KennelRun {
         });
 
         await this.autoMimic(kennel);
+
+        if (this.vmGlobalsSuppliers.length > 0) {
+            kennel.forEach(dog => {
+                if (dog instanceof SerializedDog) {
+                    (dog as SerializedDog<unknown>).setVmGlobalsSuppliers(this.vmGlobalsSuppliers);
+                }
+            });
+        }
 
         const baseDogsCount = baseDogIds.length;
         const serializedDogsCount = kennel.length - baseDogsCount;

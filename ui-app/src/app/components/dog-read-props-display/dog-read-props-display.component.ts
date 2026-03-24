@@ -1,11 +1,11 @@
 import {
   Component, Input, ElementRef, ViewChild, OnChanges, AfterViewInit, OnDestroy, SimpleChanges, signal,
 } from '@angular/core';
-import { ReadTrackingEntry } from '../../models/dog-entry.model';
 import { GRAPH_NODE_H } from '../vis-network/graph-layout';
 
-export type DogReadPropsDisplayMode = 'readFrom' | 'readBy';
-
+/**
+ * Kompakte Liste von Property-Pfaden (z. B. „Liest von“ entlang einer Kante im Graph).
+ */
 @Component({
   selector: 'app-dog-read-props-display',
   standalone: true,
@@ -15,32 +15,17 @@ export type DogReadPropsDisplayMode = 'readFrom' | 'readBy';
         #clipBox
         class="read-props-clip"
         [style.max-height.px]="maxHeightPx">
-        @if (usePaths()) {
-          @if ((paths ?? []).length === 0) {
-            <span class="read-props-empty">Keine Einträge</span>
-          } @else {
-            <ul class="read-props-list">
-              @for (p of paths ?? []; track $index) {
-                <li class="read-props-item">
-                  <span class="read-props-pile" aria-hidden="true">💩</span>
-                  <code class="read-props-code">{{ p }}</code>
-                </li>
-              }
-            </ul>
-          }
+        @if (paths.length === 0) {
+          <span class="read-props-empty">Keine Einträge</span>
         } @else {
-          @if (entries.length === 0) {
-            <span class="read-props-empty">Keine Einträge</span>
-          } @else {
-            <ul class="read-props-list">
-              @for (entry of entries; track $index) {
-                <li class="read-props-item">
-                  <span class="read-props-pile" aria-hidden="true">💩</span>
-                  <code class="read-props-code">{{ format(entry) }}</code>
-                </li>
-              }
-            </ul>
-          }
+          <ul class="read-props-list">
+            @for (p of paths; track $index) {
+              <li class="read-props-item">
+                <span class="read-props-paw" aria-hidden="true">🐾</span>
+                <code class="read-props-code">{{ p }}</code>
+              </li>
+            }
+          </ul>
         }
       </div>
       @if (overflowing()) {
@@ -52,10 +37,7 @@ export type DogReadPropsDisplayMode = 'readFrom' | 'readBy';
   styleUrls: ['./dog-read-props-display.component.scss'],
 })
 export class DogReadPropsDisplayComponent implements OnChanges, AfterViewInit, OnDestroy {
-  @Input() mode: DogReadPropsDisplayMode = 'readFrom';
-  @Input() entries: ReadTrackingEntry[] = [];
-  /** Wenn nicht `null`, werden nur diese Pfade angezeigt (z. B. Graph-Overlay). */
-  @Input() paths: string[] | null = null;
+  @Input() paths: string[] = [];
 
   @ViewChild('clipBox') clipBox?: ElementRef<HTMLDivElement>;
 
@@ -65,17 +47,6 @@ export class DogReadPropsDisplayComponent implements OnChanges, AfterViewInit, O
   readonly overflowing = signal(false);
 
   private ro?: ResizeObserver;
-
-  usePaths(): boolean {
-    return this.paths != null;
-  }
-
-  format(entry: ReadTrackingEntry): string {
-    if (this.mode === 'readFrom') {
-      return `${entry.sourceInstanceName}.${entry.propertyPath}`;
-    }
-    return `${entry.readerInstanceName} → .${entry.propertyPath}`;
-  }
 
   ngAfterViewInit(): void {
     const el = this.clipBox?.nativeElement;

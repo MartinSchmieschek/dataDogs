@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "prisma:sync": "prisma generate && prisma db push",
-    "start": "npm run prisma:sync && nodemon main.ts",
     "dev": "npm run prisma:sync && concurrently -n backend,ui -c blue,green \"ts-node main.ts\" \"npm run ui\"",
     "ui": "cd ui-app && npx ng serve --proxy-config proxy.conf.json --open",
     "ui:build": "cd ui-app && npx ng build",

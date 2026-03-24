@@ -15,7 +15,7 @@ import { DogSidePanelCodeArtifactComponent } from './artifacts/dog-side-panel-co
 import { DogSidePanelVmTypedefArtifactComponent } from './artifacts/dog-side-panel-vm-typedef-artifact.component';
 import { DogSidePanelResultArtifactComponent } from './artifacts/dog-side-panel-result-artifact.component';
 import { DogSidePanelParentsArtifactComponent } from './artifacts/dog-side-panel-parents-artifact.component';
-import { DogSidePanelReadTrackingArtifactComponent } from './artifacts/dog-side-panel-read-tracking-artifact.component';
+import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 
 export type { DogPanelSectionId } from '../../utils/dog-panel-sections';
 export { DEFAULT_PANEL_SECTION } from '../../utils/dog-panel-sections';
@@ -30,12 +30,13 @@ export { DEFAULT_PANEL_SECTION } from '../../utils/dog-panel-sections';
     DogSidePanelVmTypedefArtifactComponent,
     DogSidePanelResultArtifactComponent,
     DogSidePanelParentsArtifactComponent,
-    DogSidePanelReadTrackingArtifactComponent,
   ],
   templateUrl: './dog-side-panel.component.html',
   styleUrls: ['../../styles/dog-node-card.scss', './dog-side-panel.component.scss'],
 })
 export class DogSidePanelComponent implements OnChanges {
+  private errorVideoPopup = inject(ErrorVideoPopupService);
+
   @ViewChild(DogSidePanelCodeArtifactComponent) codeArtifact?: DogSidePanelCodeArtifactComponent;
 
   @Input() dog!: DogEntry;
@@ -95,6 +96,10 @@ export class DogSidePanelComponent implements OnChanges {
   get currentVersion(): number {
     const match = this.dog?.id?.match(/-v(\d+)$/);
     return match ? parseInt(match[1], 10) : 0;
+  }
+
+  onComfortVideoClick(message: string): void {
+    this.errorVideoPopup.openPopup(message);
   }
 
   ngOnChanges(changes: SimpleChanges) {

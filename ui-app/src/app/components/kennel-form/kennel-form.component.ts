@@ -1,4 +1,5 @@
-import { Component, EventEmitter, Output } from '@angular/core';
+import { Component, EventEmitter, Output, inject } from '@angular/core';
+import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { FormsModule } from '@angular/forms';
 
 export interface KennelFormData {
@@ -28,7 +29,14 @@ export interface KennelFormData {
           <textarea id="kennel-desc" [(ngModel)]="formData.description" name="description" placeholder="Optional" rows="3"></textarea>
         </div>
         @if (error) {
-          <div class="error">{{ error }}</div>
+          <div
+            class="error comfort-error-trigger"
+            role="button"
+            tabindex="0"
+            title="Klick: kurzes Video"
+            (click)="onComfortVideoClick()"
+            (keydown.enter)="onComfortVideoClick()"
+            (keydown.space)="$event.preventDefault(); onComfortVideoClick()">{{ error }}</div>
         }
         <div class="actions">
           <button type="submit" class="btn-primary">Erstellen</button>
@@ -88,11 +96,17 @@ export interface KennelFormData {
   `]
 })
 export class KennelFormComponent {
+  private errorVideoPopup = inject(ErrorVideoPopupService);
+
   @Output() submitted = new EventEmitter<KennelFormData>();
   @Output() cancelled = new EventEmitter<void>();
 
   formData: KennelFormData = { id: '', name: '', description: '' };
   error = '';
+
+  onComfortVideoClick(): void {
+    this.errorVideoPopup.openPopup(this.error);
+  }
 
   onSubmit() {
     if (!this.formData.id.trim()) {

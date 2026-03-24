@@ -3,7 +3,7 @@ import { NearbyLandmarksPact, type OsmLandmarksQueryInput } from "./pacts";
 import {
     clampRadiusM,
     fetchNearbyLandmarks,
-    parseLandmarksPreset,
+    parseLandmarkFacets,
     type OsmLandmarksResult,
 } from "./overpassLandmarks";
 import { getBaseDogIcon } from "../baseDogIcons";
@@ -33,12 +33,12 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> {
         const lat = parseFloat(query.lat);
         const lng = parseFloat(query.lng);
         const radiusM = clampRadiusM(parseFloat(query.radius ?? ""));
-        const preset = parseLandmarksPreset(query.preset);
+        const facets = parseLandmarkFacets(query.preset);
 
         if (Number.isNaN(lat) || Number.isNaN(lng)) {
             throw new Error("OsmLandmarksRetriever: Missing required query params (lat, lng)");
         }
 
-        return fetchNearbyLandmarks(lat, lng, radiusM, preset);
+        return fetchNearbyLandmarks(lat, lng, radiusM, facets);
     };
 }

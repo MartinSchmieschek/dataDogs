@@ -373,6 +373,21 @@
   }
 }
 
+/* Hintergrund-Layer (mythische Glyphe) unter transparentem Graph — Layout per Stack, nicht Viewport */
+.network-graph-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.network-graph-scale {
+  position: relative;
+  z-index: 1;
+}
+
 .drop-overlay {
   position: absolute;
   inset: 0;

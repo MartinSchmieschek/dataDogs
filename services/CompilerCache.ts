@@ -182,6 +182,55 @@ export class CompilerCache {
         return `${aliasText}\ntype ${name}Return = ${name};`;
     }
 
+    /** Aus Property-Typ-AST (z. B. `preset?: LandmarksOverpassFacet[]`) Enum-Namen sammeln. */
+    private static collectEnumNamesFromTypeNode(node: ts.TypeNode | undefined, out: Set<string>): void {
+        if (!node) return;
+        if (ts.isTypeReferenceNode(node)) {
+            const tn = node.typeName;
+            if (ts.isIdentifier(tn)) {
+                out.add(tn.text);
+            } else if (ts.isQualifiedName(tn)) {
+                out.add(tn.right.text);
+            }
+            return;
+        }
+        if (ts.isUnionTypeNode(node)) {
+            for (const t of node.types) {
+                this.collectEnumNamesFromTypeNode(t, out);
+            }
+            return;
+        }
+        if (ts.isArrayTypeNode(node)) {
+            this.collectEnumNamesFromTypeNode(node.elementType, out);
+        }
+    }
+
+    private static collectReferencedEnumNamesFromInterface(iface: ts.InterfaceDeclaration, out: Set<string>): void {
+        for (const member of iface.members) {
+            if (ts.isPropertySignature(member) && member.type) {
+                this.collectEnumNamesFromTypeNode(member.type, out);
+            }
+        }
+    }
+
+    private static emitReferencedEnumsForInterface(
+        program: ts.Program,
+        iface: ts.InterfaceDeclaration
+    ): string {
+        const names = new Set<string>();
+        this.collectReferencedEnumNamesFromInterface(iface, names);
+        const blocks: string[] = [];
+        for (const en of [...names].sort()) {
+            const d = this.findNamedTypeDeclaration(program, en);
+            if (d && ts.isEnumDeclaration(d)) {
+                blocks.push(
+                    this.pactPrinter.printNode(ts.EmitHint.Unspecified, d, d.getSourceFile()).trim()
+                );
+            }
+        }
+        return blocks.join('\n\n');
+    }
+
     private static buildPactReturnTypeDef(
         symbolName: string,
         program: ts.Program,
@@ -194,8 +243,10 @@ export class CompilerCache {
             );
         }
         if (ts.isInterfaceDeclaration(decl)) {
+            const enumBlock = this.emitReferencedEnumsForInterface(program, decl);
             const iface = this.interfaceNodeToString(checker, decl);
-            return `${iface}\ntype ${symbolName}Return = ${symbolName};`;
+            const prefix = enumBlock ? `${enumBlock}\n\n` : '';
+            return `${prefix}${iface}\ntype ${symbolName}Return = ${symbolName};`;
         }
         if (ts.isEnumDeclaration(decl)) {
             return this.enumNodeToPactDef(decl);
@@ -236,12 +287,24 @@ export class CompilerCache {
             if (ts.isPropertySignature(member) && member.name) {
                 const memberName = (member.name as ts.Identifier).text;
                 const optional = member.questionToken ? '?' : '';
-                const symbol = checker.getSymbolAtLocation(member.name);
-                if (symbol) {
-                    const memberType = checker.getTypeOfSymbol(symbol);
-                    const typeStr = checker.typeToString(
-                        memberType, node, ts.TypeFormatFlags.NoTruncation
+                let typeStr: string | undefined;
+                if (member.type) {
+                    const t = checker.getTypeAtLocation(member.type);
+                    typeStr = checker.typeToString(
+                        t,
+                        member.type,
+                        ts.TypeFormatFlags.NoTruncation
                     );
+                } else {
+                    const symbol = checker.getSymbolAtLocation(member.name);
+                    if (symbol) {
+                        const memberType = checker.getTypeOfSymbol(symbol);
+                        typeStr = checker.typeToString(
+                            memberType, node, ts.TypeFormatFlags.NoTruncation
+                        );
+                    }
+                }
+                if (typeStr !== undefined) {
                     members.push(`  ${memberName}${optional}: ${typeStr};`);
                 }
             } else if (ts.isMethodSignature(member) && member.name) {

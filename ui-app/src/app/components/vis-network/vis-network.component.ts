@@ -8,7 +8,7 @@ import {
 
 } from '@angular/core';
 
-import { DogEntry, Waves } from '../../models/dog-entry.model';
+import { DogEntry, ReadTrackingEntry, Waves } from '../../models/dog-entry.model';
 
 import { EdgeReadPropsOverlayComponent } from '../edge-read-props-overlay/edge-read-props-overlay.component';
 
@@ -17,8 +17,6 @@ import { GraphDogNodeComponent } from '../graph-dog-node/graph-dog-node.componen
 import {
 
   buildGraphViewModel,
-
-  cleanParentId,
 
   GRAPH_NODE_H,
 
@@ -41,7 +39,8 @@ export interface EdgeReadOverlayVM {
 
   top: number;
 
-  parentName: string;
+  /** Eingehend: „Liest von“ · Ausgehend: „Wird gelesen“ */
+  title: string;
 
   paths: string[];
 
@@ -189,7 +188,7 @@ export interface EdgeReadOverlayVM {
 
               [style.top.px]="o.top">
 
-              <app-edge-read-props-overlay [parentName]="o.parentName" [paths]="o.paths" />
+              <app-edge-read-props-overlay [title]="o.title" [paths]="o.paths" />
 
             </div>
 
@@ -215,7 +214,7 @@ export interface EdgeReadOverlayVM {
 
       overflow: hidden;
 
-      background: #0a0a0a;
+      background: transparent;
 
       position: relative;
 
@@ -236,6 +235,8 @@ export interface EdgeReadOverlayVM {
       transform-origin: 0 0;
 
       will-change: transform;
+
+      background: transparent;
 
     }
 
@@ -386,47 +387,61 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 
 
+  /** Pro ausgewähltem Knoten höchstens zwei Karten: links eingehend (Liest von), rechts ausgehend (Wird gelesen). */
   edgeReadOverlays = computed((): EdgeReadOverlayVM[] => {
 
     const sel = this.selectedRef();
 
     const vm = this.viewModel();
 
-    const flat = this.flatDogsRef();
-
     if (!sel || !vm) return [];
 
+    const rn = vm.renderNodes.find((n) => n.id === sel.id);
 
+    if (!rn) return [];
+
+    const midY = rn.ry + GRAPH_NODE_H / 2;
+
+    /** Abstand Knotenkante → Overlay-Mitte (Karten ~240px breit) */
+    const inset = 100;
 
     const out: EdgeReadOverlayVM[] = [];
 
-    for (const seg of vm.renderEdges) {
+    const incoming = formatReadFromLines(sel.readFrom);
 
-      if (seg.toId !== sel.id) continue;
-
-      const parentMeta =
-
-        flat.find(d => d.id === seg.fromId) ?? vm.dogMap.get(seg.fromId);
-
-      const parentName = parentMeta?.name ?? seg.fromId;
-
-      const paths = this.pathsFromParent(sel, seg.fromId, vm.dogMap, flat);
-
-      const mx = (seg.rx1 + seg.rx2) / 2;
-
-      const my = (seg.ry1 + seg.ry2) / 2;
+    if (incoming.length > 0) {
 
       out.push({
 
-        key: `read-${seg.key}`,
+        key: 'data-in',
 
-        left: mx,
+        left: rn.rx - inset,
 
-        top: my,
+        top: midY,
 
-        parentName,
+        title: 'Liest von',
 
-        paths,
+        paths: incoming,
+
+      });
+
+    }
+
+    const outgoing = formatReadByLines(sel.readBy);
+
+    if (outgoing.length > 0) {
+
+      out.push({
+
+        key: 'data-out',
+
+        left: rn.rx + GRAPH_NODE_W + inset,
+
+        top: midY,
+
+        title: 'Wird gelesen',
+
+        paths: outgoing,
 
       });
 
@@ -753,43 +768,53 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 
 
-  private pathsFromParent(
+}
 
-    selected: DogEntry,
+function formatReadFromLines(readFrom: ReadTrackingEntry[] | undefined): string[] {
 
-    parentId: string,
+  if (!readFrom?.length) return [];
 
-    dogMap: Map<string, DogEntry>,
+  const seen = new Set<string>();
 
-    flat: DogEntry[]
+  const out: string[] = [];
 
-  ): string[] {
+  for (const r of readFrom) {
 
-    if (!selected.readFrom?.length) return [];
+    const line = `${r.sourceInstanceName} · ${r.propertyPath}`;
 
-    const pid = cleanParentId(parentId);
+    if (seen.has(line)) continue;
 
-    const parent = flat.find(d => d.id === pid) ?? dogMap.get(pid);
+    seen.add(line);
 
-    if (!parent) return [];
-
-    const name = parent.name;
-
-    return [
-
-      ...new Set(
-
-        selected.readFrom
-
-          .filter(r => r.sourceInstanceName === name)
-
-          .map(r => r.propertyPath)
-
-      ),
-
-    ];
+    out.push(line);
 
   }
+
+  return out;
+
+}
+
+function formatReadByLines(readBy: ReadTrackingEntry[] | undefined): string[] {
+
+  if (!readBy?.length) return [];
+
+  const seen = new Set<string>();
+
+  const out: string[] = [];
+
+  for (const r of readBy) {
+
+    const line = `${r.readerInstanceName} · ${r.propertyPath}`;
+
+    if (seen.has(line)) continue;
+
+    seen.add(line);
+
+    out.push(line);
+
+  }
+
+  return out;
 
 }
 

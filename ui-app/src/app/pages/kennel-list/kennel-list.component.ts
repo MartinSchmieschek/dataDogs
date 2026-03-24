@@ -4,6 +4,7 @@ import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
+import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 
 @Component({
   selector: 'app-kennel-list',
@@ -15,6 +16,7 @@ import { LoadingIndicatorComponent } from '../../components/loading-indicator/lo
 export class KennelListComponent implements OnInit {
   private kennelService = inject(KennelService);
   private router = inject(Router);
+  private errorVideoPopup = inject(ErrorVideoPopupService);
 
   kennels = signal<IKennelConfig[]>([]);
   loading = signal(false);
@@ -23,6 +25,10 @@ export class KennelListComponent implements OnInit {
 
   ngOnInit() {
     this.loadKennels();
+  }
+
+  onComfortVideoClick(): void {
+    this.errorVideoPopup.openPopup(this.error());
   }
 
   loadKennels() {

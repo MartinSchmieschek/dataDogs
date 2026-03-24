@@ -29,12 +29,40 @@ export interface ISerializedDogConfig extends IUpdateInput {
     code?: string;   // Alternative zu theRun (wird zu theRun gemappt)
 }
 
+export type SerializedDogVmGlobalsSupplier = (
+    ctx: Record<string, any>,
+    dog: SerializedDog<unknown>,
+    /** Kennel (simpleVmContext) bzw. season.exhausted (runExternalCode). */
+    sourceDogs: IHuntingDog<unknown>[] | null
+) => void;
+
 export class SerializedDog<T> extends Dog<T> {
 
     private _storageId
 
     public get storageId(): string{
         return this._storageId
+    }
+
+    /**
+     * Pro Kennel-Lauf von {@link KennelRun} gesetzt — keine globalen App-Enums im Core.
+     */
+    private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = [];
+
+    /**
+     * Zusätzliche globale Bindings für vm.runInContext (von der App/KennelRun injiziert).
+     */
+    public setVmGlobalsSuppliers(suppliers: readonly SerializedDogVmGlobalsSupplier[]): void {
+        this.vmGlobalsSuppliers = suppliers.length ? [...suppliers] : [];
+    }
+
+    private applyVmGlobalsSuppliers(
+        ctx: Record<string, any>,
+        sourceDogs: IHuntingDog<unknown>[] | null
+    ): void {
+        for (const supplier of this.vmGlobalsSuppliers) {
+            supplier(ctx, this as SerializedDog<unknown>, sourceDogs);
+        }
     }
 
     private requiredYieldsContext: Map<string, any> = new Map<string, any>();
@@ -112,6 +140,8 @@ export class SerializedDog<T> extends Dog<T> {
         // Merge Parent-Dogs aus kennelRef (für Type-Definitionen)
         // Nutzt collected || {} als Platzhalter für Type-Definitionen
         this.mergeParentDogsIntoContext(justContext, this.kennelRef, false);
+
+        this.applyVmGlobalsSuppliers(justContext, this.kennelRef);
         
         return justContext;
     }
@@ -300,6 +330,8 @@ export class SerializedDog<T> extends Dog<T> {
                 console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} nicht in exhausted gefunden`);
             }
         });
+
+        this.applyVmGlobalsSuppliers(contextObj, season.exhausted);
         
         // Debug: Log alle exhausted dogs und Context-Keys
         console.log(`[SerializedDog ${this.storageId}] Required/Optional Parent IDs:`, allParentIds);

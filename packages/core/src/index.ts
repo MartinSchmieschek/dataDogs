@@ -8,7 +8,12 @@ export { KennelRun, IKennelConfig, BASE_DOG_PREFIX } from './KennelRun';
 export { SeasonRunner } from './harverster';
 
 // SerializedDog
-export { SerializedDog, ISerializedDogConfig, IUpdateInput } from './dogs/SerializedDog';
+export {
+    SerializedDog,
+    ISerializedDogConfig,
+    IUpdateInput,
+    type SerializedDogVmGlobalsSupplier,
+} from './dogs/SerializedDog';
 
 // Pacts
 export { createPact, type CreatePactFromSourceOptions } from './dogs/createPact';

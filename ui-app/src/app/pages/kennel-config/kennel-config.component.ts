@@ -6,6 +6,7 @@ import { DogService } from '../../services/dog.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
+import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 
 declare const monaco: any;
@@ -32,6 +33,8 @@ const BASE_DOG_TYPES = [
   styleUrls: ['./kennel-config.component.scss']
 })
 export class KennelConfigComponent implements OnInit, OnDestroy {
+  private errorVideoPopup = inject(ErrorVideoPopupService);
+
   @ViewChild('bodyEditorContainer') bodyEditorContainer!: ElementRef;
 
   private route = inject(ActivatedRoute);
@@ -64,6 +67,10 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.bodyEditor?.dispose();
+  }
+
+  onComfortVideoClick(): void {
+    this.errorVideoPopup.openPopup(this.error());
   }
 
   private loadData() {

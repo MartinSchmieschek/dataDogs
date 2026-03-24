@@ -14,7 +14,16 @@
   </div>
 
   @if (dog.error) {
-    <div class="dog-error">Fehler: {{ dog.error }}</div>
+    <div
+      class="dog-error comfort-error-trigger"
+      role="button"
+      tabindex="0"
+      title="Klick: kurzes Video"
+      (click)="onComfortVideoClick(dog.error)"
+      (keydown.enter)="onComfortVideoClick(dog.error)"
+      (keydown.space)="$event.preventDefault(); onComfortVideoClick(dog.error)">
+      Fehler: {{ dog.error }}
+    </div>
   }
 
   @if (kennelLeadControlsEnabled) {
@@ -35,7 +44,14 @@
         {{ saving() ? 'Speichert...' : 'Speichern' }}
       </button>
       @if (saveError()) {
-        <span class="save-error">{{ saveError() }}</span>
+        <span
+          class="save-error comfort-error-trigger"
+          role="button"
+          tabindex="0"
+          title="Klick: kurzes Video"
+          (click)="onComfortVideoClick(saveError() ?? '')"
+          (keydown.enter)="onComfortVideoClick(saveError() ?? '')"
+          (keydown.space)="$event.preventDefault(); onComfortVideoClick(saveError() ?? '')">{{ saveError() }}</span>
       }
       @if (saveSuccess()) {
         <span class="save-success">Gespeichert!</span>
@@ -100,22 +116,6 @@
           [hideHeader]="true"
           (toggleRequired)="toggleParentRequired($event)"
           (toggleOptional)="toggleParentOptional($event)" />
-      }
-      @if (activeSection() === 'readFrom') {
-        <app-dog-side-panel-read-tracking-artifact
-          title="Spur"
-          mode="readFrom"
-          [entries]="dog.readFrom ?? []"
-          [collapsed]="false"
-          [hideHeader]="true" />
-      }
-      @if (activeSection() === 'readBy') {
-        <app-dog-side-panel-read-tracking-artifact
-          title="Folgt"
-          mode="readBy"
-          [entries]="dog.readBy ?? []"
-          [collapsed]="false"
-          [hideHeader]="true" />
       }
     </div>
   </div>

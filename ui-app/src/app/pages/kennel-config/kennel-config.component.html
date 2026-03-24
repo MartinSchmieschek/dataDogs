@@ -7,7 +7,16 @@
   <h1>Kennel Editor: {{ kennelId }}</h1>
 
   @if (error()) {
-    <div class="error">{{ error() }}</div>
+    <div
+      class="error comfort-error-trigger"
+      role="button"
+      tabindex="0"
+      title="Klick: kurzes Video"
+      (click)="onComfortVideoClick()"
+      (keydown.enter)="onComfortVideoClick()"
+      (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
+      {{ error() }}
+    </div>
   }
 
   @if (config()) {

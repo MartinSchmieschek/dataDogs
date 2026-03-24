@@ -1,9 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
+import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 import {
   pickRandomRequiemQuote,
   type RequiemLoadingQuote,
 } from '../../data/requiem-loading';
+import { LastVoidTongueService } from '../../services/last-void-tongue.service';
 
 @Component({
   selector: 'app-loading-indicator',
@@ -65,13 +67,11 @@ import {
             </div>
             <div class="void-egg">
               <div class="void-egg-glow" aria-hidden="true"></div>
-              <a
+              <button
+                type="button"
                 class="void-eye-link"
-                [href]="voidIrisVideoUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Fernes Signal folgen (externer Kanal)"
-                (click)="$event.stopPropagation()"></a>
+                aria-label="Fernes Signal (Popup)"
+                (click)="onVoidIrisClick($event)"></button>
             </div>
             <h1 class="void-name">{{ quote.name }}</h1>
           </div>
@@ -193,16 +193,24 @@ import {
       pointer-events: auto;
       cursor: pointer;
       border-radius: 50%;
+      border: none;
+      padding: 0;
+      margin: 0;
       background: transparent;
+      appearance: none;
     }
+    /* Über dem Hero stacken, nach oben ziehen: Zunge/Keyword überlagern das Iris-Auge. */
     .void-copy {
       position: absolute;
       left: 50%;
-      bottom: clamp(0.5rem, 5vh, 2.5rem);
-      z-index: 3;
-      pointer-events: auto;
+      bottom: clamp(0.35rem, 3vh, 1.75rem);
+      z-index: 5;
+      pointer-events: none;
       width: min(22rem, calc(100% - 2rem));
-      transform: translateX(-50%) rotateX(9deg) rotateY(-8deg);
+      transform: translateX(-50%)
+        translateY(calc(-1 * clamp(4.5rem, 19vh, 9.5rem)))
+        rotateX(9deg)
+        rotateY(-8deg);
       transform-origin: 50% 100%;
       text-align: center;
       padding: 0 1.5rem;
@@ -247,17 +255,18 @@ import {
       text-shadow: 0 0 24px rgba(100, 140, 180, 0.12);
     }
     .void-keyword {
-      margin: 0 0 1rem;
+      margin: 0 0 0.65rem;
       font-family: 'Courier New', ui-monospace, monospace;
       font-size: 0.65rem;
       letter-spacing: 0.45em;
       text-transform: uppercase;
-      color: rgba(120, 145, 170, 0.28);
+      color: rgba(120, 145, 170, 0.34);
+      text-shadow: 0 0 18px rgba(0, 8, 20, 0.85);
     }
     .void-tongue {
-      border-top: 1px solid rgba(80, 110, 140, 0.12);
-      padding-top: 0.85rem;
-      margin-top: 0.25rem;
+      border-top: 1px solid rgba(80, 110, 140, 0.14);
+      padding-top: 0.65rem;
+      margin-top: 0.15rem;
     }
     .void-line {
       margin: 0;
@@ -267,7 +276,10 @@ import {
       font-style: italic;
       font-weight: 400;
       letter-spacing: 0.06em;
-      color: rgba(105, 130, 155, 0.38);
+      color: rgba(105, 130, 155, 0.44);
+      text-shadow:
+        0 0 14px rgba(0, 6, 16, 0.9),
+        0 1px 2px rgba(0, 0, 0, 0.55);
     }
     .void-line + .void-line {
       margin-top: 0.35rem;
@@ -281,10 +293,20 @@ import {
     }
   `],
 })
-export class LoadingIndicatorComponent {
-  /** Iris-Easter-Egg: öffnet im neuen Tab. */
-  readonly voidIrisVideoUrl =
-    'https://www.youtube.com/watch?v=yPKo04oNQ9k';
+export class LoadingIndicatorComponent implements OnInit {
+  private errorVideoPopup = inject(ErrorVideoPopupService);
+  private lastVoidTongue = inject(LastVoidTongueService);
+
+  ngOnInit(): void {
+    this.lastVoidTongue.remember(this.quote);
+  }
+
+  /** Iris-Easter-Egg: gleicher Dialog wie beim Fehler-Popup, eigenes Video (s. video-popup.ts). */
+  onVoidIrisClick(event: Event): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.errorVideoPopup.openLoadingEasterEgg();
+  }
 
   /** Pro Mount ein zufälliges Fragment — jedes Mal frisch, wenn @if loading neu rendert. */
   readonly quote: RequiemLoadingQuote = pickRandomRequiemQuote();

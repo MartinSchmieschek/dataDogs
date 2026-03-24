@@ -1,6 +1,6 @@
 import { DogEntry } from '../models/dog-entry.model';
 
-export type DogPanelSectionId = 'code' | 'vm' | 'result' | 'parents' | 'readFrom' | 'readBy';
+export type DogPanelSectionId = 'code' | 'vm' | 'result' | 'parents';
 
 export interface DogPanelSectionItem {
   id: DogPanelSectionId;
@@ -8,14 +8,12 @@ export interface DogPanelSectionItem {
   icon: string;
 }
 
-/** Kleine Icons pro Bereich (Edit-View / Graph-Fächer). Spur = Track, keine Pfeile. */
+/** Kleine Icons pro Bereich (Edit-View / Graph-Fächer). Read-Tracking nur am Graph (Kanten-Overlay). */
 export const SECTION_ICON: Record<DogPanelSectionId, string> = {
   code: '⌨',
   vm: '📐',
   result: '📄',
   parents: '🔗',
-  readFrom: '🛤',
-  readBy: '🐾',
 };
 
 export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
@@ -28,8 +26,6 @@ export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
   if (dog.codeTs) {
     out.push({ id: 'parents', label: 'Parents', icon: SECTION_ICON.parents });
   }
-  out.push({ id: 'readFrom', label: 'Spur (Liest von)', icon: SECTION_ICON.readFrom });
-  out.push({ id: 'readBy', label: 'Folgt (Gelesen von)', icon: SECTION_ICON.readBy });
   return out;
 }
 
