@@ -68,7 +68,7 @@ h1 {
   gap: 10px;
 }
 
-.btn-execute, .btn-edit, .btn-waves {
+.btn-execute, .btn-edit, .btn-waves, .btn-swagger-ui, .btn-swagger-json {
   padding: 6px 12px;
   color: #fff;
   text-decoration: none;
@@ -82,6 +82,8 @@ h1 {
 .btn-execute { background: #0066cc; }
 .btn-edit { background: #666; }
 .btn-waves { background: #553399; }
+.btn-swagger-ui { background: #85ea2d; color: #1a1a1a; }
+.btn-swagger-json { background: #49cc90; color: #1a1a1a; }
 
 .empty {
   color: #666;

@@ -71,6 +71,16 @@ async function start() {
 
     const app = express();
     const port = 3000;
+
+    // CORS fuer Angular Dev-Server
+    app.use((req: any, res: any, next: any) => {
+        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
+        next();
+    });
+
     app.use(express.json());
 
     // Controller-Registry

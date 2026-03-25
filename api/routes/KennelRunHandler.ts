@@ -3,6 +3,7 @@ import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
+import { SwaggerGenerator } from '../../services/SwaggerGenerator';
 
 export interface IKennelRunDeps {
     kennelsController: KennelController;
@@ -18,6 +19,10 @@ export class KennelRunHandler {
     }
 
     registerRoutes(app: any): void {
+        // Swagger Docs pro Kennel
+        app.get('/api/kennels/:id/swagger.json', (req: any, res: any) => this.handleSwaggerJson(req, res));
+        app.get('/api/kennels/:id/docs', (req: any, res: any) => this.handleSwaggerUi(req, res));
+
         app.get('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
         app.post('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
         app.get('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
@@ -107,6 +112,75 @@ export class KennelRunHandler {
         } else {
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
             res.status(200).json(result);
+        }
+    }
+
+    /**
+     * GET /api/kennels/:id/swagger.json
+     * Fuehrt den Kennel aus und generiert daraus die OpenAPI-Spec.
+     */
+    private async handleSwaggerJson(req: any, res: any): Promise<void> {
+        try {
+            const config = await this.loadKennelConfig(req.params.id);
+            if (!config) {
+                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
+
+            const query = this.mergeQueryParams(config.defaultQuery, req.query);
+            const body = config.defaultBody;
+            const waves = await this.runKennel(config, query, body);
+
+            const spec = SwaggerGenerator.generate(config, waves);
+            res.json(spec);
+        } catch (err) {
+            console.error('[KennelRunHandler.handleSwaggerJson]', err);
+            res.status(500).json({ error: String(err) });
+        }
+    }
+
+    /**
+     * GET /api/kennels/:id/docs
+     * Fuehrt den Kennel aus und zeigt Swagger UI mit der generierten Spec.
+     */
+    private async handleSwaggerUi(req: any, res: any): Promise<void> {
+        try {
+            const config = await this.loadKennelConfig(req.params.id);
+            if (!config) {
+                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
+            const title = config.name || config.id;
+            const specUrl = `/api/kennels/${config.id}/swagger.json`;
+            const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${title} — API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({
+      url: "${specUrl}",
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+      layout: "BaseLayout",
+      deepLinking: true,
+    });
+  </script>
+</body>
+</html>`;
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+        } catch (err) {
+            console.error('[KennelRunHandler.handleSwaggerUi]', err);
+            res.status(500).json({ error: String(err) });
         }
     }
 

@@ -46,6 +46,8 @@
           }
           <a class="btn-edit" [routerLink]="['/kennel', kennel.id, 'edit']">Bearbeiten</a>
           <a class="btn-waves" [routerLink]="['/kennel', kennel.id]">Waves</a>
+          <a class="btn-swagger-ui" [href]="'http://localhost:3000/api/kennels/' + kennel.id + '/docs'" target="_blank">Swagger UI</a>
+          <a class="btn-swagger-json" [href]="'http://localhost:3000/api/kennels/' + kennel.id + '/swagger.json'" target="_blank">swagger.json</a>
         </div>
       </div>
     } @empty {

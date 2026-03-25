@@ -16,11 +16,13 @@
   "dependencies": {
     "@prisma/client": "^5.5.0",
     "@types/express": "^5.0.3",
+    "@types/swagger-ui-express": "^4.1.8",
     "datadogs": "file:packages/core",
     "express": "^5.1.0",
     "fs": "^0.0.1-security",
     "nodemon": "^3.1.10",
     "pg": "^8.10.0",
+    "swagger-ui-express": "^5.0.1",
     "ts-node": "^10.9.2",
     "tsc": "^2.0.4",
     "typescript": "^5.0.0",
