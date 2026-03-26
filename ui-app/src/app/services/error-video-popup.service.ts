@@ -1,52 +1,48 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import {
-  COMFORT_VIDEO_EMBED_URL,
+  ERROR_FLASH_VIDEO_EMBED_URL,
   LOADING_EASTER_EGG_EMBED_URL,
   type VideoPopupConfig,
 } from '../data/video-popup';
 import { VOID_PHILOSOPHY_LINES } from '../data/void-philosophy';
+import { LastVoidTongueService } from './last-void-tongue.service';
+import { ensureYoutubeIframeApiParams } from '../utils/youtube-embed';
 
 @Injectable({ providedIn: 'root' })
 export class ErrorVideoPopupService {
+  private lastVoid = inject(LastVoidTongueService);
+
   readonly open = signal(false);
-  readonly variant = signal<'error' | 'void'>('error');
-  readonly embedUrl = signal<string>(COMFORT_VIDEO_EMBED_URL);
+  readonly embedUrl = signal<string>(LOADING_EASTER_EGG_EMBED_URL);
   readonly headLabel = signal<string | undefined>(undefined);
-  readonly heading = signal<string | undefined>(undefined);
-  readonly message = signal<string | undefined>(undefined);
-  readonly videoCaption = signal<string | undefined>(undefined);
   readonly voidSubtitleLines = signal<string[] | undefined>(undefined);
 
-  /** Volle Kontrolle — z. B. später „fancy“-Varianten aus einem Theme. */
+  /** Void-Kino — z. B. angepasstes Embed oder Texte. */
   openWithConfig(config: VideoPopupConfig): void {
-    this.variant.set(config.variant ?? 'error');
-    this.embedUrl.set(config.embedUrl);
+    this.embedUrl.set(ensureYoutubeIframeApiParams(config.embedUrl));
     this.headLabel.set(config.headLabel);
-    this.heading.set(config.heading);
-    this.message.set(config.message);
-    this.videoCaption.set(config.videoCaption);
     this.voidSubtitleLines.set(config.voidSubtitleLines);
     this.open.set(true);
   }
 
-  openPopup(errorText?: string | null): void {
+  /**
+   * Klick auf Fehlermeldung: gleiches Void-Kino, **anderes** Video als Lade-Iris
+   * ({@link ERROR_FLASH_VIDEO_EMBED_URL}).
+   */
+  openPopup(_errorText?: string | null): void {
     this.openWithConfig({
-      embedUrl: COMFORT_VIDEO_EMBED_URL,
-      variant: 'error',
-      headLabel: 'Fehler',
-      heading: 'Fehlermeldung',
-      message: (errorText ?? '').trim() || '(Kein Fehlertext)',
-      videoCaption: 'Kurz ablenken',
+      embedUrl: ERROR_FLASH_VIDEO_EMBED_URL,
+      headLabel: 'Fernes Signal',
+      voidSubtitleLines: this.voidLinesForEasterEgg(),
     });
   }
 
-  /** Ladebildschirm-Iris — eigenes Video, Texte standardmäßig aus (nur Kopfzeile). */
+  /** Ladebildschirm-Iris — eigenes Video ({@link LOADING_EASTER_EGG_EMBED_URL}). */
   openLoadingEasterEgg(): void {
     this.openWithConfig({
       embedUrl: LOADING_EASTER_EGG_EMBED_URL,
-      variant: 'void',
       headLabel: 'Fernes Signal',
-      voidSubtitleLines: [...VOID_PHILOSOPHY_LINES],
+      voidSubtitleLines: this.voidLinesForEasterEgg(),
     });
   }
 
@@ -55,13 +51,17 @@ export class ErrorVideoPopupService {
     this.reset();
   }
 
+  private voidLinesForEasterEgg(): string[] {
+    const snap = this.lastVoid.snapshot();
+    if (snap) {
+      return [snap.keyword, snap.line1, snap.line2];
+    }
+    return [...VOID_PHILOSOPHY_LINES];
+  }
+
   private reset(): void {
-    this.variant.set('error');
-    this.embedUrl.set(COMFORT_VIDEO_EMBED_URL);
+    this.embedUrl.set(LOADING_EASTER_EGG_EMBED_URL);
     this.headLabel.set(undefined);
-    this.heading.set(undefined);
-    this.message.set(undefined);
-    this.videoCaption.set(undefined);
     this.voidSubtitleLines.set(undefined);
   }
 }

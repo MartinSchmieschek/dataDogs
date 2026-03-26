@@ -1,8 +1,8 @@
 import { DogEntry, Waves } from '../../models/dog-entry.model';
 
 /** Muss zu `.graph-node-slot` / GraphDogNode passen */
-export const GRAPH_NODE_W = 160;
-export const GRAPH_NODE_H = 100;
+export const GRAPH_NODE_W = 136;
+export const GRAPH_NODE_H = 84;
 
 /** Horizontaler Abstand zwischen Wellen-Spalten */
 const COL_GAP = 120;
@@ -10,6 +10,9 @@ const COL_GAP = 120;
 const ROW_GAP = 48;
 /** Außenrand um den Graphen */
 const PADDING = 56;
+
+const SEP_GAP = 12;
+const SEP_ITERATIONS = 20;
 
 export interface PlacedNode {
   id: string;
@@ -49,6 +52,7 @@ export interface RenderEdge extends EdgeSegment {
   ry1: number;
   rx2: number;
   ry2: number;
+  pathD: string;
 }
 
 export interface GraphViewModel {
@@ -62,6 +66,66 @@ export interface GraphViewModel {
 
 export function cleanParentId(parentId: string): string {
   return parentId.startsWith('base:') ? parentId.substring(5) : parentId;
+}
+
+/**
+ * Gleich große AABB: iterativ entlang der kleineren Überlappungsachse trennen.
+ */
+export function separateOverlappingNodes(
+  nodes: PlacedNode[],
+  w: number,
+  h: number,
+  gap: number = SEP_GAP,
+  iterations: number = SEP_ITERATIONS
+): void {
+  const hw = w / 2;
+  const hh = h / 2;
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i];
+        const b = nodes[j];
+        const dx = b.x + hw - (a.x + hw);
+        const dy = b.y + hh - (a.y + hh);
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        const overlapX = w + gap - absDx;
+        const overlapY = h + gap - absDy;
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapX < overlapY) {
+          const sign = dx >= 0 ? 1 : -1;
+          const shift = overlapX / 2;
+          a.x -= sign * shift;
+          b.x += sign * shift;
+        } else {
+          const sign = dy >= 0 ? 1 : -1;
+          const shift = overlapY / 2;
+          a.y -= sign * shift;
+          b.y += sign * shift;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Kubische Bézier mit horizontalen Tangenten an beiden Enden (LR-Dependency-Graph):
+ * die Linie verläuft aus dem Knoten waagrecht heraus und trifft den Zielknoten waagrecht —
+ * kein senkrechter „Vorhang“/Hängen entlang der Sehne.
+ */
+export function cubicBezierPathD(
+  rx1: number,
+  ry1: number,
+  rx2: number,
+  ry2: number
+): string {
+  const gap = Math.max(rx2 - rx1, 1);
+  const stretch = Math.min(100, gap * 0.42);
+  const cx1 = rx1 + stretch;
+  const cy1 = ry1;
+  const cx2 = rx2 - stretch;
+  const cy2 = ry2;
+  return `M ${rx1} ${ry1} C ${cx1} ${cy1} ${cx2} ${cy2} ${rx2} ${ry2}`;
 }
 
 /**
@@ -160,10 +224,12 @@ export function recomputeEdgeSegments(nodes: PlacedNode[], waves: Waves): EdgeSe
 
 /**
  * Wendet manuelle Positionen an, berechnet Kanten und Render-Koordinaten (Bounding Box).
+ * @param separate — bei false (z. B. während Drag) keine Kollisionsauflösung.
  */
 export function buildGraphViewModel(
   waves: Waves,
-  manual: ReadonlyMap<string, { x: number; y: number }>
+  manual: ReadonlyMap<string, { x: number; y: number }>,
+  separate = true
 ): GraphViewModel | null {
   const base = buildGraphLayout(waves);
   if (!base.nodes.length) return null;
@@ -172,6 +238,10 @@ export function buildGraphViewModel(
     const o = manual.get(n.id);
     return o ? { ...n, x: o.x, y: o.y } : { ...n };
   });
+
+  if (separate) {
+    separateOverlappingNodes(worldNodes, GRAPH_NODE_W, GRAPH_NODE_H, SEP_GAP, SEP_ITERATIONS);
+  }
 
   const edges = recomputeEdgeSegments(worldNodes, waves);
   const { renderNodes, renderEdges, contentWidth, contentHeight } = worldToRender(
@@ -227,13 +297,20 @@ function worldToRender(
     ry: n.y - sy,
   }));
 
-  const renderEdges: RenderEdge[] = edges.map(e => ({
-    ...e,
-    rx1: e.x1 - sx,
-    ry1: e.y1 - sy,
-    rx2: e.x2 - sx,
-    ry2: e.y2 - sy,
-  }));
+  const renderEdges: RenderEdge[] = edges.map(e => {
+    const rx1 = e.x1 - sx;
+    const ry1 = e.y1 - sy;
+    const rx2 = e.x2 - sx;
+    const ry2 = e.y2 - sy;
+    return {
+      ...e,
+      rx1,
+      ry1,
+      rx2,
+      ry2,
+      pathD: cubicBezierPathD(rx1, ry1, rx2, ry2),
+    };
+  });
 
   const contentWidth = maxX - minX + 2 * PADDING;
   const contentHeight = maxY - minY + 2 * PADDING;

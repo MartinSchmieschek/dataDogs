@@ -56,6 +56,7 @@ export class PrismaStore implements IStore {
         ? d.defaultBody 
         : JSON.stringify(d.defaultBody);
     }
+    if (d.emoji !== undefined) updateData.emoji = d.emoji;
     if (d.createdAt !== undefined) updateData.createdAt = d.createdAt;
     if (d.updatedAt !== undefined) updateData.updatedAt = d.updatedAt;
 
@@ -70,8 +71,8 @@ export class PrismaStore implements IStore {
     const row: any = await this.prisma.dog.findUnique({ where: { id } });
     if (!row) return null;
     
-    // KennelConfig: Wenn direkte Felder vorhanden sind (name, description, dogIds)
-    if (row.name !== null || row.description !== null || row.dogIds !== null) {
+    // KennelConfig: Wenn direkte Felder vorhanden sind (name, description, dogIds, emoji, …)
+    if (row.name !== null || row.description !== null || row.dogIds !== null || row.emoji !== null) {
       return {
         id: row.id,
         type: row.type,
@@ -80,6 +81,7 @@ export class PrismaStore implements IStore {
         dogIds: row.dogIds, // JSON-String, wird in parseEntity() geparst
         defaultQuery: row.defaultQuery,
         defaultBody: row.defaultBody,
+        emoji: row.emoji,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         serializedDogConfig: row.serializedDogConfig
@@ -97,7 +99,7 @@ export class PrismaStore implements IStore {
     // Für SerializedDog: Objekt mit id und serializedDogConfig
     return rows.map((r: any) => {
       // Wenn direkte Felder vorhanden sind (KennelConfig), gib alle Felder zurück
-      if (r.name !== null || r.description !== null || r.dogIds !== null) {
+      if (r.name !== null || r.description !== null || r.dogIds !== null || r.emoji !== null) {
         return {
           id: r.id,
           type: r.type,
@@ -106,6 +108,7 @@ export class PrismaStore implements IStore {
           dogIds: r.dogIds,
           defaultQuery: r.defaultQuery,
           defaultBody: r.defaultBody,
+          emoji: r.emoji,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
           serializedDogConfig: r.serializedDogConfig

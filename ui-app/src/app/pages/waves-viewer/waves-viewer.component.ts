@@ -16,6 +16,7 @@ import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.co
 import { findKennelDogIndex } from '../../utils/kennel-dog-id-match';
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
+import { apiAbsoluteUrl } from '../../config/api-base';
 
 @Component({
   selector: 'app-waves-viewer',
@@ -63,6 +64,15 @@ export class WavesViewerComponent implements OnInit {
     if (!w) return [];
     return w.flat();
   });
+
+  /** Swagger UI & OpenAPI — direkt Express :3000 (neuer Tab, kein Angular-Origin). */
+  get swaggerDocsUrl(): string {
+    return apiAbsoluteUrl(`/api/kennels/${this.kennelId}/docs`);
+  }
+
+  get swaggerJsonUrl(): string {
+    return apiAbsoluteUrl(`/api/kennels/${this.kennelId}/swagger.json`);
+  }
 
   ngOnInit() {
     this.kennelId = this.route.snapshot.params['id'];

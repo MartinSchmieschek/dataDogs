@@ -1,17 +1,20 @@
 import { Component, EventEmitter, Output, inject } from '@angular/core';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { FormsModule } from '@angular/forms';
+import { KennelEmojiPickerComponent } from '../kennel-emoji-picker/kennel-emoji-picker.component';
 
 export interface KennelFormData {
   id: string;
   name: string;
   description: string;
+  /** Ein Emoji (optional) */
+  emoji: string;
 }
 
 @Component({
   selector: 'app-kennel-form',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, KennelEmojiPickerComponent],
   template: `
     <div class="kennel-form">
       <h2>Neuen Kennel erstellen</h2>
@@ -25,6 +28,10 @@ export interface KennelFormData {
           <input id="kennel-name" [(ngModel)]="formData.name" name="name" placeholder="Optional">
         </div>
         <div class="form-group">
+          <label>Emoji (optional)</label>
+          <app-kennel-emoji-picker [(emoji)]="formData.emoji" />
+        </div>
+        <div class="form-group">
           <label for="kennel-desc">Description</label>
           <textarea id="kennel-desc" [(ngModel)]="formData.description" name="description" placeholder="Optional" rows="3"></textarea>
         </div>
@@ -33,7 +40,7 @@ export interface KennelFormData {
             class="error comfort-error-trigger"
             role="button"
             tabindex="0"
-            title="Klick: kurzes Video"
+            title="Klick: Fernes Signal"
             (click)="onComfortVideoClick()"
             (keydown.enter)="onComfortVideoClick()"
             (keydown.space)="$event.preventDefault(); onComfortVideoClick()">{{ error }}</div>
@@ -101,7 +108,7 @@ export class KennelFormComponent {
   @Output() submitted = new EventEmitter<KennelFormData>();
   @Output() cancelled = new EventEmitter<void>();
 
-  formData: KennelFormData = { id: '', name: '', description: '' };
+  formData: KennelFormData = { id: '', name: '', description: '', emoji: '' };
   error = '';
 
   onComfortVideoClick(): void {
@@ -114,6 +121,9 @@ export class KennelFormComponent {
       return;
     }
     this.error = '';
-    this.submitted.emit({ ...this.formData });
+    this.submitted.emit({
+      ...this.formData,
+      emoji: this.formData.emoji.trim(),
+    });
   }
 }

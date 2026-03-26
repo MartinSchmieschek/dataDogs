@@ -18,7 +18,7 @@
       class="dog-error comfort-error-trigger"
       role="button"
       tabindex="0"
-      title="Klick: kurzes Video"
+      title="Klick: Fernes Signal"
       (click)="onComfortVideoClick(dog.error)"
       (keydown.enter)="onComfortVideoClick(dog.error)"
       (keydown.space)="$event.preventDefault(); onComfortVideoClick(dog.error)">
@@ -48,7 +48,7 @@
           class="save-error comfort-error-trigger"
           role="button"
           tabindex="0"
-          title="Klick: kurzes Video"
+          title="Klick: Fernes Signal"
           (click)="onComfortVideoClick(saveError() ?? '')"
           (keydown.enter)="onComfortVideoClick(saveError() ?? '')"
           (keydown.space)="$event.preventDefault(); onComfortVideoClick(saveError() ?? '')">{{ saveError() }}</span>

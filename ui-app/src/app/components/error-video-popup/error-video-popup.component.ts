@@ -1,4 +1,12 @@
-import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  HostListener,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   trigger,
@@ -8,10 +16,9 @@ import {
   type AnimationEvent,
 } from '@angular/animations';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
+import { bindYoutubePlayerEnded } from '../../utils/youtube-embed';
 
-/**
- * Gemeinsames Comfort-Video-Dialog — Fehler, Easter-Egg, später beliebig via {@link ErrorVideoPopupService.openWithConfig}.
- */
+/** Void-Kino-Overlay (Easter-Egg-Video, Untertitel) — öffnet via {@link ErrorVideoPopupService}. */
 @Component({
   selector: 'app-error-video-popup',
   standalone: true,
@@ -39,99 +46,59 @@ import { ErrorVideoPopupService } from '../../services/error-video-popup.service
   template: `
     @if (popup.open()) {
       <div
-        class="evp-backdrop"
-        [class.evp-backdrop--void]="popup.variant() === 'void'"
+        class="evp-backdrop evp-backdrop--void"
         (click)="close()"
         aria-hidden="true"></div>
-      @if (popup.variant() === 'void') {
-        <div
-          class="evp-void-root"
-          role="dialog"
-          aria-modal="true"
-          [attr.aria-label]="displayHeadLabel()"
-          [attr.aria-describedby]="voidAriaDescribedBy()"
-          (click)="close()">
-          <span id="evp-void-dismiss-hint" class="evp-sr-only">
-            Klick auf die Fläche oder Escape schließt das Fenster.
-          </span>
-          <div class="evp-void-cinema">
-            <div class="evp-void-video-layer">
-              <div class="evp-void-frame-scale-wrap">
-                <iframe
-                  class="evp-void-frame"
-                  [src]="safeEmbed()"
-                  title="YouTube"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowfullscreen></iframe>
-              </div>
-            </div>
-            <div class="evp-void-vignette" aria-hidden="true"></div>
-            @if (hasVoidSubtitles()) {
-              <div
-                id="evp-void-subtitles"
-                class="evp-void-subtitles"
-                aria-live="polite">
-                @for (line of voidLines(); track $index) {
-                  <p class="evp-void-sub-line">{{ line }}</p>
-                }
-              </div>
-            }
-            <div
-              class="evp-void-dismiss-sheet"
-              aria-hidden="true"
-              (click)="close(); $event.stopPropagation()"></div>
-          </div>
-          <div
-            class="evp-void-lid evp-void-lid--top"
-            [class.evp-void-lid--retired]="voidEyelidsRetired()"
-            @voidTopLid
-            (@voidTopLid.done)="onVoidEyelidsAnimationDone($event)"
-            aria-hidden="true"></div>
-          <div
-            class="evp-void-lid evp-void-lid--bottom"
-            [class.evp-void-lid--retired]="voidEyelidsRetired()"
-            @voidBottomLid
-            aria-hidden="true"></div>
-        </div>
-      } @else {
-        <div
-          class="evp-dialog"
-          [class.evp-dialog--message]="showMessagePanel()"
-          role="dialog"
-          aria-modal="true"
-          [attr.aria-labelledby]="popup.heading()?.trim() ? headingId : null"
-          [attr.aria-label]="popup.heading()?.trim() ? null : displayHeadLabel()">
-          <div class="evp-head">
-            <span class="evp-head-label">{{ displayHeadLabel() }}</span>
-            <button type="button" class="evp-close" (click)="close()" aria-label="Schließen">
-              ×
-            </button>
-          </div>
-          @if (showMessagePanel()) {
-            <div class="evp-message-panel">
-              @if (popup.heading()?.trim()) {
-                <h2 [id]="headingId" class="evp-message-heading">{{ popup.heading() }}</h2>
-              }
-              @if (popup.message()?.trim()) {
-                <pre class="evp-message-text">{{ popup.message() }}</pre>
-              }
-            </div>
-          }
-          <div class="evp-video-block">
-            @if (showVideoCaption()) {
-              <p class="evp-video-caption">{{ popup.videoCaption() }}</p>
-            }
-            <div class="evp-frame-wrap">
+      <div
+        class="evp-void-root"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="displayHeadLabel()"
+        [attr.aria-describedby]="voidAriaDescribedBy()"
+        (click)="close()">
+        <span id="evp-void-dismiss-hint" class="evp-sr-only">
+          Klick auf die Fläche oder Escape schließt das Fenster.
+        </span>
+        <div class="evp-void-cinema">
+          <div class="evp-void-video-layer">
+            <div class="evp-void-frame-scale-wrap">
               <iframe
-                class="evp-frame"
+                id="evp-void-yt-iframe"
+                class="evp-void-frame"
                 [src]="safeEmbed()"
                 title="YouTube"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowfullscreen></iframe>
             </div>
           </div>
+          <div class="evp-void-vignette" aria-hidden="true"></div>
+          @if (hasVoidSubtitles()) {
+            <div
+              id="evp-void-subtitles"
+              class="evp-void-subtitles"
+              aria-live="polite">
+              @for (line of voidLines(); track $index) {
+                <p class="evp-void-sub-line">{{ line }}</p>
+              }
+            </div>
+          }
+          <div
+            class="evp-void-dismiss-sheet"
+            aria-hidden="true"
+            (click)="close(); $event.stopPropagation()"></div>
         </div>
-      }
+        <div
+          class="evp-void-lid evp-void-lid--top"
+          [class.evp-void-lid--retired]="voidEyelidsRetired()"
+          @voidTopLid
+          (@voidTopLid.done)="onVoidEyelidsAnimationDone($event)"
+          aria-hidden="true"></div>
+        <div
+          class="evp-void-lid evp-void-lid--bottom"
+          [class.evp-void-lid--retired]="voidEyelidsRetired()"
+          @voidBottomLid
+          aria-hidden="true"></div>
+      </div>
     }
   `,
   styles: [`
@@ -432,6 +399,8 @@ import { ErrorVideoPopupService } from '../../services/error-video-popup.service
 
       padding: 0 1rem;
 
+      pointer-events: none;
+
     }
 
     .evp-void-sub-line {
@@ -465,230 +434,6 @@ import { ErrorVideoPopupService } from '../../services/error-video-popup.service
 
     }
 
-    /* ——— Fehler-Dialog (unverändertes Layout) ——— */
-
-    .evp-dialog {
-
-      position: fixed;
-
-      z-index: 200001;
-
-      left: 50%;
-
-      top: 50%;
-
-      transform: translate(-50%, -50%);
-
-      width: min(92vw, 720px);
-
-      max-height: min(92vh, 900px);
-
-      display: flex;
-
-      flex-direction: column;
-
-      background: #0a0c10;
-
-      border: 1px solid rgba(200, 80, 80, 0.45);
-
-      border-radius: 8px;
-
-      box-shadow:
-
-        0 0 0 1px rgba(255, 100, 100, 0.12),
-
-        0 24px 80px rgba(0, 0, 0, 0.75);
-
-      overflow: hidden;
-
-    }
-
-    .evp-head {
-
-      display: flex;
-
-      align-items: center;
-
-      justify-content: space-between;
-
-      gap: 0.75rem;
-
-      padding: 0.5rem 0.65rem 0.5rem 1rem;
-
-      border-bottom: 1px solid rgba(180, 70, 70, 0.35);
-
-      flex-shrink: 0;
-
-      background: rgba(40, 12, 12, 0.55);
-
-    }
-
-    .evp-dialog:not(.evp-dialog--message) .evp-head {
-
-      border-bottom-color: rgba(60, 70, 85, 0.35);
-
-    }
-
-    .evp-head-label {
-
-      font-size: 0.75rem;
-
-      font-weight: 600;
-
-      letter-spacing: 0.14em;
-
-      text-transform: uppercase;
-
-      color: rgba(255, 160, 160, 0.9);
-
-    }
-
-    .evp-close {
-
-      width: 2.25rem;
-
-      height: 2.25rem;
-
-      padding: 0;
-
-      border: none;
-
-      border-radius: 4px;
-
-      background: rgba(60, 40, 40, 0.7);
-
-      color: #f0e0e0;
-
-      font-size: 1.35rem;
-
-      line-height: 1;
-
-      cursor: pointer;
-
-    }
-
-    .evp-close:hover {
-
-      background: rgba(90, 50, 50, 0.85);
-
-    }
-
-    .evp-message-panel {
-
-      flex: 0 1 auto;
-
-      max-height: min(42vh, 320px);
-
-      overflow: auto;
-
-      padding: 1rem 1.15rem 1.1rem;
-
-      background: linear-gradient(180deg, rgba(28, 10, 10, 0.98) 0%, rgba(14, 8, 10, 0.99) 100%);
-
-      border-bottom: 1px solid rgba(120, 50, 50, 0.4);
-
-    }
-
-    .evp-message-heading {
-
-      margin: 0 0 0.65rem;
-
-      font-size: 0.7rem;
-
-      font-weight: 600;
-
-      letter-spacing: 0.12em;
-
-      text-transform: uppercase;
-
-      color: rgba(255, 130, 130, 0.75);
-
-    }
-
-    .evp-message-text {
-
-      margin: 0;
-
-      font-family: 'Courier New', ui-monospace, monospace;
-
-      font-size: 0.95rem;
-
-      line-height: 1.5;
-
-      white-space: pre-wrap;
-
-      word-break: break-word;
-
-      color: #fff2f2;
-
-      text-shadow: 0 0 20px rgba(255, 80, 80, 0.15);
-
-    }
-
-    .evp-video-block {
-
-      flex: 0 0 auto;
-
-      padding: 0.65rem 1rem 0.85rem;
-
-      background: #050608;
-
-    }
-
-    .evp-video-caption {
-
-      margin: 0 0 0.45rem;
-
-      font-size: 0.65rem;
-
-      letter-spacing: 0.1em;
-
-      text-transform: uppercase;
-
-      color: rgba(140, 160, 190, 0.45);
-
-    }
-
-    .evp-frame-wrap {
-
-      position: relative;
-
-      width: 100%;
-
-      max-height: 32vh;
-
-      aspect-ratio: 16 / 9;
-
-      max-width: 100%;
-
-      margin: 0 auto;
-
-      background: #000;
-
-      border-radius: 4px;
-
-      overflow: hidden;
-
-      opacity: 0.92;
-
-      border: 1px solid rgba(60, 70, 90, 0.35);
-
-    }
-
-    .evp-frame {
-
-      position: absolute;
-
-      inset: 0;
-
-      width: 100%;
-
-      height: 100%;
-
-      border: 0;
-
-    }
-
   `],
 })
 export class ErrorVideoPopupComponent {
@@ -698,12 +443,70 @@ export class ErrorVideoPopupComponent {
   /** Nach Lider-Animation: DOM entfernen, damit nichts den iframe-Inhalt überdeckt oder Klicks frisst. */
   readonly voidEyelidsRetired = signal(false);
 
+  private voidYtPlayer: { destroy: () => void } | null = null;
+  /** Wird bei Schließen/Wechsel erhöht, um laufende attach-Async zu invalidieren. */
+  private voidYtBindOp = 0;
+
   constructor() {
+    const schedule = afterNextRender;
+
     effect(() => {
       if (!this.popup.open()) {
         this.voidEyelidsRetired.set(false);
       }
     });
+
+    effect(() => {
+      const open = this.popup.open();
+      void this.popup.embedUrl();
+
+      if (!open) {
+        this.teardownVoidYtPlayer();
+        return;
+      }
+
+      schedule(() => {
+        void this.attachVoidYtPlayerOnEnded();
+      });
+    });
+  }
+
+  private teardownVoidYtPlayer(): void {
+    this.voidYtBindOp++;
+    try {
+      this.voidYtPlayer?.destroy();
+    } catch {
+      /* ignore */
+    }
+    this.voidYtPlayer = null;
+  }
+
+  private async attachVoidYtPlayerOnEnded(): Promise<void> {
+    this.voidYtBindOp++;
+    const op = this.voidYtBindOp;
+    try {
+      this.voidYtPlayer?.destroy();
+    } catch {
+      /* ignore */
+    }
+    this.voidYtPlayer = null;
+
+    try {
+      const player = await bindYoutubePlayerEnded('evp-void-yt-iframe', () => {
+        this.popup.closePopup();
+      });
+      if (op !== this.voidYtBindOp) {
+        player?.destroy();
+        return;
+      }
+      if (!this.popup.open()) {
+        player?.destroy();
+        return;
+      }
+      this.voidYtPlayer = player;
+    } catch {
+      /* IFrame-API fehlt — manuell schließen */
+    }
   }
 
   onVoidEyelidsAnimationDone(event: AnimationEvent): void {
@@ -712,25 +515,14 @@ export class ErrorVideoPopupComponent {
     }
   }
 
-  readonly headingId = 'evp-message-heading';
-
   readonly safeEmbed = computed(() =>
     this.sanitizer.bypassSecurityTrustResourceUrl(this.popup.embedUrl())
   );
 
   readonly displayHeadLabel = computed(() => {
     const raw = this.popup.headLabel()?.trim();
-    if (raw) return raw;
-    return this.popup.variant() === 'void' ? 'Fernes Signal' : 'Fehler';
+    return raw || 'Fernes Signal';
   });
-
-  readonly showMessagePanel = computed(() => {
-    const m = this.popup.message()?.trim() ?? '';
-    const h = this.popup.heading()?.trim() ?? '';
-    return m.length > 0 || h.length > 0;
-  });
-
-  readonly showVideoCaption = computed(() => (this.popup.videoCaption()?.trim() ?? '').length > 0);
 
   readonly voidLines = computed(() => {
     const raw = this.popup.voidSubtitleLines();

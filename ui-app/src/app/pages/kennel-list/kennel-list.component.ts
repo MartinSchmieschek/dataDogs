@@ -5,11 +5,23 @@ import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
+import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
+import {
+  KennelActionFanComponent,
+  type KennelFanAction,
+} from '../../components/kennel-action-fan/kennel-action-fan.component';
+import { apiAbsoluteUrl } from '../../config/api-base';
 
 @Component({
   selector: 'app-kennel-list',
   standalone: true,
-  imports: [RouterLink, KennelFormComponent, LoadingIndicatorComponent],
+  imports: [
+    RouterLink,
+    KennelFormComponent,
+    LoadingIndicatorComponent,
+    VoidMythicBackdropComponent,
+    KennelActionFanComponent,
+  ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
 })
@@ -46,8 +58,52 @@ export class KennelListComponent implements OnInit {
     });
   }
 
+  /** Anzeige-Emoji; ohne DB-Wert: 🐕 (nur UI, nicht gespeichert). */
+  kennelEmojiForList(k: IKennelConfig): string {
+    const e = k.emoji?.trim();
+    return e || '🐕';
+  }
+
+  hasEmojiStored(k: IKennelConfig): boolean {
+    return !!k.emoji?.trim();
+  }
+
+  onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
+    if (action === 'execute') {
+      if (this.hasBody(kennel)) {
+        this.executeWithBody(kennel);
+      } else {
+        window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
+      }
+      return;
+    }
+    if (action === 'edit') {
+      void this.router.navigate(['/kennel', kennel.id, 'edit']);
+      return;
+    }
+    if (action === 'swagger') {
+      window.open(apiAbsoluteUrl(`/api/kennels/${kennel.id}/docs`), '_blank', 'noopener');
+      return;
+    }
+    if (action === 'swaggerJson') {
+      window.open(apiAbsoluteUrl(`/api/kennels/${kennel.id}/swagger.json`), '_blank', 'noopener');
+      return;
+    }
+    if (action === 'waves') {
+      void this.router.navigate(['/kennel', kennel.id]);
+    }
+  }
+
   onCreateKennel(data: KennelFormData) {
-    this.kennelService.create({ id: data.id, name: data.name, description: data.description, dogIds: [] }).subscribe({
+    this.kennelService
+      .create({
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        emoji: data.emoji.trim() || undefined,
+        dogIds: [],
+      })
+      .subscribe({
       next: (res) => {
         if (res.ok) {
           this.router.navigate(['/kennel', data.id, 'edit']);
@@ -59,17 +115,18 @@ export class KennelListComponent implements OnInit {
     });
   }
 
+  /** Neuer Tab → direkt Express (:3000), nicht Angular-Dev-Server. */
   getExecuteUrl(kennel: IKennelConfig): string {
-    let url = `/api/kennels/${kennel.id}/execute`;
+    let path = `/api/kennels/${kennel.id}/execute`;
     if (kennel.defaultQuery) {
       const params = new URLSearchParams();
       Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
         if (value) params.append(key, value);
       });
       const qs = params.toString();
-      if (qs) url += '?' + qs;
+      if (qs) path += '?' + qs;
     }
-    return url;
+    return apiAbsoluteUrl(path);
   }
 
   hasBody(kennel: IKennelConfig): boolean {

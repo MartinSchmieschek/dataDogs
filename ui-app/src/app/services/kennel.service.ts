@@ -31,7 +31,13 @@ export class KennelService {
     return this.http.get<ApiResponse<IKennelConfig>>(`${this.baseUrl}/${id}`);
   }
 
-  create(data: { id: string; name?: string; description?: string; dogIds?: string[] }): Observable<ApiResponse<IKennelConfig>> {
+  create(data: {
+    id: string;
+    name?: string;
+    description?: string;
+    emoji?: string;
+    dogIds?: string[];
+  }): Observable<ApiResponse<IKennelConfig>> {
     return this.http.post<ApiResponse<IKennelConfig>>(this.baseUrl, data);
   }
 

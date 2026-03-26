@@ -23,6 +23,7 @@ model Dog {
   dogIds               String?  // Array als JSON-String (SQLite unterstützt kein Array)
   defaultQuery         String?  // JSON-String
   defaultBody          String?  // JSON-String
+  emoji                String?  // Kennel-Icon (ein Emoji), optional
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }

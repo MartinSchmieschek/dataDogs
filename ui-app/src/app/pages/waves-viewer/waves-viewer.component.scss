@@ -34,7 +34,7 @@
   gap: 8px;
 }
 
-.btn-reload, .btn-edit, .btn-params {
+.btn-reload, .btn-edit, .btn-params, .btn-swagger {
   padding: 4px 10px;
   border: none;
   cursor: pointer;
@@ -48,6 +48,24 @@
 
 .btn-reload { background: #555; }
 .btn-edit { background: #666; }
+
+.btn-swagger {
+  background: #2d4a2d;
+  border: 1px solid #3d6a3d;
+  display: inline-block;
+  &:hover {
+    background: #3a5f3a;
+    color: #e8ffe8;
+  }
+}
+.btn-swagger--json {
+  background: #2a3548;
+  border-color: #4a5a78;
+  &:hover {
+    background: #354560;
+    color: #e8f0ff;
+  }
+}
 
 .btn-params {
   background: #2a2a3a;

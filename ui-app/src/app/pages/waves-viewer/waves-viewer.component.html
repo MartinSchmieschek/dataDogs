@@ -15,6 +15,8 @@
         @if (paramsDirty()) { <span class="dirty-dot"></span> }
       </button>
       <button class="btn-reload" (click)="loadWaves()">⟳ Neu laden</button>
+      <a [href]="swaggerDocsUrl" target="_blank" rel="noopener" class="btn-swagger">Swagger</a>
+      <a [href]="swaggerJsonUrl" target="_blank" rel="noopener" class="btn-swagger btn-swagger--json">JSON</a>
       <a [routerLink]="['/kennel', kennelId, 'edit']" class="btn-edit">Bearbeiten</a>
     </div>
   </header>
@@ -65,7 +67,7 @@
       class="error-bar comfort-error-trigger"
       role="button"
       tabindex="0"
-      title="Klick: kurzes Video"
+      title="Klick: Fernes Signal"
       (click)="onComfortVideoClick()"
       (keydown.enter)="onComfortVideoClick()"
       (keydown.space)="$event.preventDefault(); onComfortVideoClick()">

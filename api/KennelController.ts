@@ -9,6 +9,7 @@ export interface ICreateKennelInput extends ICreateInput {
     id?: string;
     name?: string;
     description?: string;
+    emoji?: string;
     dogIds?: string[];
 }
 
@@ -45,6 +46,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 id,
                 name: input.name || undefined,
                 description: input.description || undefined,
+                emoji: input.emoji?.trim() || undefined,
                 dogIds: input.dogIds || [],
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -58,6 +60,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 type: this.KENNEL_TYPE, 
                 name: config.name,
                 description: config.description,
+                emoji: config.emoji,
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
@@ -106,6 +109,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 id: input.id,
                 name: input.name !== undefined ? input.name : (existing?.name || undefined),
                 description: input.description !== undefined ? input.description : (existing?.description || undefined),
+                emoji:
+                    input.emoji !== undefined
+                        ? (input.emoji.trim() === '' ? undefined : input.emoji.trim())
+                        : (existing?.emoji || undefined),
                 dogIds: input.dogIds !== undefined ? input.dogIds : (existing?.dogIds || []),
                 defaultQuery: input.defaultQuery !== undefined ? input.defaultQuery : (existing?.defaultQuery || undefined),
                 defaultBody: input.defaultBody !== undefined ? input.defaultBody : (existing?.defaultBody || undefined),
@@ -121,6 +128,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 type: this.KENNEL_TYPE, 
                 name: config.name,
                 description: config.description,
+                emoji: config.emoji,
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
@@ -246,6 +254,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             id: data.id,
             name: data.name,
             description: data.description,
+            emoji: typeof data.emoji === 'string' && data.emoji.trim() !== '' ? data.emoji.trim() : undefined,
             dogIds: dogIds, // Garantiert ein Array
             defaultQuery,
             defaultBody,

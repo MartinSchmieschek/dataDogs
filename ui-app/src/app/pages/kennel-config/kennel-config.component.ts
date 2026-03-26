@@ -8,6 +8,7 @@ import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
+import { KennelEmojiPickerComponent } from '../../components/kennel-emoji-picker/kennel-emoji-picker.component';
 
 declare const monaco: any;
 
@@ -28,7 +29,13 @@ const BASE_DOG_TYPES = [
 @Component({
   selector: 'app-kennel-config',
   standalone: true,
-  imports: [FormsModule, RouterLink, LoadingIndicatorComponent, DogDisplayComponent],
+  imports: [
+    FormsModule,
+    RouterLink,
+    LoadingIndicatorComponent,
+    DogDisplayComponent,
+    KennelEmojiPickerComponent,
+  ],
   templateUrl: './kennel-config.component.html',
   styleUrls: ['./kennel-config.component.scss']
 })
@@ -50,6 +57,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   config = signal<IKennelConfig | null>(null);
   name = '';
   description = '';
+  emoji = '';
   /** Eine Liste: Reihenfolge = Ausführungsreihenfolge; Index 0 = API-Ergebnis-Hund */
   orderedDogIds = signal<string[]>([]);
   availableDogs = signal<DogInfo[]>([]);
@@ -83,6 +91,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
           this.config.set(cfg);
           this.name = cfg.name ?? '';
           this.description = cfg.description ?? '';
+          this.emoji = cfg.emoji ?? '';
 
           this.orderedDogIds.set([...(cfg.dogIds ?? [])]);
 
@@ -247,6 +256,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
     const data: Partial<IKennelConfig> = {
       name: this.name,
       description: this.description,
+      emoji: this.emoji.trim(),
       dogIds,
       defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
       defaultBody,

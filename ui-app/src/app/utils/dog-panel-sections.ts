@@ -32,41 +32,49 @@ export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
 /** Standard-Bereich beim Öffnen des Panels (wenn nichts anderes vorgegeben). */
 export const DEFAULT_PANEL_SECTION: DogPanelSectionId = 'result';
 
-const FAN_R = 54;
-/** Bogen 10 Uhr → 15 Uhr (3 Uhr) im Uhrzeigersinn = 150° */
-const ARC_START = 300;
-const ARC_SPAN = 150;
-/** Unter diesem Winkel (°) zwischen zwei Buttons → voller Kreis */
-const MIN_ARC_DEG_PER_BTN = 24;
+const FAN_R_BASE = 54;
+
+/** Magnetischer Pol: 1:30 Uhr = 45° (von 12 Uhr im Uhrzeigersinn). */
+const PHI_CENTER_DEG = 45;
+
+/** Bogen 11h–3h entspricht 120°; alle Buttons in diesem Segment um PHI_CENTER symmetrisch (bei n≥2). */
+const ARC_SPAN_MAX = 120;
+
+function fanRadius(total: number): number {
+  if (total <= 6) return FAN_R_BASE;
+  return FAN_R_BASE * Math.min(1.85, 1 + (total - 6) * 0.11);
+}
+
+function normDeg(d: number): number {
+  return ((d % 360) + 360) % 360;
+}
 
 /**
- * Polarkoordinaten vom Eck oben rechts der Node.
- * Bevorzugt Bogen 10–15 Uhr; bei vielen Buttons oder zu wenig Winkel → volle 360°.
+ * Action-Fächer: Polarkoordinaten vom Anker oben rechts der Node.
+ * Kein Spezialfall nach Anzahl: immer auf einem Kreisbogen (bzw. vollem Kreis bei vielen Buttons).
+ * „Pol“ bei 45° / 1:30 Uhr — bei mehreren Einträgen liegt der Mittelpunkt des Bogens dort
+ * (zwei Buttons: symmetrisch mit/im gegen den Uhrzeigersinn um 1:30).
  * φ = 0° = 12 Uhr (oben), im Uhrzeigersinn.
  */
 export function fanTransform(index: number, total: number): string {
   if (total <= 0) return '';
 
+  const r = fanRadius(total);
   let phiDeg: number;
 
   if (total === 1) {
-    phiDeg = ARC_START + ARC_SPAN / 2;
+    phiDeg = PHI_CENTER_DEG;
+  } else if (total > 6) {
+    /** Voller Kreis; erster Index bei 1:30, gleichmäßig verteilt */
+    phiDeg = normDeg(PHI_CENTER_DEG + (index * 360) / total);
   } else {
-    const spacingInArc = ARC_SPAN / (total - 1);
-    const useFullCircle = spacingInArc < MIN_ARC_DEG_PER_BTN || total > 6;
-
-    if (useFullCircle) {
-      phiDeg = (ARC_START + (360 * index) / total) % 360;
-    } else {
-      phiDeg = ARC_START + (ARC_SPAN * index) / (total - 1);
-      if (phiDeg >= 360) {
-        phiDeg -= 360;
-      }
-    }
+    /** Bogen zentriert bei PHI_CENTER, gleichmäßig von φ_start … φ_end */
+    const half = ARC_SPAN_MAX / 2;
+    phiDeg = normDeg(PHI_CENTER_DEG - half + (index / (total - 1)) * ARC_SPAN_MAX);
   }
 
   const rad = (phiDeg * Math.PI) / 180;
-  const x = Math.sin(rad) * FAN_R;
-  const y = -Math.cos(rad) * FAN_R;
+  const x = Math.sin(rad) * r;
+  const y = -Math.cos(rad) * r;
   return `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
 }

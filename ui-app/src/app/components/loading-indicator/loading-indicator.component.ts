@@ -6,10 +6,12 @@ import {
   type RequiemLoadingQuote,
 } from '../../data/requiem-loading';
 import { LastVoidTongueService } from '../../services/last-void-tongue.service';
+import { VoidRequiemGlyphWatermarkComponent } from '../void-requiem-glyph-watermark/void-requiem-glyph-watermark.component';
 
 @Component({
   selector: 'app-loading-indicator',
   standalone: true,
+  imports: [VoidRequiemGlyphWatermarkComponent],
   animations: [
     trigger('backdropFade', [
       transition(':enter', [
@@ -29,15 +31,6 @@ import { LastVoidTongueService } from '../../services/last-void-tongue.service';
         ),
       ]),
     ]),
-    trigger('copyFade', [
-      transition(':enter', [
-        style({ opacity: 0 }),
-        animate(
-          '480ms 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-          style({ opacity: 1 })
-        ),
-      ]),
-    ]),
   ],
   template: `
     <div
@@ -50,21 +43,11 @@ import { LastVoidTongueService } from '../../services/last-void-tongue.service';
         <div class="void-bg-void" aria-hidden="true"></div>
         <div class="void-bg-nebula" aria-hidden="true"></div>
         <div class="void-bg-scrim" aria-hidden="true"></div>
+        <app-void-requiem-glyph-watermark [iconSrc]="quote.iconSrc" />
       </div>
       <div class="void-stage">
         <div class="void-hero tilt-3d" [@heroFade]>
           <div class="void-hero-inner">
-            <div class="void-requiem-orbit">
-              <div class="spinner-ring" aria-hidden="true"></div>
-              <img
-                class="void-requiem-icon"
-                [src]="quote.iconSrc"
-                [alt]="quote.name + ', Requiem'"
-                width="52"
-                height="52"
-                loading="eager"
-                decoding="async" />
-            </div>
             <div class="void-egg">
               <div class="void-egg-glow" aria-hidden="true"></div>
               <button
@@ -73,14 +56,11 @@ import { LastVoidTongueService } from '../../services/last-void-tongue.service';
                 aria-label="Fernes Signal (Popup)"
                 (click)="onVoidIrisClick($event)"></button>
             </div>
-            <h1 class="void-name">{{ quote.name }}</h1>
           </div>
         </div>
-        <div class="void-copy tilt-3d" [@copyFade]>
-          <p class="void-keyword">{{ quote.keyword }}</p>
-          <div class="void-tongue">
-            <p class="void-line">{{ quote.line1 }}</p>
-            <p class="void-line">{{ quote.line2 }}</p>
+        <div class="loading-bar-wrap" aria-hidden="true">
+          <div class="loading-bar-track">
+            <div class="loading-bar-indeterminate"></div>
           </div>
         </div>
       </div>
@@ -162,14 +142,12 @@ import { LastVoidTongueService } from '../../services/last-void-tongue.service';
       display: inline-block;
       min-width: 11rem;
     }
-    /* Iris-Fleck: links unter der Glyphe, sehr dezent (Easter Egg). */
+    /* Iris-Fleck: zentriert, sehr dezent (Easter Egg). */
     .void-egg {
-      position: absolute;
-      left: 0;
-      top: 2.35rem;
+      position: relative;
       width: 3.75rem;
       height: 1.65rem;
-      transform: translate(-48%, 18%);
+      margin: 0 auto;
       pointer-events: none;
     }
     .void-egg-glow {
@@ -199,97 +177,48 @@ import { LastVoidTongueService } from '../../services/last-void-tongue.service';
       background: transparent;
       appearance: none;
     }
-    /* Über dem Hero stacken, nach oben ziehen: Zunge/Keyword überlagern das Iris-Auge. */
-    .void-copy {
+    .loading-bar-wrap {
       position: absolute;
       left: 50%;
-      bottom: clamp(0.35rem, 3vh, 1.75rem);
-      z-index: 5;
+      bottom: clamp(0.75rem, 4vh, 2rem);
+      z-index: 6;
+      transform: translateX(-50%);
+      width: min(22rem, calc(100% - 2.5rem));
       pointer-events: none;
-      width: min(22rem, calc(100% - 2rem));
-      transform: translateX(-50%)
-        translateY(calc(-1 * clamp(4.5rem, 19vh, 9.5rem)))
-        rotateX(9deg)
-        rotateY(-8deg);
-      transform-origin: 50% 100%;
-      text-align: center;
-      padding: 0 1.5rem;
     }
-    .void-requiem-orbit {
-      position: relative;
-      width: 3.35rem;
-      height: 3.35rem;
-      margin: 0 auto 0.85rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .loading-bar-track {
+      height: 3px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(20, 35, 55, 0.55);
+      box-shadow: inset 0 0 0 1px rgba(80, 120, 170, 0.12);
     }
-    .spinner-ring {
-      position: absolute;
-      inset: 0;
-      box-sizing: border-box;
-      border: 3px solid rgba(45, 55, 72, 0.55);
-      border-top-color: rgba(0, 102, 204, 0.5);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+    .loading-bar-indeterminate {
+      height: 100%;
+      width: 40%;
+      border-radius: inherit;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(60, 130, 200, 0.35),
+        rgba(120, 175, 220, 0.55),
+        rgba(60, 130, 200, 0.35),
+        transparent
+      );
+      animation: loading-bar-slide 1.35s ease-in-out infinite;
     }
-    .void-requiem-icon {
-      position: relative;
-      z-index: 1;
-      width: 2.65rem;
-      height: 2.65rem;
-      object-fit: contain;
-      display: block;
-      filter: drop-shadow(0 0 10px rgba(80, 120, 160, 0.2));
-      animation: void-pulse 3.2s ease-in-out infinite;
-    }
-    .void-name {
-      margin: 0;
-      font-family: 'Courier New', ui-monospace, monospace;
-      font-size: 1.35rem;
-      font-weight: 400;
-      letter-spacing: 0.55em;
-      text-indent: 0.55em;
-      text-transform: uppercase;
-      color: rgba(195, 212, 228, 0.42);
-      text-shadow: 0 0 24px rgba(100, 140, 180, 0.12);
-    }
-    .void-keyword {
-      margin: 0 0 0.65rem;
-      font-family: 'Courier New', ui-monospace, monospace;
-      font-size: 0.65rem;
-      letter-spacing: 0.45em;
-      text-transform: uppercase;
-      color: rgba(120, 145, 170, 0.34);
-      text-shadow: 0 0 18px rgba(0, 8, 20, 0.85);
-    }
-    .void-tongue {
-      border-top: 1px solid rgba(80, 110, 140, 0.14);
-      padding-top: 0.65rem;
-      margin-top: 0.15rem;
-    }
-    .void-line {
-      margin: 0;
-      font-family: 'Courier New', ui-monospace, monospace;
-      font-size: 0.72rem;
-      line-height: 1.55;
-      font-style: italic;
-      font-weight: 400;
-      letter-spacing: 0.06em;
-      color: rgba(105, 130, 155, 0.44);
-      text-shadow:
-        0 0 14px rgba(0, 6, 16, 0.9),
-        0 1px 2px rgba(0, 0, 0, 0.55);
-    }
-    .void-line + .void-line {
-      margin-top: 0.35rem;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    @keyframes void-pulse {
-      0%, 100% { opacity: 0.78; }
-      50% { opacity: 0.98; }
+    @keyframes loading-bar-slide {
+      0% {
+        transform: translateX(-100%);
+        opacity: 0.85;
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(350%);
+        opacity: 0.85;
+      }
     }
   `],
 })
@@ -301,7 +230,7 @@ export class LoadingIndicatorComponent implements OnInit {
     this.lastVoidTongue.remember(this.quote);
   }
 
-  /** Iris-Easter-Egg: gleicher Dialog wie beim Fehler-Popup, eigenes Video (s. video-popup.ts). */
+  /** Iris-Easter-Egg: Void-Kino mit Lade-Video (nicht dasselbe wie Fehler-Klick; s. video-popup.ts). */
   onVoidIrisClick(event: Event): void {
     event.stopPropagation();
     event.preventDefault();

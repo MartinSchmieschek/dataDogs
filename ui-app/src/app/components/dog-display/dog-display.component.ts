@@ -72,11 +72,11 @@ export type DogDisplayVariant = 'toolbar' | 'panel' | 'compact' | 'list' | 'stac
       gap: 0.2rem;
     }
     .graphVis .glyph {
-      font-size: 1.45rem;
+      font-size: 1.28rem;
       line-height: 1;
     }
     .graphVis .label {
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 400;
       color: #ffffff;
       white-space: normal;

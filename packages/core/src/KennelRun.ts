@@ -19,6 +19,8 @@ export interface IKennelConfig {
     id: string;
     name?: string;
     description?: string;
+    /** Ein Emoji als Kennel-Kennzeichnung (UI), optional */
+    emoji?: string;
     dogIds: string[]; // Array von Dog-IDs: SerializedDogs (z.B. "my-dog-v1") oder Basis-Dogs (z.B. "base:RandomRecipesRetriever")
     defaultQuery?: Record<string, string>; // Default Query-Parameter für den Editor
     defaultBody?: any; // Default Body-Daten für den Editor

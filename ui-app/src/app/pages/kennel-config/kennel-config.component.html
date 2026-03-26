@@ -11,7 +11,7 @@
       class="error comfort-error-trigger"
       role="button"
       tabindex="0"
-      title="Klick: kurzes Video"
+      title="Klick: Fernes Signal"
       (click)="onComfortVideoClick()"
       (keydown.enter)="onComfortVideoClick()"
       (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
@@ -29,6 +29,12 @@
       <div class="form-group">
         <label>Description:</label>
         <textarea [(ngModel)]="description" rows="3" placeholder="Beschreibung"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Emoji (optional):</label>
+        <app-kennel-emoji-picker [(emoji)]="emoji" />
+        <p class="hint">Wird in der Kennel-Liste groß neben dem Namen angezeigt.</p>
       </div>
 
       <div class="form-group">

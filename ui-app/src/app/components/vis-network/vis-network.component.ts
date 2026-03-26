@@ -108,15 +108,9 @@ export interface EdgeReadOverlayVM {
 
             @for (e of vm.renderEdges; track e.key) {
 
-              <line
+              <path
 
-                [attr.x1]="e.rx1"
-
-                [attr.y1]="e.ry1"
-
-                [attr.x2]="e.rx2"
-
-                [attr.y2]="e.ry2"
+                [attr.d]="e.pathD"
 
                 [attr.stroke]="e.optional ? '#0066cc' : '#cc0000'"
 
@@ -140,7 +134,7 @@ export interface EdgeReadOverlayVM {
 
               class="graph-node-slot"
 
-              [class.dragging]="draggingNodeId === n.id"
+              [class.dragging]="draggingNodeId() === n.id"
 
               [style.width.px]="nodeW"
 
@@ -339,7 +333,7 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   viewModel = computed(() =>
 
-    buildGraphViewModel(this.wavesRef(), this.manualPositions())
+    buildGraphViewModel(this.wavesRef(), this.manualPositions(), !this.draggingNodeId())
 
   );
 
@@ -359,7 +353,7 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 
 
-  draggingNodeId: string | null = null;
+  draggingNodeId = signal<string | null>(null);
 
   private nodeDragLast: { cx: number; cy: number } | null = null;
 
@@ -400,10 +394,11 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     if (!rn) return [];
 
-    const midY = rn.ry + GRAPH_NODE_H / 2;
+    /** Etwas über Knotenmitte, damit Karten/Titel nicht in den Node-Inhalt (Glyph) ragen */
+    const midY = rn.ry + GRAPH_NODE_H / 2 - 14;
 
-    /** Abstand Knotenkante → Overlay-Mitte (Karten ~240px breit) */
-    const inset = 100;
+    /** Abstand Knotenkante → Overlay-Mitte (Karten ~240px breit; größer = weniger Überlappung mit Knoten) */
+    const inset = 158;
 
     const out: EdgeReadOverlayVM[] = [];
 
@@ -562,7 +557,7 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     e.preventDefault();
 
-    this.draggingNodeId = n.id;
+    this.draggingNodeId.set(n.id);
 
     this.nodeDragLast = { cx: e.clientX, cy: e.clientY };
 
@@ -580,7 +575,7 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   private onNodePointerMoveDoc(e: PointerEvent) {
 
-    if (!this.draggingNodeId || !this.nodeDragLast) return;
+    if (!this.draggingNodeId() || !this.nodeDragLast) return;
 
     e.preventDefault();
 
@@ -606,7 +601,7 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     if (!vm) return;
 
-    const wn = vm.worldNodes.find(x => x.id === this.draggingNodeId);
+    const wn = vm.worldNodes.find(x => x.id === this.draggingNodeId());
 
     if (!wn) return;
 
@@ -614,9 +609,11 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     const next = new Map(this.manualPositions());
 
-    const cur = next.get(this.draggingNodeId) ?? { x: wn.x, y: wn.y };
+    const id = this.draggingNodeId()!;
 
-    next.set(this.draggingNodeId, { x: cur.x + dx, y: cur.y + dy });
+    const cur = next.get(id) ?? { x: wn.x, y: wn.y };
+
+    next.set(id, { x: cur.x + dx, y: cur.y + dy });
 
     this.manualPositions.set(next);
 
@@ -626,11 +623,32 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   private onNodePointerUpDoc(_e: PointerEvent) {
 
+    const draggedId = this.draggingNodeId();
+
+    /** Nur bei echtem Ziehen — sonst wäre jeder Klick ein „Drag-Ende“ (Separation + Zoom). */
+    const didDrag = this.nodeDragSuppressedClick;
+
     this.detachNodeDragListeners();
 
-    this.draggingNodeId = null;
+    this.draggingNodeId.set(null);
 
     this.nodeDragLast = null;
+
+    if (draggedId && didDrag) {
+
+      const vm = buildGraphViewModel(this.wavesRef(), this.manualPositions(), true);
+
+      if (vm?.worldNodes.length) {
+
+        const m = new Map<string, { x: number; y: number }>();
+
+        for (const n of vm.worldNodes) m.set(n.id, { x: n.x, y: n.y });
+
+        this.manualPositions.set(m);
+
+      }
+
+    }
 
   }
 
