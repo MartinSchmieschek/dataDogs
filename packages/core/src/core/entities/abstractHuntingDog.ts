@@ -144,6 +144,17 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
         const readerName = readerInstance.name;
         const waveIndex = season.currentWaveIndex ?? season.wave.length; // Fallback auf wave.length falls currentWaveIndex nicht gesetzt
         
+        /** Kein Deep-Tracking: Promises/Built-ins sonst kaputt (z. B. Promise.prototype.then). */
+        const shouldWrapNestedObject = (value: unknown): boolean => {
+            if (value === null || typeof value !== 'object') return false;
+            if (Array.isArray(value)) return false;
+            if (value instanceof Promise) return false;
+            if (value instanceof Date) return false;
+            if (value instanceof RegExp) return false;
+            if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return false;
+            return true;
+        };
+
         // Hilfsfunktion: Erstellt einen rekursiven Proxy für verschachtelte Properties
         const createTrackedObject = (obj: any, sourceInstance: IHuntingDog<unknown>, propertyPath: string = ''): any => {
             if (obj === null || obj === undefined) return obj;
@@ -164,8 +175,7 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
                     
                     const value = (target as any)[prop];
                     
-                    // Wenn Wert ein Objekt ist, wrappe es rekursiv
-                    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+                    if (shouldWrapNestedObject(value)) {
                         return createTrackedObject(value, sourceInstance, fullPropertyPath);
                     }
                     

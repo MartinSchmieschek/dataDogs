@@ -24,6 +24,8 @@ const BASE_DOG_TYPES = [
   'BloodhoundRouteRetriever',
   'BloodhoundIsochroneRetriever',
   'OsmLandmarksRetriever',
+  'HueBridgeEnvRetriever',
+  'HuePlaygroundRetriever',
 ];
 
 @Component({

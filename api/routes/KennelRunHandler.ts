@@ -210,7 +210,8 @@ export class KennelRunHandler {
                 if (msg.includes("Nothing to harvest")) {
                     res.json({ ok: false, error: msg, kennelConfig: config });
                 } else {
-                    throw runError;
+                    console.error("[KennelRunHandler.handleRun] runKennel", runError);
+                    res.status(500).json({ ok: false, error: msg, kennelConfig: config });
                 }
             }
         } catch (err) {

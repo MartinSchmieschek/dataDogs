@@ -13,6 +13,8 @@ const BASE_DOG_ICONS: Record<string, string> = {
     BloodhoundRouteRetriever: '🗺️',
     BloodhoundIsochroneRetriever: '⏱️',
     OsmLandmarksRetriever: '🏛️',
+    HueBridgeEnvRetriever: '🔐',
+    HuePlaygroundRetriever: '💡',
 };
 
 export function getBaseDogIcon(className: string): string | undefined {

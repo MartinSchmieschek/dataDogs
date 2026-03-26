@@ -1,3 +1,9 @@
+import 'dotenv/config';
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[unhandledRejection]', reason);
+});
+
 import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
 import { RandomRecipesRetriever } from "./dogs/RandomRecipesRetriever";
 import { CountryFlagBlackLab } from "./dogs/CountryFlagBlackLab";
@@ -12,6 +18,8 @@ import { WarframeAlertsRetriever } from './dogs/Kubrow/WarframeAlertsRetriever';
 import { BloodhoundRouteRetriever } from './dogs/Bloodhound/BloodhoundRouteRetriever';
 import { BloodhoundIsochroneRetriever } from './dogs/Bloodhound/BloodhoundIsochroneRetriever';
 import { OsmLandmarksRetriever } from './dogs/OpenStreetMap/OsmLandmarksRetriever';
+import { HuePlaygroundRetriever } from './dogs/HuePlayground/HuePlaygroundRetriever';
+import { HueBridgeEnvRetriever } from './dogs/HuePlayground/HueBridgeEnvRetriever';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from 'datadogs';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
@@ -22,6 +30,7 @@ import { runSeeds } from './seed';
 import { LayoutInputPact } from './dogs/TalkingDogs/renderer/layouts/ILayoutInput';
 import { BloodhoundRouteQueryPact, BloodhoundIsochronePact } from './dogs/Bloodhound/pacts';
 import { NearbyLandmarksPact } from './dogs/OpenStreetMap/pacts';
+import { HueBridgeQueryPact } from './dogs/HuePlayground/pacts';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 
 start().catch(e => {
@@ -52,6 +61,8 @@ async function start() {
         BloodhoundRouteRetriever,
         BloodhoundIsochroneRetriever,
         OsmLandmarksRetriever,
+        HueBridgeEnvRetriever,
+        HuePlaygroundRetriever,
     ];
 
     const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
@@ -62,7 +73,7 @@ async function start() {
         baseDogsMap.set(instance.name, DogClass);
     });
 
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
