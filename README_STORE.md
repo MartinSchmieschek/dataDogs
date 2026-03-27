@@ -1,6 +1,8 @@
 Store (Prisma) — Install & Usage
 
-Kurz: Die Implementierung `store/PrismaStore.ts` nutzt Prisma + Postgres. Dadurch kannst du lokal mit SQLite/SQLite→Postgres wechseln oder in die Cloud (Supabase, Neon) deployen.
+Kurz: Die Implementierung `store/PrismaStore.ts` nutzt Prisma + SQLite (lokal) bzw. Postgres in der Cloud. So kannst du lokal mit SQLite entwickeln, zu Postgres wechseln oder in die Cloud (Supabase, Neon) deployen.
+
+**Lizenz:** [MIT](LICENSE) — Copyright (c) 2026 Martin.
 
 Schritte zum Einrichten (lokal):
 
@@ -22,7 +24,7 @@ npx prisma db push
 ```
 
 3) Optional: Wechsel zu Postgres (Cloud)
-- Wenn du in die Cloud wechseln willst, setze `DATABASE_URL` auf deinen Postgres-Connection-String (z. B. Supabase/Neon) und passe `prisma/schema.prisma` an `provider = "postgresql"`, dann:
+- Wenn du in die Cloud wechseln willst, setze `DATABASE_URL` auf deinen Postgres-Connection-String (z. B. Supabase/Neon) und passe `store/prisma/schema.prisma` an `provider = "postgresql"`, dann:
 ```powershell
 $env:DATABASE_URL = "postgresql://user:pass@host:5432/dbname"
 npx prisma db push
@@ -41,3 +43,4 @@ await store.init();
 Hinweise
 - Für Entwicklung ist SQLite sehr praktisch (keine zusätzliche Installation).
 - In Produktion empfehle ich Migrationen via `prisma migrate` und eine echte Postgres-Instanz.
+- Alle relevanten Umgebungsvariablen (inkl. `DATABASE_URL`) stehen kommentiert in [`.env.example`](.env.example); Geheimnisse nur in `.env`, nie committen.

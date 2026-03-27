@@ -163,6 +163,8 @@ return { topRecipes: filtered, count: filtered.length };
 
 ## Getting Started
 
+Copy [`.env.example`](.env.example) to `.env` and fill in secrets (API keys, Hue bridge user, and so on) on your machine. Never commit `.env`.
+
 ```bash
 npm install
 npm run dev
@@ -233,6 +235,6 @@ ui-app/                       Angular frontend (see ui-app/README.md)
 
 ## License
 
-UNLICENSED. Private project.
+[MIT](LICENSE) — Copyright (c) 2026 Martin.
 
 > We end as we began.

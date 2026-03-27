@@ -156,4 +156,10 @@ npx ng build
 
 Output lands in `dist/ui-app`. Deploy it anywhere. Point it at a backend. Loose the pack.
 
+---
+
+## License
+
+[MIT](../LICENSE) — Copyright (c) 2026 Martin.
+
 > We end as we began.

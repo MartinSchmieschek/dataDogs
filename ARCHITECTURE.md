@@ -1,12 +1,111 @@
-# Architecture Documentation
+# Architecture — tongues of the void
 
-This documentation describes the architecture of the Data Hunt application, its components, data flows, and execution processes.
+This is not a manual that pretends the machine is innocent. It is a map of the hunt — how **Dogs** are bred, chained in **Kennels**, and sent out in **Waves** until something answers. The UI whispers **Requiem** lines while it loads (see [`ui-app/src/app/data/requiem-loading.ts`](ui-app/src/app/data/requiem-loading.ts)): nine names, nine keywords, eighteen lines borrowed from the Void tongue. Below, those same voices thread through the stack — not as decoration, but as **names for forces** that already live here: absence, flame, unwritten law, stubborn order, accusing light, roiling chaos, decaying memory, closed time, and the branch that has not yet chosen its shape.
 
-## System Overview
+---
 
-The Data Hunt application is an Express.js-based application that organizes data processing units ("Dogs") in configurations ("Kennels") and executes them in dependency order.
+> *From brooding gulfs are we beheld*  
+> *By that which bears no name.*  
+> — **Lohk** · *Void*
 
-## Komponenten-Architektur
+## System Overview — the gulf and the nameless gate
+
+**Lohk** names the hollow between you and the world: the browser gulf, the server gulf, the gulf where external APIs hang like unnamed stars. The application is Express: it gathers **Dogs** into **Kennels** and runs them in dependency order — nothing more sacred, nothing less mechanical. What crosses that void is HTTP; what returns is **collected** flesh: JSON, HTML, or silence.
+
+### System context
+
+Who speaks to whom — the operator, the lodge of Angular, the Express gate, the stone that remembers (`PrismaStore`), and the distant endpoints that bleed data when the pack asks.
+
+```mermaid
+flowchart TB
+    subgraph Clients
+        Human[Operator]
+        Ext[External HTTP APIs<br/>recipes, ORS, Hue, ...]
+    end
+
+    subgraph Browser["Browser — Angular dev server"]
+        UI[UI on port 4200]
+    end
+
+    subgraph Server["Express backend"]
+        API[REST + /save + public Kennel routes]
+        Run[KennelRun → SeasonRunner]
+    end
+
+    subgraph Persistence
+        PS[PrismaStore]
+        DB[(SQLite or Postgres)]
+    end
+
+    Human --> UI
+    UI -->|proxy /api, /save| API
+    Human -->|optional: direct| API
+    API --> Run
+    API --> PS
+    PS --> DB
+    Run --> Ext
+    Run --> PS
+```
+
+### Lead dog — whose catch becomes the answer
+
+Covenant is **order in `dogIds`**: the **first** slot is the **lead**. The graph still commands the waves; the lead alone decides **whose yield** becomes the public face of the hunt — the body returned to `GET /:kennelId` and kin. Wave logic does not bow to the lead; the response does.
+
+```mermaid
+flowchart LR
+    subgraph dogIds["dogIds (ordered)"]
+        D1["1st → LEAD<br/>(public yield)"]
+        D2[2nd …]
+        D3[3rd …]
+    end
+
+    subgraph Run["After runSeason"]
+        Waves[Waves 1…N<br/>by dependencies]
+        Pick[Response builder]
+    end
+
+    dogIds --> Run
+    D1 --> Pick
+    Pick --> Out[HTTP body:<br/>lead only]
+```
+
+---
+
+> *Its heralds are the stars it fells*  
+> *The sky and Earth aflame.*  
+> — **Xata** · *Truth*
+
+## HTTP surface — heralds and naked flame
+
+**Xata** is the truth that does not negotiate: routes are what they are. `ConfigRouteHandler` mounts CRUD under `/api`; `KennelRunHandler` adds **run**, **execute**, Swagger, and the bare **`/:kennelId`** hunt. The herald is the request; the fallen star is the response. No pleasant lie — only status codes and bodies.
+
+```mermaid
+flowchart TB
+    subgraph API["/api/*"]
+        N["/api/nodes — list + CRUD"]
+        K["/api/kennels — CRUD"]
+        S["/save — SerializedDog save"]
+    end
+
+    subgraph Hunt["Kennel execution"]
+        R["/api/kennels/:id/run|execute"]
+        P["GET|POST /:kennelId"]
+        Sw["/api/kennels/:id/docs, swagger.json"]
+    end
+
+    Client([Client / UI]) --> API
+    Client --> Hunt
+```
+
+---
+
+> *Corporeal laws are unwrite*  
+> *As suns and love retreat.*  
+> — **Jahu** · *Form*
+
+## Komponenten-Architektur — flesh made diagram
+
+**Jahu** speaks of **form**: layers stack whether you believe in them or not — HTTP, controllers, orchestration, VM, persistence. The diagram below is the unwritten law made visible: Express above, Prisma below, **SerializedDog** in the crucible next to **BaseDogs**. Form does not ask permission.
 
 ```mermaid
 graph TB
@@ -58,9 +157,13 @@ graph TB
     SerializedDog --> PrismaStore
 ```
 
-## Datenfluss-Architektur
+---
+
+## Datenfluss-Architektur — rivers without mercy
 
 ### Request-zu-Response Datenfluss
+
+A request enters; the route kindles one path. The Kennel loads; **fillKennel** names the beasts; **runSeason** walks the waves until **exhausted** holds every throat that will speak. Then read-tracking weaves memory into the structure you return — **Xata** again: what happened, tabulated.
 
 ```mermaid
 flowchart TD
@@ -104,6 +207,8 @@ flowchart TD
 
 ### Datenfluss zwischen Dogs
 
+Parents bleed **collected** into the VM’s sky; children drink from globals. The wave order is not love — it is **fulfilled dependency**, which is a colder contract.
+
 ```mermaid
 flowchart LR
     subgraph "Wave 1"
@@ -132,7 +237,15 @@ flowchart LR
     Dog3 -->|collected| Results
 ```
 
-## Run Process
+---
+
+> *To cosmic madness laws submit*  
+> *Though stalwart minds entreat.*  
+> — **Vome** · *Order*
+
+## Run Process — the season submits
+
+**Vome** is **order inside madness**: `SeasonRunner` does not care for your entreaties — only for **isReady**, **exhausted**, and the wave index. Below, the sequence is the liturgy: Client begs Express; **KennelRun** fills the kennel; **SerializedDog** opens the VM; the season returns, and HTML or JSON is the amen.
 
 ### Sequence Diagram of a Complete Run
 
@@ -195,9 +308,13 @@ sequenceDiagram
     Express-->>Client: HTTP Response
 ```
 
-## Dependency Resolution
+---
+
+## Dependency Resolution — who waits, who runs
 
 ### How Dependencies are Resolved
+
+**withBeesInThePants** holds the restless; **exhausted** holds the done. Required parents must rest before you run; optional parents may linger in shadow. This is **Vome** again — graph truth, not mercy.
 
 ```mermaid
 flowchart TD
@@ -230,6 +347,8 @@ flowchart TD
 
 ### Dependency Matching for SerializedDogs
 
+Storage IDs and **base:** names are the two dialects of parentage. Match wrong, and the child waits in the dark.
+
 ```mermaid
 flowchart LR
     Start[SerializedDog<br/>parentsRequired:<br/>['node-v1', 'base:QueryRetriever']] --> MatchParent{Parent<br/>found?}
@@ -249,7 +368,52 @@ flowchart LR
     NotFound --> Wait[Wait for<br/>Parent]
 ```
 
-## VM Context and Read Tracking
+---
+
+> *Through endless faces, countless forms,*  
+> *a multitude unfolds.*  
+> — **Oull** · *Possibility*
+
+## Pacts, Mimics, and Auto-Mimic — shapes not yet born
+
+**Oull** is **possibility**: a **Pact** is only a shape (`__isPact: true`), not a runner. A **MimicDog** wears that shape until truth arrives. **`autoMimic`** conjures when nothing fulfills the Pact; it **unmakes** the Mimic when a real Dog steps into the kennel. Endless faces — one graph, many outcomes.
+
+```mermaid
+flowchart TD
+    subgraph Need["Dog requires Pact class P"]
+        Req[required / optional graph]
+    end
+
+    subgraph Kennel["Dogs in kennel after fill"]
+        Real{Real Dog<br/>implements P?}
+        Mimic{MimicDog<br/>imitates P?}
+    end
+
+    subgraph Auto["autoMimic()"]
+        Both[Real + Mimic?]
+        Drop[Remove Mimic]
+        Spawn[Inject MimicDog / BaseDog<br/>from factory]
+    end
+
+    Need --> Real
+    Real -->|yes| Both
+    Real -->|no| Mimic
+    Mimic -->|yes| OK[Wave can run]
+    Mimic -->|no| Spawn
+    Both --> Drop
+    Drop --> OK
+    Spawn --> OK
+```
+
+---
+
+> *In luminous space blackened stars*  
+> *They gaze, accuse, deny.*  
+> — **Ris** · *Light*
+
+## VM Context and Read Tracking — the accuser’s ledger
+
+**Ris** names the **light that judges**: every property read can be witnessed. Proxies wrap **exhausted**, **collected**, the path of the getter — **readTracking** remembers **who** read **what** from **whom** in **which wave**. Deny if you wish; the ledger does not blink.
 
 ### How the VM Context is Created
 
@@ -310,7 +474,15 @@ flowchart LR
     ProxyCollected -->|track| ReadTracking
 ```
 
-## Version Management
+---
+
+> *Roiling, moaning, this realm of ours*  
+> *In madness lost shall die.*  
+> — **Fass** · *Chaos*
+
+## Version Management — each save, another throat
+
+**Fass** is the **roil**: every save of a SerializedDog can birth a new version — **my-node-v2** screaming beside **my-node-v1**. Nothing is erased; the store only accumulates. Madness, but bounded by IDs and integers.
 
 ### How Versions are Managed
 
@@ -340,7 +512,17 @@ flowchart TD
     LoadExact --> Return
 ```
 
-## Data Structures
+*(**Fass** here is the churn of versions; **Khra** — time — is the line that says: the latest is not the only ghost you can summon.)*
+
+---
+
+> *To cosmic forms from tangent planes*  
+> *We end as we began.*  
+> — **Khra** · *Time*
+
+## Data Structures — the planes where types lie still
+
+**Khra** closes the loop: the season’s shape is fixed in interfaces — **withBeesInThePants**, **exhausted**, **wave**, **readTracking**. Kennel config holds **dogIds** and defaults; Serialized config holds **theRun** and **parents**. We end as we began: with types that outlive any single run.
 
 ### IHuntingSeason
 
@@ -383,12 +565,70 @@ interface ISerializedDogConfig {
 }
 ```
 
-## Important Files
+---
 
-- **[main.ts](main.ts)**: Entry point, Express server setup, route handlers
-- **[KennelRun.ts](KennelRun.ts)**: Run orchestration, fillKennel, runSeason
-- **[harverster.ts](harverster.ts)**: SeasonRunner for wave execution
-- **[dogs/SerializedDog.ts](dogs/SerializedDog.ts)**: VM code execution, context creation
-- **[store/PrismaStore.ts](store/PrismaStore.ts)**: Data persistence, version management
-- **[core/enities/abstractHuntingDog.ts](core/enities/abstractHuntingDog.ts)**: Base dog logic, dependency resolution, read tracking
+> *Carrion hordes trill their profane*  
+> *Accord with eldritch plans.*  
+> — **Netra** · *Decay*
 
+## Deployment — where the lodge meets the wild
+
+**Netra** is **decay held at bay**: production is not the dev lodge — it is **carrion** kept outside the walls by ports, env vars, reverse proxies, and migrations. The lodge has walls; the wild has teeth. Same pack; colder air.
+
+> The lodge has walls; production has ports and passwords. Same pack, colder air — you still breed, chain, and unleash, only the ground beneath the kennel door is harder.
+
+### Ports
+
+| Surface | Port | Notes |
+|--------|------|--------|
+| **Backend** (Express, `main.ts`) | **3000** | API, `/save`, public `/:kennelId`, Swagger — the server that actually runs the dogs. |
+| **UI** (dev, `ng serve`) | **4200** | Proxies `/api` and `/save` to the backend via [`ui-app/proxy.conf.json`](ui-app/proxy.conf.json). Open the UI here during development. |
+
+### Environment
+
+Copy [`.env.example`](.env.example) to `.env` and fill in secrets locally (API keys, Hue bridge user, ORS keys, and so on). **Never commit `.env`.** At minimum, set `DATABASE_URL` for Prisma (SQLite file in dev, or Postgres in production). Optional integrations (Hue, OpenRouteService, Overpass, Claude) are documented inline in `.env.example`.
+
+### Database
+
+Before first run or after schema changes: from the repo root, `npm run prisma:sync` runs `prisma generate` and `prisma db push` against `store/prisma/schema.prisma`. For production, prefer migrations (`prisma migrate`) and a managed Postgres instance when you leave the SQLite hunting grounds.
+
+### Static UI
+
+`npm run ui:build` builds the Angular app into `ui-app/dist/`. Deploy that folder behind any static host or CDN. The browser must reach the **same origin** as the API, or you configure CORS and absolute API URLs — the dev proxy does not exist in a static build, so wire your reverse proxy (nginx, Caddy, platform defaults) to forward `/api` and `/save` to the Node backend, or bake the backend URL into the Angular environment for your deployment.
+
+### Topology — dev vs production-shaped
+
+Two sketches: local hunt (proxy carries the scent) and split static + API (the trail crosses origins on purpose).
+
+```mermaid
+flowchart LR
+    subgraph Dev["Development"]
+        B1[Browser :4200] -->|proxy| E1[Express :3000]
+        E1 --> DB1[(dev.db)]
+    end
+```
+
+```mermaid
+flowchart LR
+    subgraph Prod["Production-shaped"]
+        B2[Browser] --> CDN[Static files<br/>ui-app/dist]
+        B2 -->|/api /save| RP[Reverse proxy]
+        RP --> E2[Express]
+        E2 --> DB2[(Postgres / file)]
+    end
+```
+
+---
+
+## Important Files — grimoire entries
+
+- **[main.ts](main.ts)** — Express gate, registry, routes, startup tests  
+- **[packages/core/src/KennelRun.ts](packages/core/src/KennelRun.ts)** — fillKennel, autoMimic, orchestration  
+- **[packages/core/src/harverster.ts](packages/core/src/harverster.ts)** — SeasonRunner, waves  
+- **[packages/core/src/dogs/SerializedDog.ts](packages/core/src/dogs/SerializedDog.ts)** — VM, context, yield  
+- **[store/PrismaStore.ts](store/PrismaStore.ts)** — persistence, versions  
+- **[packages/core/src/core/entities/abstractHuntingDog.ts](packages/core/src/core/entities/abstractHuntingDog.ts)** — Dog base, dependencies, read tracking  
+
+---
+
+*We end as we began — with a name on the door and a pack in the dark.*

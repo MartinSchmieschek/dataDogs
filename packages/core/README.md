@@ -92,3 +92,6 @@ const serializedDogFactory = async (ids: string[]): Promise<Array<SerializedDog<
 - `vm2` - Für SerializedDog VM-Ausführung
 - `@types/node` - TypeScript-Typen
 
+## Lizenz
+
+[MIT](../../LICENSE) — Copyright (c) 2026 Martin.

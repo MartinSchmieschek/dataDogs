@@ -112,7 +112,7 @@ export class SwaggerGenerator {
             info: {
                 title: `${kennelName} API`,
                 description,
-                version: '1.0.0',
+                version: '0.1.0-alpha.0',
             },
             servers: [{ url: '', description: 'Data Hunt Server' }],
             paths: {
