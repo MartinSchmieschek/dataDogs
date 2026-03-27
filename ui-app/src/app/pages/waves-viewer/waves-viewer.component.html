@@ -143,20 +143,22 @@
         </div>
       }
     </div>
-
-    @if (selectedDog()) {
-      <div class="side-panel-pane">
-        <app-dog-side-panel
-          [dog]="selectedDog()!"
-          [initialSection]="panelInitialSection()"
-          [allDogs]="flatDogList()"
-          [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
-          [kennelLeadControlsEnabled]="!!(kennelConfig()?.dogIds?.length)"
-          (saved)="loadWaves()"
-          (deleted)="onDogDeleted($event)"
-          (movedToFirst)="onDogMovedToFirst($event)"
-          (closed)="closeSidePanel()" />
-      </div>
-    }
   </div>
+
+  @if (selectedDog()) {
+    <app-floating-panel-window
+      [storageKey]="'waves-node-edit-' + kennelId"
+      [title]="nodePanelTitle()">
+      <app-dog-side-panel
+        [dog]="selectedDog()!"
+        [initialSection]="panelInitialSection()"
+        [allDogs]="flatDogList()"
+        [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
+        [kennelLeadControlsEnabled]="!!(kennelConfig()?.dogIds?.length)"
+        (saved)="loadWaves()"
+        (deleted)="onDogDeleted($event)"
+        (movedToFirst)="onDogMovedToFirst($event)"
+        (closed)="closeSidePanel()" />
+    </app-floating-panel-window>
+  }
 </div>

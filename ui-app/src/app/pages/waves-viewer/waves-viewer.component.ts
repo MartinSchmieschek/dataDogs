@@ -11,6 +11,7 @@ import { VisNetworkComponent } from '../../components/vis-network/vis-network.co
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
 import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-panel.component';
+import { FloatingPanelWindowComponent } from '../../components/floating-panel-window/floating-panel-window.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.component';
 import { findKennelDogIndex } from '../../utils/kennel-dog-id-match';
@@ -24,6 +25,7 @@ import { apiAbsoluteUrl } from '../../config/api-base';
   imports: [
     RouterLink, FormsModule,
     GraphCanvasScaleComponent, VoidMythicBackdropComponent, VisNetworkComponent, DogSidePanelComponent,
+    FloatingPanelWindowComponent,
     LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent
   ],
   templateUrl: './waves-viewer.component.html',
@@ -63,6 +65,12 @@ export class WavesViewerComponent implements OnInit {
     const w = this.waves();
     if (!w) return [];
     return w.flat();
+  });
+
+  /** Titel der schwebenden Node-Bearbeiten-Fensters. */
+  nodePanelTitle = computed(() => {
+    const d = this.selectedDog();
+    return d ? `Node: ${d.id}` : '';
   });
 
   /** Swagger UI & OpenAPI — direkt Express :3000 (neuer Tab, kein Angular-Origin). */

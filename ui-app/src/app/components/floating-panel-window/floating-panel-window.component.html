@@ -1,0 +1,20 @@
+<div
+  #panelEl
+  class="floating-panel"
+  [style.left.px]="panelLeft()"
+  [style.top.px]="panelTop()"
+  [style.width.px]="panelW()"
+  [style.height.px]="panelH()"
+  role="dialog"
+  [attr.aria-label]="title || 'Panel'">
+  <div
+    class="floating-panel__titlebar"
+    (pointerdown)="onDragStart($event)"
+    title="Ziehen zum Verschieben">
+    <span class="floating-panel__title">{{ title || 'Panel' }}</span>
+    <span class="floating-panel__hint">Ziehen · Ecke zum Vergrößern</span>
+  </div>
+  <div class="floating-panel__body">
+    <ng-content />
+  </div>
+</div>
