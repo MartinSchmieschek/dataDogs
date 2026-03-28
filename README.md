@@ -17,7 +17,7 @@ Every dog is a hunter. Two breeds walk these grounds:
 
 **BaseDogs** -- Ancient breeds. They ship with the platform and know their purpose without instruction. Fetch recipes, parse query params, extract request bodies, raid random APIs. New breeds manifest as classes. No configuration. No ceremony. They simply are.
 
-**SerializedDogs** -- Your creations. TypeScript inscribed into the database, awakened at runtime in a VM sandbox. Full `async/await`, access to parent dogs' yields as globals, automatic IntelliSense whispering what data lies in reach. Every save breeds a new version. No ancestor is ever erased. Through endless faces, countless forms -- a multitude unfolds.
+**SerializedDogs** -- Your creations. TypeScript inscribed into the database, awakened at runtime in a VM sandbox. Full `async/await`, access to parent dogs' yields as globals, automatic IntelliSense whispering what data lies in reach. Every save breeds a new version. No ancestor is ever erased. The tree keeps branching.
 
 ### Kennels
 
@@ -40,7 +40,7 @@ Dogs don't run at once. They go out in waves:
 - **Wave 2** -- Dogs that depend on Wave 1's catch. They follow the trails left behind.
 - **Wave N** -- Until every dog has run and nothing stirs.
 
-The engine calculates wave order from the dependency graph. Corporeal laws are unwritten -- the system decides.
+The engine calculates wave order from the dependency graph. The scheduler decides; there is no separate rulebook.
 
 ### Dependencies
 
@@ -52,7 +52,7 @@ Referenced by ID: `base:QueryRetriever` for BaseDogs, `my-dog-v1` or `my-dog` (l
 
 ### Pacts
 
-A Pact is a sworn agreement between dogs. Instead of requiring a specific Dog class, a Dog can require a Pact -- a pledge that defines *what data shape* is needed, not *who provides it*. To cosmic madness laws submit -- but Pacts hold.
+A Pact is a sworn agreement between dogs. Instead of requiring a specific Dog class, a Dog can require a Pact -- a pledge that defines *what data shape* is needed, not *who provides it*. The graph may twist; the Pact stays fixed.
 
 ```typescript
 const LayoutInputPact = createPact<ILayoutInput>('LayoutInputProvider', {
@@ -74,9 +74,14 @@ A MimicDog is a SerializedDog that *imitates* a Pact. It sits between raw data s
 
 ### Auto-Mimic
 
-When a Dog requires a Pact that no one in the Kennel fulfills, the system conjures a MimicDog from nothing. When a real Dog arrives that honors the Pact, the Mimic dissolves. When that real Dog is removed, the Mimic returns. Carrion hordes trill their profane accord -- the system provides.
+When a Dog requires a Pact that no one in the Kennel fulfills, the system conjures a MimicDog **from the void** — a stand-in until something real answers the Pact. When a real Dog arrives that honors the Pact, the Mimic dissolves. When that real Dog is removed, the Mimic returns. The runner closes the gap.
+
+> *From brooding gulfs are we beheld*  
+> *By that which bears no name.*
 
 Core rule: **Who requires via a Pact accepts Mimics. Who requires a real class demands the real Dog.**
+
+*(Loader verse **Lohk** — [`ui-app/src/app/data/requiem-loading.ts`](ui-app/src/app/data/requiem-loading.ts).)*
 
 ### Data Pipelines
 
@@ -102,11 +107,11 @@ return { topRecipes: filtered, count: filtered.length };
 
 **Versioning** -- Every save breeds a new version (`dog-v1`, `dog-v2`, ...). Old versions remain in the database. Latest is loaded by default. Browse any ancestor from the UI. No lineage is ever severed.
 
-**Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. In luminous space blackened stars -- they gaze, accuse, deny. Full data flow traceability.
+**Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data-flow traceability across the pack.
 
 **Public endpoints** -- Every Kennel gets a URL. `GET /my-kennel` runs the pack and returns the lead dog's result. Pass query params or POST a body -- the dogs pick it up.
 
-**Swagger** -- Every Kennel can bare its truth. `/api/kennels/:id/docs` unleashes a full hunt, reads the entrails, and conjures a live OpenAPI spec from what the dogs dragged back. Not a static schema -- the real shapes, the real data, inferred from the lead dog's actual yield. `/api/kennels/:id/swagger.json` for the raw spec. Swagger UI lets you try endpoints on the spot.
+**Swagger** -- `/api/kennels/:id/docs` runs the Kennel once and builds a live OpenAPI spec from the lead dog's actual yield — not a hand-written schema. `/api/kennels/:id/swagger.json` serves the raw spec. Swagger UI lets you try endpoints on the spot.
 
 **Inline Kennel params** -- Edit query parameters and body data directly from the Waves Viewer. Change it, reload, see the result. Save it when it's right.
 
@@ -128,7 +133,7 @@ return { topRecipes: filtered, count: filtered.length };
 | `GET/POST` | `/api/kennels/:id/run` | Unleash the hunt, return Waves + config |
 | `GET/POST` | `/api/kennels/:id/execute` | Unleash the hunt, return the lead's yield |
 | `GET` | `/api/kennels/:id/swagger.json` | Xata -- the Kennel's truth as OpenAPI spec |
-| `GET` | `/api/kennels/:id/docs` | Swagger UI -- read the entrails |
+| `GET` | `/api/kennels/:id/docs` | Swagger UI — generated from the run |
 
 ### Dogs (Nodes)
 
@@ -172,6 +177,14 @@ npm run dev
 
 Backend wakes on `:3000`, UI on `:4200`. Open the UI. The lodge is warm.
 
+### Default Kennel seed: server run and UI
+
+**Server-side:** On every startup, `main.ts` calls **`runSeeds()`** ([`seed.ts`](seed.ts)) against the Prisma store. If the database is still empty of those rows, the seed creates **`seed-serialized-1-v1`** (the LayoutInput Mimic) and a **`KennelConfig`** with id **`default-kennel`** — see `dogIds` there (serialized dog first as **lead**, then all registered BaseDogs). Nothing special-cases that Kennel at runtime: **`GET /api/kennels/default-kennel/run`** (waves + config), **`GET /default-kennel`** (public **lead** yield only), and **`POST /default-kennel`** with a body all go through the same **`KennelRunHandler` → `KennelRun`** path as any other Kennel (load config from DB → fill kennel → run waves).
+
+**UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4200`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4200/kennel/default-kennel`**. The Waves viewer loads that Kennel run (graph + results); **⟳ Neu laden** re-runs it. The **Antwort (Server)** button opens the raw public response (**`http://localhost:3000/default-kennel`**, plus any query params from the panel) in a new tab so you can compare browser vs UI.
+
+Manual seed (e.g. after resetting the DB): `npx prisma db seed` (same [`seed.ts`](seed.ts); set `DATABASE_URL` like for `prisma:sync`).
+
 Backend only:
 
 ```bash
@@ -199,11 +212,11 @@ Or skip the terminal -- the [UI](ui-app/README.md) does all of this with a few c
 
 ### Startup Tests
 
-The app runs a test suite on every boot -- store ops, controller CRUD, BaseDog availability, TypeDefBuilder, SerializedDog execution. All must pass before the server starts listening. Roiling, moaning -- this realm of ours demands proof before it yields.
+The app runs a test suite on every boot -- store ops, controller CRUD, BaseDog availability, TypeDefBuilder, SerializedDog execution. All must pass before the server starts listening.
 
 ### Seeds
 
-Example Kennels and SerializedDogs are seeded on startup if the database is fresh.
+See [Default Kennel seed](#default-kennel-seed-server-run-and-ui) under *Getting Started*. Example Kennels and SerializedDogs are inserted when the DB has no matching seed rows yet.
 
 ### Project Structure
 
@@ -237,4 +250,4 @@ ui-app/                       Angular frontend (see ui-app/README.md)
 
 [MIT](LICENSE) — Copyright (c) 2026 Martin.
 
-> We end as we began.
+> The hunt goes on in the repository.
