@@ -21,4 +21,9 @@ export { createPact, type CreatePactFromSourceOptions } from './dogs/createPact'
 // MimicDog
 export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 
+// Kennel-/HTTP-Plumbing (Query/Body/Fetch, Icons)
+export { QueryRetriever } from './platform/QueryRetriever';
+export { BodyRetriever } from './platform/BodyRetriever';
+export { FetchBaseDog } from './platform/FetchBaseDog';
+export { getBaseDogIcon } from './platform/baseDogIcons';
 

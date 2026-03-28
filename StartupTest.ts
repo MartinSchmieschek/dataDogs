@@ -1,12 +1,11 @@
 import { IStore } from './store/IStore';
-import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX, Dog, IHuntingDog, createPact, MimicDog, IMimicDogConfig, KennelRun } from 'datadogs';
+import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX, Dog, IHuntingDog, createPact, MimicDog, IMimicDogConfig, KennelRun } from '@datadogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
-import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from './dogs/Bloodhound/pacts';
-import { NearbyLandmarksPact } from './dogs/OpenStreetMap/pacts';
+import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
 
 export interface TestResult {
     name: string;
@@ -620,22 +619,41 @@ export class StartupTest {
     }
 
     /**
-     * Test: Gesäter SerializedDog existiert
+     * Test: Gesäter SerializedDog existiert und ist ein Mimic für LayoutInputProvider (Tinder-Return)
      */
     private async testSerializedDogExists(store: IStore): Promise<void> {
-        const testName = 'SerializedDog: Seed existiert';
+        const testName = 'SerializedDog: Seed-Mimic (LayoutInputProvider + Tinder)';
         try {
             const seed = await store.load('seed-serialized-1-v1');
             if (!seed) {
                 this.addResult(testName, true, 'Seed existiert noch nicht (wird beim nächsten Start erstellt)');
                 return;
             }
-            
+
             const parsed = typeof seed === 'string' ? JSON.parse(seed) : seed;
-            if (!parsed.theRun) {
+            const cfg = parsed.serializedDogConfig
+                ? (typeof parsed.serializedDogConfig === 'string'
+                    ? JSON.parse(parsed.serializedDogConfig)
+                    : parsed.serializedDogConfig)
+                : parsed;
+
+            if (!cfg?.theRun || typeof cfg.theRun !== 'string') {
                 throw new Error('Seed hat kein theRun-Feld');
             }
-            
+            if (cfg.imitates !== 'LayoutInputProvider') {
+                throw new Error(`Erwartet imitates "LayoutInputProvider", erhalten: ${JSON.stringify(cfg.imitates)}`);
+            }
+            const req = cfg.parentsRequired as string[] | undefined;
+            if (!req?.includes('RandomRecipesRetriever') || !req.includes('RandomEveryThingRetriever')) {
+                throw new Error(
+                    `parentsRequired muss RandomRecipesRetriever und RandomEveryThingRetriever enthalten: ${JSON.stringify(req)}`
+                );
+            }
+            const run = cfg.theRun as string;
+            if (!run.includes('tinder') || !run.includes('RandomEveryThingRetriever.woof')) {
+                throw new Error('theRun muss Tinder-LayoutInput und RandomEveryThingRetriever.woof referenzieren');
+            }
+
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

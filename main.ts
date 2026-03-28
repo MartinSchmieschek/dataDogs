@@ -4,33 +4,34 @@ process.on('unhandledRejection', (reason) => {
     console.error('[unhandledRejection]', reason);
 });
 
-import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
-import { RandomRecipesRetriever } from "./dogs/RandomRecipesRetriever";
-import { CountryFlagBlackLab } from "./dogs/CountryFlagBlackLab";
-import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
-import { QueryRetriever } from './dogs/QueryRetriever';
-import { BodyRetriever } from './dogs/BodyRetriever';
+import { QueryRetriever, BodyRetriever } from '@datadogs/core';
+import {
+    RandomRecipesRetriever,
+    RandomEveryThingRetriever,
+    CountryFlagBlackLab,
+    DishFlagBlackLab,
+} from '@datadogs/dogs-demo';
+import { TalkingDog, LayoutInputPact } from '@datadogs/dogs-talking';
+import { WarframeAlertsRetriever } from '@datadogs/dogs-warframe';
+import {
+    BloodhoundRouteRetriever,
+    BloodhoundIsochroneRetriever,
+    OsmLandmarksRetriever,
+    BloodhoundRouteQueryPact,
+    BloodhoundIsochronePact,
+    NearbyLandmarksPact,
+} from '@datadogs/dogs-geo';
+import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
+import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
-import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
-import { WarframeAlertsRetriever } from './dogs/Kubrow/WarframeAlertsRetriever';
-import { BloodhoundRouteRetriever } from './dogs/Bloodhound/BloodhoundRouteRetriever';
-import { BloodhoundIsochroneRetriever } from './dogs/Bloodhound/BloodhoundIsochroneRetriever';
-import { OsmLandmarksRetriever } from './dogs/OpenStreetMap/OsmLandmarksRetriever';
-import { HuePlaygroundRetriever } from './dogs/HuePlayground/HuePlaygroundRetriever';
-import { HueBridgeEnvRetriever } from './dogs/HuePlayground/HueBridgeEnvRetriever';
-import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from 'datadogs';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
 import { KennelRunHandler } from './api/routes/KennelRunHandler';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed';
-import { LayoutInputPact } from './dogs/TalkingDogs/renderer/layouts/ILayoutInput';
-import { BloodhoundRouteQueryPact, BloodhoundIsochronePact } from './dogs/Bloodhound/pacts';
-import { NearbyLandmarksPact } from './dogs/OpenStreetMap/pacts';
-import { HueBridgeQueryPact } from './dogs/HuePlayground/pacts';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 
 start().catch(e => {

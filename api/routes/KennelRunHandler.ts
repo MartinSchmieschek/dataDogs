@@ -1,4 +1,4 @@
-import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun } from 'datadogs';
+import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun } from '@datadogs/core';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';

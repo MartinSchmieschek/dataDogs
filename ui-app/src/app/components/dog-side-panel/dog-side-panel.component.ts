@@ -10,6 +10,7 @@ import {
   DogPanelSectionId,
   buildDogPanelSections,
   DEFAULT_PANEL_SECTION,
+  getDefaultPanelSection,
 } from '../../utils/dog-panel-sections';
 import { DogSidePanelCodeArtifactComponent } from './artifacts/dog-side-panel-code-artifact.component';
 import { DogSidePanelVmTypedefArtifactComponent } from './artifacts/dog-side-panel-vm-typedef-artifact.component';
@@ -18,7 +19,7 @@ import { DogSidePanelParentsArtifactComponent } from './artifacts/dog-side-panel
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 
 export type { DogPanelSectionId } from '../../utils/dog-panel-sections';
-export { DEFAULT_PANEL_SECTION } from '../../utils/dog-panel-sections';
+export { DEFAULT_PANEL_SECTION, getDefaultPanelSection } from '../../utils/dog-panel-sections';
 
 @Component({
   selector: 'app-dog-side-panel',
@@ -123,12 +124,12 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   private syncActiveSection(): void {
+    const d = this.dogSignal();
     const ids = this.availableSections().map((s) => s.id);
     const cur = this.activeSection();
+    const preferred = d ? getDefaultPanelSection(d) : DEFAULT_PANEL_SECTION;
     if (cur === null || !ids.includes(cur)) {
-      const next = ids.includes(DEFAULT_PANEL_SECTION)
-        ? DEFAULT_PANEL_SECTION
-        : (ids[0] ?? null);
+      const next = ids.includes(preferred) ? preferred : (ids[0] ?? null);
       this.activeSection.set(next);
     }
   }

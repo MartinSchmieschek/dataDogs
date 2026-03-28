@@ -1,4 +1,4 @@
-import { IKennelConfig } from 'datadogs';
+import { IKennelConfig } from '@datadogs/core';
 import { Waves, NodeEntry } from './WavesConverter';
 
 export interface OpenApiSpec {
@@ -112,7 +112,7 @@ export class SwaggerGenerator {
             info: {
                 title: `${kennelName} API`,
                 description,
-                version: '0.1.0-alpha.0',
+                version: '0.1.0-alpha.1',
             },
             servers: [{ url: '', description: 'Data Hunt Server' }],
             paths: {

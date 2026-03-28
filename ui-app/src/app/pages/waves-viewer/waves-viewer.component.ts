@@ -82,6 +82,20 @@ export class WavesViewerComponent implements OnInit {
     return apiAbsoluteUrl(`/api/kennels/${this.kennelId}/swagger.json`);
   }
 
+  /**
+   * Öffentlicher Kennel-Endpunkt (Lead-Yield): GET `/:kennelId` auf dem Express-Server —
+   * nicht `/api/kennels/.../run`. Query-Parameter aus dem Panel werden angehängt.
+   */
+  get kennelRunBrowserUrl(): string {
+    const base = apiAbsoluteUrl(`/${this.kennelId}`);
+    const q = this.buildQueryRecord();
+    const keys = Object.keys(q).filter((k) => k.trim());
+    if (keys.length === 0) return base;
+    const params = new URLSearchParams();
+    keys.forEach((k) => params.set(k, q[k]));
+    return `${base}?${params.toString()}`;
+  }
+
   ngOnInit() {
     this.kennelId = this.route.snapshot.params['id'];
     this.loadWaves();

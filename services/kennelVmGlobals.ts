@@ -1,10 +1,10 @@
-import type { SerializedDogVmGlobalsSupplier } from "datadogs";
-import { OsmLandmarksRetriever } from "../dogs/OpenStreetMap/OsmLandmarksRetriever";
-import { NearbyLandmarksPact } from "../dogs/OpenStreetMap/pacts";
+import type { SerializedDogVmGlobalsSupplier } from "@datadogs/core";
 import {
+    OsmLandmarksRetriever,
+    NearbyLandmarksPact,
     DEFAULT_LANDMARKS_FACETS,
     LandmarksOverpassFacet,
-} from "../dogs/OpenStreetMap/overpassLandmarks";
+} from "@datadogs/dogs-geo";
 
 const nearbyLandmarksPactName = new NearbyLandmarksPact().name;
 

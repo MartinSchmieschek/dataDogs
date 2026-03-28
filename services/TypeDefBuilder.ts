@@ -1,5 +1,5 @@
 import { CompilerCache } from './CompilerCache';
-import { MimicDog } from 'datadogs';
+import { MimicDog } from '@datadogs/core';
 
 export class TypeDefBuilder {
 

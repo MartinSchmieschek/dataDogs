@@ -26,10 +26,17 @@
 
     /* Modules */
     "module": "commonjs",                                /* Specify what module code is generated. */
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@datadogs/core": ["packages/core/src/index.ts"],
+      "@datadogs/dogs-demo": ["packages/dogs-demo/src/index.ts"],
+      "@datadogs/dogs-geo": ["packages/dogs-geo/src/index.ts"],
+      "@datadogs/dogs-warframe": ["packages/dogs-warframe/src/index.ts"],
+      "@datadogs/dogs-hue": ["packages/dogs-hue/src/index.ts"],
+      "@datadogs/dogs-talking": ["packages/dogs-talking/src/index.ts"]
+    },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
-    // "moduleResolution": "node",                       /* Specify how TypeScript looks up a file from a given module specifier. */
-    // "baseUrl": "./",                                  /* Specify the base directory to resolve non-relative module names. */
-    // "paths": {},                                      /* Specify a set of entries that re-map imports to additional lookup locations. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */
     // "typeRoots": [],                                  /* Specify multiple folders that act like './node_modules/@types'. */
     // "types": [],                                      /* Specify type package names to be included without being referenced in a source file. */

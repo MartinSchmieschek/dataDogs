@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "noEmit": false
+  },
+  "include": [
+    "main.ts",
+    "seed.ts",
+    "StartupTest.ts",
+    "api/**/*.ts",
+    "store/**/*.ts",
+    "services/**/*.ts"
+  ],
+  "exclude": ["node_modules", "ui-app", "dist", "packages"]
+}

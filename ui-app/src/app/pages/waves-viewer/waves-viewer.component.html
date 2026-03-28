@@ -15,6 +15,7 @@
         @if (paramsDirty()) { <span class="dirty-dot"></span> }
       </button>
       <button class="btn-reload" (click)="loadWaves()">⟳ Neu laden</button>
+      <a [href]="kennelRunBrowserUrl" target="_blank" rel="noopener" class="btn-run-api" title="GET /:kennelId — öffentliche Lead-Antwort (z. B. http://localhost:3000/default-kennel), Query wie im Panel">Antwort (Server)</a>
       <a [href]="swaggerDocsUrl" target="_blank" rel="noopener" class="btn-swagger">Swagger</a>
       <a [href]="swaggerJsonUrl" target="_blank" rel="noopener" class="btn-swagger btn-swagger--json">JSON</a>
       <a [routerLink]="['/kennel', kennelId, 'edit']" class="btn-edit">Bearbeiten</a>

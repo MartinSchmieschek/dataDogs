@@ -1,10 +1,8 @@
+import { PrismaStore } from './store/PrismaStore';
 import { IStore } from './store/IStore';
-import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX } from 'datadogs';
-import { TalkingDog } from './dogs/TalkingDogs/TalkingDog';
-import { RandomRecipesRetriever } from './dogs/RandomRecipesRetriever';
-import { CountryFlagBlackLab } from './dogs/CountryFlagBlackLab';
-import { DishFlagBlackLab } from './dogs/DishFlagBlackLab';
-import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
+import { SerializedDog, IKennelConfig, BASE_DOG_PREFIX, type IMimicDogConfig } from '@datadogs/core';
+import { TalkingDog } from '@datadogs/dogs-talking';
+import { RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever } from '@datadogs/dogs-demo';
 
 /**
  * Seeded initial SerializedDog in die Datenbank
@@ -12,20 +10,20 @@ import { RandomEveryThingRetriever } from './dogs/RandomEverthingRetriever';
 export async function seedSerializedDog(nodesStore: IStore): Promise<void> {
     const nodeSeeds = await nodesStore.findByType(SerializedDog.name);
     if (!nodeSeeds || nodeSeeds.length === 0) {
-        const seedCfg = {
-            theRun: `
-let option = RandomRecipesRetriever.instructions
-if (option){
-    let f = ("" + TalkingDog).replace("Recipe description here...",option.join(" and "))
-    return f;
-}
-
-    return TalkingDog
-                `,
+        const seedCfg: IMimicDogConfig = {
             version: 1,
-            parentsRequired: ['RandomRecipesRetriever'],
-            parentsOptional: ['TalkingDog']
-        } as ISerializedDogConfig;
+            imitates: 'LayoutInputProvider',
+            parentsRequired: ['RandomRecipesRetriever', 'RandomEveryThingRetriever'],
+            parentsOptional: [],
+            theRun: `
+return {
+    type: "tinder",
+    imageUrl: RandomEveryThingRetriever.woof.url,
+    title: RandomRecipesRetriever.name,
+    description: RandomRecipesRetriever.instructions.join(" and ")
+}
+`,
+        };
 
         await nodesStore.save({ id: 'seed-serialized-1-v1', type: SerializedDog.name, serializedDogConfig: seedCfg });
         console.log('✅ Seeded initial SerializedDog into DB');
@@ -84,4 +82,26 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
     await seedKennelConfig(kennelsStore);
 }
 
+/**
+ * Eintrag für `npx prisma db seed` (siehe package.json → prisma.seed).
+ * Nutzt dieselbe Store-Logik wie die Startup-Seeds in main.ts.
+ */
+async function prismaSeedMain(): Promise<void> {
+    const dbUrl = process.env.DATABASE_URL ?? 'file:./dev.db';
+    const nodesStore: IStore = new PrismaStore(dbUrl);
+    const kennelsStore: IStore = new PrismaStore(dbUrl);
+    if ((nodesStore as { init?: () => Promise<void> }).init) {
+        await (nodesStore as any).init();
+    }
+    if ((kennelsStore as { init?: () => Promise<void> }).init) {
+        await (kennelsStore as any).init();
+    }
+    await runSeeds(nodesStore, kennelsStore);
+}
 
+if (require.main === module) {
+    prismaSeedMain().catch((e) => {
+        console.error(e);
+        process.exit(1);
+    });
+}

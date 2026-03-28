@@ -34,7 +34,7 @@
   gap: 8px;
 }
 
-.btn-reload, .btn-edit, .btn-params, .btn-swagger {
+.btn-reload, .btn-edit, .btn-params, .btn-swagger, .btn-run-api {
   padding: 4px 10px;
   border: none;
   cursor: pointer;
@@ -48,6 +48,16 @@
 
 .btn-reload { background: #555; }
 .btn-edit { background: #666; }
+
+.btn-run-api {
+  background: #3a3050;
+  border: 1px solid #5a4a78;
+  display: inline-block;
+  &:hover {
+    background: #4a4068;
+    color: #eee8ff;
+  }
+}
 
 .btn-swagger {
   background: #2d4a2d;

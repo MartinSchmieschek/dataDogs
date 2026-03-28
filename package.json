@@ -1,8 +1,11 @@
 {
   "name": "jsonaggregator",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Data Hunt — dogs hunt data: Kennels, Waves, Serialized TypeScript in the void. Express, Angular, Prisma.",
   "main": "main.ts",
+  "workspaces": [
+    "packages/*"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/MartinSchmieschek/dataDogs.git"
@@ -11,20 +14,40 @@
     "node": ">=18.19.0"
   },
   "scripts": {
+    "postinstall": "npm run build:packages",
+    "build:core": "cd packages/core && npx tsc",
+    "build:dogs-demo": "cd packages/dogs-demo && npx tsc",
+    "build:dogs-geo": "cd packages/dogs-geo && npx tsc",
+    "build:dogs-warframe": "cd packages/dogs-warframe && npx tsc",
+    "build:dogs-hue": "cd packages/dogs-hue && npx tsc",
+    "build:dogs-talking": "cd packages/dogs-talking && npx tsc",
+    "build:dogs": "npm run build:dogs-demo && npm run build:dogs-geo && npm run build:dogs-warframe && npm run build:dogs-hue && npm run build:dogs-talking",
+    "build:packages": "npm run build:core && npm run build:dogs",
+    "build": "npm run build:packages && prisma generate && tsc -p tsconfig.build.json",
     "prisma:sync": "prisma generate && prisma db push",
-    "dev": "npm run prisma:sync && concurrently -n backend,ui -c blue,green \"ts-node main.ts\" \"npm run ui\"",
+    "dev": "npm run prisma:sync && concurrently -n backend,ui -c blue,green \"ts-node -r tsconfig-paths/register main.ts\" \"npm run ui\"",
+    "start": "ts-node -r tsconfig-paths/register main.ts",
+    "start:prod": "node dist/main.js",
     "ui": "cd ui-app && npx ng serve --proxy-config proxy.conf.json --open",
     "ui:build": "cd ui-app && npx ng build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "typecheck:core": "cd packages/core && npx tsc --noEmit",
+    "typecheck:dogs": "cd packages/dogs-demo && npx tsc --noEmit && cd ../dogs-geo && npx tsc --noEmit && cd ../dogs-warframe && npx tsc --noEmit && cd ../dogs-hue && npx tsc --noEmit && cd ../dogs-talking && npx tsc --noEmit",
+    "typecheck": "npm run typecheck:core && npm run typecheck:dogs && tsc --noEmit -p tsconfig.build.json",
+    "test": "npm run typecheck"
   },
   "author": "Martin",
   "license": "MIT",
   "private": true,
   "dependencies": {
+    "@datadogs/core": "file:packages/core",
+    "@datadogs/dogs-demo": "file:packages/dogs-demo",
+    "@datadogs/dogs-geo": "file:packages/dogs-geo",
+    "@datadogs/dogs-hue": "file:packages/dogs-hue",
+    "@datadogs/dogs-talking": "file:packages/dogs-talking",
+    "@datadogs/dogs-warframe": "file:packages/dogs-warframe",
     "@prisma/client": "^5.5.0",
     "@types/express": "^5.0.3",
     "@types/swagger-ui-express": "^4.1.8",
-    "datadogs": "file:packages/core",
     "dotenv": "^17.3.1",
     "express": "^5.1.0",
     "fs": "^0.0.1-security",
@@ -39,10 +62,11 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "prisma": "^5.5.0"
+    "prisma": "^5.5.0",
+    "tsconfig-paths": "^4.2.0"
   },
   "prisma": {
     "schema": "store/prisma/schema.prisma",
-    "seed": "ts-node scripts/seed.ts"
+    "seed": "ts-node -r tsconfig-paths/register seed.ts"
   }
 }

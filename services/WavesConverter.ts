@@ -1,4 +1,4 @@
-import { IHuntingSeason, IWaveEntry, IHuntingDog, SerializedDog } from 'datadogs';
+import { IHuntingSeason, IWaveEntry, IHuntingDog, SerializedDog } from '@datadogs/core';
 import { TypeDefBuilder } from './TypeDefBuilder';
 
 export type ReadTrackingEntry = {

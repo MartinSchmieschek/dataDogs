@@ -1,5 +1,5 @@
 import { IStore } from '../../store/IStore';
-import { SerializedDog, ISerializedDogConfig } from 'datadogs';
+import { SerializedDog, ISerializedDogConfig } from '@datadogs/core';
 
 /**
  * Extrahiert die Basis-ID aus einer Version-ID

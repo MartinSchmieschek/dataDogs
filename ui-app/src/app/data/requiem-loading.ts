@@ -1,4 +1,8 @@
-/** Warframe Requiem / Void Tongue — zufällig beim Laden. Icons: `src/assets/200px-*RequiemIcon.png`. */
+/**
+ * Requiem-Zweizeiler — Stimmung & Lade-Overlay (Zufallszitat).
+ * Bezug nur auf **diese** gesammelten Verse; kein Publisher, kein Spiel als Marke.
+ * Icons: `src/assets/200px-*RequiemIcon.png`.
+ */
 export interface RequiemLoadingQuote {
   name: string;
   keyword: string;

@@ -1,9 +1,9 @@
 {
-  "name": "datadogs",
-  "version": "0.1.0-alpha.0",
+  "name": "@datadogs/core",
+  "version": "0.1.0-alpha.1",
   "description": "Kernpaket für das DataDogs-System - enthält die grundlegenden Komponenten für die Orchestrierung und Ausführung von Data-Processing-Einheiten (Dogs)",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/MartinSchmieschek/dataDogs.git",

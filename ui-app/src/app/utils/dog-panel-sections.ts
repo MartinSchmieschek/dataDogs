@@ -29,8 +29,16 @@ export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
   return out;
 }
 
-/** Standard-Bereich beim Öffnen des Panels (wenn nichts anderes vorgegeben). */
+/**
+ * Legacy-Fallback (z. B. wenn kein Dog-Kontext): Result.
+ * Bevorzugt {@link getDefaultPanelSection} — mit Code → `code`, sonst `result`.
+ */
 export const DEFAULT_PANEL_SECTION: DogPanelSectionId = 'result';
+
+/** Standard-Bereich beim Öffnen: Code-Ansicht wenn der Dog TS-Code hat, sonst Result. */
+export function getDefaultPanelSection(dog: DogEntry): DogPanelSectionId {
+  return dog.codeTs ? 'code' : 'result';
+}
 
 const FAN_R_BASE = 54;
 
