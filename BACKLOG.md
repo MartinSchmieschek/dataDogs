@@ -19,6 +19,8 @@ Prioritized technical debt and release topics (as of: code review / release chec
 - [ ] **Mimics — default parameters:** Mimics need sensible **defaults** for parameters; ideally these come from the **Pact** (contract as single source of truth: define defaults there or generate from it).
 - [ ] **OpenAPI/Swagger — GET vs. POST:** **GET and POST** often appear side by side; **POST** is redundant when the default body is effectively **`{}`** and adds no semantics — adjust generation/annotations so only the needed method is documented (or POST only when the body is actually used).
 - [ ] **Kennel versioning:** Same versioning model as **Serialized Dogs** for **Kennels** too (versions per save, history, load older states — analogous to dog versions).
+- [ ] **Serialized Dog — rename:** A serialized dog must support **renaming** (display name / identifier as needed) without breaking references where the model allows — UI + persistence + contract updates as required.
+- [ ] **History — parent / branch from past:** Version history should be modeled with an explicit **parent** (or equivalent lineage) so users can **navigate backward** in time and **start a new line** from any historical version (fork-style continuation, not only linear “latest”).
 - [ ] **CI:** e.g. GitHub Actions — at least `npm ci`, `prisma generate`, build, optional tests.
 - [ ] **`npm test`:** currently intentionally red — replace with real test/lint/typecheck or rename script (`test:ci`, etc.).
 - [ ] **`CHANGELOG.md`** and tag/release workflow (align SemVer with root version; UI `ui-app` is at `0.0.0`).
