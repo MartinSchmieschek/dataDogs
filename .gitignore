@@ -1,5 +1,9 @@
 /mbdhEnrichShit
 
+# Editor / AI tooling (local only)
+.claude/
+.vscode/
+
 # Node modules
 node_modules/
 
