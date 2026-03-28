@@ -36,5 +36,5 @@ Prioritized technical debt and release topics (as of: code review / release chec
 ## Done
 
 - [x] **License in `package.json`:** Root and `packages/core` set to `MIT`, aligned with [LICENSE](LICENSE).
-- [x] **`package.json` metadata:** `description`, `repository` (origin `MartinSchmieschek/datadogs`), `engines.node` (`>=18.19.0`), `main` → `main.ts`, `private` as boolean.
+- [x] **`package.json` metadata:** `description`, `repository` (origin `MartinSchmieschek/dataDogs`), `engines.node` (`>=18.19.0`), `main` → `main.ts`, `private` as boolean.
 - [x] **`ARCHITECTURE.md`:** Section *Deployment — where the lodge meets the wild* (ports, env, DB, static UI; README vibe).

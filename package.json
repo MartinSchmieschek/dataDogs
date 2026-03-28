@@ -5,7 +5,7 @@
   "main": "main.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MartinSchmieschek/datadogs.git"
+    "url": "https://github.com/MartinSchmieschek/dataDogs.git"
   },
   "engines": {
     "node": ">=18.19.0"
