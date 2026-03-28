@@ -6,7 +6,7 @@ Prioritized technical debt and release topics (as of: code review / release chec
 
 ## High
 
-- [ ] **Build & Deploy — ungeprüft:** Bisher **kein** systematischer Nachweis, dass das Projekt **end-to-end** **baubar und deploybar** ist: z. B. frischer Clone → `npm ci` → `npm run build` + `npm run ui:build` → `start:prod` mit echter `DATABASE_URL`, Angular-Assets ausgeliefert, Health/Smoke gegen API. Die **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) deckt **typecheck** und **root-`build`** ab — **kein** Deploy-Job, **kein** Container-Image, **kein** Smoke-Test auf einer Zielumgebung.
+- [ ] **Build & Deploy — ungeprüft:** Bisher **kein** systematischer Nachweis, dass das Projekt **end-to-end** **baubar und deploybar** ist: z. B. frischer Clone → `npm ci` → `npm run build` + `npm run ui:build` → `start:prod` mit echter `DATABASE_URL`, Angular-Assets ausgeliefert, Health/Smoke gegen API. Im Repo gibt es **keine** GitHub-Actions-Workflow-Datei — lokal: `npm test` / `npm run typecheck` / `npm run build`; **kein** Deploy-Job, **kein** Container-Image, **kein** Smoke-Test auf einer Zielumgebung.
 - [ ] **Packaging:** Dogs as **installable npm packages** (`npm install …`), not only inside the monorepo — including **Core Dogs** and **Kennel Runner** as separately publishable packages (versioning, `exports`, peer deps as needed).
 - [ ] **Kennel Runner vs. API:** The **Kennel Runner** itself **without an HTTP/API surface** (runtime/execution only); for REST/OpenAPI use a **wrapper** (thin API layer / separate package or service) that invokes the runner.
 
@@ -44,6 +44,5 @@ Prioritized technical debt and release topics (as of: code review / release chec
 - [x] **Production:** Build pipeline (`npm run build` → `dist/`), `start` / `start:prod`, `postinstall` builds `packages/core`; README documents dev vs. production.
 - [x] **Prisma seed:** `prisma.seed` → `ts-node seed.ts`; CLI entry in `seed.ts` when run as main module.
 - [x] **`.gitignore`:** `store/prisma/*.db`, `dist/`; removed obsolete `/mbdhEnrichShit`.
-- [x] **CI:** GitHub Actions — `npm ci`, `prisma generate`, `typecheck`, `build` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 - [x] **`npm test`:** runs `typecheck` (core + app) until unit tests exist.
 - [x] **`CHANGELOG.md`:** initial [Keep a Changelog](https://keepachangelog.com/) scaffold; tags/releases still manual.
