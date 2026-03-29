@@ -1,5 +1,5 @@
 import type { OpenRouteServiceResponse, IsochroneResponse } from "./interfaces/openRouteServiceResponse";
-import type { TravelStep } from "./interfaces/bloodhoundTypes";
+import type { TravelStepJson } from "./interfaces/bloodhoundTypes";
 
 const apiKeys: string[] = process.env.ORS_API_KEYS?.split(',') || [];
 let currentApiKeyIndex = 0;
@@ -77,66 +77,30 @@ export async function calculateIsochrone(
     }
 }
 
-export function processRouteResponse(response: OpenRouteServiceResponse): TravelStep[] {
-    const travelSteps: TravelStep[] = [];
+/** Lineare Schrittliste (ORS-Reihenfolge), ohne zirkuläre Objektgraphen — JSON-sicher. */
+export function processRouteResponse(response: OpenRouteServiceResponse): TravelStepJson[] {
+    const travelSteps: TravelStepJson[] = [];
+    const coords = response.features[0].geometry.coordinates;
     const segments = response.features[0].properties.segments;
 
     segments.forEach(segment => {
-        const steps = segment.steps;
-
-        steps.forEach((step, index) => {
-            const coords = response.features[0].geometry.coordinates;
-
+        for (const step of segment.steps) {
             const startPoint: [number, number] = [
                 coords[step.way_points[0]][1],
-                coords[step.way_points[0]][0]
+                coords[step.way_points[0]][0],
             ];
-
             const endPoint: [number, number] = [
                 coords[step.way_points[step.way_points.length - 1]][1],
-                coords[step.way_points[step.way_points.length - 1]][0]
+                coords[step.way_points[step.way_points.length - 1]][0],
             ];
-
-            const lengthInKm = step.distance / 1000;
-            const travelDurationInMinutes = step.duration / 60;
-            const previousSteps = travelSteps.slice(0, index);
-
-            const nextSteps: TravelStep[] = [];
-            for (let i = index + 1; i < steps.length; i++) {
-                const nextStep = steps[i];
-                nextSteps.push({
-                    startPoint: [
-                        coords[nextStep.way_points[0]][1],
-                        coords[nextStep.way_points[0]][0]
-                    ],
-                    endPoint: [
-                        coords[nextStep.way_points[nextStep.way_points.length - 1]][1],
-                        coords[nextStep.way_points[nextStep.way_points.length - 1]][0]
-                    ],
-                    lengthInKm: nextStep.distance / 1000,
-                    travelDurationInMinutes: nextStep.duration / 60,
-                    instruction: nextStep.instruction,
-                    previousSteps: [travelSteps[index], ...previousSteps],
-                    nextSteps: []
-                });
-            }
-
-            const travelStep: TravelStep = {
+            travelSteps.push({
                 startPoint,
                 endPoint,
-                lengthInKm,
-                travelDurationInMinutes,
+                lengthInKm: step.distance / 1000,
+                travelDurationInMinutes: step.duration / 60,
                 instruction: step.instruction,
-                previousSteps,
-                nextSteps
-            };
-
-            previousSteps.forEach(prevStep => {
-                prevStep.nextSteps.push(travelStep);
             });
-
-            travelSteps.push(travelStep);
-        });
+        }
     });
 
     return travelSteps;

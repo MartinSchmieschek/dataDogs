@@ -28,7 +28,7 @@ export class KennelService {
   }
 
   getById(id: string): Observable<ApiResponse<IKennelConfig>> {
-    return this.http.get<ApiResponse<IKennelConfig>>(`${this.baseUrl}/${id}`);
+    return this.http.get<ApiResponse<IKennelConfig>>(`${this.baseUrl}/${encodeURIComponent(id)}`);
   }
 
   create(data: {
@@ -42,11 +42,11 @@ export class KennelService {
   }
 
   update(id: string, data: Partial<IKennelConfig>): Observable<ApiResponse<IKennelConfig>> {
-    return this.http.put<ApiResponse<IKennelConfig>>(`${this.baseUrl}/${id}`, data);
+    return this.http.put<ApiResponse<IKennelConfig>>(`${this.baseUrl}/${encodeURIComponent(id)}`, data);
   }
 
   delete(id: string): Observable<ApiResponse> {
-    return this.http.delete<ApiResponse>(`${this.baseUrl}/${id}`);
+    return this.http.delete<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
   }
 
   run(id: string, body?: any, query?: Record<string, string>): Observable<RunResponse> {
@@ -56,10 +56,12 @@ export class KennelService {
         params = params.set(key, value);
       });
     }
-    if (body && Object.keys(body).length > 0) {
-      return this.http.post<RunResponse>(`${this.baseUrl}/${id}/run`, body, { params });
+    // Auch {} ist ein gültiger Body (z. B. BodyRetriever); nicht nur "keys.length > 0".
+    const hasBody = body !== undefined && body !== null;
+    if (hasBody) {
+      return this.http.post<RunResponse>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, body, { params });
     }
-    return this.http.get<RunResponse>(`${this.baseUrl}/${id}/run`, { params });
+    return this.http.get<RunResponse>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, { params });
   }
 
   execute(id: string, body?: any, query?: Record<string, string>): Observable<any> {
@@ -69,9 +71,10 @@ export class KennelService {
         params = params.set(key, value);
       });
     }
-    if (body) {
-      return this.http.post(`${this.baseUrl}/${id}/execute`, body, { params });
+    const hasBody = body !== undefined && body !== null;
+    if (hasBody) {
+      return this.http.post(`${this.baseUrl}/${encodeURIComponent(id)}/execute`, body, { params });
     }
-    return this.http.get(`${this.baseUrl}/${id}/execute`, { params });
+    return this.http.get(`${this.baseUrl}/${encodeURIComponent(id)}/execute`, { params });
   }
 }

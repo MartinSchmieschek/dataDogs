@@ -121,6 +121,9 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   }
 
   private initBodyEditor(defaultBody: any) {
+    this.bodyEditor?.dispose();
+    this.bodyEditor = null;
+
     const tryInit = () => {
       const container = this.bodyEditorContainer?.nativeElement;
       if (!container) {
@@ -128,8 +131,12 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
         return;
       }
       if (typeof monaco !== 'undefined') {
+        const text =
+          defaultBody !== undefined && defaultBody !== null
+            ? JSON.stringify(defaultBody, null, 2)
+            : '{}';
         this.bodyEditor = monaco.editor.create(container, {
-          value: defaultBody ? JSON.stringify(defaultBody, null, 2) : '{}',
+          value: text,
           language: 'json',
           theme: 'vs-dark',
           minimap: { enabled: false },

@@ -240,8 +240,18 @@ export class DogSidePanelComponent implements OnChanges {
   deleteDog() {
     if (!this.dog) return;
     if (confirm(`Dog "${this.dog.name}" wirklich löschen?`)) {
+      this.saveError.set(null);
       this.dogService.delete(this.dog.id).subscribe({
-        next: () => this.deleted.emit(this.dog.id),
+        next: (res) => {
+          if (res?.ok) {
+            this.deleted.emit(this.dog.id);
+          } else {
+            this.saveError.set(res?.error ?? 'Löschen fehlgeschlagen');
+          }
+        },
+        error: (err) => {
+          this.saveError.set(err.error?.error ?? err.message ?? 'Löschen fehlgeschlagen');
+        },
       });
     }
   }

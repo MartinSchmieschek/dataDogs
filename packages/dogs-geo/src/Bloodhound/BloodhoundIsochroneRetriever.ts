@@ -31,7 +31,7 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
         const range = parseInt(input.range, 10);
 
         if (isNaN(lat) || isNaN(lng) || isNaN(range)) {
-            throw new Error('BloodhoundIsochroneRetriever: Missing required query params (lat, lng, range)');
+            throw new Error('BloodhoundIsochroneRetriever: Missing required params (lat, lng, range)');
         }
 
         const response = await calculateIsochrone(lat, lng, profile, range);

@@ -1,3 +1,5 @@
+import type { IMissionDetails } from './missionDetails';
+
 /** Angereichertes Datumsfeld (nach enrichDateFields). */
 export interface EnrichedDate {
     date: Date;
@@ -410,6 +412,8 @@ export interface IAlertMission {
     reward?: IAlertMissionReward;
     minEnemyLevel?: number;
     maxEnemyLevel?: number;
+    /** Zusatzdaten aus static.world.json (InternalName = node). */
+    details?: IMissionDetails;
 }
 
 /** Einzelner Alert (normalisiert). */
@@ -428,6 +432,8 @@ export interface ISortieVariant {
     modifier: string;
     node: string;
     tileset?: string;
+    /** static.world (InternalName = node). */
+    details?: IMissionDetails;
 }
 
 /** Sortie (normalisiert). */
@@ -446,7 +452,7 @@ export interface IArchonHuntData {
     activation: EnrichedDate;
     expiry: EnrichedDate;
     boss: string;
-    missions: Array<{ missionType: string; node: string }>;
+    missions: Array<{ missionType: string; node: string; details?: IMissionDetails }>;
     active: boolean;
 }
 
@@ -461,6 +467,8 @@ export interface IInvasionData {
     progress: number;
     completed: boolean;
     active: boolean;
+    /** Mission-Kontext wie bei Alerts, inkl. static.world-Lookup (InternalName = node). */
+    mission?: IAlertMission;
 }
 
 /** Void Fissure (normalisiert). */
@@ -474,6 +482,7 @@ export interface IFissureData {
     isStorm: boolean;
     isHard: boolean;
     active: boolean;
+    mission?: IAlertMission;
 }
 
 /** Void Trader / Baro Ki'Teer (normalisiert). */
@@ -489,6 +498,7 @@ export interface IVoidTraderData {
         ducats: number;
         credits?: number;
     }>;
+    mission?: IAlertMission;
 }
 
 /** Syndicate Mission (normalisiert). */
@@ -499,6 +509,8 @@ export interface ISyndicateMissionData {
     syndicate: string;
     nodes: string[];
     active: boolean;
+    /** Gleiche Reihenfolge wie nodes (Kubrow: Lookup pro Eintrag). */
+    missions?: IAlertMission[];
 }
 
 /** Daily Deal / Darvo (normalisiert). */
@@ -563,6 +575,7 @@ export interface IGoalData {
     community: boolean;
     active: boolean;
     reward?: IAlertMissionReward;
+    mission?: IAlertMission;
 }
 
 /** Void Storm (normalisiert). */
@@ -573,6 +586,7 @@ export interface IVoidStormData {
     node: string;
     tier: string;
     active: boolean;
+    mission?: IAlertMission;
 }
 
 /** Node Override (normalisiert). */
@@ -581,6 +595,7 @@ export interface INodeOverrideData {
     node: string;
     hidden: boolean;
     faction?: string;
+    mission?: IAlertMission;
 }
 
 /** PVP Challenge (normalisiert). */
@@ -666,6 +681,8 @@ export interface IPersistentEnemyData {
     discovered: boolean;
     lastLocation?: string;
     region?: number;
+    /** static.world, wenn lastLocation einem InternalName entspricht. */
+    locationDetails?: IMissionDetails;
 }
 
 /** Global Upgrade (normalisiert). */

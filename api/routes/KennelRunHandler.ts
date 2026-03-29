@@ -198,9 +198,11 @@ export class KennelRunHandler {
             }
 
             const query = this.mergeQueryParams(config.defaultQuery, req.query);
-            const body = req.body && Object.keys(req.body).length > 0
-                ? req.body
-                : config.defaultBody;
+            // POST: expliziter Body inkl. {} — nicht durch defaultBody ersetzen (war: keys.length > 0).
+            const body =
+                req.method === 'POST' && req.body !== undefined && req.body !== null
+                    ? req.body
+                    : config.defaultBody;
 
             try {
                 const waves = await this.runKennel(config, query, body);
@@ -240,7 +242,10 @@ export class KennelRunHandler {
 
             const queryData = this.mergeQueryParams(config.defaultQuery, req.query);
 
-            const body = req.body && Object.keys(req.body).length > 0 ? req.body : config.defaultBody;
+            const body =
+                req.method === 'POST' && req.body !== undefined && req.body !== null
+                    ? req.body
+                    : config.defaultBody;
             const waves = await this.runKennel(config, queryData, body);
 
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
@@ -312,10 +317,8 @@ export class KennelRunHandler {
 
             const queryData = this.mergeQueryParams(config.defaultQuery, req.query);
 
-            let bodyData = config.defaultBody;
-            if (req.body && Object.keys(req.body).length > 0) {
-                bodyData = req.body;
-            }
+            const bodyData =
+                req.body !== undefined && req.body !== null ? req.body : config.defaultBody;
 
             const waves = await this.runKennel(config, queryData, bodyData);
             const firstDog = this.findDogInWaves(waves, dogIds[0]);

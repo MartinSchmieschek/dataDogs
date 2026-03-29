@@ -31,12 +31,11 @@ export class DogService {
   }
 
   getById(id: string): Observable<ApiResponse<any>> {
-    return this.http.get<ApiResponse>(`${this.baseUrl}/${id}`);
+    return this.http.get<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
   }
 
   getVersions(id: string): Observable<ApiResponse<VersionEntry[]>> {
-    const cleanId = encodeURIComponent(id);
-    return this.http.get<ApiResponse<VersionEntry[]>>(`${this.baseUrl}/${cleanId}/versions`);
+    return this.http.get<ApiResponse<VersionEntry[]>>(`${this.baseUrl}/${encodeURIComponent(id)}/versions`);
   }
 
   create(data: {
@@ -59,6 +58,6 @@ export class DogService {
   }
 
   delete(id: string): Observable<ApiResponse> {
-    return this.http.delete<ApiResponse>(`${this.baseUrl}/${id}`);
+    return this.http.delete<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
   }
 }

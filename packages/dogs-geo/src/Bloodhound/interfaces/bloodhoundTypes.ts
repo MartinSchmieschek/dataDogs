@@ -1,11 +1,12 @@
-export interface TravelStep {
+/**
+ * Ein Routenschritt ohne Graph-Referenzen — sicher für JSON.stringify / API.
+ */
+export interface TravelStepJson {
     startPoint: [number, number];
     endPoint: [number, number];
     lengthInKm: number;
     travelDurationInMinutes: number;
     instruction: string;
-    previousSteps: TravelStep[];
-    nextSteps: TravelStep[];
 }
 
 export interface RouteSegment {
@@ -17,7 +18,7 @@ export interface RouteSegment {
 export interface BloodhoundRouteResult {
     coordinates: number[][];
     segments: RouteSegment[];
-    travelSteps: TravelStep[];
+    travelSteps: TravelStepJson[];
 }
 
 export interface BloodhoundIsochroneResult {

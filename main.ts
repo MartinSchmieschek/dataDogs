@@ -84,12 +84,54 @@ async function start() {
     const app = express();
     const port = 3000;
 
-    // CORS fuer Angular Dev-Server
+    /**
+     * Welche Browser-Origin darf die API cross-origin nutzen?
+     * - CORS_ALLOWED_ORIGINS: Komma-getrennt (setzt sich durch Dev/Prod-Defaults durch).
+     * - Production ohne Liste: CORS_ORIGIN oder DEV_UI_ORIGIN (ein Wert), nur exakt dieser Origin.
+     * - Development ohne Liste: jede http(s)-Origin mit localhost oder 127.0.0.1 (beliebiger Port),
+     *   z. B. zweite Angular-App die Daten konsumiert (nicht nur die Edit-UI mit Proxy).
+     */
+    const isLocalDevOrigin = (origin: string): boolean => {
+        try {
+            const u = new URL(origin);
+            return (
+                (u.protocol === 'http:' || u.protocol === 'https:') &&
+                (u.hostname === 'localhost' || u.hostname === '127.0.0.1')
+            );
+        } catch {
+            return false;
+        }
+    };
+
+    const allowedOriginForRequest = (req: any): string | undefined => {
+        const origin = req.headers.origin as string | undefined;
+        if (!origin) return undefined;
+
+        const list = process.env.CORS_ALLOWED_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean);
+        if (list?.length) {
+            return list.includes(origin) ? origin : undefined;
+        }
+
+        if (process.env.NODE_ENV === 'production') {
+            const fixed = process.env.CORS_ORIGIN ?? process.env.DEV_UI_ORIGIN ?? 'http://localhost:4300';
+            return origin === fixed ? origin : undefined;
+        }
+
+        return isLocalDevOrigin(origin) ? origin : undefined;
+    };
+
     app.use((req: any, res: any, next: any) => {
-        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:4200');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
+        const allow = allowedOriginForRequest(req);
+        if (allow) {
+            res.setHeader('Access-Control-Allow-Origin', allow);
+            res.setHeader('Vary', 'Origin');
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        if (req.method === 'OPTIONS') {
+            res.sendStatus(204);
+            return;
+        }
         next();
     });
 

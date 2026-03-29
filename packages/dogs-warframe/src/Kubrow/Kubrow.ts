@@ -7,6 +7,7 @@ import type {
     IPVPChallengeData, ICalendarSeasonData, IConquestData,
     IDescentData, IEndlessXpChoiceData, IFeaturedGuildData,
     IPersistentEnemyData, IGlobalUpgradeData,
+    IAlertMission,
 } from './interfaces/warframeWorldState';
 import { normalizeAlert } from './interfaces/normalizeAlerts';
 import {
@@ -26,6 +27,16 @@ import staticWorld from './static.world.json';
 
 const FORUM_TOPIC_PREFIX = 'forums.warframe.com/topic/';
 
+/** Lookup static.world nach InternalName (entspricht API-node). */
+const STATIC_MISSION_BY_INTERNAL_NAME = new Map<string, IMissionDetails>(
+    (staticWorld as IMissionDetails[]).map((m) => [m.InternalName, m]),
+);
+
+function enemyToFactionString(enemy: IMissionDetails['Enemy']): string {
+    if (enemy == null || enemy === '') return '';
+    return Array.isArray(enemy) ? (enemy[0] ?? '') : enemy;
+}
+
 /** Kubrow: World-State-Daten (simaris) + normalisierte Getter fuer alle Kategorien. */
 export class Kubrow {
     private raw: IWarframeWorldState | undefined;
@@ -37,7 +48,10 @@ export class Kubrow {
     // ── Alerts ──────────────────────────────────────────────
 
     private get alerts(): IAlertData[] {
-        return (this.raw?.Alerts ?? []).map(normalizeAlert);
+        return (this.raw?.Alerts ?? []).map((raw) => {
+            const a = normalizeAlert(raw);
+            return { ...a, mission: this.enrichAlertMission(a.mission) };
+        });
     }
 
     getAlerts(): IAlertData[] {
@@ -103,7 +117,9 @@ export class Kubrow {
     // ── Sorties ─────────────────────────────────────────────
 
     getSorties(): ISortieData[] {
-        return (this.raw?.Sorties ?? []).map(normalizeSortie);
+        return (this.raw?.Sorties ?? []).map((raw) =>
+            this.enrichSortie(normalizeSortie(raw)),
+        );
     }
 
     getActiveSortie(): ISortieData | undefined {
@@ -113,7 +129,9 @@ export class Kubrow {
     // ── Archon Hunts (LiteSorties) ─────────────────────────
 
     getArchonHunts(): IArchonHuntData[] {
-        return (this.raw?.LiteSorties ?? []).map(normalizeArchonHunt);
+        return (this.raw?.LiteSorties ?? []).map((raw) =>
+            this.enrichArchonHunt(normalizeArchonHunt(raw)),
+        );
     }
 
     getActiveArchonHunt(): IArchonHuntData | undefined {
@@ -123,7 +141,9 @@ export class Kubrow {
     // ── Invasions ───────────────────────────────────────────
 
     getInvasions(): IInvasionData[] {
-        return (this.raw?.Invasions ?? []).map(normalizeInvasion);
+        return (this.raw?.Invasions ?? []).map((raw) =>
+            this.attachMissionIfKnown(normalizeInvasion(raw)),
+        );
     }
 
     getActiveInvasions(): IInvasionData[] {
@@ -141,7 +161,9 @@ export class Kubrow {
     // ── Fissures (ActiveMissions) ───────────────────────────
 
     getFissures(): IFissureData[] {
-        return (this.raw?.ActiveMissions ?? []).map(normalizeFissure);
+        return (this.raw?.ActiveMissions ?? []).map((raw) =>
+            this.attachMissionIfKnown(normalizeFissure(raw)),
+        );
     }
 
     getActiveFissures(): IFissureData[] {
@@ -156,7 +178,9 @@ export class Kubrow {
     // ── Void Storms (Railjack) ──────────────────────────────
 
     getVoidStorms(): IVoidStormData[] {
-        return (this.raw?.VoidStorms ?? []).map(normalizeVoidStorm);
+        return (this.raw?.VoidStorms ?? []).map((raw) =>
+            this.attachMissionIfKnown(normalizeVoidStorm(raw)),
+        );
     }
 
     getActiveVoidStorms(): IVoidStormData[] {
@@ -166,7 +190,9 @@ export class Kubrow {
     // ── Void Trader (Baro Ki'Teer) ──────────────────────────
 
     getVoidTraders(): IVoidTraderData[] {
-        return (this.raw?.VoidTraders ?? []).map(normalizeVoidTrader);
+        return (this.raw?.VoidTraders ?? []).map((raw) =>
+            this.attachMissionIfKnown(normalizeVoidTrader(raw)),
+        );
     }
 
     getActiveVoidTrader(): IVoidTraderData | undefined {
@@ -176,7 +202,9 @@ export class Kubrow {
     // ── Syndicate Missions ──────────────────────────────────
 
     getSyndicateMissions(): ISyndicateMissionData[] {
-        return (this.raw?.SyndicateMissions ?? []).map(normalizeSyndicateMission);
+        return (this.raw?.SyndicateMissions ?? []).map((raw) =>
+            this.enrichSyndicateMission(normalizeSyndicateMission(raw)),
+        );
     }
 
     getSyndicateMissionsBySyndicate(tag: string): ISyndicateMissionData[] {
@@ -214,7 +242,9 @@ export class Kubrow {
     // ── Goals / Events ──────────────────────────────────────
 
     getGoals(): IGoalData[] {
-        return (this.raw?.Goals ?? []).map(normalizeGoal);
+        return (this.raw?.Goals ?? []).map((raw) =>
+            this.enrichGoal(normalizeGoal(raw)),
+        );
     }
 
     getActiveGoals(): IGoalData[] {
@@ -224,7 +254,9 @@ export class Kubrow {
     // ── Node Overrides ──────────────────────────────────────
 
     getNodeOverrides(): INodeOverrideData[] {
-        return (this.raw?.NodeOverrides ?? []).map(normalizeNodeOverride);
+        return (this.raw?.NodeOverrides ?? []).map((raw) =>
+            this.attachMissionIfKnown(normalizeNodeOverride(raw)),
+        );
     }
 
     // ── PVP Challenges ──────────────────────────────────────
@@ -278,7 +310,9 @@ export class Kubrow {
     // ── Persistent Enemies (Acolytes) ───────────────────────
 
     getPersistentEnemies(): IPersistentEnemyData[] {
-        return (this.raw?.PersistentEnemies ?? []).map(normalizePersistentEnemy);
+        return (this.raw?.PersistentEnemies ?? []).map((raw) =>
+            this.enrichPersistentEnemy(normalizePersistentEnemy(raw)),
+        );
     }
 
     // ── Global Upgrades ─────────────────────────────────────
@@ -344,7 +378,78 @@ export class Kubrow {
     }
 
     getMissionByInternalName(internalName: string): IMissionDetails | undefined {
-        return this.getMissionDetails().find(m => m.InternalName === internalName);
+        return STATIC_MISSION_BY_INTERNAL_NAME.get(internalName);
+    }
+
+    private enrichAlertMission(mission: IAlertMission): IAlertMission {
+        const details = STATIC_MISSION_BY_INTERNAL_NAME.get(mission.node);
+        return details ? { ...mission, details } : mission;
+    }
+
+    /** IAlertMission aus API-node + static.world (details nur bei Treffer). */
+    private missionFromNode(node: string): IAlertMission {
+        const details = STATIC_MISSION_BY_INTERNAL_NAME.get(node);
+        if (!details) {
+            return { node, type: '', faction: '' };
+        }
+        return {
+            node,
+            type: details.Type,
+            faction: enemyToFactionString(details.Enemy),
+            minEnemyLevel: details.MinLevel,
+            maxEnemyLevel: details.MaxLevel,
+            details,
+        };
+    }
+
+    private attachMissionIfKnown<T extends { node: string }>(
+        item: T,
+    ): T & { mission?: IAlertMission } {
+        const mission = this.missionFromNode(item.node);
+        return mission.details ? { ...item, mission } : item;
+    }
+
+    private enrichSortie(sortie: ISortieData): ISortieData {
+        return {
+            ...sortie,
+            variants: sortie.variants.map((v) => {
+                const details = STATIC_MISSION_BY_INTERNAL_NAME.get(v.node);
+                return details ? { ...v, details } : v;
+            }),
+        };
+    }
+
+    private enrichArchonHunt(archon: IArchonHuntData): IArchonHuntData {
+        return {
+            ...archon,
+            missions: archon.missions.map((m) => {
+                const details = STATIC_MISSION_BY_INTERNAL_NAME.get(m.node);
+                return details ? { ...m, details } : m;
+            }),
+        };
+    }
+
+    private enrichSyndicateMission(
+        syndicate: ISyndicateMissionData,
+    ): ISyndicateMissionData {
+        return {
+            ...syndicate,
+            missions: syndicate.nodes.map((node) => this.missionFromNode(node)),
+        };
+    }
+
+    private enrichGoal(goal: IGoalData): IGoalData {
+        if (!goal.node) return goal;
+        const mission = this.missionFromNode(goal.node);
+        return mission.details ? { ...goal, mission } : goal;
+    }
+
+    private enrichPersistentEnemy(
+        enemy: IPersistentEnemyData,
+    ): IPersistentEnemyData {
+        if (!enemy.lastLocation) return enemy;
+        const details = STATIC_MISSION_BY_INTERNAL_NAME.get(enemy.lastLocation);
+        return details ? { ...enemy, locationDetails: details } : enemy;
     }
 
     private ensureHttps(url: string): string {

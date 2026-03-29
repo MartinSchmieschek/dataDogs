@@ -135,7 +135,7 @@ npm install
 npx ng serve --proxy-config proxy.conf.json
 ```
 
-Opens at `http://localhost:4200`. The lodge is warm.
+Opens at `http://localhost:4300` (see `angular.json` → `serve.options.port`). The lodge is warm.
 
 ### Full Pack (from project root)
 
@@ -143,7 +143,7 @@ Opens at `http://localhost:4200`. The lodge is warm.
 npm run dev
 ```
 
-Backend wakes on `:3000`, UI on `:4200`. The dogs are ready. The wilderness is waiting.
+Backend wakes on `:3000`, UI on `:4300`. The dogs are ready. The wilderness is waiting.
 
 ---
 

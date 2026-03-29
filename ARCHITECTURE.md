@@ -24,7 +24,7 @@ flowchart TB
     end
 
     subgraph Browser["Browser — Angular dev server"]
-        UI[UI on port 4200]
+        UI[UI on port 4300]
     end
 
     subgraph Server["Express backend"]
@@ -582,7 +582,7 @@ interface ISerializedDogConfig {
 | Surface | Port | Notes |
 |--------|------|--------|
 | **Backend** (Express, `main.ts`) | **3000** | API, `/save`, public `/:kennelId`, Swagger — the server that actually runs the dogs. |
-| **UI** (dev, `ng serve`) | **4200** | Proxies `/api` and `/save` to the backend via [`ui-app/proxy.conf.json`](ui-app/proxy.conf.json). Open the UI here during development. |
+| **UI** (dev, `ng serve`) | **4300** | Proxies `/api` and `/save` to the backend via [`ui-app/proxy.conf.json`](ui-app/proxy.conf.json). Open the UI here during development. |
 
 ### Environment
 
@@ -603,7 +603,7 @@ Two sketches: local hunt (proxy carries the scent) and split static + API (the t
 ```mermaid
 flowchart LR
     subgraph Dev["Development"]
-        B1[Browser :4200] -->|proxy| E1[Express :3000]
+        B1[Browser :4300] -->|proxy| E1[Express :3000]
         E1 --> DB1[(dev.db)]
     end
 ```

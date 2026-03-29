@@ -114,7 +114,8 @@ export class WavesViewerComponent implements OnInit {
     let body: any = undefined;
     try {
       const raw = this.bodyJson().trim();
-      if (raw && raw !== '{}') body = JSON.parse(raw);
+      // Auch "{}" ist gültig (BodyRetriever / leeres JSON-Objekt).
+      if (raw) body = JSON.parse(raw);
     } catch { /* invalid JSON - ignore, send without body */ }
 
     this.kennelService.run(this.kennelId, body, query).subscribe({
