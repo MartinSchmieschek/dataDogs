@@ -86,6 +86,15 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
 
     const content = this.wrapCode(this.dog.codeTs);
 
+    this.extraLib?.dispose();
+    this.extraLib = null;
+    if (this.dog.vmContextTypeDef) {
+      this.extraLib = monaco.languages.typescript.typescriptDefaults.addExtraLib(
+        this.dog.vmContextTypeDef,
+        `ts:context/${this.dog.id}.d.ts`
+      );
+    }
+
     if (this.editor) {
       const model = this.editor.getModel();
       if (model) {
@@ -106,13 +115,5 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
     }
 
     this.editor.updateOptions({ readOnly: false });
-
-    this.extraLib?.dispose();
-    if (this.dog.vmContextTypeDef) {
-      this.extraLib = monaco.languages.typescript.typescriptDefaults.addExtraLib(
-        this.dog.vmContextTypeDef,
-        `ts:context/${this.dog.id}.d.ts`
-      );
-    }
   }
 }

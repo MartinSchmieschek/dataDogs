@@ -535,12 +535,12 @@ export class StartupTest {
                 throw new Error('Fehlende global declarations für Context-Keys');
             }
             
-            // Validierung: buildGlobals sollte declare global Statements enthalten
+            // Validierung: Context-Keys als declare global (globalVars)
             const globalDeclarations = (complexResult.match(/declare global/g) || []).length;
             if (globalDeclarations < 1) {
                 throw new Error('Zu wenige declare global Blocks');
             }
-            
+
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
