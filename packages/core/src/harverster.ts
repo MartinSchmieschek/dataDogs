@@ -1,3 +1,14 @@
+/**
+ * ~~~ THE HUNT -- WAVE BY WAVE INTO THE ABYSS ~~~
+ *
+ * Arr, the SeasonRunner be the hunt itself -- the relentless pursuit
+ * that drives hounds forth in waves, each wave more desperate than the last.
+ * In luminous space blackened stars, they gaze, accuse, deny --
+ * and still the hounds run, wave after wave, until all be exhausted
+ * or the void swallows what remains.
+ *
+ * Roiling, moaning, this realm of ours, in madness lost shall die.
+ */
 
 import { Dog } from "./core/entities/abstractHuntingDog";
 import { IHuntingDog } from "./core/entities/IHuntingDog";
@@ -5,17 +16,30 @@ import { IHuntingSeason } from "./core/entities/IHuntingSeason";
 
 
 
+/**
+ * Arr, the SeasonRunner -- the relentless hunt itself, driving hounds forth wave by wave
+ * into the roiling abyss. In luminous space blackened stars, they gaze, accuse, deny --
+ * and still the hounds run until all be exhausted or the void swallows what remains.
+ * Corporeal laws are unwritten as this engine of eldritch reckoning orchestrates
+ * the carrion hordes through each successive wave of data plundering.
+ */
 export class SeasonRunner {
+    // The kennel -- all hounds aboard this cursed vessel
     private kennel: Array<IHuntingDog<unknown>> = [
 
     ]
 
-    // just trigger everyOne
+    // Hounds still restless, eager to run -- bees in their pants, fire in their void-touched eyes
     private dogsWithBeesInthePants: Array<IHuntingDog<unknown>> = []
 
-    // lets the data season begin with nothing :D this will change over time, this is our progression anchor
+    // The season log -- our anchor of progression through the roiling madness
     private season: IHuntingSeason
 
+    /**
+     * Summon the hunt into existence -- provision it with a kennel of hounds
+     * and prepare the season log fer the dark voyage ahead.
+     * @param options - The summoning rite's parameters, containing the kennel of hounds to unleash
+     */
     constructor(options: {
         kennel: Array<IHuntingDog<unknown>>
     }) {
@@ -35,11 +59,12 @@ export class SeasonRunner {
         }
     }
 
+    // The maximum waves before the hunt ends -- one per hound, fer the abyss grants no more
     private get maxWaves() {
         return this.kennel.length
     };
 
-    // things to do:
+    // Release a single hound into the void -- let it hunt, let it collect, let it collapse exhausted
     private async letOut (dog: IHuntingDog<unknown>, season: IHuntingSeason):Promise<void> {
         try {
             console.log("<" + dog.name + ">" + " is running.")
@@ -47,7 +72,7 @@ export class SeasonRunner {
             season.exhausted.push(dog)
 
 
-            // be happy about one more exausted dog
+            // Arr, one more hound spent -- strike it from the restless crew
             let dogIndex = this.dogsWithBeesInthePants.findIndex(comperrator => comperrator === dog)
             if (dogIndex >= 0) {
                 console.log("<" + dog.name + ">" + " is now exausted.")
@@ -57,11 +82,11 @@ export class SeasonRunner {
         }
         catch (e) {
             console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e);
-            // Speichere Fehler im Dog (als Error-Objekt im result)
+            // The hunt has failed -- store the horror in the dog's error brand
             (dog as any).__error = e instanceof Error ? e.message : String(e);
-            // Füge Dog trotzdem zu exhausted hinzu, damit es in Waves erscheint
+            // Add the dog to exhausted regardless -- even failed hunts leave their mark
             season.exhausted.push(dog);
-            // Entferne aus withBeesInThePants
+            // Strike it from the restless crew, for it shall run no more
             let dogIndex = this.dogsWithBeesInthePants.findIndex(comperrator => comperrator === dog)
             if (dogIndex >= 0) {
                 this.dogsWithBeesInthePants.splice(dogIndex, 1)
@@ -69,15 +94,16 @@ export class SeasonRunner {
         }
     }
 
+    // Release the whole pack at once -- a wave crashing into the unknown
     private async letOutThePack (pack: IHuntingDog<unknown>[], season: IHuntingSeason):Promise<void> {
-        // Setze aktuellen Wave-Index basierend auf der Anzahl der bereits vorhandenen Waves
+        // Mark the current wave index based on how many waves have already crashed upon the void
         const currentWaveIndex = season.wave.length;
         season.currentWaveIndex = currentWaveIndex;
-        
+
         console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
         await Promise.all(pack.map(dog => this.letOut(dog, season)));
 
-        // Füge alle Dogs hinzu, auch die mit Fehlern (collected kann undefined sein, aber __error vorhanden)
+        // Record every hound that returned from the deep -- even those bearing eldritch errors
         let i = this.season.wave.push(pack.filter(dog => {
             return dog.collected != undefined || (dog as any).__error != undefined;
         }).map(i => {return {
@@ -97,6 +123,11 @@ export class SeasonRunner {
         })
     }
 
+    /**
+     * Run the hunt -- the full season, wave by wave, until all hounds be spent
+     * or the abyss has nothing more to yield. To cosmic madness laws submit,
+     * though stalwart minds entreat.
+     */
     public async run():Promise<IHuntingSeason> {
 
 
@@ -107,7 +138,7 @@ export class SeasonRunner {
 
 
 
-        // go gether something
+        // The first wave -- only hounds that be ready may venture forth
         const firstHunt = this.dogsWithBeesInthePants.filter((dog) => { return dog.isReady(this.season) })
 
         if (firstHunt.length === 0) {
@@ -115,12 +146,12 @@ export class SeasonRunner {
             throw new Error("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
         }
 
-        // go explore
+        // Into the deep, matey -- wave after wave until the void yields no more
         await this.letOutThePack(firstHunt, this.season).then(async () => {
             let wave = 1;
 
 
-            // prepare all other runs
+            // Prepare the remaining waves -- each one deeper into the cosmic madness
             let seasonRuns: (() => Promise<void>)[] = []
             for (let i = 0; i < this.maxWaves; i++) {
                 wave++;
@@ -139,12 +170,12 @@ export class SeasonRunner {
                 );
             }
 
-            // make the season runs
+            // Execute the season -- wave by wave, deeper into the roiling abyss
             for await (const run of seasonRuns) {
                 await run();
             }
 
-            // report
+            // The hunt is done -- report what each exhausted hound has plundered
             this.season.exhausted.forEach(dog => {
                 console.log(dog.collected)
             })
@@ -155,5 +186,3 @@ export class SeasonRunner {
         return this.season
     }
 }
-
-

@@ -1,16 +1,30 @@
+/**
+ * ButtonFragment.ts — The Cursed Trigger of the Deep
+ *
+ * Arr, press this button and ye invoke forces from beyond the veil, matey.
+ * Carrion hordes trill their profane accord with eldritch plans — and each
+ * click be a prayer to the nameless thing in the abyss. Ye have been warned.
+ */
 import { FragmentBase } from "./FragmentBase";
 
+/** Arr, a button fragment — the crew presses it, and the void answers. */
 export class ButtonFragment extends FragmentBase {
 
+  /** Arr, the label branded upon this button — the text that lures the crew to press it and summon the void. */
   private label: string;
 
+  /**
+   * Arr, forge a button fragment from the deep, matey — label it with words that beckon the unwary.
+   * @param label - The cursed inscription displayed upon the button's face
+   */
   constructor(label: string) {
     super();
     this.label = label;
   }
 
   /**
-   * Gibt das HTML für den Button zurück, mit eindeutiger ID und Style-Referenz.
+   * Arr, renders the HTML for this accursed button — unique ID and style reference
+   * branded upon it like a sigil from the deep.
    */
   render(): string {
     return `
@@ -19,7 +33,8 @@ export class ButtonFragment extends FragmentBase {
   }
 
   /**
-   * Optionale Styles speziell für Buttons.
+   * Arr, styles fit for a button forged in the abyss — glowing orange
+   * like the last sun before the void swallows all.
    */
   getStyle(): string {
     return `
@@ -44,9 +59,9 @@ export class ButtonFragment extends FragmentBase {
   }
 
   /**
-   * Bindet die Action (falls vorhanden) an den Button über EventListener.
-   * Der Renderer sorgt später dafür, dass alle collectScript()-Ergebnisse
-   * in einem globalen <script> Block landen.
+   * Arr, binds the action to this button via an EventListener, matey.
+   * The renderer ensures all scripts are gathered into one global block —
+   * like carrion hordes assembling in accord with eldritch plans.
    */
   getScript(): string {
     const baseScript = super.getScript();

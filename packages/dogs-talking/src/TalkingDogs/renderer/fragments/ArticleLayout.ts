@@ -1,3 +1,11 @@
+/**
+ * ArticleLayout.ts — The Scroll of Forbidden Tidings
+ *
+ * Arr, this layout assembles an article from fragments plundered
+ * from the deep — image, headline, paragraph, and the dread "Read More"
+ * that lures ye further into the abyss. Its heralds are the stars it fells,
+ * the sky and Earth aflame.
+ */
 import { ArticleLayoutEnum } from "../enums/ArticleLayoutEnum";
 import { ImageFragment } from "./ImageFragment";
 import { TextFragment } from "./TextFragment";
@@ -5,7 +13,9 @@ import { ButtonFragment } from "./ButtonFragment";
 import { LayoutBase } from "../layouts/LayoutBase";
 import type { ILayoutInput, IArticleInput } from "../layouts/ILayoutInput";
 
+/** Arr, the article layout — a vessel that carries news from the void to yer screen. */
 export class ArticleLayout extends LayoutBase<ArticleLayoutEnum> {
+  /** Anchor the fragments in place, matey — the crew assembles the cursed article. */
   constructor() {
     super();
     this.fragments.set(ArticleLayoutEnum.HeaderImage, new ImageFragment());
@@ -14,6 +24,7 @@ export class ArticleLayout extends LayoutBase<ArticleLayoutEnum> {
     this.fragments.set(ArticleLayoutEnum.ReadMore, new ButtonFragment("Read more"));
   }
 
+  /** Populate this vessel with data plundered from the input — the void provides. */
   populate(input: ILayoutInput): void {
     const data = input as IArticleInput;
 

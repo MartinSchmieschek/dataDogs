@@ -1,3 +1,6 @@
+// The KennelRunHandler — the ship's boatswain who unleashes the hounds upon the data seas.
+// When a kennel runs, the dogs are roused from their kennels and sent to hunt.
+// Roiling, moaning, this realm of ours: waves crash as each dog delivers its plunder.
 import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun } from '@datadogs/core';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
@@ -5,6 +8,7 @@ import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
 import { SwaggerGenerator } from '../../services/SwaggerGenerator';
 
+/** The provisions required to arm the KennelRunHandler for its voyage. */
 export interface IKennelRunDeps {
     kennelsController: KennelController;
     nodesStore: IStore;
@@ -18,25 +22,35 @@ export class KennelRunHandler {
         this.deps = deps;
     }
 
+    /** Raise all kennel-run sails — register every route for running, executing, and documenting kennels. */
     registerRoutes(app: any): void {
-        // Swagger Docs pro Kennel
+        // Swagger scrolls — a map of the kennel's hunt, rendered as OpenAPI for any who seek it.
         app.get('/api/kennels/:id/swagger.json', (req: any, res: any) => this.handleSwaggerJson(req, res));
         app.get('/api/kennels/:id/docs', (req: any, res: any) => this.handleSwaggerUi(req, res));
 
+        // The run routes — unleash the full pack and return all waves of plunder.
         app.get('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
         app.post('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
+        // The execute routes — run the pack and return only the lead dog's bounty.
         app.get('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
         app.post('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
 
+        // The public endpoints — what the world sees when it calls our ship by kennel name.
         app.get('/:kennelId', (req: any, res: any) => this.handlePublicGet(req, res));
         app.post('/:kennelId', (req: any, res: any) => this.handlePublicPost(req, res));
     }
 
+    /** Fetch the kennel's config from the deep — returns null if the void swallowed it. */
     private async loadKennelConfig(id: string): Promise<IKennelConfig | null> {
         const result = await this.deps.kennelsController.getById(id);
         return (result.ok && result.data) ? result.data : null;
     }
 
+    /**
+     * Builds the factory that summons SerializedDogs from the store.
+     * A SerializedDog that imitates another becomes a MimicDog — wearing a borrowed form.
+     * Through endless faces, countless forms, a multitude unfolds.
+     */
     private createSerializedDogFactory() {
         const { nodesStore } = this.deps;
         return async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {
@@ -46,6 +60,7 @@ export class KennelRunHandler {
                     ? JSON.parse(sd.serializedDogConfig)
                     : sd.serializedDogConfig;
                 const imitates = (config as IMimicDogConfig).imitates;
+                // If the dog imitates another, it dons the MimicDog disguise.
                 if (typeof imitates === 'string' && imitates.length > 0) {
                     return new MimicDog(config as IMimicDogConfig, sd.id);
                 }
@@ -54,6 +69,11 @@ export class KennelRunHandler {
         };
     }
 
+    /**
+     * Unleash the kennel — run every hound and collect the waves of plunder.
+     * The hunt is conducted by KennelRun; the season is converted to Waves by the WavesConverter.
+     * Carrion hordes trill their profane accord: each dog takes what it can from the data sea.
+     */
     private async runKennel(
         config: IKennelConfig,
         query?: Record<string, string>,
@@ -71,6 +91,11 @@ export class KennelRunHandler {
         return convertSeasonToWaves(season);
     }
 
+    /**
+     * Merges default query params with request query params.
+     * Request params override defaults — the caller's voice drowns out the kennel's whisper.
+     * All keys are lowercased, for the void is not case-sensitive.
+     */
     private mergeQueryParams(defaults: Record<string, string> | undefined, reqQuery: Record<string, any>): Record<string, string> {
         const result: Record<string, string> = {};
         if (defaults) {
@@ -83,6 +108,11 @@ export class KennelRunHandler {
         return result;
     }
 
+    /**
+     * Hunts through all waves to find a specific dog by its ID.
+     * Strips the 'base:' prefix and version suffix as needed — the dog's true name is all that matters.
+     * In luminous space, blackened stars gaze: if the dog is not found, null is returned.
+     */
     private findDogInWaves(waves: Waves, targetDogId: string) {
         const searchId = targetDogId.startsWith('base:')
             ? targetDogId.substring(5)
@@ -101,6 +131,10 @@ export class KennelRunHandler {
         return null;
     }
 
+    /**
+     * Sends the result to the caller — HTML if the plunder looks like HTML, JSON otherwise.
+     * The deep does not care for format; we detect and serve what it has yielded.
+     */
     private sendResult(res: any, result: any) {
         if (typeof result === 'string' && (
             result.trim().startsWith('<html') ||
@@ -117,7 +151,8 @@ export class KennelRunHandler {
 
     /**
      * GET /api/kennels/:id/swagger.json
-     * Fuehrt den Kennel aus und generiert daraus die OpenAPI-Spec.
+     * Runs the kennel and forges the OpenAPI spec from the plunder.
+     * Its heralds are the stars it fells: the spec documents what the hounds have gathered.
      */
     private async handleSwaggerJson(req: any, res: any): Promise<void> {
         try {
@@ -141,7 +176,8 @@ export class KennelRunHandler {
 
     /**
      * GET /api/kennels/:id/docs
-     * Fuehrt den Kennel aus und zeigt Swagger UI mit der generierten Spec.
+     * Runs the kennel and renders the Swagger UI — a map of the hunt for all to read.
+     * The sky and earth aflame with documentation, illuminated by the OpenAPI spec.
      */
     private async handleSwaggerUi(req: any, res: any): Promise<void> {
         try {
@@ -186,8 +222,10 @@ export class KennelRunHandler {
 
     /**
      * GET/POST /api/kennels/:id/run
-     * Führt einen Kennel aus und gibt Waves + KennelConfig als JSON zurück.
-     * Wird vom Angular-Frontend verwendet.
+     * Unleashes the full pack and returns all waves + the kennel config.
+     * Used by the Angular frontend to chart the hunt's full course.
+     * For POST: the caller's body is taken as-is — even an empty {} is honoured.
+     * "Nothing to harvest" is a known fate — returned as a soft error, not a shipwreck.
      */
     private async handleRun(req: any, res: any): Promise<void> {
         try {
@@ -198,7 +236,7 @@ export class KennelRunHandler {
             }
 
             const query = this.mergeQueryParams(config.defaultQuery, req.query);
-            // POST: expliziter Body inkl. {} — nicht durch defaultBody ersetzen (war: keys.length > 0).
+            // POST gives us the caller's body directly — defaultBody is only for GET or bodyless requests.
             const body =
                 req.method === 'POST' && req.body !== undefined && req.body !== null
                     ? req.body
@@ -210,6 +248,7 @@ export class KennelRunHandler {
             } catch (runError: any) {
                 const msg = runError?.message || String(runError);
                 if (msg.includes("Nothing to harvest")) {
+                    // The void was empty — no plunder found, but the ship still sails.
                     res.json({ ok: false, error: msg, kennelConfig: config });
                 } else {
                     console.error("[KennelRunHandler.handleRun] runKennel", runError);
@@ -224,7 +263,8 @@ export class KennelRunHandler {
 
     /**
      * GET/POST /api/kennels/:id/execute
-     * Führt einen Kennel aus und gibt das Ergebnis des ersten Dogs zurück.
+     * Runs the pack and returns only the lead dog's plunder — the first dog in the config.
+     * A kennel with no dogs cannot hunt — the request is denied with a 400.
      */
     private async handleExecute(req: any, res: any): Promise<void> {
         try {
@@ -236,6 +276,7 @@ export class KennelRunHandler {
 
             const dogIds = config.dogIds || [];
             if (dogIds.length === 0) {
+                // A kennel without hounds cannot hunt — send them back empty-handed.
                 res.status(400).json({ error: 'Keine Hunde in der Config gefunden' });
                 return;
             }
@@ -248,6 +289,7 @@ export class KennelRunHandler {
                     : config.defaultBody;
             const waves = await this.runKennel(config, queryData, body);
 
+            // The lead dog carries the bounty — all others served only to support.
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
@@ -261,10 +303,13 @@ export class KennelRunHandler {
     }
 
     /**
-     * GET /:kennelId  — Öffentlicher Produktions-Endpunkt
+     * GET /:kennelId — The public production endpoint; the face we show to the world.
+     * Reserved words ('api', 'kennel', 'edit') pass by without challenge — they serve other ports.
+     * The sky and earth aflame: when the outside world calls, only the lead dog answers.
      */
     private async handlePublicGet(req: any, res: any): Promise<void> {
         const kennelId = req.params.kennelId;
+        // Let the reserved ports sail past — they serve other masters.
         if (kennelId === 'api' || kennelId === 'kennel' || kennelId === 'edit') return;
 
         try {
@@ -296,7 +341,9 @@ export class KennelRunHandler {
     }
 
     /**
-     * POST /:kennelId  — Öffentlicher Produktions-Endpunkt mit Body
+     * POST /:kennelId — The public production endpoint with a body.
+     * Same rules as the GET variant, but the caller may carry cargo in the body.
+     * If no body is given, the kennel's defaultBody is used as ballast.
      */
     private async handlePublicPost(req: any, res: any): Promise<void> {
         const kennelId = req.params.kennelId;
@@ -317,6 +364,7 @@ export class KennelRunHandler {
 
             const queryData = this.mergeQueryParams(config.defaultQuery, req.query);
 
+            // Use the caller's body if it carries one; fall back to the kennel's default cargo.
             const bodyData =
                 req.body !== undefined && req.body !== null ? req.body : config.defaultBody;
 

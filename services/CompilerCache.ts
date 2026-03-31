@@ -1,13 +1,33 @@
 import * as ts from 'typescript';
 import * as path from 'path';
 
+/**
+ * Arr, this be the manifest of a class plundered by the TypeScript compiler —
+ * its public members laid bare and its referenced interfaces dragged
+ * from brooding gulfs into the light, so the crew may know its eldritch shape.
+ */
 export interface IClassTypeResult {
+    /** A record of member names to their type strings — the plunder of the class, catalogued. */
     members: Record<string, string>;
+    /** Interface definitions referenced by the class, dredged from the void as raw TypeScript. */
     referencedInterfaces: string;
 }
 
+/**
+ * Arr, the CompilerCache be the eldritch engine that summons the TypeScript compiler
+ * from the abyss, parses the project's tsconfig, and plunders type information
+ * from brooding gulfs of source files. Through endless faces countless forms —
+ * classes, interfaces, enums, and type aliases — it extracts what the crew needs
+ * for IntelliSense, pact return types, and the void's own schema definitions.
+ */
 export class CompilerCache {
 
+    /**
+     * Summons a TypeScript program and its type checker from the deep —
+     * reading the tsconfig.json like an ancient scroll and forging a compiler
+     * instance so the crew may interrogate the void for type information.
+     * @returns An object bearing the program and checker, plundered from the abyss.
+     */
     private static createProgram(): { program: ts.Program; checker: ts.TypeChecker } {
         const configPath = ts.findConfigFile(process.cwd(), ts.sys.fileExists, 'tsconfig.json');
         if (!configPath) throw new Error('tsconfig.json not found');
@@ -19,11 +39,25 @@ export class CompilerCache {
         return { program, checker: program.getTypeChecker() };
     }
 
+    /**
+     * Determines whether a declaration be visible to the crew — only those members
+     * not marked private or protected may be plundered from the class's hull.
+     * @param node - The declaration node to inspect for access modifiers.
+     * @returns True if the member be public, false if it lurks in the deep.
+     */
     private static isPublic(node: ts.Declaration): boolean {
         const flags = ts.getCombinedModifierFlags(node);
         return !(flags & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected));
     }
 
+    /**
+     * Descends into the recursive abyss of a type, collecting all referenced
+     * interface names — through unions, intersections, type arguments, and arrays,
+     * the carrion hordes of nested types be catalogued so none escape the void.
+     * @param checker - The type checker, an oracle of the deep.
+     * @param type - The type to recursively plunder for references.
+     * @param collected - A set accumulating the names of discovered interfaces.
+     */
     private static collectReferencedTypes(
         checker: ts.TypeChecker,
         type: ts.Type,
@@ -77,6 +111,15 @@ export class CompilerCache {
         }
     }
 
+    /**
+     * Searches the program's source files for an interface declaration and emits
+     * its definition as a string — dragging the eldritch shape from brooding gulfs
+     * into a form the crew can embed in generated type libraries.
+     * @param checker - The type checker oracle from the void.
+     * @param interfaceName - The name of the interface to plunder.
+     * @param program - The TypeScript program harboring the source files.
+     * @returns The interface definition string, or null if the abyss yields nothing.
+     */
     private static emitInterfaceDefinition(
         checker: ts.TypeChecker,
         interfaceName: string,
@@ -92,6 +135,13 @@ export class CompilerCache {
         return null;
     }
 
+    /**
+     * Scours a single source file for an interface declaration bearing the given name —
+     * like a pirate scouring a shipwreck for a specific piece of plunder in the deep.
+     * @param sourceFile - The source file to search through.
+     * @param name - The interface name sought by the crew.
+     * @returns The interface declaration node, or null if the void conceals it.
+     */
     private static findInterfaceInFile(
         sourceFile: ts.SourceFile,
         name: string
@@ -109,6 +159,14 @@ export class CompilerCache {
         return found;
     }
 
+    /**
+     * Hunts through a source file for any named type declaration — interface, type alias,
+     * or enum — through endless faces countless forms the quarry may take,
+     * but the crew shall find it if it lurks within this file.
+     * @param sourceFile - The source file to plunder.
+     * @param name - The declaration name to seek in the abyss.
+     * @returns The found declaration node, or null if the deep keeps its secrets.
+     */
     private static findNamedTypeDeclarationInSourceFile(
         sourceFile: ts.SourceFile,
         name: string
@@ -134,6 +192,13 @@ export class CompilerCache {
         return found;
     }
 
+    /**
+     * Arr, traverse ALL non-declaration source files in the program, seeking a named
+     * type declaration from brooding gulfs — the first match be claimed as plunder.
+     * @param program - The TypeScript program whose files harbor the quarry.
+     * @param name - The type name to hunt across the entire codebase.
+     * @returns The declaration node, or null if it be lost to the void.
+     */
     private static findNamedTypeDeclaration(
         program: ts.Program,
         name: string
@@ -146,14 +211,30 @@ export class CompilerCache {
         return null;
     }
 
+    /** A printer forged in the void, stripping comments as one strips barnacles from a cursed hull. */
     private static readonly pactPrinter = ts.createPrinter({ removeComments: true });
 
+    /**
+     * Prints an enum declaration and appends a return-type alias — the enum's
+     * eldritch form be captured in text so the pact system may wield it.
+     * @param node - The enum declaration node, dragged from the deep.
+     * @returns The printed enum text with its Return type alias appended.
+     */
     private static enumNodeToPactDef(node: ts.EnumDeclaration): string {
         const text = this.pactPrinter.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile()).trim();
         const name = node.name.text;
         return `${text}\ntype ${name}Return = ${name};`;
     }
 
+    /**
+     * Resolves a type alias into its full pact definition — collecting referenced
+     * interfaces from the abyss and printing the alias alongside them, so the
+     * carrion hordes of dependent types be properly declared for the crew.
+     * @param checker - The type checker, peering into the void on our behalf.
+     * @param node - The type alias declaration node to process.
+     * @param program - The program from which referenced interfaces be plundered.
+     * @returns The complete pact definition string with all referenced interfaces.
+     */
     private static typeAliasNodeToPactDef(
         checker: ts.TypeChecker,
         node: ts.TypeAliasDeclaration,
@@ -205,6 +286,13 @@ export class CompilerCache {
         }
     }
 
+    /**
+     * Plunders an interface declaration for enum references lurking within its
+     * property signatures — each referenced type name be added to the set,
+     * lest the carrion hordes of missing enums haunt the generated definitions.
+     * @param iface - The interface declaration to inspect.
+     * @param out - The set accumulating discovered enum names from the deep.
+     */
     private static collectReferencedEnumNamesFromInterface(iface: ts.InterfaceDeclaration, out: Set<string>): void {
         for (const member of iface.members) {
             if (ts.isPropertySignature(member) && member.type) {
@@ -213,6 +301,14 @@ export class CompilerCache {
         }
     }
 
+    /**
+     * Finds and emits all enum declarations referenced by an interface —
+     * dredging them from the program's source files so they may accompany
+     * the interface definition on its voyage through the void.
+     * @param program - The TypeScript program harboring the enum declarations.
+     * @param iface - The interface whose referenced enums be sought.
+     * @returns A string of printed enum declarations, joined from the abyss.
+     */
     private static emitReferencedEnumsForInterface(
         program: ts.Program,
         iface: ts.InterfaceDeclaration
@@ -231,6 +327,15 @@ export class CompilerCache {
         return blocks.join('\n\n');
     }
 
+    /**
+     * Arr, the heart of the pact type resolution — locates a named type declaration
+     * (interface, enum, or type alias) and builds its full return type definition
+     * from brooding gulfs of the compiler. Throws if the symbol be lost to the void.
+     * @param symbolName - The source type name to resolve, as whispered by the pact.
+     * @param program - The TypeScript program containing the declaration.
+     * @param checker - The type checker for resolving the eldritch type details.
+     * @returns The complete pact return type definition string.
+     */
     private static buildPactReturnTypeDef(
         symbolName: string,
         program: ts.Program,
@@ -271,11 +376,26 @@ export class CompilerCache {
         return result;
     }
 
+    /**
+     * Resolves a single pact return type definition by summoning a fresh compiler
+     * from the abyss — less efficient than the batch method, but suitable when
+     * only one eldritch symbol must be plundered from the deep.
+     * @param symbolName - The source type name to resolve.
+     * @returns The pact return type definition string, conjured from the void.
+     */
     static getPactReturnTypeDef(symbolName: string): string {
         const { program, checker } = this.createProgram();
         return this.buildPactReturnTypeDef(symbolName, program, checker);
     }
 
+    /**
+     * Converts an interface declaration node into a readable TypeScript string —
+     * each property, method, and index signature be transcribed from the AST
+     * like ancient runes copied from a tablet found in the brooding gulfs.
+     * @param checker - The type checker for resolving member types from the void.
+     * @param node - The interface declaration to serialize.
+     * @returns A TypeScript interface definition string, plundered from the AST.
+     */
     private static interfaceNodeToString(
         checker: ts.TypeChecker,
         node: ts.InterfaceDeclaration
@@ -342,6 +462,14 @@ export class CompilerCache {
         return `interface ${name} {\n${members.join('\n')}\n}`;
     }
 
+    /**
+     * Arr, summon the full type information of a class from the void — its public
+     * methods, properties, getters, and constructor-promoted parameters be catalogued,
+     * and all referenced interfaces dragged from the deep alongside them.
+     * Corporeal laws unwritten demand that private and protected members stay hidden.
+     * @param className - The name of the class to plunder for type information.
+     * @returns The class type result with members and referenced interfaces, or null if the abyss yields nothing.
+     */
     static getClassType(className: string): IClassTypeResult | null {
         try {
             const { program, checker } = this.createProgram();

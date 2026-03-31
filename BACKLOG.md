@@ -37,6 +37,43 @@ Prioritized technical debt and release topics (as of: code review / release chec
 
 ---
 
+## Refactoring — Code Review (2026-03)
+
+Findings from a full code review against current standards.
+
+### Critical
+
+- [ ] **Security — replace `vm2`:** `vm2` is deprecated with known sandbox escapes. [`SerializedDog.ts`](packages/core/src/dogs/SerializedDog.ts) executes user code with access to `fetch`/`console` — exfiltration possible. Replace with `isolated-vm` or Node.js Worker Threads.
+- [ ] **Testing — from 0 % to meaningful coverage:** No unit or integration tests in the project. `angular.json` has `skipTests: true`. Set up test framework (Vitest/Jest), cover critical paths first (SeasonRunner, Store, API routes).
+- [ ] **Bug — `throw Error` instead of `throw this.result`:** [`abstractHuntingDog.ts:307`](packages/core/src/core/entities/abstractHuntingDog.ts) — throws the Error constructor, not the stored error.
+- [ ] **Bug — loop escape in SeasonRunner:** [`harverster.ts:155`](packages/core/src/harverster.ts) — `i = this.maxWaves` inside an `async` callback does not break the `for` loop as intended.
+- [ ] **API — no authentication:** All endpoints are publicly accessible — no API key, JWT, or session protection.
+
+### High
+
+- [ ] **TypeScript — enable strict flags:** `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns` all disabled. `"declaration": false` — package consumers get no type hints. Eliminate 40+ `as any` casts.
+- [ ] **Linting & formatting:** No ESLint, Prettier, or pre-commit hooks (Husky/lint-staged). Set up for consistent code style.
+- [ ] **Structured logging:** 6760+ `console.log()` calls shipping to production. Replace with a logger (`pino`, `winston`) using log levels.
+- [ ] **API — HTTP status codes & validation:** All client errors return `500` instead of `4xx` ([`ConfigRouteHandler.ts`](api/routes/ConfigRouteHandler.ts)). No `req.body` validation — introduce schema validation (Zod or Joi).
+- [ ] **Store — type detection:** [`PrismaStore.ts`](store/PrismaStore.ts) detects entity type by field presence instead of an explicit `type` column — brittle. ID generation via `Date.now()` has no uniqueness guarantee.
+- [ ] **CI/CD — set up pipeline:** No `.github/workflows/` present. Minimum: lint → typecheck → test → build as a GitHub Action.
+
+### Medium
+
+- [ ] **Fix filename typo:** [`harverster.ts`](packages/core/src/harverster.ts) → `harvester.ts`.
+- [ ] **Dependency injection:** Hardcoded singletons in `main.ts`. Introduce a DI container (`tsyringe`, `inversify`) for better testability.
+- [ ] **Performance — O(n²) dependency lookups:** [`SerializedDog.ts`](packages/core/src/dogs/SerializedDog.ts) linearly searches `season.exhausted` per dependency. Use a Map-based lookup or cache.
+- [ ] **Simplify proxy tracking:** 117 lines of nested Proxy factories in [`abstractHuntingDog.ts:179–294`](packages/core/src/core/entities/abstractHuntingDog.ts). Array mutations (`.push()`, `.splice()`) bypass tracking.
+- [ ] **Abstract JSON serialization:** Manual `JSON.parse`/`JSON.stringify` scattered everywhere — introduce a central transformer/serializer layer.
+- [ ] **Store — double DB hit per save:** Version calculation + subsequent fetch in [`Controller.ts`](api/Controller.ts) — merge into a single transaction.
+- [ ] **Angular — feature modules & lazy loading:** All components in one folder, no module separation, no lazy loading. Type `declare const monaco: any`.
+- [ ] **Variable naming:** Replace creative names like `dogsWithBeesInthePants` with domain-clear identifiers.
+- [ ] **Error casting in SerializedDog:** [`SerializedDog.ts`](packages/core/src/dogs/SerializedDog.ts) returns `"Error: " + err.message` cast as type `T` — type violation. Introduce proper error handling.
+- [ ] **Remove legacy `/save` route:** Duplicate functionality with `/api/nodes`. Define deprecation path or remove directly.
+- [ ] **Harden CORS:** Dev mode allows all `localhost` origins. No rate limiting configured.
+
+---
+
 ## Done
 
 - [x] **Body `{}` / Kennel-Run (2026-03):** Leeres JSON-Objekt `{}` war bei `run`/`execute` fälschlich wie „kein Body“ behandelt (`Object.keys(body).length` bzw. `raw !== '{}'`). Behoben: Client sendet POST mit `{}`; Server nutzt bei POST den Request-Body inkl. leerem Objekt; öffentliches `POST /:kennelId` ebenso; Node-DELETE-URLs mit `encodeURIComponent`; Side-Panel zeigt Löschfehler.

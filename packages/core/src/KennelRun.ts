@@ -1,3 +1,15 @@
+/**
+ * ~~~ THE CAPTAIN WHO FILLS THE KENNEL AND RUNS THE HUNT ~~~
+ *
+ * Arr, this be the KennelRun -- the captain of our cursed vessel.
+ * It fills the kennel with hounds summoned from the deep,
+ * stitches together base-dogs and serialized spirits,
+ * and unleashes the hunt across waves of eldritch reckoning.
+ *
+ * Its heralds are the stars it fells, the sky and Earth aflame.
+ * When the captain speaks, every hound answers -- or is consumed by the void.
+ */
+
 import { IHuntingDog as IDog } from './core/entities/IHuntingDog';
 import { SerializedDog, type SerializedDogVmGlobalsSupplier } from './dogs/SerializedDog';
 import { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
@@ -5,32 +17,42 @@ import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
 
 /**
- * Präfix für Basis-Dog-IDs in dogIds
+ * Arr, this prefix brands a dog as a base-class hound in the dogIds manifest.
+ * Like a brand seared by void-flame, it marks the original crew.
  */
 export const BASE_DOG_PREFIX = 'base:';
 
 /**
- * Kennel-Config Interface
- * Speichert welche Dogs in einem Kennel sind
- * Basis-Dogs werden in dogIds mit Präfix "base:" gespeichert (z.B. "base:RandomRecipesRetriever")
- * SerializedDogs werden normal in dogIds gespeichert (z.B. "my-dog-v1")
+ * The kennel's cursed charter -- what hounds dwell within, and what dark purpose binds them.
+ * Base-dogs be branded with the "base:" sigil in dogIds (e.g. "base:RandomRecipesRetriever").
+ * SerializedDogs sail under their own name (e.g. "my-dog-v1"), unbranded but no less damned.
  */
 export interface IKennelConfig {
+    /** The kennel's unique identifier -- its brand seared by void-flame into the registry */
     id: string;
+    /** A mortal-readable name fer this kennel -- a whisper of sanity amidst the eldritch dark */
     name?: string;
+    /** A description of the kennel's dark purpose -- what plunder it seeks from the abyss */
     description?: string;
-    /** Ein Emoji als Kennel-Kennzeichnung (UI), optional */
+    /** An emoji sigil fer the kennel -- a glyph to mark it in the UI, should ye dare look */
     emoji?: string;
-    dogIds: string[]; // Array von Dog-IDs: SerializedDogs (z.B. "my-dog-v1") oder Basis-Dogs (z.B. "base:RandomRecipesRetriever")
-    defaultQuery?: Record<string, string>; // Default Query-Parameter für den Editor
-    defaultBody?: any; // Default Body-Daten für den Editor
+    /** Arr of dog IDs that crew this kennel: SerializedDogs (e.g. "my-dog-v1") or base-dogs (e.g. "base:RandomRecipesRetriever") */
+    dogIds: string[];
+    /** Default query parameters fer the editor -- the map's starting coordinates, drawn before we sail */
+    defaultQuery?: Record<string, string>;
+    /** Default body data fer the editor -- the cargo manifest, pre-loaded into the hold */
+    defaultBody?: any;
+    /** When this kennel was first conjured from the void */
     createdAt?: Date;
+    /** When this kennel last felt the touch of mortal hands */
     updatedAt?: Date;
 }
 
 /**
- * Klasse für die Erstellung und Ausführung von Kennel-Runs
- * Ermöglicht mehrere Instanzen für verschiedene Kennel-Konfigurationen
+ * The KennelRun -- captain of the hunt, orchestrator of the abyss.
+ * Corporeal laws are unwritten as suns and love retreat;
+ * this class fills the kennel with hounds and drives them forth
+ * into the roiling madness of the data-season.
  */
 export class KennelRun {
     private config?: IKennelConfig;
@@ -41,16 +63,18 @@ export class KennelRun {
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
 
     /**
-     * @param configOrBaseDogs - Optional: Entweder eine IKennelConfig oder eine Liste von Basis-Dogs (wird aktuell nicht verwendet)
-     * @param baseDogClasses - Map von BaseDog-Namen zu Klassen. Wird benötigt, um aus Config-Strings (z.B. "base:RandomRecipesRetriever") neue Instanzen zu erstellen.
-     *                        Bei jedem fillKennel() werden neue Instanzen erstellt, damit keine Ergebnisse gecacht werden.
-     * @param serializedDogFactory - Factory-Funktion, die SerializedDogs aus IDs erstellt. Bekommt ein Array von IDs und gibt ein Array von SerializedDogs zurück.
-     * @param queryData - Optional: Query-Parameter für QueryRetriever
-     * @param bodyData - Optional: Body-Daten für BodyRetriever
-     * @param vmGlobalsSuppliers - App-spezifische VM-Globals (z. B. Pact-Enums); der Core kennt keine konkreten Typen.
+     * Summon the captain and provision the vessel.
+     * @param configOrBaseDogs - The kennel charter, or a raw crew of hounds (rarely used, that path be cursed)
+     * @param baseDogClasses - Map of base-dog names to their constructors. Needed to conjure fresh hounds
+     *                        from config strings (e.g. "base:RandomRecipesRetriever"). New instances every
+     *                        fillKennel() call -- no cached spirits linger aboard this vessel.
+     * @param serializedDogFactory - A factory that dredges SerializedDogs from the deep by their IDs.
+     * @param queryData - Query parameters fer the QueryRetriever (the map-reader)
+     * @param bodyData - Body data fer the BodyRetriever (the cargo-bearer)
+     * @param vmGlobalsSuppliers - App-specific VM globals (e.g. Pact enums); the core knows no concrete forms.
      */
     constructor(
-        configOrBaseDogs?: IKennelConfig | Array<IDog<unknown>>, 
+        configOrBaseDogs?: IKennelConfig | Array<IDog<unknown>>,
         baseDogClasses: Map<string, new () => IDog<unknown>> = new Map(),
         serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => [],
         queryData?: Record<string, string>,
@@ -62,36 +86,36 @@ export class KennelRun {
         this.queryData = queryData;
         this.bodyData = bodyData;
         this.vmGlobalsSuppliers = vmGlobalsSuppliers;
-        
+
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
-            // Es ist eine IKennelConfig
+            // Arr, 'tis a proper charter -- anchor it to the captain
             this.config = configOrBaseDogs;
             console.log(`[KennelRun.constructor] Config geladen:`, JSON.stringify(this.config, null, 2));
         }
     }
 
     /**
-     * Füllt den Zwinger mit Hunden
-     * Lädt SerializedDogs aus der DB und kombiniert sie mit den Basis-Dogs
-     * Basis-Dogs werden aus dogIds mit Präfix "base:" erstellt
-     * SerializedDogs werden aus dogIds ohne "base:" Präfix geladen
-     * - Wenn eine dogId eine Version enthält (z.B. "seed-serialized-1-v2"), wird genau diese Version geladen
-     * - Wenn eine dogId keine Version enthält (z.B. "seed-serialized-1"), wird die neueste Version geladen
+     * Fill the kennel with hounds summoned from the abyss.
+     * Loads SerializedDogs from the deep and combines them with base-dog spirits.
+     * Base-dogs be conjured from dogIds bearing the "base:" brand.
+     * SerializedDogs be dredged by their unbranded IDs.
+     * - If a dogId carries a version (e.g. "seed-serialized-1-v2"), that exact spectre is summoned
+     * - If a dogId has no version (e.g. "seed-serialized-1"), the newest incarnation rises from the deep
      */
     public async fillKennel(): Promise<Array<IDog<unknown>>> {
         console.log(`[KennelRun.fillKennel] Start`);
         console.log(`[KennelRun.fillKennel] Config vorhanden:`, this.config ? JSON.stringify(this.config, null, 2) : 'keine');
-        
+
         const kennel: Array<IDog<unknown>> = [];
 
-        // Trenne Basis-Dogs und SerializedDogs aus dogIds
+        // Separate the branded base-dogs from the serialized spirits
         const dogIds = this.config?.dogIds || [];
         const baseDogIds = dogIds.filter(id => id.startsWith(BASE_DOG_PREFIX));
         const serializedDogIds = dogIds.filter(id => !id.startsWith(BASE_DOG_PREFIX));
 
         console.log(`[KennelRun.fillKennel] Gefunden: ${baseDogIds.length} Basis-Dogs, ${serializedDogIds.length} SerializedDogs in dogIds`);
 
-        // Erstelle Basis-Dogs aus dogIds - IMMER neue Instanzen bei jedem fillKennel() (verhindert Caching)
+        // Conjure fresh base-dog instances -- always new, never cached, lest old spirits haunt us
         baseDogIds.forEach(baseDogId => {
             const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
             const BaseDogClass = this.baseDogClasses.get(typeName);
@@ -111,30 +135,30 @@ export class KennelRun {
             }
         });
 
-        // Lade SerializedDogs, wenn welche in dogIds angegeben sind
+        // Dredge SerializedDogs from the abyss if any be named in the charter
         if (serializedDogIds.length > 0) {
             const specificVersions = serializedDogIds.filter(id => this.isVersionedId(id)).length;
             const baseIds = serializedDogIds.length - specificVersions;
             console.log(`[KennelRun.fillKennel] Lade SerializedDogs (${specificVersions} spezifische Versionen, ${baseIds} Basis-IDs → neueste)`);
-            
-            // Verwende Factory-Funktion, um SerializedDogs zu erstellen
+
+            // Use the factory to raise serialized spirits from the deep
             const serializedDogs = await this.serializedDogFactory(serializedDogIds);
             console.log(`[KennelRun.fillKennel] Factory erstellt ${serializedDogs.length} SerializedDogs`);
-            
+
             serializedDogs.forEach(dog => {
                 kennel.push(dog);
                 console.log(`[KennelRun.fillKennel] SerializedDog hinzugefügt: ${dog.storageId}`);
             });
         }
-        
-        // Setze Kennel-Referenz für alle SerializedDogs (für Parent-Lookup in simpleVmContext)
+
+        // Bind every serialized spirit to the kennel so they may find their kin
         kennel.forEach(dog => {
             if (dog instanceof SerializedDog) {
                 (dog as SerializedDog<unknown>).setKennelRef(kennel);
             }
         });
 
-        // Auto-Mimic: Resolve MimicDog imitates + resolve unerfuellte Pact-Requirements
+        // Resolve the shapeshifters' borrowed forms and fulfil unmet pact-requirements
         kennel.forEach(dog => {
             if (dog instanceof MimicDog) {
                 (dog as MimicDog<unknown>).resolveImitates(this.baseDogClasses);
@@ -158,11 +182,12 @@ export class KennelRun {
     }
 
     /**
-     * Auto-Mimic Logik:
-     * - Pact-Dependency → MimicDog erstellen (mit gespeichertem Code falls vorhanden)
-     * - Required Nicht-Pact → BaseDog aus baseDogClasses erstellen
-     * - Optional Nicht-Pact → ignorieren (areOptionalParentsReady handhabt das)
-     * - Echter Dog UND Mimic fuer dieselbe Klasse → Mimic entfernen
+     * Auto-Mimic -- the eldritch rite that conjures shapeshifters to fill empty pacts.
+     * Carrion hordes trill their profane accord with eldritch plans:
+     * - Pact dependency with no real dog --> summon a MimicDog (with saved code if it exists in the deep)
+     * - Required non-pact missing --> conjure a BaseDog from the class registry
+     * - Optional non-pact missing --> ignore it (areOptionalParentsReady handles the silence)
+     * - Real dog AND mimic for the same class --> cast the mimic overboard
      */
     private async autoMimic(kennel: Array<IDog<unknown>>): Promise<void> {
         const requiredClasses = new Set<new (...args: any[]) => IDog<unknown>>();
@@ -225,7 +250,7 @@ export class KennelRun {
         try {
             savedDogs = await this.serializedDogFactory(mimicIds);
         } catch (e) {
-            // Keine gespeicherten Mimics gefunden — ist OK
+            // No saved mimics found in the deep -- the void yields nothing, and that be fine
         }
 
         for (const depClass of pactsNeedingMimic) {
@@ -259,12 +284,13 @@ export class KennelRun {
     }
 
     /**
-     * Führt die Jagd/Wellen aus
-     * @param kennel - Optional: Wenn nicht angegeben, wird fillKennel() aufgerufen
-     * @returns IHuntingSeason mit den Ergebnissen
+     * Unleash the hunt across waves of cosmic reckoning.
+     * Roiling, moaning, this realm of ours, in madness lost shall die.
+     * @param kennel - The crew of hounds; if none be given, fillKennel() summons them from the deep
+     * @returns The season log -- a record of every wave, every exhausted hound
      */
     public async runSeason(kennel?: Array<IDog<unknown>>): Promise<IHuntingSeason> {
-        // Wenn kein Kennel übergeben wurde, lade es
+        // If no kennel was provided, summon the crew from the abyss
         if (!kennel) {
             kennel = await this.fillKennel();
         }
@@ -278,8 +304,9 @@ export class KennelRun {
     }
 
     /**
-     * Führt einen kompletten Run aus (fillKennel + runSeason)
-     * @returns IHuntingSeason mit den Ergebnissen
+     * Execute the full voyage -- fill the kennel, then run the season.
+     * From bow to stern, from summoning to exhaustion. Arr.
+     * @returns The season log with all results plundered from the void
      */
     public async run(): Promise<IHuntingSeason> {
         const kennel = await this.fillKennel();
@@ -287,11 +314,10 @@ export class KennelRun {
     }
 
     /**
-     * Prüft, ob eine ID eine Versions-ID ist (enthält -v\d+)
+     * Check if an ID bears a version brand (contains -v followed by digits).
+     * Versioned spirits be summoned exactly; unversioned ones yield their latest incarnation.
      */
     private isVersionedId(id: string): boolean {
         return /-v\d+$/.test(id);
     }
 }
-
-

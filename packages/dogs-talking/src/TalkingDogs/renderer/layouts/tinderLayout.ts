@@ -1,10 +1,20 @@
-// TinderLayout.ts — Karten-UI (Foto/Video full-bleed, Verlauf, Text-Overlay, ein Next-Button)
+/**
+ * TinderLayout.ts — The Swipe-Deck of Damned Souls
+ *
+ * Arr, this be the Tinder layout, matey — a card UI where ye swipe through
+ * souls like a pirate sortin' plunder on the quarterdeck. Full-bleed images,
+ * gradient overlays, text from the deep, and a "Next" button that pulls ye
+ * ever deeper into the abyss. Roiling, moaning, this realm of ours, in
+ * madness lost shall die. Optional pill inputs float like cursed doubloons
+ * upon a glass card — the void demands ye choose.
+ */
 import { ButtonFragment } from "../fragments/ButtonFragment";
 import { ImageFragment } from "../fragments/ImageFragment";
 import { TextFragment } from "../fragments/TextFragment";
 import { LayoutBase } from "./LayoutBase";
 import type { ILayoutInput, ITinderInput } from "./ILayoutInput";
 
+/** Arr, the named slots of the Tinder layout — each a face in the void's swipe-deck of damned souls. */
 export enum TinderLayoutEnum {
   PresentationImage = "PresentationImage",
   Title = "Title",
@@ -20,8 +30,9 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Karte + optional Glaskarte mit Pill-Inputs (Tinder-Referenz).
- *  Wird NACH Fragment-Styles eingefügt (collectStyles).
+/**
+ * Arr, card + optional glass card with pill inputs — a Tinder-style vessel of doom.
+ * Inserted AFTER fragment styles (collectStyles) — the void layers its horrors in order.
  */
 const TINDER_LAYOUT_CSS = `
   body:has(.tinder-stack) {
@@ -179,7 +190,7 @@ const TINDER_LAYOUT_CSS = `
     box-shadow: 0 4px 14px rgba(255, 100, 50, 0.45);
   }
 
-  /* --- Auswahl-Pills (optional) --- */
+  /* --- Arr, selection pills (optional) — cursed choices from the deep --- */
   .tinder-inputs {
     flex-shrink: 0;
     align-self: center;
@@ -254,11 +265,19 @@ const TINDER_LAYOUT_CSS = `
   }
 `;
 
+/** Arr, the TinderLayout — a swipe-deck vessel from the abyss where the crew judges souls with a flick, through endless faces countless forms. */
 export class TinderLayout extends LayoutBase<TinderLayoutEnum> {
+  /** Arr, the gradient header strip text — a banner from the void, displayed above the glass card of cursed choices. */
   private _inputsHeader = "";
+  /** Arr, the question posed above the selection pills — the abyss demands ye choose, matey. */
   private _inputQuestion = "";
+  /** Arr, the selection pill options — cursed doubloons laid before the crew, each a path deeper into the eldritch deep. */
   private _inputOptions: string[] = [];
 
+  /**
+   * Arr, assemble the Tinder layout's fragments — image, title, description, and the dread "Next" button
+   * that pulls ye ever deeper into the void's swipe-deck of damned souls.
+   */
   constructor() {
     super();
 
@@ -268,6 +287,11 @@ export class TinderLayout extends LayoutBase<TinderLayoutEnum> {
     this.fragments.set(TinderLayoutEnum.Next, new ButtonFragment("Next"));
   }
 
+  /**
+   * Arr, render the full Tinder card HTML — image, name, bio, "Next" button, and optional pill inputs
+   * rise from brooding gulfs into a card layout. The void's own UI, matey.
+   * @returns The HTML string of the accursed Tinder card, complete with optional glass-card inputs
+   */
   renderHtml(): string {
     const image = this.get(TinderLayoutEnum.PresentationImage) as ImageFragment | undefined;
     const title = this.get(TinderLayoutEnum.Title) as TextFragment | undefined;
@@ -302,7 +326,7 @@ export class TinderLayout extends LayoutBase<TinderLayoutEnum> {
             .join("")}</div>`
         : "";
       inputsHtml = `
-  <section class="tinder-inputs" aria-label="Auswahl">
+  <section class="tinder-inputs" aria-label="Selection">
     ${strip}
     <div class="${glassClass}">
       ${q}
@@ -329,10 +353,19 @@ ${inputsHtml}
 `.trim();
   }
 
+  /**
+   * Arr, collect all styles and append the Tinder-specific CSS — the void layers its horrors in order, matey.
+   * @returns The combined CSS string, eldritch stylesheets merged from fragment and layout alike
+   */
   collectStyles(): string {
     return super.collectStyles() + TINDER_LAYOUT_CSS;
   }
 
+  /**
+   * Arr, populate this Tinder vessel with data plundered from the input, matey.
+   * Image, title, description, and optional pill choices — the abyss fills every slot.
+   * @param input - The layout input pact, cast as ITinderInput by the void's own hand
+   */
   populate(input: ILayoutInput): void {
     const data = input as ITinderInput;
 

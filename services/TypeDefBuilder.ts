@@ -1,8 +1,16 @@
 import { CompilerCache } from './CompilerCache';
 import { MimicDog } from '@datadogs/core';
 
+/**
+ * Arr, the TypeDefBuilder be the shipwright of TypeScript type definitions —
+ * forging declarations from brooding gulfs of runtime context so that Monaco
+ * and the crew's IntelliSense may peer into the void and know what eldritch
+ * shapes their variables take. Through endless faces countless forms, it maps
+ * values to types and conjures global declarations from the abyss.
+ */
 export class TypeDefBuilder {
 
+    /** A cursed ledger mapping pact names to their return type definitions, plundered from the deep. */
     private static pactReturnTypes: Map<string, string> = new Map();
 
     /**
@@ -53,6 +61,17 @@ export class TypeDefBuilder {
         }
     }
 
+    /**
+     * Arr, this be the grand ritual — building a full TypeScript context library
+     * from the raw name and runtime context of a dog node. The void yields
+     * interface definitions, global declarations, and mimic return types,
+     * all woven together so the crew's editor may navigate the eldritch depths.
+     * @param rawName - The raw node name, to be sanitized by corporeal laws unwritten.
+     * @param ctx - The runtime context object whose properties become global types.
+     * @param dog - An optional dog instance; if a MimicDog, its pact return type be conjured.
+     * @param uniqueInstanceKey - An optional key to generate a unique ExpectedReturn alias from the abyss.
+     * @returns A TypeScript declaration string for Monaco, plundered from the deep.
+     */
     public static buildContextLib(rawName: string, ctx: any, dog?: any, uniqueInstanceKey?: string): string {
         const typeName = this.safeTypeName(rawName);
         const expectedReturnTypeName =
@@ -117,6 +136,13 @@ ${this.buildGlobals(typeName, ctx)}
 `;
     }
 
+    /**
+     * Purifies a name so it may serve as a TypeScript type identifier —
+     * the void tolerates no forbidden glyphs, and the carrion hordes
+     * would feast upon any unsanitized name that dared enter the type system.
+     * @param name - The raw name to sanitize.
+     * @returns A safe TypeScript type name prefixed with "Node_".
+     */
     private static safeTypeName(name: string): string {
         return (
             "Node_" +
@@ -126,6 +152,14 @@ ${this.buildGlobals(typeName, ctx)}
         );
     }
 
+    /**
+     * Conjures `declare global` blocks for each key in the context,
+     * binding them to the parent type — so the crew may access these
+     * eldritch globals from anywhere in the void without import rituals.
+     * @param typeName - The parent type name from which properties be indexed.
+     * @param ctx - The context object whose keys become global constants.
+     * @returns A string of global declarations, one per context key.
+     */
     private static buildGlobals(typeName: string, ctx: any): string {
         return Object.keys(ctx)
             .map(
@@ -135,6 +169,15 @@ ${this.buildGlobals(typeName, ctx)}
             .join("\n");
     }
 
+    /**
+     * Arr, peer into the abyss of a runtime value and divine its TypeScript type —
+     * through endless faces countless forms: strings, numbers, booleans, arrays,
+     * objects with prototypes from brooding gulfs, and functions whose arguments
+     * be naught but `any`. The deep reveals all to those who dare look.
+     * @param value - The runtime value to inspect, plundered from the context.
+     * @param indent - The current indentation depth for nested object formatting.
+     * @returns A TypeScript type string representing the value's eldritch shape.
+     */
     private static valueToType(value: any, indent: number): string {
         const pad = (n: number) => "  ".repeat(n);
 

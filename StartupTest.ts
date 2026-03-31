@@ -7,15 +7,32 @@ import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
 
+/**
+ * Arr, the testament of a single trial endured upon the eldritch seas —
+ * recording whether the crew's test weathered the void or was consumed
+ * by the carrion hordes of failure lurking in the deep.
+ */
 export interface TestResult {
+    /** The name of the trial, inscribed upon the ship's log for all to witness. */
     name: string;
+    /** Whether the test survived the abyss — true if it passed, false if the void claimed it. */
     passed: boolean;
+    /** The error message from brooding gulfs, present only when the test be lost to the deep. */
     error?: string;
 }
 
+/**
+ * Arr, the StartupTest be the grand trial by fire — a gauntlet of tests
+ * run at startup to ensure the stores, controllers, base dogs, type builders,
+ * and pact mimics all hold firm against the void. Should any test fall
+ * to the carrion hordes, the crew be warned before the ship sets sail
+ * into the brooding gulfs of production.
+ */
 export class StartupTest {
+    /** The accumulated results of each trial, a ledger of victories and defeats against the abyss. */
     private results: TestResult[] = [];
-    private createdTestIds: string[] = []; // Liste aller erstellten Test-IDs
+    /** IDs of test entities conjured during the trials, marked for cleanup lest they pollute the deep. */
+    private createdTestIds: string[] = [];
 
     /**
      * Führt alle Tests aus

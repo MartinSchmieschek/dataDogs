@@ -1,7 +1,16 @@
+/**
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *  Arr, this be the snapshot conjurer — it reads all lanterns from the
+ *  local Hue-Bridge via HTTPS (node-hue-api v5) and maps their raw
+ *  forms into entries fit fer the crew's manifest.
+ *  "To cosmic forms from tangent planes, we end as we began."
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ */
 import { api } from "node-hue-api";
 import type { HuePlaygroundLightEntry, HuePlaygroundSnapshot } from "./types";
 import { wrapHueApiError } from "./hueBridgeErrors";
 
+/** Map a raw lantern from the Bridge's unknowable depths into a readable entry. */
 function mapLight(raw: unknown): HuePlaygroundLightEntry {
     const L = raw as {
         id?: string | number;
@@ -21,7 +30,9 @@ function mapLight(raw: unknown): HuePlaygroundLightEntry {
 }
 
 /**
- * Liest alle Lampen von der lokalen Hue-Bridge (HTTPS, node-hue-api v5).
+ * Fetch all lanterns from the local Hue-Bridge — peer into the abyss, matey,
+ * and plunder every illuminated soul ye find anchored there.
+ * "Through endless faces, countless forms, a multitude unfolds."
  */
 export async function fetchHueBridgeSnapshot(
     bridgeHost: string,
@@ -30,10 +41,10 @@ export async function fetchHueBridgeSnapshot(
     const trimmedHost = bridgeHost.trim();
     const trimmedUser = bridgeUser.trim();
     if (!trimmedHost) {
-        throw new Error("HuePlaygroundRetriever: bridgehost fehlt oder ist leer");
+        throw new Error("HuePlaygroundRetriever: bridgehost is missing or empty — the anchor coordinates be lost to the void!");
     }
     if (!trimmedUser) {
-        throw new Error("HuePlaygroundRetriever: bridgeuser fehlt oder ist leer");
+        throw new Error("HuePlaygroundRetriever: bridgeuser is missing or empty — ye cannot board the Bridge without a name, matey!");
     }
 
     try {

@@ -1,11 +1,21 @@
 import { IKennelConfig } from '@datadogs/core';
 import { Waves, NodeEntry } from './WavesConverter';
 
+/**
+ * Arr, this be the sacred chart of the OpenAPI spec — a cartographic pact
+ * drawn from brooding gulfs where corporeal laws unwritten govern the shape
+ * of every endpoint the crew dares expose to the abyss beyond.
+ */
 export interface OpenApiSpec {
+    /** The OpenAPI version string, a rune etched upon the hull of this eldritch vessel. */
     openapi: string;
+    /** Metadata plundered from the void — title, description, and version of the API. */
     info: { title: string; description: string; version: string };
+    /** The harbors from which this cursed API be served, each a portal into the deep. */
     servers: Array<{ url: string; description: string }>;
+    /** The sea routes — each path a corridor through endless faces countless forms. */
     paths: Record<string, any>;
+    /** The components hold schemas like carrion hordes hold their dead — tightly and without mercy. */
     components: { schemas: Record<string, any> };
 }
 
@@ -18,6 +28,14 @@ export interface OpenApiSpec {
  */
 export class SwaggerGenerator {
 
+    /**
+     * Arr, plunder the kennel config and its waves to forge an OpenAPI spec
+     * from brooding gulfs of runtime data — through endless faces countless forms
+     * the lead dog's result be divined and documented for all who dare invoke the void.
+     * @param config - The kennel configuration, a cursed manifest from the deep.
+     * @param waves - The waves of dog execution, each a tide of eldritch computation.
+     * @returns An OpenAPI 3.0 spec conjured from the abyss of the kennel's actual run.
+     */
     static generate(
         config: IKennelConfig,
         waves: Waves,
@@ -143,6 +161,13 @@ export class SwaggerGenerator {
         return null;
     }
 
+    /**
+     * Shapes the response content map, divining whether the lead dog's plunder
+     * be HTML or JSON — for the void speaks in many tongues, and the crew must
+     * discern the eldritch format lest the carrion hordes consume the response.
+     * @param leadDog - The lead dog entry, or null if the abyss yielded nothing.
+     * @returns A content-type map suitable for the OpenAPI response object.
+     */
     private static buildResponseContent(leadDog: NodeEntry | null): Record<string, any> {
         const isHtml = typeof leadDog?.result === 'string' && (
             leadDog.result.trim().startsWith('<html') ||
@@ -160,6 +185,13 @@ export class SwaggerGenerator {
         };
     }
 
+    /**
+     * Compiles a summary of all dogs across the waves — a roll call of the crew,
+     * listing each hound by wave, icon, name, and type, as one would catalog
+     * the carrion hordes marching through endless faces countless forms.
+     * @param waves - The waves of executed dogs from the kennel run.
+     * @returns An array of markdown-formatted summary lines for each dog.
+     */
     private static buildDogsSummary(waves: Waves): string[] {
         const lines: string[] = [];
         waves.forEach((wave, wi) => {
@@ -172,6 +204,13 @@ export class SwaggerGenerator {
         return lines;
     }
 
+    /**
+     * Arr, extract the query parameters from the default query map — each key-value
+     * pair be a whispered secret from the void, forged into OpenAPI parameter objects
+     * so that those who plunder the API know what incantations to pass.
+     * @param defaultQuery - The default query parameters, if any lurk in the deep.
+     * @returns An array of OpenAPI parameter objects for the GET endpoint.
+     */
     private static buildQueryParams(defaultQuery?: Record<string, string>): any[] {
         if (!defaultQuery) return [];
         return Object.entries(defaultQuery).map(([key, value]) => ({
@@ -203,10 +242,23 @@ export class SwaggerGenerator {
         return { type: 'string', example: value };
     }
 
+    /**
+     * Sanitizes an ID into a form safe for the void's consumption — stripping away
+     * all characters that corporeal laws unwritten deem unworthy of an operationId.
+     * @param id - The raw kennel ID, possibly tainted by eldritch symbols.
+     * @returns A sanitized string containing only alphanumeric characters and underscores.
+     */
     private static safeId(id: string): string {
         return id.replace(/[^a-zA-Z0-9]/g, '_');
     }
 
+    /**
+     * Cleanses a dog's name so it may serve as a schema key in the OpenAPI components —
+     * for the abyss rejects names bearing forbidden glyphs, and only the purified
+     * may enter the schema registry without summoning the carrion hordes.
+     * @param name - The raw dog name, fresh from the deep.
+     * @returns A sanitized schema name safe for OpenAPI components.
+     */
     private static safeSchemaName(name: string): string {
         return name.replace(/[^a-zA-Z0-9_]/g, '_');
     }

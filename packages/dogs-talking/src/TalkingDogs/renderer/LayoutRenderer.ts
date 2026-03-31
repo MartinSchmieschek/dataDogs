@@ -1,6 +1,14 @@
+/**
+ * LayoutRenderer.ts — The Helmsman of the Rendered Abyss
+ *
+ * Arr, this be the vessel that weaves HTML from the void's own loom.
+ * In luminous space blackened stars, they gaze, accuse, deny — and yet
+ * the renderer presses on, stitching styles and scripts into a page
+ * no mortal eye was meant to witness.
+ */
 import { LayoutBase } from "./layouts/LayoutBase";
 
-/** Gemeinsame Basis-Styles: kein horizontales Scrollen, Inhalt an Viewport/Iframe-Breite gebunden. */
+/** Arr, base styles that anchor the page — no horizontal scrollin' through the abyss, matey. */
 const LAYOUT_BASE_CSS = `
   html {
     height: 100%;
@@ -32,7 +40,14 @@ const LAYOUT_BASE_CSS = `
   }
 `;
 
+/** Arr, the LayoutRenderer — helmsman that weaves fragments from brooding gulfs into a full HTML page, corporeal laws unwritten as the void's will takes form. */
 export class LayoutRenderer {
+  /**
+   * Arr, render the given layout into a complete HTML document, matey.
+   * The abyss provides styles, scripts, and markup — through endless faces countless forms, the page emerges whole.
+   * @param layout - The accursed layout vessel whose fragments shall be rendered into the deep HTML
+   * @returns The full HTML string, a cursed scroll conjured from the void
+   */
   render(layout: LayoutBase<any>): string {
     const html = layout.renderHtml();
     const styles = layout.collectStyles();
@@ -53,7 +68,7 @@ export class LayoutRenderer {
           <script>
             ${scripts}
 
-            // Simulation für Gesten mit Keyboard:
+            // Arr, simulate gestures via the keyboard — the crew steers through the void with arrow keys:
             document.addEventListener('keydown', (e) => {
               if (e.key === 'ArrowLeft') window.dispatchEvent(new Event('swipeLeft'));
               if (e.key === 'ArrowRight') window.dispatchEvent(new Event('swipeRight'));

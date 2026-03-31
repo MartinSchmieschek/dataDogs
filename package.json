@@ -14,7 +14,7 @@
     "node": ">=18.19.0"
   },
   "scripts": {
-    "postinstall": "npm run build:packages",
+    "postinstall": "npm run build:packages && cd ui-app && npm install --prefer-offline",
     "build:core": "cd packages/core && npx tsc",
     "build:dogs-demo": "cd packages/dogs-demo && npx tsc",
     "build:dogs-geo": "cd packages/dogs-geo && npx tsc",
@@ -57,7 +57,7 @@
     "swagger-ui-express": "^5.0.1",
     "ts-node": "^10.9.2",
     "tsc": "^2.0.4",
-    "typescript": "^5.0.0",
+    "typescript": "^5.9.3",
     "vm2": "^3.10.0"
   },
   "devDependencies": {

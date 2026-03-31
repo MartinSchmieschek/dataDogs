@@ -1,15 +1,19 @@
+/**
+ * @file ForumPostParser.ts
+ * Arr, matey! This cursed vessel parses the raw HTML of forum threads (Discourse and the like),
+ * transforming their tangled eldritch markup into structured data -- topics with Markdown body
+ * and media. To cosmic forms from tangent planes, we end as we began.
+ * Used alongside Kubrow in the same accursed hold of this ship.
+ */
 import type { IPostMedia, IPostTopicData } from './interfaces/forumPost';
 
-/**
- * Hilfsklasse: transformiert HTML einer Forum-Thread-Seite (z. B. Discourse)
- * in strukturierte Daten (Topics mit Markdown-Body und Medien).
- * Nutzung neben Kubrow im gleichen Ordner.
- */
 export class ForumPostParser {
     /**
-     * Parst HTML des ersten Posts und liefert Topic-Liste inkl. Markdown und Medien.
-     * @param html Roh-HTML der Thread-Seite
-     * @param url Thread-URL (für Kontext)
+     * Parses the HTML of the first post and yields a list of topics, each with Markdown and media.
+     * Arr, we plunder structure from the formless chaos of raw markup.
+     * @param html - Raw HTML of the thread page, dragged from the deep
+     * @param url - Thread URL, for context amidst the void
+     * @returns Parsed post data with title, author, date, url, and topics from the abyss
      */
     parse(html: string, url: string): {
         title: string;
@@ -32,6 +36,7 @@ export class ForumPostParser {
         };
     }
 
+    /** Arr, wrench the title from the HTML's skull like plunder from a sunken chest. */
     private extractTitle(html: string): string {
         const match = html.match(/<title[^>]*>([^<]+)<\/title>/i)
             ?? html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
@@ -41,8 +46,9 @@ export class ForumPostParser {
         return '';
     }
 
+    /** Extract the author and date -- who scrawled these words, and when did the void take them? */
     private extractAuthorAndDate(html: string): { author: string; date: string } {
-        // Discourse: data-username, oder typische Muster "By ... , ... in"
+        // Discourse: data-username, or typical patterns like "By ... , ... in"
         const authorMatch = html.match(/data-username="([^"]+)"/i)
             ?? html.match(/By\s+<[^>]+>([^<]+)</i)
             ?? html.match(/class="[^"]*username[^"]*"[^>]*>([^<]+)</i);
@@ -53,21 +59,26 @@ export class ForumPostParser {
         };
     }
 
+    /** Arr, pull the first post body from the abyss -- the .cooked content within the topic-post. */
     private extractFirstPostBody(html: string): string {
-        // Discourse: .cooked im ersten .topic-post
+        // Discourse: .cooked in the first .topic-post
         const cookedMatch = html.match(/class="[^"]*cooked[^"]*"[\s\S]*?>([\s\S]*?)<\/div>\s*<\/div>\s*<\/article>/im)
             ?? html.match(/class="post[^"]*"[\s\S]*?class="[^"]*content[^"]*"[\s\S]*?>([\s\S]*?)<\/div>/im);
         if (cookedMatch) {
             return cookedMatch[1];
         }
-        // Fallback: ersten größeren Content-Block nehmen
+        // Fallback: take the first larger content block, like salvaging wreckage from the deep
         const fallback = html.match(/<article[\s\S]*?>([\s\S]{100,}?)<\/article>/im);
         return fallback ? fallback[1] : html;
     }
 
+    /**
+     * Split the post HTML into topics by headings (h2/h3), like dividing plunder among the crew.
+     * In luminous space blackened stars, they gaze, accuse, deny.
+     */
     private splitIntoTopics(postHtml: string): IPostTopicData[] {
         const topics: IPostTopicData[] = [];
-        // Nach Überschriften (h2/h3) in Abschnitte teilen
+        // Split by headings (h2/h3) into sections -- each a chapter of the profane accord
         const headingRegex = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
         let lastIndex = 0;
         let match: RegExpExecArray | null;
@@ -86,7 +97,7 @@ export class ForumPostParser {
         }
 
         if (parts.length === 0) {
-            // Ein Topic mit dem gesamten Inhalt
+            // A single topic with all content -- one monolithic slab of void-truth
             const media = this.extractMedia(postHtml);
             const bodyMarkdown = this.htmlToMarkdown(postHtml);
             topics.push({ title: '', bodyMarkdown, media });
@@ -103,10 +114,14 @@ export class ForumPostParser {
         return topics;
     }
 
+    /**
+     * Arr, extract all media (images, videos, embeds) from the HTML --
+     * carrion hordes trill their profane accord with eldritch plans.
+     */
     private extractMedia(html: string): IPostMedia[] {
         const media: IPostMedia[] = [];
 
-        // Bilder: <img src="...">
+        // Images: <img src="..."> -- still visions of the void
         const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
         let m: RegExpExecArray | null;
         while ((m = imgRegex.exec(html)) !== null) {
@@ -117,7 +132,7 @@ export class ForumPostParser {
             });
         }
 
-        // Videos: <video src="..."> oder <source src="...">
+        // Videos: <video src="..."> or <source src="..."> -- moving horrors from the deep
         const videoSrcRegex = /<video[\s\S]*?src=["']([^"']+)["']|<source[^>]+src=["']([^"']+\.(?:mp4|webm|ogg))["']/gi;
         while ((m = videoSrcRegex.exec(html)) !== null) {
             media.push({
@@ -126,7 +141,7 @@ export class ForumPostParser {
             });
         }
 
-        // Embed: iframe (YouTube, Vimeo etc.)
+        // Embeds: iframe (YouTube, Vimeo, etc.) -- portals to other tangent planes
         const iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
         while ((m = iframeRegex.exec(html)) !== null) {
             const src = m[1];
@@ -142,6 +157,7 @@ export class ForumPostParser {
         return media;
     }
 
+    /** Convert HTML to Markdown -- rewriting the eldritch scripture into a tongue the crew can read. */
     private htmlToMarkdown(html: string): string {
         let md = html
             .replace(/<p>/gi, '\n\n')
@@ -162,10 +178,12 @@ export class ForumPostParser {
         return md;
     }
 
+    /** Strip all HTML tags -- peel away the barnacles to reveal the bare hull beneath. */
     private stripHtml(html: string): string {
         return html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
     }
 
+    /** Normalize a URL -- anchor it to the proper domain if it drifts without protocol. */
     private normalizeUrl(url: string): string {
         if (url.startsWith('//')) return 'https:' + url;
         if (url.startsWith('/')) return 'https://forums.warframe.com' + url;

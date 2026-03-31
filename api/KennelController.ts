@@ -1,9 +1,13 @@
+// The KennelController — keeper of the kennels, master of which hounds hunt together.
+// To cosmic madness laws submit, though stalwart minds entreat:
+// this controller governs the sacred groupings of dogs, the crews that sail as one.
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
 import { IKennelConfig } from '@datadogs/core';
 
 /**
- * Input für Create-Operation
+ * Cargo manifest for raising a new kennel from the void.
+ * All fields are optional — a kennel may begin as an empty hull.
  */
 export interface ICreateKennelInput extends ICreateInput {
     id?: string;
@@ -14,7 +18,8 @@ export interface ICreateKennelInput extends ICreateInput {
 }
 
 /**
- * Input für Save/Update-Operation
+ * Cargo manifest for updating an existing kennel.
+ * The id must be named — one cannot update what cannot be found in the deep.
  */
 export interface ISaveKennelInput extends IUpdateInput {
     id: string;
@@ -26,8 +31,10 @@ export interface ISaveKennelInput extends IUpdateInput {
 }
 
 /**
- * Controller für Kennel-Configs
- * Verwaltet welche Dogs in einem Kennel sind
+ * The KennelController — a specialised captain for IKennelConfig entities.
+ * Manages the assembly of hounds into kennels and oversees their configuration.
+ * Corporeal laws are unwritten: the kennel's dogIds live as JSON strings in the deep
+ * and must be unshackled upon retrieval.
  */
 export class KennelController extends AbstractController<IKennelConfig> {
     private readonly KENNEL_TYPE = 'KennelConfig';
@@ -37,7 +44,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Erstellt eine neue Kennel-Config
+     * Raises a new kennel from the abyss — brands it with an ID and commits it to the store.
+     * If no id is given, one is forged from the timestamp, like a grave-marker on the ocean floor.
+     * We verify after saving that the kennel truly arrived — the void sometimes swallows things whole.
      */
     async create(input: ICreateKennelInput): Promise<IControllerResponse<IKennelConfig>> {
         try {
@@ -54,10 +63,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
             console.log(`[KennelController.create] Erstelle neue Kennel-Config: ${id}`);
             console.log(`[KennelController.create] Config:`, JSON.stringify(config, null, 2));
-            
-            await this.store.save({ 
-                id, 
-                type: this.KENNEL_TYPE, 
+
+            await this.store.save({
+                id,
+                type: this.KENNEL_TYPE,
                 name: config.name,
                 description: config.description,
                 emoji: config.emoji,
@@ -67,18 +76,18 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 createdAt: config.createdAt?.toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
-            
-            // Verifiziere, dass die Config gespeichert wurde
+
+            // Verify the kennel was truly stored — trust nothing that has not been confirmed.
             const saved = await this.store.findByType(this.KENNEL_TYPE);
             const found = saved.find((n: any) => n.id === id);
             if (!found) {
                 console.error(`[KennelController.create] FEHLER: Kennel-Config ${id} wurde nicht in DB gefunden nach dem Speichern!`);
                 return { ok: false, error: 'Kennel-Config wurde nicht gespeichert' };
             }
-            
+
             console.log(`[KennelController.create] Erfolgreich gespeichert: ${id}`);
-            return { 
-                ok: true, 
+            return {
+                ok: true,
                 id,
                 data: config
             };
@@ -89,7 +98,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Speichert oder aktualisiert eine Kennel-Config
+     * Updates an existing kennel — merges the new cargo with whatever already sleeps in the deep.
+     * Fields not provided in the input are inherited from the existing config.
+     * The updatedAt is always refreshed — the kennel's last voyage is always recorded.
      */
     async save(input: ISaveKennelInput): Promise<IControllerResponse<IKennelConfig>> {
         try {
@@ -97,14 +108,15 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 return { ok: false, error: 'id is required' };
             }
 
-            // Lade existierende Config, falls vorhanden
+            // Seek the existing kennel first — what slumbers below must not be lost.
             let existing: IKennelConfig | null = null;
             const existingData = await this.store.load(input.id);
             if (existingData) {
                 existing = this.parseEntity(existingData);
             }
 
-            // Merge mit existierender Config oder erstelle neue
+            // Merge new cargo with what was already in the hold.
+            // An empty emoji string is treated as removal — the ship sails under no flag.
             const config: IKennelConfig = {
                 id: input.id,
                 name: input.name !== undefined ? input.name : (existing?.name || undefined),
@@ -122,10 +134,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
             console.log(`[KennelController.save] Speichere Kennel-Config: ${input.id}`);
             console.log(`[KennelController.save] Config:`, JSON.stringify(config, null, 2));
-            
-            await this.store.save({ 
-                id: input.id, 
-                type: this.KENNEL_TYPE, 
+
+            await this.store.save({
+                id: input.id,
+                type: this.KENNEL_TYPE,
                 name: config.name,
                 description: config.description,
                 emoji: config.emoji,
@@ -135,10 +147,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 createdAt: config.createdAt?.toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
-            
+
             console.log(`[KennelController.save] Erfolgreich gespeichert: ${input.id}`);
-            return { 
-                ok: true, 
+            return {
+                ok: true,
                 id: input.id,
                 data: config
             };
@@ -149,7 +161,8 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Überschreibt getById um sicherzustellen, dass parseEntity korrekt aufgerufen wird
+     * Overrides getById — ensures parseEntity is called with the correct kennel payload.
+     * KennelConfig rows do not carry serializedDogConfig as their primary form.
      */
     async getById(id: string): Promise<IControllerResponse<IKennelConfig | null>> {
         try {
@@ -165,21 +178,22 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Überschreibt list() um direkt r zu verwenden, nicht r.serializedDogConfig
+     * Overrides list() — KennelConfig rows are parsed directly, not via serializedDogConfig.
+     * Its heralds are the stars it fells: each kennel is returned in its full form.
      */
     async list(filter?: Partial<IKennelConfig>): Promise<IControllerResponse<IKennelConfig[]>> {
         try {
             const results = await this.store.findByType(this.entityType);
             let entities = results.map((r: any) => {
-                const parsed = this.parseEntity(r); // Direkt r verwenden, nicht r.serializedDogConfig
-                // Stelle sicher, dass die ID aus dem Store-Objekt übernommen wird
+                // Kennels sail as raw rows — not wrapped in serializedDogConfig.
+                const parsed = this.parseEntity(r);
                 if (r.id) {
                     parsed.id = r.id;
                 }
                 return parsed;
             });
-            
-            // Optional: Filter anwenden
+
+            // Apply the filter if cast — only matching kennels shall surface.
             if (filter) {
                 entities = entities.filter((entity: IKennelConfig) => {
                     return Object.keys(filter).every(key => {
@@ -187,7 +201,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                     });
                 });
             }
-            
+
             return { ok: true, data: entities };
         } catch (error) {
             return { ok: false, error: String(error), data: [] };
@@ -195,14 +209,18 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Überschreibt parseEntity für Kennel-Configs
+     * Parses a raw store payload into an IKennelConfig.
+     * The dogIds, defaultQuery, and defaultBody are JSON strings in the deep —
+     * they must be unshackled before they can be used by the crew.
+     * If parsing fails, the field defaults to an empty hold.
      */
     protected parseEntity(data: any): IKennelConfig {
-        // dogIds wird als JSON-String gespeichert, muss geparst werden
+        // Without an object, no parsing can be done — the void gave us nothing.
         if (!data || typeof data !== 'object') {
             throw new Error('parseEntity: data ist kein Objekt');
         }
-        
+
+        // Unshackle dogIds from its JSON-string prison — it must be an array of hound names.
         let dogIds: string[] = [];
         if (data.dogIds !== null && data.dogIds !== undefined) {
             if (typeof data.dogIds === 'string') {
@@ -211,14 +229,15 @@ export class KennelController extends AbstractController<IKennelConfig> {
                         const parsed = JSON.parse(data.dogIds);
                         dogIds = Array.isArray(parsed) ? parsed : [];
                     } catch (e) {
-                        dogIds = [];
+                        dogIds = []; // The JSON was corrupted — sail on with an empty pack.
                     }
                 }
             } else if (Array.isArray(data.dogIds)) {
                 dogIds = data.dogIds;
             }
         }
-        
+
+        // Unshackle defaultQuery — the query parameters the kennel carries by default.
         let defaultQuery: Record<string, string> | undefined = undefined;
         if (data.defaultQuery) {
             if (typeof data.defaultQuery === 'string') {
@@ -231,7 +250,8 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 defaultQuery = data.defaultQuery;
             }
         }
-        
+
+        // Unshackle defaultBody — the body the kennel carries when no other cargo is given.
         let defaultBody: any = undefined;
         if (data.defaultBody !== null && data.defaultBody !== undefined) {
             if (typeof data.defaultBody === 'string') {
@@ -244,18 +264,18 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 defaultBody = data.defaultBody;
             }
         }
-        
-        // Stelle sicher, dass dogIds IMMER ein Array ist
+
+        // Guarantee the pack is always an array — a kennel without dogs is still a kennel.
         if (!Array.isArray(dogIds)) {
             dogIds = [];
         }
-        
+
         return {
             id: data.id,
             name: data.name,
             description: data.description,
             emoji: typeof data.emoji === 'string' && data.emoji.trim() !== '' ? data.emoji.trim() : undefined,
-            dogIds: dogIds, // Garantiert ein Array
+            dogIds: dogIds,
             defaultQuery,
             defaultBody,
             createdAt: data.createdAt ? new Date(data.createdAt) : undefined,

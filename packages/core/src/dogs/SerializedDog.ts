@@ -1,61 +1,90 @@
+/**
+ * ~~~ A SPIRIT TRAPPED IN CODE, RUNNING IN A VM SANDBOX ~~~
+ *
+ * Arr, the SerializedDog be a hound whose very soul is serialized --
+ * stored as code in the deep, summoned at runtime into a sandboxed
+ * VM realm where it executes its dark purpose. Its parents are bound
+ * by ID, its context conjured from the exhausted crew's plunder.
+ *
+ * Corporeal laws are unwritten, as suns and love retreat.
+ * This spirit knows not the world outside its sandbox --
+ * only the void-context we grant it, and the code that drives it.
+ */
+
 import { Dog } from "../core/entities/abstractHuntingDog";
 import { DogClass, IHuntingDog } from "../core/entities/IHuntingDog";
 import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import * as vm from "vm";
 
 /**
- * Input-DTO für Update/Save-Operationen
- * Wird von SerializedDog verwendet, um die Konfiguration zu definieren
+ * Input DTO fer update/save operations -- the scroll upon which a spirit's new config is writ.
  */
 export interface IUpdateInput {
+    /** The spirit's unique identifier in the deep -- its name whispered across the void */
     id?: string;
-    version?: number;  // Versionsnummer für Versionierung
+    /** Version number fer the spirit's incarnation -- each rebirth bears a new mark */
+    version?: number;
+    /** Additional eldritch properties, uncharted and unknowable, carried through the abyss */
     [key: string]: any;
 }
 
 /**
- * Konfiguration für SerializedDog
- * Erweitert IUpdateInput für Save/Update-Operationen
+ * Configuration fer a SerializedDog -- the eldritch blueprint of a spirit vessel.
+ * Extends IUpdateInput fer save/update rites.
  */
 export interface ISerializedDogConfig extends IUpdateInput {
-    theRun: string;  // Der TypeScript-Code, der ausgeführt wird (required, nicht optional)
-    // version ist in IUpdateInput definiert
-    /** Optional display glyph (e.g. emoji) for UI */
+    /** The incantation to be executed -- the dark code that gives this spirit its purpose in the void */
+    theRun: string;
+    /** Optional display sigil (e.g. emoji) fer the UI -- a glyph against the dark */
     icon?: string;
-    parentsRequired?: string[];  // Node-IDs der required Eltern
-    parentsOptional?: string[];  // Node-IDs der optional Eltern
-    // Unterstützt auch tsCode/code als Alternative zu theRun (wird in ConfigRouteHandler gemappt)
-    tsCode?: string;  // Alternative zu theRun (wird zu theRun gemappt)
-    code?: string;   // Alternative zu theRun (wird zu theRun gemappt)
+    /** Node IDs of required parent hounds -- sworn oaths that must be fulfilled before this spirit may rise */
+    parentsRequired?: string[];
+    /** Node IDs of optional parent hounds -- whispers from the deep, heeded only if they be aboard */
+    parentsOptional?: string[];
+    /** Alternative incantation source (TypeScript) -- mapped to theRun by the carrion hordes of ConfigRouteHandler */
+    tsCode?: string;
+    /** Alternative incantation source (raw code) -- another path to the same eldritch purpose */
+    code?: string;
 }
 
+/** A supplier that injects app-specific globals into the VM realm -- the void provides what the core cannot */
 export type SerializedDogVmGlobalsSupplier = (
     ctx: Record<string, any>,
     dog: SerializedDog<unknown>,
-    /** Kennel (simpleVmContext) bzw. season.exhausted (runExternalCode). */
+    /** The kennel (simpleVmContext) or season.exhausted (runExternalCode) -- source hounds fer context */
     sourceDogs: IHuntingDog<unknown>[] | null
 ) => void;
 
+/**
+ * Arr, the SerializedDog -- a spirit trapped in code, summoned from the deep into a sandboxed
+ * VM realm where it executes its dark purpose. Its parents are bound by ID, its context
+ * conjured from the exhausted crew's plunder. From brooding gulfs are we beheld,
+ * by that which bears no name -- yet this spirit runs its incantation regardless.
+ * @template T The type of eldritch yield this spirit produces from its sandboxed void
+ */
 export class SerializedDog<T> extends Dog<T> {
 
     private _storageId
 
+    /** The spirit's storage identity -- its name in the deep where it sleeps between hunts */
     public get storageId(): string{
         return this._storageId
     }
 
     /**
-     * Pro Kennel-Lauf von {@link KennelRun} gesetzt — keine globalen App-Enums im Core.
+     * VM globals suppliers -- set per kennel run by the captain. No global app-enums in the core,
+     * fer the core knows only the void, not the world above.
      */
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = [];
 
     /**
-     * Zusätzliche globale Bindings für vm.runInContext (von der App/KennelRun injiziert).
+     * Bind additional global incantations to the VM context -- injected by the app/KennelRun.
      */
     public setVmGlobalsSuppliers(suppliers: readonly SerializedDogVmGlobalsSupplier[]): void {
         this.vmGlobalsSuppliers = suppliers.length ? [...suppliers] : [];
     }
 
+    /** Apply all VM globals suppliers to the context -- let each supplier inscribe its runes */
     private applyVmGlobalsSuppliers(
         ctx: Record<string, any>,
         sourceDogs: IHuntingDog<unknown>[] | null
@@ -65,16 +94,19 @@ export class SerializedDog<T> extends Dog<T> {
         }
     }
 
+    // Cached yields from required parents -- plunder already claimed, stored fer quick access
     private requiredYieldsContext: Map<string, any> = new Map<string, any>();
-    private kennelRef: Array<IHuntingDog<unknown>> | null = null; // Referenz zum Kennel für Parent-Lookup
+    // Reference to the kennel -- so this spirit may find its kin in the crew
+    private kennelRef: Array<IHuntingDog<unknown>> | null = null;
 
+    /** Bind this spirit to its kennel -- grant it sight of the other hounds aboard */
     public setKennelRef(kennel: Array<IHuntingDog<unknown>>): void {
         this.kennelRef = kennel;
     }
 
     /**
-     * Erstellt das Basis-Context-Objekt mit Standard-Keys (fetch, console)
-     * Wird von simpleVmContext verwendet, um synchron mit runExternalCode zu bleiben
+     * Build the base context object with standard keys (fetch, console).
+     * These be the minimal tools every spirit needs to navigate the void.
      */
     protected buildBaseContext(): Record<string, any> {
         return {
@@ -84,10 +116,10 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     /**
-     * Merged Parent-Dogs in das Context-Objekt
-     * @param contextObj Das Basis-Context-Objekt, in das die Dogs gemerged werden
-     * @param parentSource Die Datenquelle für die Parent-Dogs (kennelRef oder season.exhausted)
-     * @param useExhausted Wenn true, nutzt season.exhausted (für Laufzeit), wenn false, nutzt kennelRef (für Type-Definitionen)
+     * Merge parent dogs into the context -- bind their plunder (or placeholders) as global variables.
+     * @param contextObj The base context object to inscribe upon
+     * @param parentSource The source of parent hounds (kennelRef or season.exhausted)
+     * @param useExhausted If true, uses season.exhausted (runtime); if false, uses kennelRef (type definitions)
      */
     private mergeParentDogsIntoContext(
         contextObj: Record<string, any>,
@@ -103,7 +135,7 @@ export class SerializedDog<T> extends Dog<T> {
         const allParentIds = [...parentsRequired, ...parentsOptional];
 
         allParentIds.forEach((parentId: string) => {
-            // Finde Dog anhand ID (storageId für SerializedDogs, name für andere)
+            // Find the parent hound by ID (storageId fer SerializedDogs, name fer others)
             const parentDog = parentSource.find(dog => {
                 if (dog instanceof SerializedDog) {
                     return (dog as SerializedDog<unknown>).storageId === parentId;
@@ -115,46 +147,51 @@ export class SerializedDog<T> extends Dog<T> {
                 const dogName = parentDog.name;
 
                 if (useExhausted) {
-                    // Für Laufzeit: Nur wenn collected !== undefined
+                    // Runtime: only bind if the hound has actually returned with plunder
                     if (parentDog.collected !== undefined) {
                         contextObj[dogName] = parentDog.collected;
                         this.requiredYieldsContext.set(dogName, parentDog.collected);
                     }
                 } else {
-                    // Für Type-Definitionen: Verwende collected || {} als Platzhalter
+                    // Type definitions: use collected or empty placeholder -- the shape matters, not the substance
                     contextObj[dogName] = parentDog.collected || {};
                 }
             }
         });
     }
 
+    /**
+     * The simple VM context -- a snapshot of what this spirit can see from within its sandbox.
+     * Merges base context, cached parent yields, and kennel-ref parents.
+     * The void provides only what is needed, nothing more.
+     */
     public get simpleVmContext(): Record<string, any> | undefined{
-        // Nutze dasselbe Basis-Context-Objekt wie runExternalCode (fetch, console)
+        // Start with the base tools -- fetch and console, the spirit's lifeline
         const justContext = this.buildBaseContext();
-        
-        // Merge requiredYieldsContext (falls bereits vorhanden, z.B. nach vorherigen Runs)
+
+        // Merge previously cached parent yields (from prior runs, if any)
         this.requiredYieldsContext.forEach((value, key) => {
             justContext[key] = value;
         });
-        
-        // Merge Parent-Dogs aus kennelRef (für Type-Definitionen)
-        // Nutzt collected || {} als Platzhalter für Type-Definitionen
+
+        // Merge parent dogs from the kennel -- placeholders fer type definitions
         this.mergeParentDogsIntoContext(justContext, this.kennelRef, false);
 
         this.applyVmGlobalsSuppliers(justContext, this.kennelRef);
-        
+
         return justContext;
     }
 
+    /** Required parent classes -- resolved from config IDs against the kennel crew */
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        // Mappe Parent-IDs aus Config zu Dog-Klassen
+        // Map parent IDs from the config to actual dog classes in the kennel
         if (!this.kennelRef) {
             return [];
         }
-        
+
         const parentsRequired = this.config.parentsRequired || [];
         const requiredClasses: (new (...args: any[]) => IHuntingDog<unknown>)[] = [];
-        
+
         parentsRequired.forEach((parentId: string) => {
             const parentDog = this.kennelRef!.find(dog => {
                 if (dog instanceof SerializedDog) {
@@ -162,29 +199,30 @@ export class SerializedDog<T> extends Dog<T> {
                 }
                 return dog.name === parentId;
             });
-            
+
             if (parentDog) {
-                // Hole die Konstruktor-Klasse der Parent-Instanz
+                // Extract the constructor -- the dark blueprint of the parent hound
                 const parentClass = parentDog.constructor as new (...args: any[]) => IHuntingDog<unknown>;
-                // Füge nur hinzu, wenn noch nicht vorhanden (vermeide Duplikate)
+                // Avoid duplicates -- one entry per class in the manifest
                 if (!requiredClasses.includes(parentClass)) {
                     requiredClasses.push(parentClass);
                 }
             }
         });
-        
+
         return requiredClasses;
     }
-    
+
+    /** Optional parent classes -- hounds we listen fer but do not demand */
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        // Mappe Parent-IDs aus Config zu Dog-Klassen
+        // Map optional parent IDs from config to classes -- same rite as required
         if (!this.kennelRef) {
             return [];
         }
-        
+
         const parentsOptional = this.config.parentsOptional || [];
         const optionalClasses: (new (...args: any[]) => IHuntingDog<unknown>)[] = [];
-        
+
         parentsOptional.forEach((parentId: string) => {
             const parentDog = this.kennelRef!.find(dog => {
                 if (dog instanceof SerializedDog) {
@@ -192,35 +230,38 @@ export class SerializedDog<T> extends Dog<T> {
                 }
                 return dog.name === parentId;
             });
-            
+
             if (parentDog) {
-                // Hole die Konstruktor-Klasse der Parent-Instanz
+                // Extract the constructor from the optional parent
                 const parentClass = parentDog.constructor as new (...args: any[]) => IHuntingDog<unknown>;
-                // Füge nur hinzu, wenn noch nicht vorhanden (vermeide Duplikate)
+                // No duplicates allowed aboard
                 if (!optionalClasses.includes(parentClass)) {
                     optionalClasses.push(parentClass);
                 }
             }
         });
-        
+
         return optionalClasses;
     }
 
+    /** The spirit's name -- derived from its storageId, transmuted to CamelCase */
     get name(): string {
-        // Konvertiere storageId zu CamelCase (z.B. "node-v2" -> "NodeV2")
+        // Convert storageId to CamelCase (e.g. "node-v2" -> "NodeV2")
         const camelCaseId = this.toCamelCase(this.storageId);
         return camelCaseId;
     }
 
+    /** The spirit's sigil -- an icon from its config, if one was inscribed */
     get icon(): string | undefined {
         const c = this.config as ISerializedDogConfig;
         return typeof c?.icon === 'string' ? c.icon : undefined;
     }
-    
+
+    /** Transmute a kebab-case ID into CamelCase -- strip the version suffix first */
     private toCamelCase(id: string): string {
-        // Entferne Version-Suffix (z.B. "-v2" -> "")
+        // Strip the version suffix (e.g. "-v2" vanishes like a ghost)
         const withoutVersion = id.replace(/-v\d+$/, '');
-        // Konvertiere zu CamelCase: "node-name" -> "NodeName", "node_name" -> "NodeName"
+        // Transmute to CamelCase: "node-name" -> "NodeName", "node_name" -> "NodeName"
         return withoutVersion
             .split(/[-_\s]+/)
             .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -228,37 +269,35 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
 
+    /** The raw config of this spirit -- its full blueprint, laid bare */
     public get instanceConfig():any{
         return this.config
     }
 
     /**
-     * Überschreibe matchesParent, um spezifische Instanzen nach storageId/name zu prüfen.
-     * Die Basis-isReady Logik verwendet diese Methode für instanz-spezifische Prüfung.
-     * 
-     * Für SerializedDog: Prüfe, ob die gegebene Instanz eine der spezifischen Parent-Instanzen ist,
-     * die in required/optional definiert sind. Die parentClass wird ignoriert, da wir nach
-     * spezifischen Instanzen (storageId/name) suchen.
+     * Override matchesParent fer instance-specific matching by storageId/name.
+     * The base isReady logic calls this method -- and fer SerializedDog,
+     * we match by specific instance identity, not just class lineage.
+     * The parentClass is checked first, then we verify the instance
+     * is one of our declared parents. Arr, specificity matters in the deep.
      */
     protected matchesParent(parentClass: (new (...args: any[]) => IHuntingDog<unknown>), instance: IHuntingDog<unknown>): boolean {
-        // Zuerst prüfe, ob es eine Instanz der Klasse ist (Standard-Prüfung)
+        // First, the standard class check -- is it of the right lineage?
         if (!(instance instanceof parentClass)) {
             return false;
         }
-        
-        // Für SerializedDog: Prüfe, ob die spezifische Instanz (nach storageId/name) in den Parents ist
-        // Hole die spezifischen Parent-IDs aus der Config
+
+        // Fer SerializedDog: verify the specific instance by storageId/name
         const parentsRequired = this.config.parentsRequired || [];
         const parentsOptional = this.config.parentsOptional || [];
         const allParents = [...parentsRequired, ...parentsOptional];
-        
-        // Wenn keine spezifischen Parents definiert sind, verwende Standard-Klassen-Prüfung
+
+        // If no specific parents declared, the class check alone suffices
         if (allParents.length === 0) {
             return true;
         }
-        
-        // Prüfe, ob diese Instanz eine der spezifischen Parent-Instanzen ist
-        // (nach storageId für SerializedDog, sonst nach name)
+
+        // Check if this instance be one of our specifically declared parents
         return allParents.some((parentId: string) => {
             if (instance instanceof SerializedDog) {
                 return (instance as SerializedDog<unknown>).storageId === parentId;
@@ -267,10 +306,15 @@ export class SerializedDog<T> extends Dog<T> {
         });
     }
 
+    /** The yield collector -- delegates to runExternalCode, where the spirit's incantation is executed */
     protected yieldCollectorFactory: (season: IHuntingSeason) => Promise<T> = (season:IHuntingSeason) => {
             return this.runExternalCode(season)
         }
 
+    /**
+     * Summon the spirit into existence -- bind its config and storage identity.
+     * If theRun be empty, the spirit throws an error upon execution -- a hollow vessel with no purpose.
+     */
     constructor(private config:ISerializedDogConfig, private storageIdentifier:string) {
         super();
         this._storageId = storageIdentifier
@@ -279,11 +323,18 @@ export class SerializedDog<T> extends Dog<T> {
         }
     }
 
+    /**
+     * Execute the spirit's code in a sandboxed VM realm.
+     * Arr, this be the dark heart of the SerializedDog -- where user-written incantations
+     * run in an isolated context, with only their declared parents' plunder as globals.
+     * The code be wrapped in an async function and executed via vm.runInContext.
+     * From brooding gulfs are we beheld, by that which bears no name.
+     */
     public async runExternalCode(
     season: IHuntingSeason
   ): Promise<T>  {
 
-        // Benutzer-Code wrappen in async-Funktion
+        // Wrap the user's incantation in an async function -- the ritual demands it
         const wrappedCode = `
             (async () => {
                 try {
@@ -294,33 +345,32 @@ export class SerializedDog<T> extends Dog<T> {
             })()
         `;
 
-        // Erstelle Context mit nur required/optional exhausted dogs als globale Variablen
+        // Build the context -- only declared parents' yields become global variables
         const contextObj: any = {
             fetch,
             console,
         };
-        
-        // this magic binds the exausted dogs yield into a virtual realm so every magic can safly happen. 
-        // Füge nur required/optional Parents aus Config zum Context hinzu
+
+        // This dark magic binds exhausted hounds' yields into the VM realm -- safely contained in the void
         const parentsRequired = this.config.parentsRequired || [];
         const parentsOptional = this.config.parentsOptional || [];
         const allParentIds = [...parentsRequired, ...parentsOptional];
-        
+
         allParentIds.forEach((parentId: string) => {
-            // Finde Dog anhand ID (storageId für SerializedDogs, name für andere)
+            // Find the parent hound by ID in the exhausted crew
             const parentDog = season.exhausted.find(dog => {
                 if (dog instanceof SerializedDog) {
                     return (dog as SerializedDog<unknown>).storageId === parentId;
                 }
                 return dog.name === parentId;
             });
-            
+
             if (parentDog && parentDog.collected !== undefined) {
                 const dogName = parentDog.name;
-                // Setze als Property im Context-Objekt (wird automatisch als globale Variable verfügbar)
+                // Inscribe the parent's plunder as a global variable in the context
                 contextObj[dogName] = parentDog.collected;
                 this.requiredYieldsContext.set(dogName, parentDog.collected);
-                // Debug: Log für SerializedDogs
+                // Debug: log fer SerializedDog parents
                 if (parentDog instanceof SerializedDog) {
                     console.log(`[SerializedDog ${this.storageId}] Füge ${dogName} (storageId: ${(parentDog as SerializedDog<unknown>).storageId}) zum Context hinzu`);
                 }
@@ -332,33 +382,30 @@ export class SerializedDog<T> extends Dog<T> {
         });
 
         this.applyVmGlobalsSuppliers(contextObj, season.exhausted);
-        
-        // Debug: Log alle exhausted dogs und Context-Keys
+
+        // Debug: log all exhausted dogs and context keys
         console.log(`[SerializedDog ${this.storageId}] Required/Optional Parent IDs:`, allParentIds);
         console.log(`[SerializedDog ${this.storageId}] Context keys vor createContext:`, Object.keys(contextObj));
-        
-        // Erstelle VM Context NACH dem Hinzufügen aller Variablen
-        // WICHTIG: Alle Variablen müssen VOR createContext gesetzt werden!
+
+        // Create the VM context AFTER all variables are inscribed --
+        // IMPORTANT: all variables must be set BEFORE createContext or they vanish into the void!
         const context = vm.createContext(contextObj);
-        
-        // Debug: Prüfe ob Variablen nach createContext verfügbar sind
+
+        // Debug: verify variables survived the crossing into the VM realm
         console.log(`[SerializedDog ${this.storageId}] Context keys nach createContext:`, Object.keys(context));
 
-        // Script
+        // The script -- the spirit's incantation, ready to execute
         const script = new vm.Script(wrappedCode);
 
         try {
             const result = await script.runInContext(context);
             return result as T;
         } catch (err: any) {
-            //TODO: Provide proper errors to ui
+            //TODO: Provide proper errors to UI -- the void's messages deserve better presentation
             console.error("Script Error:", err);
             return ("Error: " + err.message) as T
-            //throw err;
         }
     }
 
 
 }
-
-
