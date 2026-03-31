@@ -85,6 +85,11 @@ export class ConfigRouteHandler {
             await this.handleUpdate(req, res);
         });
 
+        // PATCH /api/:subpath/:id/rename — change the spirit's displayName across all incarnations.
+        app.patch(`${basePath}/:subpath/:id/rename`, async (req: Request, res: Response) => {
+            await this.handleRename(req, res);
+        });
+
         // DELETE /api/:subpath/:id — cast the entity into the void, never to return.
         app.delete(`${basePath}/:subpath/:id`, async (req: Request, res: Response) => {
             await this.handleDelete(req, res);
@@ -107,7 +112,9 @@ export class ConfigRouteHandler {
                 return;
             }
 
-            const result = await controller.list();
+            // For versioned entities (nodes), return only the latest incarnation per dogId.
+            console.log(`[ConfigRouteHandler.handleList] subpath=${subpath}, calling listLatest()`);
+            const result = await controller.listLatest();
             if (result.ok) {
                 res.status(200).json({ ok: true, data: result.data });
             } else {
@@ -164,16 +171,15 @@ export class ConfigRouteHandler {
             // Node creation requires special translation — the caller speaks in tsCode; the store speaks in theRun.
             let input = req.body;
             if (subpath === 'nodes') {
-                const baseId = input.baseId || `node-${Date.now()}`;
+                const displayName = input.displayName || input.baseId || `node-${Date.now()}`;
                 const tsCode = input.tsCode || input.theRun || '';
 
-                // Repack into ISerializedDogConfig format — the controller will brand it with -v1.
+                // Repack into ISerializedDogConfig format — the controller forges GUIDs fer id and dogId.
                 input = {
-                    id: baseId,
+                    displayName,
                     theRun: tsCode,
                     parentsRequired: input.parentsRequired || [],
                     parentsOptional: input.parentsOptional || [],
-                    version: 1,
                     ...(typeof req.body.icon === 'string' ? { icon: req.body.icon } : {}),
                 };
             }
@@ -224,10 +230,15 @@ export class ConfigRouteHandler {
                     : {}),
             };
 
-            // The controller handles versioning — a new version is automatically stamped.
+            // The controller handles versioning — a new incarnation is forged with a fresh GUID.
             const result = await controller.save(input);
             if (result.ok) {
-                res.status(200).json({ ok: true, id: result.id });
+                res.status(200).json({
+                    ok: true,
+                    id: result.id,
+                    dogId: (result.data as any)?.dogId,
+                    displayName: (result.data as any)?.displayName,
+                });
             } else {
                 res.status(400).json({ error: result.error });
             }
@@ -292,9 +303,37 @@ export class ConfigRouteHandler {
     }
 
     /**
-     * Handles GET /api/:subpath/:id/versions — summons all past lives of an entity, newest first.
-     * The -v\d+ suffix is stripped to find the base name; all versions of that lineage are returned.
-     * To cosmic forms from tangent planes we end as we began: all versions preserved.
+     * Handles PATCH /api/:subpath/:id/rename — changes the displayName across all incarnations.
+     * The id is the dogId (lineage GUID). Every version sharing this dogId gets the new name.
+     */
+    private async handleRename(req: Request, res: Response): Promise<void> {
+        try {
+            const subpath = req.params.subpath;
+            const id = req.params.id;
+            const { displayName } = req.body;
+            const controller = this.registry.get(subpath);
+
+            if (!controller) {
+                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                return;
+            }
+            if (!displayName || typeof displayName !== 'string') {
+                res.status(400).json({ error: 'displayName is required' });
+                return;
+            }
+
+            await controller.rename(id, displayName);
+            res.status(200).json({ ok: true });
+        } catch (e) {
+            console.error(`[ConfigRouteHandler.handleRename] Fehler:`, e);
+            res.status(500).json({ error: String(e) });
+        }
+    }
+
+    /**
+     * Handles GET /api/:subpath/:id/versions — summons all incarnations of a spirit across branches.
+     * The id is treated as a dogId (lineage GUID) — all incarnations of that lineage are returned.
+     * To cosmic forms from tangent planes we end as we began: all incarnations preserved in the deep.
      */
     private async handleGetVersions(req: Request, res: Response): Promise<void> {
         try {
@@ -307,8 +346,8 @@ export class ConfigRouteHandler {
                 return;
             }
 
-            const baseId = id.replace(/-v\d+$/, '');
-            const versions = await controller.getVersions(baseId);
+            // The id is the dogId — the lineage GUID that binds all incarnations across branches.
+            const versions = await controller.getVersions(id);
             res.status(200).json({ ok: true, data: versions });
         } catch (e) {
             console.error(`[ConfigRouteHandler.handleGetVersions] Fehler:`, e);

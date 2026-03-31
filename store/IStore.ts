@@ -15,21 +15,28 @@ export interface IStore {
   findByType(type: string): Promise<Array<{ id: string; serializedDogConfig: string }>>;
 
   /**
-   * From the many versions that drift through time, retrieve only the newest —
-   * for the past is carrion, and we hunt only what still breathes.
-   * Always extracts the base-ID and returns the latest version.
+   * From the many incarnations that drift through branching time, retrieve only the newest —
+   * fer the past is carrion, and we hunt only what still breathes.
+   * If IDs be given, each is resolved: first as a version ID (exact incarnation),
+   * then as a dogId (the latest incarnation of that lineage).
    * @param type - The entity type (e.g. SerializedDog.name)
-   * @param ids - Optional crew list of IDs; base-IDs are extracted, newest versions fetched.
+   * @param ids - Optional crew list of IDs (version GUIDs or dogId GUIDs).
    */
   findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<{ id: string; serializedDogConfig: string }>>;
 
   /**
-   * Summon all versions of an entity — every form it has ever worn, newest first.
-   * To cosmic forms from tangent planes we end as we began: all versions preserved in the deep.
+   * Summon all incarnations of a spirit — every branch, every form, newest first by createdAt.
+   * The dogId binds them all, across branches and time.
    * @param type - The entity type
-   * @param baseId - The base-ID without the version suffix
+   * @param dogId - The lineage GUID that binds all incarnations
    */
-  findAllVersions(type: string, baseId: string): Promise<Array<{ id: string; version: number; serializedDogConfig: string }>>;
+  findAllVersions(type: string, dogId: string): Promise<Array<{ id: string; version: number; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>>;
+
+  /**
+   * Summon all incarnations that share a lineage — every branch, every form.
+   * @param dogId - The lineage GUID
+   */
+  findByDogId(dogId: string): Promise<Array<{ id: string; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>>;
 
   /** Cast the entity overboard — gone into the void, never to be seen again. */
   delete(id: string): Promise<void>;

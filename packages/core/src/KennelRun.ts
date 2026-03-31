@@ -25,7 +25,7 @@ export const BASE_DOG_PREFIX = 'base:';
 /**
  * The kennel's cursed charter -- what hounds dwell within, and what dark purpose binds them.
  * Base-dogs be branded with the "base:" sigil in dogIds (e.g. "base:RandomRecipesRetriever").
- * SerializedDogs sail under their own name (e.g. "my-dog-v1"), unbranded but no less damned.
+ * SerializedDogs sail under their GUID — a version ID (exact incarnation) or dogId (latest incarnation).
  */
 export interface IKennelConfig {
     /** The kennel's unique identifier -- its brand seared by void-flame into the registry */
@@ -36,7 +36,7 @@ export interface IKennelConfig {
     description?: string;
     /** An emoji sigil fer the kennel -- a glyph to mark it in the UI, should ye dare look */
     emoji?: string;
-    /** Arr of dog IDs that crew this kennel: SerializedDogs (e.g. "my-dog-v1") or base-dogs (e.g. "base:RandomRecipesRetriever") */
+    /** Arr of dog IDs that crew this kennel: SerializedDogs (version GUID or dogId GUID) or base-dogs (e.g. "base:RandomRecipesRetriever") */
     dogIds: string[];
     /** Default query parameters fer the editor -- the map's starting coordinates, drawn before we sail */
     defaultQuery?: Record<string, string>;
@@ -99,8 +99,8 @@ export class KennelRun {
      * Loads SerializedDogs from the deep and combines them with base-dog spirits.
      * Base-dogs be conjured from dogIds bearing the "base:" brand.
      * SerializedDogs be dredged by their unbranded IDs.
-     * - If a dogId carries a version (e.g. "seed-serialized-1-v2"), that exact spectre is summoned
-     * - If a dogId has no version (e.g. "seed-serialized-1"), the newest incarnation rises from the deep
+     * - If a GUID matches a version ID, that exact incarnation is summoned
+     * - If a GUID matches a dogId, the newest incarnation of that lineage rises from the deep
      */
     public async fillKennel(): Promise<Array<IDog<unknown>>> {
         console.log(`[KennelRun.fillKennel] Start`);
@@ -137,9 +137,7 @@ export class KennelRun {
 
         // Dredge SerializedDogs from the abyss if any be named in the charter
         if (serializedDogIds.length > 0) {
-            const specificVersions = serializedDogIds.filter(id => this.isVersionedId(id)).length;
-            const baseIds = serializedDogIds.length - specificVersions;
-            console.log(`[KennelRun.fillKennel] Lade SerializedDogs (${specificVersions} spezifische Versionen, ${baseIds} Basis-IDs → neueste)`);
+            console.log(`[KennelRun.fillKennel] Lade ${serializedDogIds.length} SerializedDogs (GUIDs → Factory resolves version or dogId)`);
 
             // Use the factory to raise serialized spirits from the deep
             const serializedDogs = await this.serializedDogFactory(serializedDogIds);
@@ -245,41 +243,20 @@ export class KennelRun {
 
         if (pactsNeedingMimic.length === 0) return;
 
-        const mimicIds = pactsNeedingMimic.map(cls => `auto-mimic-${cls.name}`);
-        let savedDogs: SerializedDog<unknown>[] = [];
-        try {
-            savedDogs = await this.serializedDogFactory(mimicIds);
-        } catch (e) {
-            // No saved mimics found in the deep -- the void yields nothing, and that be fine
-        }
-
+        // Always conjure fresh mimics — never reuse saved ones from the deep.
+        // Each mimic is a placeholder; the user's code lives in the SerializedDog they write.
         for (const depClass of pactsNeedingMimic) {
-            const mimicId = `auto-mimic-${depClass.name}`;
-            const savedDog = savedDogs.find(d => d.storageId.replace(/-v\d+$/, '') === mimicId);
+            const mimicConfig: IMimicDogConfig = {
+                theRun: `throw new Error("MimicDog for '${depClass.name}' needs user code");`,
+                imitates: depClass.name,
+                displayName: `auto-mimic-${depClass.name}`,
+            };
 
-            let mimicConfig: IMimicDogConfig;
-            let storageId: string;
-
-            if (savedDog) {
-                mimicConfig = {
-                    ...savedDog.instanceConfig,
-                    imitates: depClass.name,
-                };
-                storageId = savedDog.storageId;
-                console.log(`[KennelRun.autoMimic] Gespeicherten MimicDog geladen fuer '${depClass.name}' (${storageId})`);
-            } else {
-                mimicConfig = {
-                    theRun: `throw new Error("MimicDog for '${depClass.name}' needs user code");`,
-                    imitates: depClass.name,
-                };
-                storageId = mimicId;
-                console.log(`[KennelRun.autoMimic] Neuen MimicDog erstellt fuer Pact '${depClass.name}'`);
-            }
-
-            const mimic = new MimicDog<unknown>(mimicConfig, storageId);
+            const mimic = new MimicDog<unknown>(mimicConfig, `auto-mimic-${depClass.name}`);
             mimic.resolveImitates(this.baseDogClasses);
             mimic.setKennelRef(kennel);
             kennel.push(mimic);
+            console.log(`[KennelRun.autoMimic] Frischen MimicDog erstellt fuer Pact '${depClass.name}'`);
         }
     }
 
@@ -313,11 +290,4 @@ export class KennelRun {
         return await this.runSeason(kennel);
     }
 
-    /**
-     * Check if an ID bears a version brand (contains -v followed by digits).
-     * Versioned spirits be summoned exactly; unversioned ones yield their latest incarnation.
-     */
-    private isVersionedId(id: string): boolean {
-        return /-v\d+$/.test(id);
-    }
 }

@@ -1,7 +1,7 @@
 // The WavesConverter — the chronicler of the hunt, who turns the raw season into Waves of plunder.
 // After the dogs have hunted, their season must be charted in a form the crew can read.
 // Carrion hordes trill their profane accord with eldritch plans: each wave is a tide of results.
-import { IHuntingSeason, IWaveEntry, IHuntingDog, SerializedDog } from '@datadogs/core';
+import { IHuntingSeason, IWaveEntry, IHuntingDog, SerializedDog, MimicDog } from '@datadogs/core';
 import { TypeDefBuilder } from './TypeDefBuilder';
 
 /**
@@ -22,6 +22,10 @@ export type ReadTrackingEntry = {
  */
 export type NodeEntry = {
     id: string;
+    /** The lineage GUID — binds all incarnations of this spirit across branches */
+    dogId?: string;
+    /** The spirit's true name — changeable without breaking pacts */
+    displayName?: string;
     name: string;
     icon?: string;
     result: any;
@@ -33,8 +37,17 @@ export type NodeEntry = {
     vmExpectedReturnTypeName?: string;
     parentsRequired?: string[];
     parentsOptional?: string[];
+    /** Whether this node can be deleted from the kennel — mimics and pact-bound spirits cannot */
+    deletable: boolean;
+    /** Whether this node's code can be edited and saved — base dogs are read-only */
+    editable: boolean;
+    /** Whether this node is a shapeshifter wearing a borrowed form */
+    mimic: boolean;
     serializedDogConfig?: {
         theRun: string;
+        dogId?: string;
+        parentId?: string | null;
+        displayName?: string;
         version?: number;
         parentsRequired?: string[];
         parentsOptional?: string[];
@@ -106,14 +119,28 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                 }
             });
 
+            const isMimic = instance instanceof MimicDog;
+            const isSerialized = instance instanceof SerializedDog;
+
             const nodeEntry = {
                 id: instanceId,
+                dogId: isSerialized
+                    ? (instance as SerializedDog<unknown>).dogId
+                    : undefined,
+                displayName: isSerialized
+                    ? (instance as SerializedDog<unknown>).instanceConfig?.displayName
+                    : undefined,
                 name: instanceName,
-                icon: (instance instanceof SerializedDog
+                icon: (isSerialized
                     ? (instance as SerializedDog<unknown>).icon
                     : (instance as IHuntingDog<unknown>).icon) ?? undefined,
                 result: instance.collected,
                 error: (instance as any).__error || undefined,
+                // Mimics are pact-bound shapeshifters — they cannot be deleted from the kennel.
+                // BaseDogs are born of code, not the store — they too resist deletion.
+                deletable: !isMimic,
+                editable: isSerialized,
+                mimic: isMimic,
                 parentsOptional: [],
                 parentsRequired: [],
                 readFrom: readFrom.length > 0 ? readFrom : undefined,
@@ -136,6 +163,9 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                 );
                 nodeEntry.serializedDogConfig = {
                     theRun: seDog.instanceConfig.theRun,
+                    dogId: seDog.instanceConfig.dogId,
+                    parentId: seDog.instanceConfig.parentId,
+                    displayName: seDog.instanceConfig.displayName,
                     version: seDog.instanceConfig.version,
                     parentsRequired: seDog.instanceConfig.parentsRequired || [],
                     parentsOptional: seDog.instanceConfig.parentsOptional || [],

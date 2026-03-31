@@ -24,7 +24,11 @@ export interface ICreateInput {
  */
 export interface IUpdateInput {
     id?: string;
-    version?: number; // The version mark — how many lives this entity has lived.
+    dogId?: string;            // The lineage mark — binds all incarnations across branches
+    parentId?: string | null;  // The ancestor from which this incarnation was born
+    displayName?: string;      // The spirit's true name — changeable without breaking pacts
+    /** @deprecated Relic of the old linear rite */
+    version?: number;
     [key: string]: any;
 }
 
@@ -122,6 +126,90 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     }
 
     /**
+     * Haul up only the newest incarnation of each spirit — one per dogId lineage.
+     * Fer versioned entities this avoids flooding the manifest with every past life.
+     */
+    async listLatest(): Promise<IControllerResponse<T[]>> {
+        try {
+            const results = await this.store.findByType(this.entityType);
+            const all = results.map((r: any) => {
+                const parsed = this.parseEntity(r.serializedDogConfig || r);
+                if (r.id) parsed.id = r.id;
+                // Resolve dogId from DB column or parsed config
+                const dogId = r.dogId || (parsed as any).dogId;
+                if (dogId) (parsed as any).dogId = dogId;
+                const displayName = r.displayName || (parsed as any).displayName;
+                if (displayName) (parsed as any).displayName = displayName;
+                (parsed as any)._createdAt = r.createdAt;
+                return parsed;
+            });
+
+            // Deduplicate: keep only the newest per dogId
+            const latest = new Map<string, T>();
+            for (const entity of all) {
+                const key = (entity as any).dogId || entity.id;
+                const existing = latest.get(key);
+                if (!existing) {
+                    latest.set(key, entity);
+                } else {
+                    const eTime = (existing as any)._createdAt ? new Date((existing as any)._createdAt).getTime() : 0;
+                    const nTime = (entity as any)._createdAt ? new Date((entity as any)._createdAt).getTime() : 0;
+                    if (nTime > eTime) {
+                        latest.set(key, entity);
+                    }
+                }
+            }
+
+            // Strip internal field
+            const entities = Array.from(latest.values());
+            entities.forEach(e => delete (e as any)._createdAt);
+
+            return { ok: true, data: entities };
+        } catch (error) {
+            return { ok: false, error: String(error), data: [] };
+        }
+    }
+
+    /**
+     * Rename a spirit across all its incarnations — every version sharing this dogId gets the new name.
+     * The displayName is updated both in the DB column and inside the serialized config.
+     */
+    async rename(dogIdOrVersionId: string, displayName: string): Promise<void> {
+        // findAllVersions no longer filters by type — dogId is unique across types.
+        const versions = await this.store.findAllVersions(this.entityType, dogIdOrVersionId);
+
+        // If nothing found by dogId, try as version ID to resolve the dogId first.
+        let rows = versions;
+        if (rows.length === 0) {
+            const single = await this.store.load(dogIdOrVersionId);
+            if (single) {
+                const parsed = typeof single === 'string' ? JSON.parse(single) : single;
+                const resolvedDogId = parsed.dogId || (parsed.serializedDogConfig ? JSON.parse(parsed.serializedDogConfig).dogId : null);
+                if (resolvedDogId) {
+                    rows = await this.store.findAllVersions(this.entityType, resolvedDogId);
+                }
+            }
+        }
+
+        for (const row of rows) {
+            let config: any = {};
+            try {
+                config = typeof row.serializedDogConfig === 'string'
+                    ? JSON.parse(row.serializedDogConfig)
+                    : row.serializedDogConfig;
+            } catch { continue; }
+
+            config.displayName = displayName;
+            await this.store.save({
+                id: row.id,
+                type: this.entityType,
+                displayName,
+                serializedDogConfig: JSON.stringify(config),
+            });
+        }
+    }
+
+    /**
      * Cast the entity overboard — deleted, gone, swallowed by the void.
      * @param id - The mark of the condemned.
      * @returns ok: true if we sent it to its fate; an error if it fought back.
@@ -153,11 +241,27 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     }
 
     /**
-     * Summon all versions of an entity — every life it has ever lived, newest first.
+     * Summon all incarnations of a spirit — every branch, every form, newest first.
      * Through endless faces, countless forms, a multitude unfolds.
+     * @param dogId - The lineage GUID that binds all incarnations across branches.
      */
-    async getVersions(baseId: string): Promise<Array<{ id: string; version: number; config: any }>> {
-        const versions = await this.store.findAllVersions(this.entityType, baseId);
+    async getVersions(dogIdOrVersionId: string): Promise<Array<{ id: string; version: number; config: any; parentId?: string | null; createdAt?: Date }>> {
+        // First, try treating the input as a dogId (lineage GUID).
+        let versions = await this.store.findAllVersions(this.entityType, dogIdOrVersionId);
+
+        // If nothing rose from the deep, the caller may have passed a version ID instead.
+        // Load that version to discover its dogId, then summon the full lineage.
+        if (versions.length === 0) {
+            const single = await this.store.load(dogIdOrVersionId);
+            if (single) {
+                const parsed = typeof single === 'string' ? JSON.parse(single) : single;
+                const resolvedDogId = parsed.dogId || (parsed.serializedDogConfig ? JSON.parse(parsed.serializedDogConfig).dogId : null);
+                if (resolvedDogId) {
+                    versions = await this.store.findAllVersions(this.entityType, resolvedDogId);
+                }
+            }
+        }
+
         return versions.map(v => {
             let config: any = {};
             try {
@@ -165,7 +269,7 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
                     ? JSON.parse(v.serializedDogConfig)
                     : v.serializedDogConfig;
             } catch { /* If the config has sunk, we return an empty chest. */ }
-            return { id: v.id, version: v.version, config };
+            return { id: v.id, version: v.version, config, parentId: v.parentId ?? null, createdAt: v.createdAt ?? undefined };
         });
     }
 

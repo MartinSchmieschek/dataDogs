@@ -76,30 +76,6 @@
     </div>
   }
 
-  @if (kennelConfig(); as kCfg) {
-    @if (kCfg.dogIds.length) {
-      <div class="kennel-order-bar">
-        <div class="kennel-order-head">
-          <span class="kennel-order-title">Lead-Hund</span>
-          <span class="kennel-order-hint">Nur der <strong>erste</strong> Eintrag in <code>dogIds</code> ist der Lead (API-Antwort <code>/kennel/:id</code>). Graph = Wellen &amp; Pacts.</span>
-        </div>
-        <div class="kennel-lead-row">
-          <label class="kennel-lead-label" for="kennel-lead-select">API-Antwort von</label>
-          <select
-            id="kennel-lead-select"
-            class="kennel-lead-select"
-            [ngModel]="kCfg.dogIds[0]"
-            (ngModelChange)="onLeadDropdownChange($event)">
-            @for (dogId of kCfg.dogIds; track dogId) {
-              <option [ngValue]="dogId">{{ kennelDogLabel(dogId) }}</option>
-            }
-          </select>
-          <span class="lead-star-inline" title="Lead">★</span>
-        </div>
-      </div>
-    }
-  }
-
   <div class="viewer-content">
     <div class="toolbar-pane">
       <app-dog-toolbar
@@ -156,9 +132,12 @@
         [allDogs]="flatDogList()"
         [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
         [kennelLeadControlsEnabled]="!!(kennelConfig()?.dogIds?.length)"
+        [kennelDogRef]="getKennelRefForDog(selectedDog()!)"
         (saved)="loadWaves()"
         (deleted)="onDogDeleted($event)"
         (movedToFirst)="onDogMovedToFirst($event)"
+        (pinChanged)="onPinChanged($event)"
+        (renamed)="loadWaves(); loadAvailableDogs()"
         (closed)="closeSidePanel()" />
     </app-floating-panel-window>
   }

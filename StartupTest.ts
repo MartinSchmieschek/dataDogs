@@ -207,7 +207,11 @@ export class StartupTest {
         const testName = 'Controller: GetById';
         try {
             // Versuche den gesäten SerializedDog zu laden
-            const result = await controller.getById('seed-serialized-1-v1');
+            // With GUID-based versioning, the seed ID is dynamic — find any SerializedDog instead.
+            const allDogs = await controller.list();
+            const result = allDogs.ok && allDogs.data && allDogs.data.length > 0
+                ? { ok: true, data: allDogs.data[0] }
+                : { ok: false, error: 'Keine SerializedDogs gefunden', data: null };
             if (!result.ok && result.error?.includes('nicht gefunden')) {
                 // Das ist OK, wenn der Seed noch nicht existiert
                 this.addResult(testName, true, 'Seed existiert noch nicht (OK)');
@@ -226,31 +230,24 @@ export class StartupTest {
      */
     private async testControllerCreate(controller: Controller<ISerializedDogConfig>): Promise<void> {
         const testName = 'Controller: Create';
-        let testId: string | null = null;
         let createdId: string | null = null;
         try {
-            testId = 'test-create-' + Date.now();
-            this.createdTestIds.push(testId);
             const input: ISerializedDogConfig = {
-                id: testId,
+                displayName: 'test-create-' + Date.now(),
                 theRun: 'return { test: true };',
-                version: 1
             };
-            
+
             const result = await controller.create(input);
             if (!result.ok) {
                 throw new Error(result.error || 'Erstellen fehlgeschlagen');
             }
-            
+
             if (!result.id) {
                 throw new Error('Keine ID zurückgegeben');
             }
-            
+
             createdId = result.id;
-            if (createdId !== testId) {
-                // Wenn eine andere ID zurückgegeben wurde (z.B. versioniert), auch diese merken
-                this.createdTestIds.push(createdId);
-            }
+            this.createdTestIds.push(createdId);
             
             this.addResult(testName, true);
         } catch (error) {
@@ -264,49 +261,38 @@ export class StartupTest {
      */
     private async testControllerSave(controller: Controller<ISerializedDogConfig>): Promise<void> {
         const testName = 'Controller: Save';
-        let testId: string | null = null;
-        let createdId: string | null = null;
-        let savedId: string | null = null;
         try {
-            testId = 'test-save-' + Date.now();
-            this.createdTestIds.push(testId);
             const input: ISerializedDogConfig = {
-                id: testId,
+                displayName: 'test-save-' + Date.now(),
                 theRun: 'return { test: true };',
-                version: 1
             };
-            
-            // Erstelle erst eine Entity
+
+            // Erstelle erst eine Entity — the firstborn incarnation
             const createResult = await controller.create(input);
-            if (createResult.ok && createResult.id) {
-                createdId = createResult.id;
-                if (createdId !== testId) {
-                    this.createdTestIds.push(createdId);
-                }
+            if (!createResult.ok || !createResult.id) {
+                throw new Error(createResult.error || 'Erstellen fehlgeschlagen');
             }
-            
-            // Dann speichere sie (Update)
+            this.createdTestIds.push(createResult.id);
+
+            // Dann speichere sie (Update) — a new incarnation branching from the first
             const updateInput: ISerializedDogConfig = {
-                id: testId,
+                id: createResult.id,
                 theRun: 'return { test: true, updated: true };',
-                version: 1
             };
-            
+
             const result = await controller.save(updateInput);
             if (!result.ok) {
                 throw new Error(result.error || 'Speichern fehlgeschlagen');
             }
-            
-            if (result.id && result.id !== testId) {
-                savedId = result.id;
-                this.createdTestIds.push(savedId);
+
+            if (result.id) {
+                this.createdTestIds.push(result.id);
             }
-            
+
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         }
-        // Cleanup wird zentral am Ende durchgeführt
     }
 
     /**
@@ -641,7 +627,10 @@ export class StartupTest {
     private async testSerializedDogExists(store: IStore): Promise<void> {
         const testName = 'SerializedDog: Seed-Mimic (LayoutInputProvider + Tinder)';
         try {
-            const seed = await store.load('seed-serialized-1-v1');
+            // With GUID-based versioning, find the seed by type instead of hardcoded ID.
+            const allSeeds = await store.findByType(SerializedDog.name);
+            const seedRow = allSeeds.length > 0 ? allSeeds[0] : null;
+            const seed = seedRow ? seedRow.serializedDogConfig : null;
             if (!seed) {
                 this.addResult(testName, true, 'Seed existiert noch nicht (wird beim nächsten Start erstellt)');
                 return;
@@ -684,63 +673,53 @@ export class StartupTest {
         const testName = 'SerializedDog: Alle Versionen in Liste';
         const createdIds: string[] = [];
         try {
-            const testBaseId = 'test-versions-' + Date.now();
-            this.createdTestIds.push(testBaseId);
-            
-            // Erstelle mehrere Versionen
+            // Create v1 — the firstborn incarnation with a fresh GUID.
             const v1Input: ISerializedDogConfig = {
-                id: testBaseId,
+                displayName: 'test-versions-' + Date.now(),
                 theRun: 'return { version: 1 };',
-                version: 1
             };
             const v1Result = await controller.create(v1Input);
             if (!v1Result.ok || !v1Result.id) throw new Error('V1 erstellen fehlgeschlagen');
             createdIds.push(v1Result.id);
-            if (v1Result.id !== testBaseId) {
-                this.createdTestIds.push(v1Result.id);
-            }
-            
+            this.createdTestIds.push(v1Result.id);
+            const dogId = (v1Result.data as any)?.dogId;
+
+            // Save v2 — a new incarnation branching from v1.
             const v2Input: ISerializedDogConfig = {
-                id: testBaseId,
+                id: v1Result.id,
                 theRun: 'return { version: 2 };',
-                version: 1
             };
             const v2Result = await controller.save(v2Input);
             if (!v2Result.ok || !v2Result.id) throw new Error('V2 erstellen fehlgeschlagen');
             createdIds.push(v2Result.id);
-            if (v2Result.id !== testBaseId && v2Result.id !== v1Result.id) {
-                this.createdTestIds.push(v2Result.id);
-            }
-            
+            this.createdTestIds.push(v2Result.id);
+
+            // Save v3 — a new incarnation branching from v2.
             const v3Input: ISerializedDogConfig = {
-                id: testBaseId,
+                id: v2Result.id,
                 theRun: 'return { version: 3 };',
-                version: 1
             };
             const v3Result = await controller.save(v3Input);
             if (!v3Result.ok || !v3Result.id) throw new Error('V3 erstellen fehlgeschlagen');
             createdIds.push(v3Result.id);
-            if (v3Result.id !== testBaseId && v3Result.id !== v1Result.id && v3Result.id !== v2Result.id) {
-                this.createdTestIds.push(v3Result.id);
-            }
-            
+            this.createdTestIds.push(v3Result.id);
+
             // Prüfe, dass alle Versionen in der Liste erscheinen
             const listResult = await controller.list();
             if (!listResult.ok || !listResult.data) {
                 throw new Error('Liste konnte nicht abgerufen werden');
             }
-            
+
+            // Filter by dogId — all incarnations of the same spirit share this lineage mark.
             const foundVersions = listResult.data.filter((dog: ISerializedDogConfig) => {
-                if (!dog.id) return false;
-                const baseId = dog.id.replace(/-v\d+$/, '');
-                return baseId === testBaseId;
+                return dog.dogId === dogId;
             });
-            
+
             if (foundVersions.length < 3) {
                 throw new Error(`Erwartet: 3 Versionen, gefunden: ${foundVersions.length}`);
             }
-            
-            // Prüfe, dass alle IDs unterschiedlich sind
+
+            // Prüfe, dass alle IDs unterschiedlich sind (GUIDs should never collide)
             const ids = foundVersions.map((d: ISerializedDogConfig) => d.id).filter(Boolean);
             const uniqueIds = new Set(ids);
             if (uniqueIds.size !== ids.length) {

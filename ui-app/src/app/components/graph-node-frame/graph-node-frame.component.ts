@@ -9,7 +9,8 @@ import { Component, Input } from '@angular/core';
       class="graph-node-frame"
       [class.selected]="selected"
       [class.error]="hasError"
-      [class.serialized]="serialized">
+      [class.serialized]="serialized"
+      [class.mimic]="mimic">
       <ng-content />
     </div>
   `,
@@ -40,6 +41,11 @@ import { Component, Input } from '@angular/core';
         0 1px 0 rgba(255, 255, 255, 0.05) inset,
         0 2px 10px rgba(0, 0, 0, 0.4);
     }
+    .graph-node-frame.mimic {
+      border-style: dashed;
+      border-color: #7a6a50;
+      background: #2a2820;
+    }
     .graph-node-frame.error {
       background: #cc0000;
       border-color: #ff0000;
@@ -67,4 +73,5 @@ export class GraphNodeFrameComponent {
   @Input() selected = false;
   @Input() hasError = false;
   @Input() serialized = false;
+  @Input() mimic = false;
 }

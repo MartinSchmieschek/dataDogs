@@ -7,6 +7,9 @@ export interface BaseDogInfo {
 
 export interface SerializedDogInfo {
   id: string;
+  dogId?: string;
+  parentId?: string | null;
+  displayName?: string;
   type?: string;
   theRun: string;
   version?: number;

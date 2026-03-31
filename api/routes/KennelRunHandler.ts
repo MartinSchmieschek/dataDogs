@@ -7,6 +7,7 @@ import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
 import { SwaggerGenerator } from '../../services/SwaggerGenerator';
+import { generateVersionId, generateDogId } from '../utils/versioning';
 
 /** The provisions required to arm the KennelRunHandler for its voyage. */
 export interface IKennelRunDeps {
@@ -54,7 +55,12 @@ export class KennelRunHandler {
     private createSerializedDogFactory() {
         const { nodesStore } = this.deps;
         return async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {
-            const loaded = await nodesStore.findLatestVersionsByType(SerializedDog.name, ids);
+            // Load both SerializedDogs and MimicDogs — they sail under different type brands.
+            const [serialized, mimics] = await Promise.all([
+                nodesStore.findLatestVersionsByType(SerializedDog.name, ids),
+                nodesStore.findLatestVersionsByType(MimicDog.name, ids),
+            ]);
+            const loaded = [...serialized, ...mimics];
             return loaded.map((sd: any) => {
                 const config = typeof sd.serializedDogConfig === 'string'
                     ? JSON.parse(sd.serializedDogConfig)
@@ -88,7 +94,66 @@ export class KennelRunHandler {
             kennelVmGlobalsSuppliers
         );
         const season = await kennelRun.run();
+
+        // Persist any fresh auto-mimics to the deep — as new entities with their own dogId.
+        // Once persisted, their dogId is added to the kennel so next run loads them via the factory.
+        await this.persistNewMimics(config, season.exhausted);
+
         return convertSeasonToWaves(season);
+    }
+
+    /**
+     * Find mimics that were conjured fresh (no dogId yet) and persist them to the store.
+     * Their dogId is then added to the kennel config so future runs load them normally.
+     */
+    private async persistNewMimics(config: IKennelConfig, exhausted: any[]): Promise<void> {
+        const { nodesStore } = this.deps;
+        const newDogIds: string[] = [];
+
+        for (const dog of exhausted) {
+            if (!(dog instanceof MimicDog)) continue;
+            const mimic = dog as MimicDog<unknown>;
+            // If the mimic already has a dogId in its config, it was loaded from the DB — skip it.
+            if (mimic.instanceConfig?.dogId) continue;
+
+            const versionId = generateVersionId();
+            const dogId = generateDogId();
+            const cfg = {
+                ...mimic.instanceConfig,
+                id: versionId,
+                dogId,
+                parentId: null,
+                displayName: mimic.instanceConfig?.displayName || mimic.storageId,
+            };
+
+            await nodesStore.save({
+                id: versionId,
+                type: MimicDog.name,
+                dogId,
+                parentId: null,
+                displayName: cfg.displayName,
+                serializedDogConfig: JSON.stringify(cfg),
+                createdAt: new Date(),
+            });
+
+            // Update the in-memory mimic so the WavesConverter picks up the dogId.
+            mimic.instanceConfig.id = versionId;
+            mimic.instanceConfig.dogId = dogId;
+            mimic.instanceConfig.parentId = null;
+            mimic.instanceConfig.displayName = cfg.displayName;
+
+            newDogIds.push(dogId);
+            console.log(`[KennelRunHandler] Persisted new mimic '${cfg.displayName}' (dogId: ${dogId})`);
+        }
+
+        // Add the new mimic dogIds to the kennel config so next run finds them.
+        if (newDogIds.length > 0) {
+            const updatedDogIds = [...(config.dogIds ?? []), ...newDogIds];
+            await this.deps.kennelsController.save({
+                id: config.id,
+                dogIds: updatedDogIds,
+            } as any);
+        }
     }
 
     /**
@@ -110,7 +175,7 @@ export class KennelRunHandler {
 
     /**
      * Hunts through all waves to find a specific dog by its ID.
-     * Strips the 'base:' prefix and version suffix as needed — the dog's true name is all that matters.
+     * Matches by exact version ID, dogId (lineage GUID), or name — the hound answers to many marks.
      * In luminous space, blackened stars gaze: if the dog is not found, null is returned.
      */
     private findDogInWaves(waves: Waves, targetDogId: string) {
@@ -122,8 +187,8 @@ export class KennelRunHandler {
             for (const node of wave) {
                 if (node.id === searchId ||
                     node.id === targetDogId ||
-                    node.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '') ||
-                    node.id.replace(/-v\d+$/, '') === targetDogId.replace(/-v\d+$/, '')) {
+                    (node as any).dogId === searchId ||
+                    (node as any).dogId === targetDogId) {
                     return node;
                 }
             }

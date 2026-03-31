@@ -20,9 +20,15 @@ import * as vm from "vm";
  * Input DTO fer update/save operations -- the scroll upon which a spirit's new config is writ.
  */
 export interface IUpdateInput {
-    /** The spirit's unique identifier in the deep -- its name whispered across the void */
+    /** The spirit's unique identifier in this incarnation — a GUID forged in the void */
     id?: string;
-    /** Version number fer the spirit's incarnation -- each rebirth bears a new mark */
+    /** The spirit's lineage mark — a GUID that binds all incarnations across branches */
+    dogId?: string;
+    /** The ancestor from which this incarnation was born — null fer the firstborn */
+    parentId?: string | null;
+    /** The spirit's true name — changeable without shattering the eldritch pacts of kennel and UI */
+    displayName?: string;
+    /** @deprecated Version number — a relic of the old linear rite, kept only fer the transition */
     version?: number;
     /** Additional eldritch properties, uncharted and unknowable, carried through the abyss */
     [key: string]: any;
@@ -116,6 +122,20 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     /**
+     * Find a hound in a crew by its parentId reference — matches by storageId, dogId, or name.
+     * The void cares not which mark ye bear, so long as it be the right one.
+     */
+    private findParentDog(parentId: string, source: Array<IHuntingDog<unknown>>): IHuntingDog<unknown> | undefined {
+        return source.find(dog => {
+            if (dog instanceof SerializedDog) {
+                const sDog = dog as SerializedDog<unknown>;
+                return sDog.storageId === parentId || sDog.dogId === parentId;
+            }
+            return dog.name === parentId;
+        });
+    }
+
+    /**
      * Merge parent dogs into the context -- bind their plunder (or placeholders) as global variables.
      * @param contextObj The base context object to inscribe upon
      * @param parentSource The source of parent hounds (kennelRef or season.exhausted)
@@ -135,13 +155,7 @@ export class SerializedDog<T> extends Dog<T> {
         const allParentIds = [...parentsRequired, ...parentsOptional];
 
         allParentIds.forEach((parentId: string) => {
-            // Find the parent hound by ID (storageId fer SerializedDogs, name fer others)
-            const parentDog = parentSource.find(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
+            const parentDog = this.findParentDog(parentId, parentSource);
 
             if (parentDog) {
                 const dogName = parentDog.name;
@@ -184,7 +198,6 @@ export class SerializedDog<T> extends Dog<T> {
 
     /** Required parent classes -- resolved from config IDs against the kennel crew */
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        // Map parent IDs from the config to actual dog classes in the kennel
         if (!this.kennelRef) {
             return [];
         }
@@ -193,12 +206,7 @@ export class SerializedDog<T> extends Dog<T> {
         const requiredClasses: (new (...args: any[]) => IHuntingDog<unknown>)[] = [];
 
         parentsRequired.forEach((parentId: string) => {
-            const parentDog = this.kennelRef!.find(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
+            const parentDog = this.findParentDog(parentId, this.kennelRef!);
 
             if (parentDog) {
                 // Extract the constructor -- the dark blueprint of the parent hound
@@ -215,7 +223,6 @@ export class SerializedDog<T> extends Dog<T> {
 
     /** Optional parent classes -- hounds we listen fer but do not demand */
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        // Map optional parent IDs from config to classes -- same rite as required
         if (!this.kennelRef) {
             return [];
         }
@@ -224,12 +231,7 @@ export class SerializedDog<T> extends Dog<T> {
         const optionalClasses: (new (...args: any[]) => IHuntingDog<unknown>)[] = [];
 
         parentsOptional.forEach((parentId: string) => {
-            const parentDog = this.kennelRef!.find(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
+            const parentDog = this.findParentDog(parentId, this.kennelRef!);
 
             if (parentDog) {
                 // Extract the constructor from the optional parent
@@ -244,11 +246,18 @@ export class SerializedDog<T> extends Dog<T> {
         return optionalClasses;
     }
 
-    /** The spirit's name -- derived from its storageId, transmuted to CamelCase */
+    /** The spirit's true name — drawn from displayName if inscribed, else transmuted from storageId */
     get name(): string {
-        // Convert storageId to CamelCase (e.g. "node-v2" -> "NodeV2")
-        const camelCaseId = this.toCamelCase(this.storageId);
-        return camelCaseId;
+        const cfg = this.config as ISerializedDogConfig;
+        if (cfg.displayName) {
+            return this.toCamelCase(cfg.displayName);
+        }
+        return this.toCamelCase(this.storageId);
+    }
+
+    /** The spirit's lineage mark — the dogId that binds all its incarnations across branches */
+    get dogId(): string | undefined {
+        return (this.config as ISerializedDogConfig).dogId;
     }
 
     /** The spirit's sigil -- an icon from its config, if one was inscribed */
@@ -257,13 +266,12 @@ export class SerializedDog<T> extends Dog<T> {
         return typeof c?.icon === 'string' ? c.icon : undefined;
     }
 
-    /** Transmute a kebab-case ID into CamelCase -- strip the version suffix first */
-    private toCamelCase(id: string): string {
-        // Strip the version suffix (e.g. "-v2" vanishes like a ghost)
-        const withoutVersion = id.replace(/-v\d+$/, '');
-        // Transmute to CamelCase: "node-name" -> "NodeName", "node_name" -> "NodeName"
-        return withoutVersion
+    /** Transmute a name into CamelCase — the spirit's identity in the VM realm must be a valid identifier */
+    private toCamelCase(input: string): string {
+        // Transmute to CamelCase: "node-name" -> "NodeName", "node_name" -> "NodeName", "My Dog" -> "MyDog"
+        return input
             .split(/[-_\s]+/)
+            .filter(word => word.length > 0)
             .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join('');
     }
@@ -297,10 +305,11 @@ export class SerializedDog<T> extends Dog<T> {
             return true;
         }
 
-        // Check if this instance be one of our specifically declared parents
+        // Check if this instance be one of our specifically declared parents — by storageId, dogId, or name
         return allParents.some((parentId: string) => {
             if (instance instanceof SerializedDog) {
-                return (instance as SerializedDog<unknown>).storageId === parentId;
+                const sDog = instance as SerializedDog<unknown>;
+                return sDog.storageId === parentId || sDog.dogId === parentId;
             }
             return instance.name === parentId;
         });
@@ -357,13 +366,8 @@ export class SerializedDog<T> extends Dog<T> {
         const allParentIds = [...parentsRequired, ...parentsOptional];
 
         allParentIds.forEach((parentId: string) => {
-            // Find the parent hound by ID in the exhausted crew
-            const parentDog = season.exhausted.find(dog => {
-                if (dog instanceof SerializedDog) {
-                    return (dog as SerializedDog<unknown>).storageId === parentId;
-                }
-                return dog.name === parentId;
-            });
+            // Find the parent hound by ID in the exhausted crew — matches by storageId, dogId, or name
+            const parentDog = this.findParentDog(parentId, season.exhausted);
 
             if (parentDog && parentDog.collected !== undefined) {
                 const dogName = parentDog.name;

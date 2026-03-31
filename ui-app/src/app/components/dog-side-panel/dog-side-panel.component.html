@@ -1,14 +1,30 @@
 <div class="side-panel">
   <div class="panel-header">
+    <span
+      class="lead-star"
+      [class.active]="isCurrentLead"
+      [title]="isCurrentLead ? 'Lead-Hund (API-Antwort)' : 'Klick: Lead werden'"
+      (click)="!isCurrentLead && moveToFirst()">★</span>
     <h3 class="panel-title">
-      @if (isCurrentLead) {
-        <span class="panel-lead-star" title="Lead-Hund">★</span>
+      @if (isSerialized && renaming()) {
+        <input
+          class="rename-input"
+          [value]="dog.displayName || dog.name"
+          (keydown.enter)="commitRename($event)"
+          (keydown.escape)="renaming.set(false)"
+          (blur)="commitRename($event)"
+          #renameInput />
+      } @else {
+        <app-dog-display
+          [label]="dog.displayName || dog.name"
+          [icon]="dog.icon"
+          variant="stacked"
+          (dblclick)="isSerialized && renaming.set(true)" />
       }
-      <app-dog-display [label]="dog.name" [icon]="dog.icon" variant="stacked" />
     </h3>
     <span class="dog-type">{{ isSerialized ? 'SerializedDog' : 'BaseDog' }}</span>
-    @if (isSerialized && currentVersion) {
-      <span class="version-badge">v{{ currentVersion }}</span>
+    @if (isSerialized && versions().length > 1) {
+      <span class="version-badge">{{ versions().length }} Versionen</span>
     }
     <button class="btn-close" (click)="closed.emit()">×</button>
   </div>
@@ -26,51 +42,15 @@
     </div>
   }
 
-  @if (kennelLeadControlsEnabled) {
-    <div class="kennel-lead-strip">
-      @if (isCurrentLead) {
-        <span class="lead-star-strip" aria-hidden="true">★</span>
-        <span class="lead-strip-text"><strong>Lead</strong> — API-Antwort kommt von diesem Hund.</span>
-      } @else {
-        <button type="button" class="btn-lead-strip" (click)="moveToFirst()">Lead werden</button>
-        <span class="lead-strip-hint">Diesen Hunt an die Spitze von <code>dogIds</code> setzen.</span>
-      }
-    </div>
-  }
-
-  @if (isSerialized) {
-    <div class="save-bar">
-      <button class="btn-save" (click)="saveCode()" [disabled]="saving()">
-        {{ saving() ? 'Speichert...' : 'Speichern' }}
-      </button>
-      @if (saveError()) {
-        <span
-          class="save-error comfort-error-trigger"
-          role="button"
-          tabindex="0"
-          title="Klick: Fernes Signal"
-          (click)="onComfortVideoClick(saveError() ?? '')"
-          (keydown.enter)="onComfortVideoClick(saveError() ?? '')"
-          (keydown.space)="$event.preventDefault(); onComfortVideoClick(saveError() ?? '')">{{ saveError() }}</span>
-      }
-      @if (saveSuccess()) {
-        <span class="save-success">Gespeichert!</span>
-      }
-      <span class="spacer"></span>
-      @if (!kennelLeadControlsEnabled) {
-        <button class="btn-action" (click)="moveToFirst()" title="Lead werden — diesen Hunt an die Spitze von dogIds (API-Ergebnis)">Lead</button>
-      }
-      <button class="btn-action btn-danger" (click)="deleteDog()" title="Löschen">✕</button>
-    </div>
-  }
-
-  @if (isSerialized && versions().length > 0) {
+  @if (isSerialized && versions().length > 0 && isSectionActive('code')) {
     <div class="timeline-header">
       <app-version-timeline
         [versions]="timelineVersions()"
         [currentVersionId]="dog.id"
         [selectedVersionId]="selectedVersionId()"
-        (versionSelected)="onVersionSelected($event)" />
+        [pinnedVersionId]="pinnedVersionId"
+        (versionSelected)="onVersionSelected($event)"
+        (pinToggled)="onPinToggled($event)" />
     </div>
   }
 
@@ -118,5 +98,30 @@
           (toggleOptional)="toggleParentOptional($event)" />
       }
     </div>
+  </div>
+
+  <div class="save-bar-sticky">
+    @if (isSerialized) {
+      <button class="btn-save" (click)="saveCode()" [disabled]="saving()">
+        {{ saving() ? 'Speichert...' : 'Speichern' }}
+      </button>
+      @if (saveError()) {
+        <span
+          class="save-error comfort-error-trigger"
+          role="button"
+          tabindex="0"
+          title="Klick: Fernes Signal"
+          (click)="onComfortVideoClick(saveError() ?? '')"
+          (keydown.enter)="onComfortVideoClick(saveError() ?? '')"
+          (keydown.space)="$event.preventDefault(); onComfortVideoClick(saveError() ?? '')">{{ saveError() }}</span>
+      }
+      @if (saveSuccess()) {
+        <span class="save-success">Gespeichert!</span>
+      }
+    }
+    <span class="spacer"></span>
+    @if (dog.deletable || isSerialized) {
+      <button class="btn-action btn-danger" (click)="deleteDog()" title="Löschen">🗑️</button>
+    }
   </div>
 </div>

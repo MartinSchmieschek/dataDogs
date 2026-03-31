@@ -165,21 +165,55 @@ async function start() {
     const startupTest = new StartupTest();
     await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap);
 
-    // GET /api/nodes — summons the full manifest: the born hounds and the made hounds, sailing together.
-    // Its heralds are the stars it fells — both base and serialized dogs answer this call.
+    // GET /api/nodes — summons the manifest of hounds.
+    // If ?kennelId=xxx is given, only dogs that crew that kennel are returned.
+    // Without kennelId, all base dogs and all serialized dogs are returned.
     app.get('/api/nodes', async (req: any, res: any) => {
         try {
             const controller = registry.get('nodes');
             if (!controller) { res.status(404).json({ error: 'Node-Controller nicht gefunden' }); return; }
 
-            const result = await controller.list();
-            const serializedDogs = result.ok && result.data ? result.data : [];
+            const kennelId = req.query.kennelId as string | undefined;
+
+            // Only list SerializedDogs — MimicDogs are pact-bound and never appear in the toolbar.
+            // listLatest() queries by entityType 'SerializedDog', so MimicDogs (type 'MimicDog') are excluded.
+            const result = await controller.listLatest();
+            let serializedDogs = result.ok && result.data ? result.data : [];
             const baseDogsList = allBaseDogs.map(dog => ({
                 id: BASE_DOG_PREFIX + dog.name,
                 name: dog.name,
                 type: 'BaseDog',
                 icon: dog.icon,
             }));
+
+            // If a kennel is specified, filter to only dogs that are in that kennel's dogIds.
+            if (kennelId) {
+                const kennelController = registry.get('kennels');
+                const kennelResult = kennelController ? await kennelController.getById(kennelId) : null;
+                const kennelDogIds: string[] = (kennelResult?.data as any)?.dogIds ?? [];
+
+                if (kennelDogIds.length > 0) {
+                    // Build a set of all identifiers the kennel uses — both the raw entries
+                    // AND the resolved dogIds (lineage GUIDs) for pinned version references.
+                    const kennelSet = new Set<string>(kennelDogIds);
+                    for (const kid of kennelDogIds) {
+                        if (kid.startsWith(BASE_DOG_PREFIX)) continue;
+                        // If this entry is a version-ID (pinned), resolve its dogId too.
+                        const match = serializedDogs.find((d: any) => d.id === kid);
+                        if (match && (match as any).dogId) {
+                            kennelSet.add((match as any).dogId);
+                        }
+                    }
+
+                    // Exclude dogs already in the kennel — the toolbar shows what can be ADDED.
+                    serializedDogs = serializedDogs.filter((d: any) =>
+                        !kennelSet.has(d.id) && !kennelSet.has(d.dogId)
+                    );
+                    const filteredBase = baseDogsList.filter(d => !kennelSet.has(d.id));
+                    res.status(200).json({ ok: true, data: [...filteredBase, ...serializedDogs] });
+                    return;
+                }
+            }
 
             res.status(200).json({ ok: true, data: [...baseDogsList, ...serializedDogs] });
         } catch (e) {

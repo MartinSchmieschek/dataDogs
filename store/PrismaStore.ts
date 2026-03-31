@@ -1,6 +1,7 @@
 // The PrismaStore — our ship's hold, where all plundered data is locked away in the eldritch deep.
 // Carrion hordes trill their profane accord with eldritch plans:
 // this class is the sole keeper of persistence, and it answers to no one but Prisma.
+// Now the lineage branches like cursed coral — dogId binds incarnations, parentId traces ancestry.
 import { PrismaClient } from '@prisma/client';
 import { IStore } from './IStore';
 import path from 'path';
@@ -36,6 +37,11 @@ export class PrismaStore implements IStore {
       id,
       type
     };
+
+    // The spirit's lineage marks — dogId, parentId, displayName sail as direct columns.
+    if (d.dogId !== undefined) updateData.dogId = d.dogId;
+    if (d.parentId !== undefined) updateData.parentId = d.parentId;
+    if (d.displayName !== undefined) updateData.displayName = d.displayName;
 
     // SerializedDog carries its soul in serializedDogConfig — string or object, we accept both forms.
     if (d.serializedDogConfig !== undefined) {
@@ -89,6 +95,9 @@ export class PrismaStore implements IStore {
         defaultQuery: row.defaultQuery,
         defaultBody: row.defaultBody,
         emoji: row.emoji,
+        dogId: row.dogId,
+        parentId: row.parentId,
+        displayName: row.displayName,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         serializedDogConfig: row.serializedDogConfig
@@ -115,173 +124,199 @@ export class PrismaStore implements IStore {
           defaultQuery: r.defaultQuery,
           defaultBody: r.defaultBody,
           emoji: r.emoji,
+          dogId: r.dogId,
+          parentId: r.parentId,
+          displayName: r.displayName,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
           serializedDogConfig: r.serializedDogConfig
         };
       }
-      // SerializedDog returns only its id and its soul.
+      // SerializedDog returns its id, lineage marks, and its soul.
       return {
         id: r.id,
+        dogId: r.dogId,
+        parentId: r.parentId,
+        displayName: r.displayName,
+        createdAt: r.createdAt,
         serializedDogConfig: r.serializedDogConfig
       };
     });
   }
 
+  /**
+   * From the many incarnations that drift through branching time, retrieve only the newest.
+   * If IDs be given, each is resolved: first as a version ID (exact incarnation),
+   * then as a dogId (latest incarnation of that lineage by createdAt).
+   * If no IDs be given, the latest incarnation of every lineage surfaces.
+   */
   public async findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<any>> {
-    // Cast the net — haul up all entities of this type from the deep.
-    let rows = await this.prisma.dog.findMany({ where: { type } });
+    const rows = await this.prisma.dog.findMany({ where: { type } });
 
-    // If no specific IDs are given, retrieve the newest version of everything that lurks.
+    // No specific IDs — surface the newest incarnation of every lineage.
     if (!ids || ids.length === 0) {
       return this.getLatestVersionsForAll(rows);
     }
 
-    // Strip the version suffix from each id — we seek the base creature, not its latest disguise.
-    // To cosmic forms from tangent planes we end as we began: always track the original name.
-    const baseIdsForLatest = new Set<string>();
-    ids.forEach(id => {
-      baseIdsForLatest.add(this.extractBaseId(id));
-    });
-
     const result: Array<any> = [];
 
-    baseIdsForLatest.forEach(baseId => {
-      const versionsForBaseId = rows
-        .filter((row: any) => {
-          const rowBaseId = this.extractBaseId(row.id);
-          return rowBaseId === baseId;
-        })
-        .map((row: any): { id: string; serializedDogConfig: string; version: number } | null => {
-          let config: any;
-          try {
-            config = typeof row.serializedDogConfig === 'string'
-              ? JSON.parse(row.serializedDogConfig)
-              : row.serializedDogConfig;
-          } catch (e) {
-            // If the config is beyond parsing, it has sunk into the void — skip it.
-            return null;
-          }
-
-          const versionMatch = row.id.match(/-v(\d+)$/);
-          const version = config.version || (versionMatch ? parseInt(versionMatch[1], 10) : 0);
-
-          return { id: row.id, serializedDogConfig: row.serializedDogConfig, version };
-        })
-        .filter((v): v is { id: string; serializedDogConfig: string; version: number } => v !== null)
-        .sort((a, b) => b.version - a.version); // Newest first — the past is carrion.
-
-      if (versionsForBaseId.length > 0) {
-        const latest = versionsForBaseId[0];
-        // Retrieve the full row — we need every field, not just the soul.
-        const fullRow: any = rows.find((r: any) => r.id === latest.id);
-        if (fullRow) {
-          result.push({
-            id: fullRow.id,
-            type: fullRow.type,
-            name: fullRow.name ?? null,
-            description: fullRow.description ?? null,
-            dogIds: fullRow.dogIds ?? null,
-            defaultQuery: fullRow.defaultQuery ?? null,
-            defaultBody: fullRow.defaultBody ?? null,
-            createdAt: fullRow.createdAt ?? null,
-            updatedAt: fullRow.updatedAt ?? null,
-            serializedDogConfig: fullRow.serializedDogConfig
-          });
-        } else {
-          // The full row has sunk — use the latest summary as a fallback.
-          result.push({
-            id: latest.id,
-            type: '',
-            name: null,
-            description: null,
-            dogIds: null,
-            defaultQuery: null,
-            defaultBody: null,
-            createdAt: null,
-            updatedAt: null,
-            serializedDogConfig: latest.serializedDogConfig
-          });
-        }
+    for (const requestedId of ids) {
+      // First: try exact match by version ID — the spirit's unique incarnation.
+      const exactMatch = rows.find((r: any) => r.id === requestedId);
+      if (exactMatch) {
+        result.push(this.formatRow(exactMatch));
+        continue;
       }
-    });
+
+      // Second: treat as dogId — summon the latest incarnation of that lineage.
+      const lineageRows = rows
+        .filter((r: any) => r.dogId === requestedId)
+        .sort((a: any, b: any) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTime - aTime; // Newest first — the past is carrion.
+        });
+
+      if (lineageRows.length > 0) {
+        result.push(this.formatRow(lineageRows[0]));
+        continue;
+      }
+
+      // Third: treat as displayName — fer auto-mimics and other spirits known by name, not GUID.
+      const nameRows = rows
+        .filter((r: any) => r.displayName === requestedId)
+        .sort((a: any, b: any) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTime - aTime;
+        });
+
+      if (nameRows.length > 0) {
+        result.push(this.formatRow(nameRows[0]));
+      }
+    }
 
     return result;
   }
 
   /**
-   * Sift through all rows and keep only the newest incarnation of each entity.
-   * Roiling, moaning: many versions lurk in the deep — only the strongest survives.
+   * Sift through all rows and keep only the newest incarnation of each lineage.
+   * Roiling, moaning: many incarnations lurk in the deep — only the strongest survives.
+   * Groups by dogId; fer rows without dogId, each stands alone.
    */
   private getLatestVersionsForAll(rows: any[]): Array<{ id: string; serializedDogConfig: string }> {
-    const latestVersions = new Map<string, { id: string; serializedDogConfig: string; version: number }>();
+    const latestByDogId = new Map<string, any>();
 
     rows.forEach((r: any) => {
-      // Parse the config to read the version number — the soul knows its own age.
-      let config: any;
-      try {
-        config = typeof r.serializedDogConfig === 'string'
-          ? JSON.parse(r.serializedDogConfig)
-          : r.serializedDogConfig;
-      } catch (e) {
-        console.warn(`[PrismaStore.getLatestVersionsForAll] Fehler beim Parsen der Config für ${r.id}:`, e);
-        return;
+      // Resolve dogId: DB column first, then fall back to parsing the serialized config.
+      let dogId = r.dogId;
+      if (!dogId && r.serializedDogConfig) {
+        try {
+          const cfg = typeof r.serializedDogConfig === 'string'
+            ? JSON.parse(r.serializedDogConfig) : r.serializedDogConfig;
+          dogId = cfg.dogId;
+        } catch { /* void swallowed the config */ }
       }
+      const groupKey = dogId || r.id;
+      const existing = latestByDogId.get(groupKey);
+      const rTime = r.createdAt ? new Date(r.createdAt).getTime() : 0;
 
-      // Strip the version from the ID to find the base name — the entity's true face.
-      const versionMatch = r.id.match(/-v(\d+)$/);
-      const baseId = versionMatch ? this.extractBaseId(r.id) : r.id;
-
-      // Trust the config's version; fall back to the ID suffix if the config is silent.
-      const version = config.version || (versionMatch ? parseInt(versionMatch[1], 10) : 0);
-
-      const existing = latestVersions.get(baseId);
-
-      // Only the mightiest version endures — discard the weaker ones into the abyss.
-      if (!existing || version > existing.version) {
-        latestVersions.set(baseId, { id: r.id, serializedDogConfig: r.serializedDogConfig, version });
+      if (!existing) {
+        latestByDogId.set(groupKey, r);
+      } else {
+        const existingTime = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
+        if (rTime > existingTime) {
+          latestByDogId.set(groupKey, r);
+        }
       }
     });
 
-    return Array.from(latestVersions.values());
+    return Array.from(latestByDogId.values()).map((r: any) => this.formatRow(r));
   }
 
   /**
-   * Checks whether an ID carries the version mark — the -v\d+ brand of a seasoned entity.
+   * Format a row fer the surface world — strip the barnacles and expose the cargo.
    */
-  private isVersionedId(id: string): boolean {
-    return /-v\d+$/.test(id);
+  private formatRow(r: any): any {
+    return {
+      id: r.id,
+      type: r.type,
+      dogId: r.dogId ?? null,
+      parentId: r.parentId ?? null,
+      displayName: r.displayName ?? null,
+      name: r.name ?? null,
+      description: r.description ?? null,
+      dogIds: r.dogIds ?? null,
+      defaultQuery: r.defaultQuery ?? null,
+      defaultBody: r.defaultBody ?? null,
+      emoji: r.emoji ?? null,
+      createdAt: r.createdAt ?? null,
+      updatedAt: r.updatedAt ?? null,
+      serializedDogConfig: r.serializedDogConfig
+    };
   }
 
   /**
-   * Strips the version suffix from an ID and returns the bare base name.
-   * e.g. "seed-serialized-1-v2" -> "seed-serialized-1"
-   * Its heralds are the stars it fells: the base ID is the star, the version merely its light.
+   * Summon all incarnations of a spirit — every branch, every form, newest first by createdAt.
+   * The dogId binds them all, across branches and time.
    */
-  private extractBaseId(id: string): string {
-    const match = id.match(/^(.+)-v(\d+)$/);
-    return match ? match[1] : id;
-  }
+  public async findAllVersions(
+    type: string,
+    dogId: string
+  ): Promise<Array<{ id: string; version: number; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>> {
+    // dogId is unique across types — no type filter needed, so MimicDog versions are found too.
+    const rows = await this.prisma.dog.findMany({ where: { dogId } });
 
-  public async findAllVersions(type: string, baseId: string): Promise<Array<{ id: string; version: number; serializedDogConfig: string }>> {
-    const rows = await this.prisma.dog.findMany({ where: { type } });
-
-    // Find all versions that share this base ID — every life the entity has ever lived.
-    // Through endless faces, countless forms, a multitude unfolds; sort newest first.
+    // Sort by createdAt — newest incarnation first, the past sinks into the deep.
     return rows
-      .filter((r: any) => this.extractBaseId(r.id) === baseId)
       .map((r: any) => {
         let version = 0;
         try {
           const config = typeof r.serializedDogConfig === 'string'
             ? JSON.parse(r.serializedDogConfig)
             : r.serializedDogConfig;
-          const match = r.id.match(/-v(\d+)$/);
-          version = config.version || (match ? parseInt(match[1], 10) : 0);
+          version = config.version || 0;
         } catch { /* If the config is lost to the void, version stays 0. */ }
-        return { id: r.id, version, serializedDogConfig: r.serializedDogConfig };
+        return {
+          id: r.id,
+          version,
+          serializedDogConfig: r.serializedDogConfig,
+          parentId: r.parentId ?? null,
+          createdAt: r.createdAt ?? null,
+          displayName: r.displayName ?? null,
+          dogId: r.dogId ?? null,
+        };
       })
-      .sort((a, b) => b.version - a.version);
+      .sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }
+
+  /**
+   * Summon all incarnations that share a lineage — every branch, every form.
+   * Arr, the dogId be the thread that binds them across time and branches.
+   */
+  public async findByDogId(
+    dogId: string
+  ): Promise<Array<{ id: string; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>> {
+    const rows = await this.prisma.dog.findMany({ where: { dogId } });
+
+    return rows
+      .map((r: any) => ({
+        id: r.id,
+        serializedDogConfig: r.serializedDogConfig,
+        parentId: r.parentId ?? null,
+        createdAt: r.createdAt ?? null,
+        displayName: r.displayName ?? null,
+        dogId: r.dogId ?? null,
+      }))
+      .sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
   }
 
   /** Cast the entity overboard — banished to the void, irrecoverable. */

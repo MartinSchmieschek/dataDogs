@@ -48,9 +48,14 @@ export class DogSidePanelComponent implements OnChanges {
   @Input() kennelLeadControlsEnabled = false;
   /** Vom Graph-Fächer gesetzt: diese Section sofort aktiv. */
   @Input() initialSection: DogPanelSectionId | null = null;
+  /** The kennel's reference for this dog — dogId means "latest", version-ID means "pinned". */
+  @Input() kennelDogRef: string | null = null;
   @Output() saved = new EventEmitter<void>();
   @Output() deleted = new EventEmitter<string>();
   @Output() movedToFirst = new EventEmitter<string>();
+  /** Emits { dogId, versionId } — parent updates the kennel's dogIds entry accordingly. */
+  @Output() pinChanged = new EventEmitter<{ dogId: string; versionId: string | null }>();
+  @Output() renamed = new EventEmitter<void>();
   @Output() closed = new EventEmitter<void>();
 
   private dogService = inject(DogService);
@@ -70,13 +75,20 @@ export class DogSidePanelComponent implements OnChanges {
   saving = signal(false);
   saveError = signal<string | null>(null);
   saveSuccess = signal(false);
+  renaming = signal(false);
 
   versions = signal<VersionEntry[]>([]);
   selectedVersionId = signal<string | null>(null);
   editorDog = signal<DogEntry | null>(null);
 
   timelineVersions = computed<TimelineVersion[]>(() => {
-    return this.versions().map(v => ({ id: v.id, version: v.version }));
+    return this.versions().map(v => ({
+      id: v.id,
+      version: v.version,
+      parentId: v.parentId,
+      createdAt: v.createdAt,
+      displayName: v.config?.displayName,
+    }));
   });
 
   get isSerialized(): boolean {
@@ -87,7 +99,7 @@ export class DogSidePanelComponent implements OnChanges {
     if (!this.kennelLeadControlsEnabled || !this.kennelLeadDogIdsSlot || !this.dog) {
       return false;
     }
-    return graphNodeIdMatchesKennelDogId(this.dog.id, this.kennelLeadDogIdsSlot);
+    return graphNodeIdMatchesKennelDogId(this.dog.id, this.kennelLeadDogIdsSlot, this.dog.dogId);
   }
 
   get availableParents(): DogEntry[] {
@@ -95,8 +107,25 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   get currentVersion(): number {
-    const match = this.dog?.id?.match(/-v(\d+)$/);
-    return match ? parseInt(match[1], 10) : 0;
+    return this.dog?.serializedDogConfig?.version ?? 0;
+  }
+
+  /**
+   * The version ID currently pinned in the kennel, or null if set to "always latest".
+   * Derived from kennelDogRef: if it matches the dogId → not pinned; if it matches a version → pinned.
+   */
+  get pinnedVersionId(): string | null {
+    if (!this.kennelDogRef || !this.dog) return null;
+    // If the kennel ref equals the dogId (lineage), nothing is pinned (= latest).
+    if (this.kennelDogRef === this.dog.dogId) return null;
+    // Otherwise the kennel ref is a specific version ID → that version is pinned.
+    return this.kennelDogRef;
+  }
+
+  /** Forwarded from the version graph — the user pinned or unpinned a version node. */
+  onPinToggled(versionId: string | null) {
+    if (!this.dog?.dogId) return;
+    this.pinChanged.emit({ dogId: this.dog.dogId, versionId });
   }
 
   onComfortVideoClick(message: string): void {
@@ -143,7 +172,9 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   private loadVersions() {
-    this.dogService.getVersions(this.dog.id).subscribe({
+    // Use dogId (lineage GUID) to fetch all incarnations across branches — the id is just one incarnation.
+    const lookupId = this.dog.dogId || this.dog.serializedDogConfig?.dogId || this.dog.id;
+    this.dogService.getVersions(lookupId).subscribe({
       next: (res) => {
         if (res.ok && res.data) {
           this.versions.set(res.data);
@@ -153,8 +184,14 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   onVersionSelected(versionId: string) {
-    if (!versionId || versionId === this.dog.id) {
+    if (!versionId) {
       this.selectedVersionId.set(null);
+      this.editorDog.set(this.dog);
+      this.parentsRequired.set([...(this.dog.parentsRequired ?? [])]);
+      this.parentsOptional.set([...(this.dog.parentsOptional ?? [])]);
+    } else if (versionId === this.dog.id) {
+      // Selecting the current version — keep it selected (for pin/unpin) but load current code.
+      this.selectedVersionId.set(versionId);
       this.editorDog.set(this.dog);
       this.parentsRequired.set([...(this.dog.parentsRequired ?? [])]);
       this.parentsOptional.set([...(this.dog.parentsOptional ?? [])]);
@@ -214,7 +251,12 @@ export class DogSidePanelComponent implements OnChanges {
       return;
     }
 
-    this.dogService.save(this.dog.id, {
+    // If an old version is selected, use ITS id as the save target —
+    // the Controller sets parentId to this id, forking a branch from the old incarnation.
+    // If no old version selected, save from the current version (linear continuation).
+    const saveId = this.selectedVersionId() || this.dog.id;
+
+    this.dogService.save(saveId, {
       tsCode: code,
       icon: this.dog.icon,
       parentsRequired: this.parentsRequired(),
@@ -225,6 +267,7 @@ export class DogSidePanelComponent implements OnChanges {
         if (res.ok) {
           this.saveSuccess.set(true);
           setTimeout(() => this.saveSuccess.set(false), 2000);
+          this.loadVersions(); // Reload the branching tree after save — the new incarnation must appear
           this.saved.emit();
         } else {
           this.saveError.set(res.error ?? 'Fehler beim Speichern');
@@ -237,23 +280,23 @@ export class DogSidePanelComponent implements OnChanges {
     });
   }
 
+  commitRename(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    this.renaming.set(false);
+    if (!newName || !this.dog?.dogId || newName === this.dog.displayName) return;
+    this.dogService.rename(this.dog.dogId, newName).subscribe({
+      next: () => {
+        this.renamed.emit();
+        this.saved.emit(); // reload waves to reflect new name
+      },
+    });
+  }
+
   deleteDog() {
     if (!this.dog) return;
-    if (confirm(`Dog "${this.dog.name}" wirklich löschen?`)) {
-      this.saveError.set(null);
-      this.dogService.delete(this.dog.id).subscribe({
-        next: (res) => {
-          if (res?.ok) {
-            this.deleted.emit(this.dog.id);
-          } else {
-            this.saveError.set(res?.error ?? 'Löschen fehlgeschlagen');
-          }
-        },
-        error: (err) => {
-          this.saveError.set(err.error?.error ?? err.message ?? 'Löschen fehlgeschlagen');
-        },
-      });
-    }
+    // Just tell the parent to remove this dog from the kennel — no DB deletion here.
+    this.deleted.emit(this.dog.id);
   }
 
   moveToFirst() {

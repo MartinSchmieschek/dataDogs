@@ -1,5 +1,5 @@
 import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { DogInfo, isBaseDog } from '../../models/dog.model';
+import { DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { DogDisplayComponent } from '../dog-display/dog-display.component';
 
 @Component({
@@ -51,7 +51,7 @@ import { DogDisplayComponent } from '../dog-display/dog-display.component';
                 <div class="drag-handle">⠿</div>
                 <app-dog-display
                   class="item-name"
-                  [label]="dog.id"
+                  [label]="getSerializedLabel(dog)"
                   [icon]="dog.icon"
                   variant="toolbar" />
               </div>
@@ -220,8 +220,17 @@ export class DogToolbarComponent {
     return isBaseDog(dog) ? dog.name : dog.id;
   }
 
+  getSerializedLabel(dog: DogInfo): string {
+    const sd = dog as SerializedDogInfo;
+    return sd.displayName || sd.id;
+  }
+
   onDragStart(event: DragEvent, dog: DogInfo) {
-    event.dataTransfer?.setData('application/dog-id', dog.id);
+    // For serialized dogs, drag the dogId (lineage GUID) so the kennel tracks "latest".
+    const dragId = !isBaseDog(dog) && (dog as SerializedDogInfo).dogId
+      ? (dog as SerializedDogInfo).dogId!
+      : dog.id;
+    event.dataTransfer?.setData('application/dog-id', dragId);
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy';
     }

@@ -20,7 +20,8 @@ import {
     <app-graph-node-frame
       [selected]="selected"
       [hasError]="hasError"
-      [serialized]="isSerialized">
+      [serialized]="isSerialized"
+      [mimic]="isMimic">
       @if (isLead) {
         <span class="lead-star" title="Lead-Hund (API-Antwort)">★</span>
       }
@@ -56,6 +57,7 @@ export class GraphDogNodeComponent implements OnChanges {
   @Input() selected = false;
   @Input() hasError = false;
   @Input() isSerialized = false;
+  @Input() isMimic = false;
   @Input() isLead = false;
   /** Dog-Daten für Section-Liste (Code/VM/…). */
   @Input({ required: true }) dog!: DogEntry;

@@ -162,6 +162,8 @@ export interface EdgeReadOverlayVM {
 
                 [isSerialized]="!!n.dog.codeTs"
 
+                [isMimic]="n.dog.mimic"
+
                 [isLead]="isNodeLead(n.id)"
 
                 [showSectionFan]="isNodeSelected(n.id)"

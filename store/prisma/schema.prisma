@@ -12,7 +12,10 @@ datasource db {
 }
 
 model Dog {
-  id                   String   @id
+  id                   String   @id          // GUID — the spirit's unique identity in this incarnation
+  dogId                String?               // GUID — binds all incarnations of the same spirit across branches
+  parentId             String?               // GUID — the ancestor from which this incarnation was born (null fer the first)
+  displayName          String?               // The spirit's true name — changeable without breaking the eldritch pacts
   type                 String
   // For SQLite we persist the serialized config as a string (JSON stored as text).
   // If you switch to Postgres you can change this field to `Json` for native JSONB support.

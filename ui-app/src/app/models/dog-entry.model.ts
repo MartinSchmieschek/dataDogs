@@ -7,6 +7,8 @@ export interface ReadTrackingEntry {
 
 export interface DogEntry {
   id: string;
+  dogId?: string;
+  displayName?: string;
   name: string;
   icon?: string;
   result: any;
@@ -14,12 +16,18 @@ export interface DogEntry {
   codeTs?: string;
   vmContext?: Record<string, any>;
   vmContextTypeDef?: string;
-  /** Pro-Instanz Return-Alias im TS-Kontext (Monaco), z. B. ExpectedReturn_base_foo */
   vmExpectedReturnTypeName?: string;
   parentsRequired?: string[];
   parentsOptional?: string[];
+  /** Whether this node can be removed from the kennel */
+  deletable: boolean;
+  editable: boolean;
+  mimic: boolean;
   serializedDogConfig?: {
     theRun: string;
+    dogId?: string;
+    parentId?: string | null;
+    displayName?: string;
     version?: number;
     icon?: string;
     parentsRequired?: string[];
