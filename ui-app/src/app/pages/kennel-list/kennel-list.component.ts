@@ -68,7 +68,13 @@ export class KennelListComponent implements OnInit {
     return !!k.emoji?.trim();
   }
 
+  /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */
+  kennelRef(kennel: IKennelConfig): string {
+    return kennel.lineageId || kennel.id;
+  }
+
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
+    const ref = this.kennelRef(kennel);
     if (action === 'execute') {
       if (this.hasBody(kennel)) {
         this.executeWithBody(kennel);
@@ -78,19 +84,19 @@ export class KennelListComponent implements OnInit {
       return;
     }
     if (action === 'edit') {
-      void this.router.navigate(['/kennel', kennel.id, 'edit']);
+      void this.router.navigate(['/kennel', ref, 'edit']);
       return;
     }
     if (action === 'swagger') {
-      window.open(apiAbsoluteUrl(`/api/kennels/${kennel.id}/docs`), '_blank', 'noopener');
+      window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
       return;
     }
     if (action === 'swaggerJson') {
-      window.open(apiAbsoluteUrl(`/api/kennels/${kennel.id}/swagger.json`), '_blank', 'noopener');
+      window.open(apiAbsoluteUrl(`/api/kennels/${ref}/swagger.json`), '_blank', 'noopener');
       return;
     }
     if (action === 'waves') {
-      void this.router.navigate(['/kennel', kennel.id]);
+      void this.router.navigate(['/kennel', ref]);
     }
   }
 
@@ -106,7 +112,9 @@ export class KennelListComponent implements OnInit {
       .subscribe({
       next: (res) => {
         if (res.ok) {
-          this.router.navigate(['/kennel', data.id, 'edit']);
+          // After create, the returned id is the lineageId (user-chosen kennel ID).
+          const ref = res.data?.lineageId || res.id || data.id;
+          this.router.navigate(['/kennel', ref, 'edit']);
         }
       },
       error: (err) => {
@@ -117,7 +125,8 @@ export class KennelListComponent implements OnInit {
 
   /** Neuer Tab → direkt Express (:3000), nicht Angular-Dev-Server. */
   getExecuteUrl(kennel: IKennelConfig): string {
-    let path = `/api/kennels/${kennel.id}/execute`;
+    const ref = this.kennelRef(kennel);
+    let path = `/api/kennels/${ref}/execute`;
     if (kennel.defaultQuery) {
       const params = new URLSearchParams();
       Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
@@ -137,7 +146,8 @@ export class KennelListComponent implements OnInit {
     const newWindow = window.open('about:blank', '_blank');
     if (!newWindow) return;
 
-    let url = `/api/kennels/${kennel.id}/execute`;
+    const ref = this.kennelRef(kennel);
+    let url = `/api/kennels/${ref}/execute`;
     if (kennel.defaultQuery) {
       const params = new URLSearchParams();
       Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
@@ -147,7 +157,7 @@ export class KennelListComponent implements OnInit {
       if (qs) url += '?' + qs;
     }
 
-    this.kennelService.execute(kennel.id, kennel.defaultBody, kennel.defaultQuery).subscribe({
+    this.kennelService.execute(ref, kennel.defaultBody, kennel.defaultQuery).subscribe({
       next: (result) => {
         if (typeof result === 'string') {
           newWindow.document.write(result);

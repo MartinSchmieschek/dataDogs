@@ -14,14 +14,14 @@ export interface VersionEntry {
   id: string;
   version: number;
   /** The lineage GUID — binds all incarnations across branches */
-  dogId?: string;
+  lineageId?: string;
   /** The ancestor from which this incarnation was born */
   parentId?: string | null;
   /** When this incarnation was forged */
   createdAt?: string;
   config: {
     theRun: string;
-    dogId?: string;
+    lineageId?: string;
     parentId?: string | null;
     displayName?: string;
     parentsRequired?: string[];
@@ -71,8 +71,8 @@ export class DogService {
     return this.http.post<ApiResponse>(`/save?id=${encodeURIComponent(id)}`, data);
   }
 
-  rename(dogId: string, displayName: string): Observable<ApiResponse> {
-    return this.http.patch<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(dogId)}/rename`, { displayName });
+  rename(lineageId: string, displayName: string): Observable<ApiResponse> {
+    return this.http.patch<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(lineageId)}/rename`, { displayName });
   }
 
   delete(id: string): Observable<ApiResponse> {

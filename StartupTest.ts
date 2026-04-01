@@ -682,7 +682,7 @@ export class StartupTest {
             if (!v1Result.ok || !v1Result.id) throw new Error('V1 erstellen fehlgeschlagen');
             createdIds.push(v1Result.id);
             this.createdTestIds.push(v1Result.id);
-            const dogId = (v1Result.data as any)?.dogId;
+            const lineageId = (v1Result.data as any)?.lineageId;
 
             // Save v2 — a new incarnation branching from v1.
             const v2Input: ISerializedDogConfig = {
@@ -710,9 +710,9 @@ export class StartupTest {
                 throw new Error('Liste konnte nicht abgerufen werden');
             }
 
-            // Filter by dogId — all incarnations of the same spirit share this lineage mark.
+            // Filter by lineageId — all incarnations of the same spirit share this lineage mark.
             const foundVersions = listResult.data.filter((dog: ISerializedDogConfig) => {
-                return dog.dogId === dogId;
+                return dog.lineageId === lineageId;
             });
 
             if (foundVersions.length < 3) {

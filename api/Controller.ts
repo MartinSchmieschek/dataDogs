@@ -3,14 +3,14 @@
 // sailing the branching seas with GUID-forged identities and lineage tracking.
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
-import { generateVersionId, generateDogId } from './utils/versioning';
+import { generateVersionId, generateLineageId } from './utils/versioning';
 
 /**
  * A generic controller bound to a store — the first mate for any config type.
  * Versioning is enabled by default, fer the past must not be forgotten.
  * Now each incarnation carries a GUID, and the lineage branches like cursed coral in the void.
  */
-export class Controller<T extends { id?: string; dogId?: string; parentId?: string | null; displayName?: string; version?: number; [key: string]: any }> extends AbstractController<T> {
+export class Controller<T extends { id?: string; lineageId?: string; parentId?: string | null; displayName?: string; version?: number; [key: string]: any }> extends AbstractController<T> {
     private enableVersioning: boolean;
 
     /**
@@ -25,18 +25,18 @@ export class Controller<T extends { id?: string; dogId?: string; parentId?: stri
 
     /**
      * Births a new entity into the deep — a creation rite.
-     * Assigns a GUID as the version ID and forges a fresh dogId fer the lineage.
+     * Assigns a GUID as the version ID and forges a fresh lineageId fer the lineage.
      * The firstborn has no ancestor — parentId is null, fer it rose from nothing.
      */
     async create(input: ICreateInput): Promise<IControllerResponse<T>> {
         try {
             const id = this.enableVersioning ? generateVersionId() : (input.id || `${this.entityType.toLowerCase()}-${Date.now()}`);
-            const dogId = this.enableVersioning ? generateDogId() : undefined;
+            const lineageId = this.enableVersioning ? generateLineageId() : undefined;
 
             const entity: T = {
                 ...input,
                 id,
-                dogId,
+                lineageId,
                 parentId: null,
                 displayName: input.displayName || input.id || id,
             } as T;
@@ -45,7 +45,7 @@ export class Controller<T extends { id?: string; dogId?: string; parentId?: stri
             await this.store.save({
                 id,
                 type: this.entityType,
-                dogId,
+                lineageId,
                 parentId: null,
                 displayName: entity.displayName,
                 serializedDogConfig: JSON.stringify(entity),
@@ -93,7 +93,7 @@ export class Controller<T extends { id?: string; dogId?: string; parentId?: stri
             }
 
             // Inherit the lineage mark from the ancestor, or forge a new one fer an orphan.
-            const dogId = input.dogId || (existing as any)?.dogId || generateDogId();
+            const lineageId = input.lineageId || (existing as any)?.lineageId || generateLineageId();
             const parentId = this.enableVersioning ? input.id : null; // The ancestor from which this incarnation was born
             const displayName = input.displayName || (existing as any)?.displayName || input.id;
 
@@ -103,7 +103,7 @@ export class Controller<T extends { id?: string; dogId?: string; parentId?: stri
                 ...(existing || {}),
                 ...input,
                 id: saveId,
-                dogId,
+                lineageId,
                 parentId,
                 displayName,
             } as T;
@@ -121,7 +121,7 @@ export class Controller<T extends { id?: string; dogId?: string; parentId?: stri
             await this.store.save({
                 id: saveId,
                 type: existingType || this.entityType,
-                dogId,
+                lineageId,
                 parentId,
                 displayName,
                 serializedDogConfig: JSON.stringify(entity),
@@ -140,7 +140,7 @@ export class Controller<T extends { id?: string; dogId?: string; parentId?: stri
 
     /**
      * Compare the soul of two incarnations — if the content be identical, no new version shall be born.
-     * Only the fields that carry meaning are compared; metadata (id, dogId, parentId, timestamps) is ignored.
+     * Only the fields that carry meaning are compared; metadata (id, lineageId, parentId, timestamps) is ignored.
      */
     private hasContentChanged(old: T, next: T): boolean {
         const contentKeys = ['theRun', 'tsCode', 'code', 'icon', 'parentsRequired', 'parentsOptional', 'imitates', 'displayName'];

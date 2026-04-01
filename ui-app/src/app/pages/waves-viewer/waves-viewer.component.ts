@@ -127,10 +127,10 @@ export class WavesViewerComponent implements OnInit {
 
           const sel = this.selectedDog();
           if (sel) {
-            // After re-run, the dog might have a new version ID — match by dogId first, then by id.
+            // After re-run, the dog might have a new version ID — match by lineageId first, then by id.
             const updated = this.flatDogList().find(d =>
               d.id === sel.id ||
-              (d.dogId && d.dogId === sel.dogId)
+              (d.lineageId && d.lineageId === sel.lineageId)
             );
             this.selectedDog.set(updated ?? null);
           }
@@ -242,16 +242,16 @@ export class WavesViewerComponent implements OnInit {
     this.selectedDog.set(ev.dog);
   }
 
-  onDogDeleted(dogId: string) {
+  onDogDeleted(lineageId: string) {
     this.selectedDog.set(null);
     const config = this.kennelConfig();
     if (!config) return;
-    const dog = this.flatDogList().find(d => d.id === dogId);
-    // Remove from kennel dogIds — match version ID, dogId (lineage), or base:Name.
+    const dog = this.flatDogList().find(d => d.id === lineageId);
+    // Remove from kennel dogIds — match version ID, lineageId (lineage), or base:Name.
     const ids = (config.dogIds ?? []).filter(kid =>
-      kid !== dogId &&
-      kid !== dog?.dogId &&
-      kid !== `base:${dogId}` &&
+      kid !== lineageId &&
+      kid !== dog?.lineageId &&
+      kid !== `base:${lineageId}` &&
       kid !== `base:${dog?.name}`
     );
     this.kennelService.update(this.kennelId, { dogIds: ids }).subscribe({
@@ -259,9 +259,9 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
-  onDogMovedToFirst(dogId: string) {
+  onDogMovedToFirst(lineageId: string) {
     this.reorderKennelDogIds(ids => {
-      const idx = findKennelDogIndex(ids, dogId);
+      const idx = findKennelDogIndex(ids, lineageId);
       if (idx <= 0) return ids;
       const copy = [...ids];
       const [entry] = copy.splice(idx, 1);
@@ -294,46 +294,46 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
-  kennelDogLabel(dogId: string): string {
-    if (dogId.startsWith('base:')) return dogId.slice('base:'.length);
+  kennelDogLabel(lineageId: string): string {
+    if (lineageId.startsWith('base:')) return lineageId.slice('base:'.length);
     // For GUIDs, try to find a matching dog's display name
     const dogs = this.flatDogList();
-    const match = dogs.find(d => d.id === dogId || d.dogId === dogId);
-    return match?.displayName || match?.name || dogId.substring(0, 8) + '…';
+    const match = dogs.find(d => d.id === lineageId || d.lineageId === lineageId);
+    return match?.displayName || match?.name || lineageId.substring(0, 8) + '…';
   }
 
-  iconForKennelDogId(dogId: string): string | undefined {
+  iconForKennelDogId(lineageId: string): string | undefined {
     const dogs = this.availableDogs();
-    if (dogId.startsWith('base:')) {
-      const name = dogId.slice('base:'.length);
+    if (lineageId.startsWith('base:')) {
+      const name = lineageId.slice('base:'.length);
       const d = dogs.find((x): x is BaseDogInfo => isBaseDog(x) && x.name === name);
       return d?.icon;
     }
-    // Match by version ID or dogId (lineage GUID)
-    const d = dogs.find((x): x is SerializedDogInfo => !isBaseDog(x) && (x.id === dogId || x.dogId === dogId));
+    // Match by version ID or lineageId (lineage GUID)
+    const d = dogs.find((x): x is SerializedDogInfo => !isBaseDog(x) && (x.id === lineageId || x.lineageId === lineageId));
     return d?.icon;
   }
 
-  /** Find the kennel's dogIds entry that corresponds to this dog (by id or dogId). */
+  /** Find the kennel's dogIds entry that corresponds to this dog (by id or lineageId). */
   getKennelRefForDog(dog: DogEntry): string | null {
     const ids = this.kennelConfig()?.dogIds ?? [];
     // Exact version match
     if (ids.includes(dog.id)) return dog.id;
-    // dogId (latest) match
-    if (dog.dogId && ids.includes(dog.dogId)) return dog.dogId;
+    // lineageId (latest) match
+    if (dog.lineageId && ids.includes(dog.lineageId)) return dog.lineageId;
     return null;
   }
 
-  /** Toggle pin: switch a kennel dogIds entry between dogId (latest) and version-ID (pinned). */
-  onPinChanged(ev: { dogId: string; versionId: string | null }) {
+  /** Toggle pin: switch a kennel dogIds entry between lineageId (latest) and version-ID (pinned). */
+  onPinChanged(ev: { lineageId: string; versionId: string | null }) {
     const config = this.kennelConfig();
     if (!config) return;
     const ids = [...(config.dogIds ?? [])];
-    // Find the entry that currently references this dog (by dogId or any version of it)
-    const idx = ids.findIndex(id => id === ev.dogId || id === this.selectedDog()?.id);
+    // Find the entry that currently references this dog (by lineageId or any version of it)
+    const idx = ids.findIndex(id => id === ev.lineageId || id === this.selectedDog()?.id);
     if (idx < 0) return;
-    // Replace: null versionId → use dogId (latest); otherwise → use versionId (pinned)
-    ids[idx] = ev.versionId ?? ev.dogId;
+    // Replace: null versionId → use lineageId (latest); otherwise → use versionId (pinned)
+    ids[idx] = ev.versionId ?? ev.lineageId;
     this.kennelService.update(this.kennelId, { dogIds: ids }).subscribe({
       next: () => this.loadWaves(),
     });
@@ -379,13 +379,13 @@ export class WavesViewerComponent implements OnInit {
     this.isDragOver = false;
     this.isDragging = false;
 
-    const dogId = event.dataTransfer?.getData('application/dog-id');
-    if (!dogId) return;
+    const lineageId = event.dataTransfer?.getData('application/dog-id');
+    if (!lineageId) return;
 
     const config = this.kennelConfig();
     if (!config) return;
 
-    const dogIds = [...(config.dogIds ?? []), dogId];
+    const dogIds = [...(config.dogIds ?? []), lineageId];
     this.kennelService.update(this.kennelId, { dogIds }).subscribe({
       next: () => {
         this.loadWaves();
@@ -404,8 +404,8 @@ export class WavesViewerComponent implements OnInit {
         if (res.ok) {
           const config = this.kennelConfig();
           if (config) {
-            // Use the dogId (lineage GUID) so the kennel always loads the latest incarnation.
-            const newDogRef = res.data?.dogId || res.id;
+            // Use the lineageId (lineage GUID) so the kennel always loads the latest incarnation.
+            const newDogRef = res.data?.lineageId || res.id;
             const dogIds = [...(config.dogIds ?? []), newDogRef];
             this.kennelService.update(this.kennelId, { dogIds }).subscribe({
               next: () => this.loadWaves(),

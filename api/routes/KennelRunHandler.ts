@@ -7,7 +7,7 @@ import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
 import { SwaggerGenerator } from '../../services/SwaggerGenerator';
-import { generateVersionId, generateDogId } from '../utils/versioning';
+import { generateVersionId, generateLineageId } from '../utils/versioning';
 
 /** The provisions required to arm the KennelRunHandler for its voyage. */
 export interface IKennelRunDeps {
@@ -41,9 +41,14 @@ export class KennelRunHandler {
         app.post('/:kennelId', (req: any, res: any) => this.handlePublicPost(req, res));
     }
 
-    /** Fetch the kennel's config from the deep — returns null if the void swallowed it. */
-    private async loadKennelConfig(id: string): Promise<IKennelConfig | null> {
-        const result = await this.deps.kennelsController.getById(id);
+    /**
+     * Fetch the kennel's config from the deep.
+     * If a ?version= query param is present, loads that exact version.
+     * Otherwise resolves by lineageId (latest version).
+     */
+    private async loadKennelConfig(id: string, versionOverride?: string): Promise<IKennelConfig | null> {
+        const lookupId = versionOverride || id;
+        const result = await this.deps.kennelsController.getById(lookupId);
         return (result.ok && result.data) ? result.data : null;
     }
 
@@ -95,33 +100,33 @@ export class KennelRunHandler {
         );
         const season = await kennelRun.run();
 
-        // Persist any fresh auto-mimics to the deep — as new entities with their own dogId.
-        // Once persisted, their dogId is added to the kennel so next run loads them via the factory.
+        // Persist any fresh auto-mimics to the deep — as new entities with their own lineageId.
+        // Once persisted, their lineageId is added to the kennel so next run loads them via the factory.
         await this.persistNewMimics(config, season.exhausted);
 
         return convertSeasonToWaves(season);
     }
 
     /**
-     * Find mimics that were conjured fresh (no dogId yet) and persist them to the store.
-     * Their dogId is then added to the kennel config so future runs load them normally.
+     * Find mimics that were conjured fresh (no lineageId yet) and persist them to the store.
+     * Their lineageId is then added to the kennel config so future runs load them normally.
      */
     private async persistNewMimics(config: IKennelConfig, exhausted: any[]): Promise<void> {
         const { nodesStore } = this.deps;
-        const newDogIds: string[] = [];
+        const newLineageIds: string[] = [];
 
         for (const dog of exhausted) {
             if (!(dog instanceof MimicDog)) continue;
             const mimic = dog as MimicDog<unknown>;
-            // If the mimic already has a dogId in its config, it was loaded from the DB — skip it.
-            if (mimic.instanceConfig?.dogId) continue;
+            // If the mimic already has a lineageId in its config, it was loaded from the DB — skip it.
+            if (mimic.instanceConfig?.lineageId) continue;
 
             const versionId = generateVersionId();
-            const dogId = generateDogId();
+            const lineageId = generateLineageId();
             const cfg = {
                 ...mimic.instanceConfig,
                 id: versionId,
-                dogId,
+                lineageId,
                 parentId: null,
                 displayName: mimic.instanceConfig?.displayName || mimic.storageId,
             };
@@ -129,26 +134,26 @@ export class KennelRunHandler {
             await nodesStore.save({
                 id: versionId,
                 type: MimicDog.name,
-                dogId,
+                lineageId,
                 parentId: null,
                 displayName: cfg.displayName,
                 serializedDogConfig: JSON.stringify(cfg),
                 createdAt: new Date(),
             });
 
-            // Update the in-memory mimic so the WavesConverter picks up the dogId.
+            // Update the in-memory mimic so the WavesConverter picks up the lineageId.
             mimic.instanceConfig.id = versionId;
-            mimic.instanceConfig.dogId = dogId;
+            mimic.instanceConfig.lineageId = lineageId;
             mimic.instanceConfig.parentId = null;
             mimic.instanceConfig.displayName = cfg.displayName;
 
-            newDogIds.push(dogId);
-            console.log(`[KennelRunHandler] Persisted new mimic '${cfg.displayName}' (dogId: ${dogId})`);
+            newLineageIds.push(lineageId);
+            console.log(`[KennelRunHandler] Persisted new mimic '${cfg.displayName}' (lineageId: ${lineageId})`);
         }
 
-        // Add the new mimic dogIds to the kennel config so next run finds them.
-        if (newDogIds.length > 0) {
-            const updatedDogIds = [...(config.dogIds ?? []), ...newDogIds];
+        // Add the new mimic lineageId values to the kennel's dogIds so next run finds them.
+        if (newLineageIds.length > 0) {
+            const updatedDogIds = [...(config.dogIds ?? []), ...newLineageIds];
             await this.deps.kennelsController.save({
                 id: config.id,
                 dogIds: updatedDogIds,
@@ -175,7 +180,7 @@ export class KennelRunHandler {
 
     /**
      * Hunts through all waves to find a specific dog by its ID.
-     * Matches by exact version ID, dogId (lineage GUID), or name — the hound answers to many marks.
+     * Matches by exact version ID, lineageId (lineage GUID), or name — the hound answers to many marks.
      * In luminous space, blackened stars gaze: if the dog is not found, null is returned.
      */
     private findDogInWaves(waves: Waves, targetDogId: string) {
@@ -187,8 +192,8 @@ export class KennelRunHandler {
             for (const node of wave) {
                 if (node.id === searchId ||
                     node.id === targetDogId ||
-                    (node as any).dogId === searchId ||
-                    (node as any).dogId === targetDogId) {
+                    (node as any).lineageId === searchId ||
+                    (node as any).lineageId === targetDogId) {
                     return node;
                 }
             }
@@ -294,7 +299,7 @@ export class KennelRunHandler {
      */
     private async handleRun(req: any, res: any): Promise<void> {
         try {
-            const config = await this.loadKennelConfig(req.params.id);
+            const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
                 res.status(404).json({ ok: false, error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
@@ -333,7 +338,7 @@ export class KennelRunHandler {
      */
     private async handleExecute(req: any, res: any): Promise<void> {
         try {
-            const config = await this.loadKennelConfig(req.params.id);
+            const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;

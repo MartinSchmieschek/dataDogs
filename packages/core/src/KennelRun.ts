@@ -25,7 +25,7 @@ export const BASE_DOG_PREFIX = 'base:';
 /**
  * The kennel's cursed charter -- what hounds dwell within, and what dark purpose binds them.
  * Base-dogs be branded with the "base:" sigil in dogIds (e.g. "base:RandomRecipesRetriever").
- * SerializedDogs sail under their GUID — a version ID (exact incarnation) or dogId (latest incarnation).
+ * SerializedDogs sail under their GUID — a version ID (exact incarnation) or lineageId (latest incarnation).
  */
 export interface IKennelConfig {
     /** The kennel's unique identifier -- its brand seared by void-flame into the registry */
@@ -36,7 +36,7 @@ export interface IKennelConfig {
     description?: string;
     /** An emoji sigil fer the kennel -- a glyph to mark it in the UI, should ye dare look */
     emoji?: string;
-    /** Arr of dog IDs that crew this kennel: SerializedDogs (version GUID or dogId GUID) or base-dogs (e.g. "base:RandomRecipesRetriever") */
+    /** Arr of dog IDs that crew this kennel: SerializedDogs (version GUID or lineageId GUID) or base-dogs (e.g. "base:RandomRecipesRetriever") */
     dogIds: string[];
     /** Default query parameters fer the editor -- the map's starting coordinates, drawn before we sail */
     defaultQuery?: Record<string, string>;
@@ -100,7 +100,7 @@ export class KennelRun {
      * Base-dogs be conjured from dogIds bearing the "base:" brand.
      * SerializedDogs be dredged by their unbranded IDs.
      * - If a GUID matches a version ID, that exact incarnation is summoned
-     * - If a GUID matches a dogId, the newest incarnation of that lineage rises from the deep
+     * - If a GUID matches a lineageId, the newest incarnation of that lineage rises from the deep
      */
     public async fillKennel(): Promise<Array<IDog<unknown>>> {
         console.log(`[KennelRun.fillKennel] Start`);
@@ -137,7 +137,7 @@ export class KennelRun {
 
         // Dredge SerializedDogs from the abyss if any be named in the charter
         if (serializedDogIds.length > 0) {
-            console.log(`[KennelRun.fillKennel] Lade ${serializedDogIds.length} SerializedDogs (GUIDs → Factory resolves version or dogId)`);
+            console.log(`[KennelRun.fillKennel] Lade ${serializedDogIds.length} SerializedDogs (GUIDs → Factory resolves version or lineageId)`);
 
             // Use the factory to raise serialized spirits from the deep
             const serializedDogs = await this.serializedDogFactory(serializedDogIds);

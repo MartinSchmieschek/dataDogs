@@ -23,7 +23,7 @@ export interface IUpdateInput {
     /** The spirit's unique identifier in this incarnation — a GUID forged in the void */
     id?: string;
     /** The spirit's lineage mark — a GUID that binds all incarnations across branches */
-    dogId?: string;
+    lineageId?: string;
     /** The ancestor from which this incarnation was born — null fer the firstborn */
     parentId?: string | null;
     /** The spirit's true name — changeable without shattering the eldritch pacts of kennel and UI */
@@ -122,14 +122,14 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     /**
-     * Find a hound in a crew by its parentId reference — matches by storageId, dogId, or name.
+     * Find a hound in a crew by its parentId reference — matches by storageId, lineageId, or name.
      * The void cares not which mark ye bear, so long as it be the right one.
      */
     private findParentDog(parentId: string, source: Array<IHuntingDog<unknown>>): IHuntingDog<unknown> | undefined {
         return source.find(dog => {
             if (dog instanceof SerializedDog) {
                 const sDog = dog as SerializedDog<unknown>;
-                return sDog.storageId === parentId || sDog.dogId === parentId;
+                return sDog.storageId === parentId || sDog.lineageId === parentId;
             }
             return dog.name === parentId;
         });
@@ -255,9 +255,9 @@ export class SerializedDog<T> extends Dog<T> {
         return this.toCamelCase(this.storageId);
     }
 
-    /** The spirit's lineage mark — the dogId that binds all its incarnations across branches */
-    get dogId(): string | undefined {
-        return (this.config as ISerializedDogConfig).dogId;
+    /** The spirit's lineage mark — the lineageId that binds all its incarnations across branches */
+    get lineageId(): string | undefined {
+        return (this.config as ISerializedDogConfig).lineageId;
     }
 
     /** The spirit's sigil -- an icon from its config, if one was inscribed */
@@ -305,11 +305,11 @@ export class SerializedDog<T> extends Dog<T> {
             return true;
         }
 
-        // Check if this instance be one of our specifically declared parents — by storageId, dogId, or name
+        // Check if this instance be one of our specifically declared parents — by storageId, lineageId, or name
         return allParents.some((parentId: string) => {
             if (instance instanceof SerializedDog) {
                 const sDog = instance as SerializedDog<unknown>;
-                return sDog.storageId === parentId || sDog.dogId === parentId;
+                return sDog.storageId === parentId || sDog.lineageId === parentId;
             }
             return instance.name === parentId;
         });
@@ -366,7 +366,7 @@ export class SerializedDog<T> extends Dog<T> {
         const allParentIds = [...parentsRequired, ...parentsOptional];
 
         allParentIds.forEach((parentId: string) => {
-            // Find the parent hound by ID in the exhausted crew — matches by storageId, dogId, or name
+            // Find the parent hound by ID in the exhausted crew — matches by storageId, lineageId, or name
             const parentDog = this.findParentDog(parentId, season.exhausted);
 
             if (parentDog && parentDog.collected !== undefined) {

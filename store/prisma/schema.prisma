@@ -13,7 +13,7 @@ datasource db {
 
 model Dog {
   id                   String   @id          // GUID — the spirit's unique identity in this incarnation
-  dogId                String?               // GUID — binds all incarnations of the same spirit across branches
+  lineageId            String?               // GUID — binds all incarnations of the same spirit across branches
   parentId             String?               // GUID — the ancestor from which this incarnation was born (null fer the first)
   displayName          String?               // The spirit's true name — changeable without breaking the eldritch pacts
   type                 String

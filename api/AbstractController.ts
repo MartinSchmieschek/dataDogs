@@ -24,7 +24,7 @@ export interface ICreateInput {
  */
 export interface IUpdateInput {
     id?: string;
-    dogId?: string;            // The lineage mark — binds all incarnations across branches
+    lineageId?: string;            // The lineage mark — binds all incarnations across branches
     parentId?: string | null;  // The ancestor from which this incarnation was born
     displayName?: string;      // The spirit's true name — changeable without breaking pacts
     /** @deprecated Relic of the old linear rite */
@@ -126,7 +126,7 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     }
 
     /**
-     * Haul up only the newest incarnation of each spirit — one per dogId lineage.
+     * Haul up only the newest incarnation of each spirit — one per lineageId lineage.
      * Fer versioned entities this avoids flooding the manifest with every past life.
      */
     async listLatest(): Promise<IControllerResponse<T[]>> {
@@ -135,19 +135,19 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
             const all = results.map((r: any) => {
                 const parsed = this.parseEntity(r.serializedDogConfig || r);
                 if (r.id) parsed.id = r.id;
-                // Resolve dogId from DB column or parsed config
-                const dogId = r.dogId || (parsed as any).dogId;
-                if (dogId) (parsed as any).dogId = dogId;
+                // Resolve lineageId from DB column or parsed config
+                const lineageId = r.lineageId || (parsed as any).lineageId;
+                if (lineageId) (parsed as any).lineageId = lineageId;
                 const displayName = r.displayName || (parsed as any).displayName;
                 if (displayName) (parsed as any).displayName = displayName;
                 (parsed as any)._createdAt = r.createdAt;
                 return parsed;
             });
 
-            // Deduplicate: keep only the newest per dogId
+            // Deduplicate: keep only the newest per lineageId
             const latest = new Map<string, T>();
             for (const entity of all) {
-                const key = (entity as any).dogId || entity.id;
+                const key = (entity as any).lineageId || entity.id;
                 const existing = latest.get(key);
                 if (!existing) {
                     latest.set(key, entity);
@@ -171,20 +171,20 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     }
 
     /**
-     * Rename a spirit across all its incarnations — every version sharing this dogId gets the new name.
+     * Rename a spirit across all its incarnations — every version sharing this lineageId gets the new name.
      * The displayName is updated both in the DB column and inside the serialized config.
      */
-    async rename(dogIdOrVersionId: string, displayName: string): Promise<void> {
-        // findAllVersions no longer filters by type — dogId is unique across types.
-        const versions = await this.store.findAllVersions(this.entityType, dogIdOrVersionId);
+    async rename(lineageIdOrVersionId: string, displayName: string): Promise<void> {
+        // findAllVersions no longer filters by type — lineageId is unique across types.
+        const versions = await this.store.findAllVersions(this.entityType, lineageIdOrVersionId);
 
-        // If nothing found by dogId, try as version ID to resolve the dogId first.
+        // If nothing found by lineageId, try as version ID to resolve the lineageId first.
         let rows = versions;
         if (rows.length === 0) {
-            const single = await this.store.load(dogIdOrVersionId);
+            const single = await this.store.load(lineageIdOrVersionId);
             if (single) {
                 const parsed = typeof single === 'string' ? JSON.parse(single) : single;
-                const resolvedDogId = parsed.dogId || (parsed.serializedDogConfig ? JSON.parse(parsed.serializedDogConfig).dogId : null);
+                const resolvedDogId = parsed.lineageId || (parsed.serializedDogConfig ? JSON.parse(parsed.serializedDogConfig).lineageId : null);
                 if (resolvedDogId) {
                     rows = await this.store.findAllVersions(this.entityType, resolvedDogId);
                 }
@@ -243,19 +243,19 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     /**
      * Summon all incarnations of a spirit — every branch, every form, newest first.
      * Through endless faces, countless forms, a multitude unfolds.
-     * @param dogId - The lineage GUID that binds all incarnations across branches.
+     * @param lineageId - The lineage GUID that binds all incarnations across branches.
      */
-    async getVersions(dogIdOrVersionId: string): Promise<Array<{ id: string; version: number; config: any; parentId?: string | null; createdAt?: Date }>> {
-        // First, try treating the input as a dogId (lineage GUID).
-        let versions = await this.store.findAllVersions(this.entityType, dogIdOrVersionId);
+    async getVersions(lineageIdOrVersionId: string): Promise<Array<{ id: string; version: number; config: any; parentId?: string | null; createdAt?: Date }>> {
+        // First, try treating the input as a lineageId (lineage GUID).
+        let versions = await this.store.findAllVersions(this.entityType, lineageIdOrVersionId);
 
         // If nothing rose from the deep, the caller may have passed a version ID instead.
-        // Load that version to discover its dogId, then summon the full lineage.
+        // Load that version to discover its lineageId, then summon the full lineage.
         if (versions.length === 0) {
-            const single = await this.store.load(dogIdOrVersionId);
+            const single = await this.store.load(lineageIdOrVersionId);
             if (single) {
                 const parsed = typeof single === 'string' ? JSON.parse(single) : single;
-                const resolvedDogId = parsed.dogId || (parsed.serializedDogConfig ? JSON.parse(parsed.serializedDogConfig).dogId : null);
+                const resolvedDogId = parsed.lineageId || (parsed.serializedDogConfig ? JSON.parse(parsed.serializedDogConfig).lineageId : null);
                 if (resolvedDogId) {
                     versions = await this.store.findAllVersions(this.entityType, resolvedDogId);
                 }

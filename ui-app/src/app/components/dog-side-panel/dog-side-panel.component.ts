@@ -48,13 +48,13 @@ export class DogSidePanelComponent implements OnChanges {
   @Input() kennelLeadControlsEnabled = false;
   /** Vom Graph-Fächer gesetzt: diese Section sofort aktiv. */
   @Input() initialSection: DogPanelSectionId | null = null;
-  /** The kennel's reference for this dog — dogId means "latest", version-ID means "pinned". */
+  /** The kennel's reference for this dog — lineageId means "latest", version-ID means "pinned". */
   @Input() kennelDogRef: string | null = null;
   @Output() saved = new EventEmitter<void>();
   @Output() deleted = new EventEmitter<string>();
   @Output() movedToFirst = new EventEmitter<string>();
-  /** Emits { dogId, versionId } — parent updates the kennel's dogIds entry accordingly. */
-  @Output() pinChanged = new EventEmitter<{ dogId: string; versionId: string | null }>();
+  /** Emits { lineageId, versionId } — parent updates the kennel's dogIds entry accordingly. */
+  @Output() pinChanged = new EventEmitter<{ lineageId: string; versionId: string | null }>();
   @Output() renamed = new EventEmitter<void>();
   @Output() closed = new EventEmitter<void>();
 
@@ -99,7 +99,7 @@ export class DogSidePanelComponent implements OnChanges {
     if (!this.kennelLeadControlsEnabled || !this.kennelLeadDogIdsSlot || !this.dog) {
       return false;
     }
-    return graphNodeIdMatchesKennelDogId(this.dog.id, this.kennelLeadDogIdsSlot, this.dog.dogId);
+    return graphNodeIdMatchesKennelDogId(this.dog.id, this.kennelLeadDogIdsSlot, this.dog.lineageId);
   }
 
   get availableParents(): DogEntry[] {
@@ -112,20 +112,20 @@ export class DogSidePanelComponent implements OnChanges {
 
   /**
    * The version ID currently pinned in the kennel, or null if set to "always latest".
-   * Derived from kennelDogRef: if it matches the dogId → not pinned; if it matches a version → pinned.
+   * Derived from kennelDogRef: if it matches the lineageId → not pinned; if it matches a version → pinned.
    */
   get pinnedVersionId(): string | null {
     if (!this.kennelDogRef || !this.dog) return null;
-    // If the kennel ref equals the dogId (lineage), nothing is pinned (= latest).
-    if (this.kennelDogRef === this.dog.dogId) return null;
+    // If the kennel ref equals the lineageId (lineage), nothing is pinned (= latest).
+    if (this.kennelDogRef === this.dog.lineageId) return null;
     // Otherwise the kennel ref is a specific version ID → that version is pinned.
     return this.kennelDogRef;
   }
 
   /** Forwarded from the version graph — the user pinned or unpinned a version node. */
   onPinToggled(versionId: string | null) {
-    if (!this.dog?.dogId) return;
-    this.pinChanged.emit({ dogId: this.dog.dogId, versionId });
+    if (!this.dog?.lineageId) return;
+    this.pinChanged.emit({ lineageId: this.dog.lineageId, versionId });
   }
 
   onComfortVideoClick(message: string): void {
@@ -172,8 +172,8 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   private loadVersions() {
-    // Use dogId (lineage GUID) to fetch all incarnations across branches — the id is just one incarnation.
-    const lookupId = this.dog.dogId || this.dog.serializedDogConfig?.dogId || this.dog.id;
+    // Use lineageId (lineage GUID) to fetch all incarnations across branches — the id is just one incarnation.
+    const lookupId = this.dog.lineageId || this.dog.serializedDogConfig?.lineageId || this.dog.id;
     this.dogService.getVersions(lookupId).subscribe({
       next: (res) => {
         if (res.ok && res.data) {
@@ -284,8 +284,8 @@ export class DogSidePanelComponent implements OnChanges {
     const input = event.target as HTMLInputElement;
     const newName = input.value.trim();
     this.renaming.set(false);
-    if (!newName || !this.dog?.dogId || newName === this.dog.displayName) return;
-    this.dogService.rename(this.dog.dogId, newName).subscribe({
+    if (!newName || !this.dog?.lineageId || newName === this.dog.displayName) return;
+    this.dogService.rename(this.dog.lineageId, newName).subscribe({
       next: () => {
         this.renamed.emit();
         this.saved.emit(); // reload waves to reflect new name

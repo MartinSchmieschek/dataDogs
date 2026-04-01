@@ -1,13 +1,13 @@
 // The KennelController — keeper of the kennels, master of which hounds hunt together.
-// To cosmic madness laws submit, though stalwart minds entreat:
-// this controller governs the sacred groupings of dogs, the crews that sail as one.
+// Now versioned: every save breeds a new incarnation, and the lineage branches like cursed coral.
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
 import { IKennelConfig } from '@datadogs/core';
+import { generateVersionId } from './utils/versioning';
 
 /**
  * Cargo manifest for raising a new kennel from the void.
- * All fields are optional — a kennel may begin as an empty hull.
+ * The id becomes the lineageId — the kennel's stable identity across all versions.
  */
 export interface ICreateKennelInput extends ICreateInput {
     id?: string;
@@ -19,7 +19,7 @@ export interface ICreateKennelInput extends ICreateInput {
 
 /**
  * Cargo manifest for updating an existing kennel.
- * The id must be named — one cannot update what cannot be found in the deep.
+ * The id must be named — it is the version ID or lineageId of the kennel to update.
  */
 export interface ISaveKennelInput extends IUpdateInput {
     id: string;
@@ -31,10 +31,8 @@ export interface ISaveKennelInput extends IUpdateInput {
 }
 
 /**
- * The KennelController — a specialised captain for IKennelConfig entities.
- * Manages the assembly of hounds into kennels and oversees their configuration.
- * Corporeal laws are unwritten: the kennel's dogIds live as JSON strings in the deep
- * and must be unshackled upon retrieval.
+ * The KennelController — a versioned captain for IKennelConfig entities.
+ * Each save creates a new version row; the lineageId (user-chosen kennel ID) stays stable.
  */
 export class KennelController extends AbstractController<IKennelConfig> {
     private readonly KENNEL_TYPE = 'KennelConfig';
@@ -44,15 +42,17 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Raises a new kennel from the abyss — brands it with an ID and commits it to the store.
-     * If no id is given, one is forged from the timestamp, like a grave-marker on the ocean floor.
-     * We verify after saving that the kennel truly arrived — the void sometimes swallows things whole.
+     * Raises a new kennel from the abyss.
+     * The user-chosen id (e.g. "my-kennel") becomes the lineageId.
+     * A fresh GUID is forged as the version id (first incarnation).
      */
     async create(input: ICreateKennelInput): Promise<IControllerResponse<IKennelConfig>> {
         try {
-            const id = input.id || `kennel-${Date.now()}`;
+            const lineageId = input.id || `kennel-${Date.now()}`;
+            const versionId = generateVersionId();
+
             const config: IKennelConfig = {
-                id,
+                id: versionId,
                 name: input.name || undefined,
                 description: input.description || undefined,
                 emoji: input.emoji?.trim() || undefined,
@@ -61,12 +61,13 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 updatedAt: new Date()
             };
 
-            console.log(`[KennelController.create] Erstelle neue Kennel-Config: ${id}`);
-            console.log(`[KennelController.create] Config:`, JSON.stringify(config, null, 2));
+            console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}`);
 
             await this.store.save({
-                id,
+                id: versionId,
                 type: this.KENNEL_TYPE,
+                lineageId,
+                parentId: null,
                 name: config.name,
                 description: config.description,
                 emoji: config.emoji,
@@ -77,19 +78,14 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 updatedAt: config.updatedAt?.toISOString()
             });
 
-            // Verify the kennel was truly stored — trust nothing that has not been confirmed.
-            const saved = await this.store.findByType(this.KENNEL_TYPE);
-            const found = saved.find((n: any) => n.id === id);
-            if (!found) {
-                console.error(`[KennelController.create] FEHLER: Kennel-Config ${id} wurde nicht in DB gefunden nach dem Speichern!`);
-                return { ok: false, error: 'Kennel-Config wurde nicht gespeichert' };
-            }
+            // Attach lineageId to the returned config so callers can reference the kennel stably.
+            const result = { ...config, lineageId } as any;
 
-            console.log(`[KennelController.create] Erfolgreich gespeichert: ${id}`);
+            console.log(`[KennelController.create] Erfolgreich gespeichert: lineageId=${lineageId}`);
             return {
                 ok: true,
-                id,
-                data: config
+                id: lineageId,
+                data: result
             };
         } catch (error) {
             console.error('[KennelController.create] Fehler:', error);
@@ -98,9 +94,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Updates an existing kennel — merges the new cargo with whatever already sleeps in the deep.
-     * Fields not provided in the input are inherited from the existing config.
-     * The updatedAt is always refreshed — the kennel's last voyage is always recorded.
+     * Updates an existing kennel — each save breeds a new version row.
+     * The old version remains in the deep, preserved like a barnacled wreck.
+     * input.id can be a lineageId (resolves to latest) or a version GUID (exact version).
      */
     async save(input: ISaveKennelInput): Promise<IControllerResponse<IKennelConfig>> {
         try {
@@ -108,51 +104,66 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 return { ok: false, error: 'id is required' };
             }
 
-            // Seek the existing kennel first — what slumbers below must not be lost.
-            let existing: IKennelConfig | null = null;
-            const existingData = await this.store.load(input.id);
-            if (existingData) {
-                existing = this.parseEntity(existingData);
+            // Resolve the existing kennel — by version ID or lineageId.
+            const existing = await this.resolveKennel(input.id);
+            if (!existing) {
+                return { ok: false, error: `Kennel mit ID ${input.id} nicht gefunden` };
             }
 
             // Merge new cargo with what was already in the hold.
-            // An empty emoji string is treated as removal — the ship sails under no flag.
             const config: IKennelConfig = {
-                id: input.id,
-                name: input.name !== undefined ? input.name : (existing?.name || undefined),
-                description: input.description !== undefined ? input.description : (existing?.description || undefined),
+                id: existing.id, // will be replaced by new versionId
+                name: input.name !== undefined ? input.name : (existing.name || undefined),
+                description: input.description !== undefined ? input.description : (existing.description || undefined),
                 emoji:
                     input.emoji !== undefined
                         ? (input.emoji.trim() === '' ? undefined : input.emoji.trim())
-                        : (existing?.emoji || undefined),
-                dogIds: input.dogIds !== undefined ? input.dogIds : (existing?.dogIds || []),
-                defaultQuery: input.defaultQuery !== undefined ? input.defaultQuery : (existing?.defaultQuery || undefined),
-                defaultBody: input.defaultBody !== undefined ? input.defaultBody : (existing?.defaultBody || undefined),
-                createdAt: existing?.createdAt || new Date(),
+                        : (existing.emoji || undefined),
+                dogIds: input.dogIds !== undefined ? input.dogIds : (existing.dogIds || []),
+                defaultQuery: input.defaultQuery !== undefined ? input.defaultQuery : (existing.defaultQuery || undefined),
+                defaultBody: input.defaultBody !== undefined ? input.defaultBody : (existing.defaultBody || undefined),
+                createdAt: existing.createdAt || new Date(),
                 updatedAt: new Date()
             };
 
-            console.log(`[KennelController.save] Speichere Kennel-Config: ${input.id}`);
-            console.log(`[KennelController.save] Config:`, JSON.stringify(config, null, 2));
+            // Check if content actually changed — spare the deep from phantom versions.
+            if (!this.hasContentChanged(existing, config)) {
+                return {
+                    ok: true,
+                    id: (existing as any).lineageId || input.id,
+                    data: existing
+                };
+            }
+
+            // New incarnation — forge a new version GUID.
+            const newVersionId = generateVersionId();
+            const lineageId = (existing as any).lineageId || input.id;
+            const parentId = existing.id; // The ancestor from which this incarnation was born
+
+            console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}`);
 
             await this.store.save({
-                id: input.id,
+                id: newVersionId,
                 type: this.KENNEL_TYPE,
+                lineageId,
+                parentId,
                 name: config.name,
                 description: config.description,
                 emoji: config.emoji,
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
-                createdAt: config.createdAt?.toISOString(),
+                createdAt: new Date().toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
 
-            console.log(`[KennelController.save] Erfolgreich gespeichert: ${input.id}`);
+            const result = { ...config, id: newVersionId, lineageId } as any;
+
+            console.log(`[KennelController.save] Erfolgreich gespeichert: ${newVersionId}`);
             return {
                 ok: true,
-                id: input.id,
-                data: config
+                id: lineageId,
+                data: result
             };
         } catch (error) {
             console.error('[KennelController.save] Fehler:', error);
@@ -161,39 +172,102 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
-     * Overrides getById — ensures parseEntity is called with the correct kennel payload.
-     * KennelConfig rows do not carry serializedDogConfig as their primary form.
+     * Compare kennel configs — if content is identical, no new version shall be born.
+     */
+    private hasContentChanged(old: IKennelConfig, next: IKennelConfig): boolean {
+        const contentKeys: (keyof IKennelConfig)[] = ['name', 'description', 'emoji', 'dogIds', 'defaultQuery', 'defaultBody'];
+        for (const key of contentKeys) {
+            if (JSON.stringify(old[key]) !== JSON.stringify(next[key])) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Resolves a kennel by version ID or lineageId.
+     * First tries exact match (version GUID), then resolves as lineageId (latest version).
+     */
+    private async resolveKennel(id: string): Promise<IKennelConfig | null> {
+        // First: try exact match by version ID.
+        const exactData = await this.store.load(id);
+        if (exactData) {
+            const parsed = this.parseEntity(exactData);
+            // Verify it's actually a KennelConfig (not a dog with the same ID)
+            if (exactData.type === this.KENNEL_TYPE || exactData.name !== undefined || exactData.dogIds !== undefined) {
+                return parsed;
+            }
+        }
+
+        // Second: treat as lineageId — find the latest version of this kennel.
+        const allKennels = await this.store.findByType(this.KENNEL_TYPE);
+        const lineageRows = allKennels
+            .filter((r: any) => r.lineageId === id)
+            .sort((a: any, b: any) => {
+                const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return bTime - aTime; // Newest first
+            });
+
+        if (lineageRows.length > 0) {
+            const row = lineageRows[0];
+            const parsed = this.parseEntity(row);
+            if (row.id) parsed.id = row.id;
+            return parsed;
+        }
+
+        return null;
+    }
+
+    /**
+     * Overrides getById — uses 2-stage resolution: version GUID first, then lineageId → latest.
      */
     async getById(id: string): Promise<IControllerResponse<IKennelConfig | null>> {
         try {
-            const data = await this.store.load(id);
-            if (!data) {
-                return { ok: false, error: `Entity mit ID ${id} nicht gefunden`, data: null };
+            const resolved = await this.resolveKennel(id);
+            if (!resolved) {
+                return { ok: false, error: `Kennel mit ID ${id} nicht gefunden`, data: null };
             }
-            const parsed = this.parseEntity(data);
-            return { ok: true, data: parsed };
+            return { ok: true, data: resolved };
         } catch (error) {
             return { ok: false, error: String(error), data: null };
         }
     }
 
     /**
-     * Overrides list() — KennelConfig rows are parsed directly, not via serializedDogConfig.
-     * Its heralds are the stars it fells: each kennel is returned in its full form.
+     * Lists all kennels — only the newest version per lineageId.
      */
     async list(filter?: Partial<IKennelConfig>): Promise<IControllerResponse<IKennelConfig[]>> {
         try {
             const results = await this.store.findByType(this.entityType);
-            let entities = results.map((r: any) => {
-                // Kennels sail as raw rows — not wrapped in serializedDogConfig.
+
+            // Parse all rows
+            const all = results.map((r: any) => {
                 const parsed = this.parseEntity(r);
-                if (r.id) {
-                    parsed.id = r.id;
-                }
+                if (r.id) parsed.id = r.id;
+                (parsed as any).lineageId = r.lineageId;
+                (parsed as any)._createdAt = r.createdAt;
                 return parsed;
             });
 
-            // Apply the filter if cast — only matching kennels shall surface.
+            // Deduplicate: keep only the newest per lineageId
+            const latest = new Map<string, IKennelConfig>();
+            for (const entity of all) {
+                const key = (entity as any).lineageId || entity.id;
+                const existing = latest.get(key);
+                if (!existing) {
+                    latest.set(key, entity);
+                } else {
+                    const eTime = (existing as any)._createdAt ? new Date((existing as any)._createdAt).getTime() : 0;
+                    const nTime = (entity as any)._createdAt ? new Date((entity as any)._createdAt).getTime() : 0;
+                    if (nTime > eTime) {
+                        latest.set(key, entity);
+                    }
+                }
+            }
+
+            let entities = Array.from(latest.values());
+            entities.forEach(e => delete (e as any)._createdAt);
+
+            // Apply the filter if cast.
             if (filter) {
                 entities = entities.filter((entity: IKennelConfig) => {
                     return Object.keys(filter).every(key => {
@@ -209,18 +283,54 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Also override listLatest — same as list(), returns only newest per lineageId.
+     */
+    async listLatest(): Promise<IControllerResponse<IKennelConfig[]>> {
+        return this.list();
+    }
+
+    /**
+     * Summon all versions of a kennel — every incarnation, newest first.
+     * The id can be a lineageId or a version GUID (resolves to lineageId first).
+     */
+    async getVersions(lineageIdOrVersionId: string): Promise<Array<{ id: string; version: number; config: any; parentId?: string | null; createdAt?: Date }>> {
+        // First try as lineageId directly.
+        let versions = await this.store.findAllVersions(this.entityType, lineageIdOrVersionId);
+
+        // If nothing found, try loading by version ID to discover the lineageId.
+        if (versions.length === 0) {
+            const single = await this.store.load(lineageIdOrVersionId);
+            if (single) {
+                const lineageId = single.lineageId;
+                if (lineageId) {
+                    versions = await this.store.findAllVersions(this.entityType, lineageId);
+                }
+            }
+        }
+
+        return versions.map(v => {
+            const parsed = this.parseEntity(v);
+            return {
+                id: v.id,
+                version: 0,
+                config: parsed,
+                parentId: v.parentId ?? null,
+                createdAt: v.createdAt ?? undefined,
+            };
+        });
+    }
+
+    /**
      * Parses a raw store payload into an IKennelConfig.
      * The dogIds, defaultQuery, and defaultBody are JSON strings in the deep —
      * they must be unshackled before they can be used by the crew.
-     * If parsing fails, the field defaults to an empty hold.
      */
     protected parseEntity(data: any): IKennelConfig {
-        // Without an object, no parsing can be done — the void gave us nothing.
         if (!data || typeof data !== 'object') {
             throw new Error('parseEntity: data ist kein Objekt');
         }
 
-        // Unshackle dogIds from its JSON-string prison — it must be an array of hound names.
+        // Unshackle dogIds from its JSON-string prison.
         let dogIds: string[] = [];
         if (data.dogIds !== null && data.dogIds !== undefined) {
             if (typeof data.dogIds === 'string') {
@@ -229,7 +339,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                         const parsed = JSON.parse(data.dogIds);
                         dogIds = Array.isArray(parsed) ? parsed : [];
                     } catch (e) {
-                        dogIds = []; // The JSON was corrupted — sail on with an empty pack.
+                        dogIds = [];
                     }
                 }
             } else if (Array.isArray(data.dogIds)) {
@@ -237,7 +347,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             }
         }
 
-        // Unshackle defaultQuery — the query parameters the kennel carries by default.
+        // Unshackle defaultQuery.
         let defaultQuery: Record<string, string> | undefined = undefined;
         if (data.defaultQuery) {
             if (typeof data.defaultQuery === 'string') {
@@ -251,7 +361,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             }
         }
 
-        // Unshackle defaultBody — the body the kennel carries when no other cargo is given.
+        // Unshackle defaultBody.
         let defaultBody: any = undefined;
         if (data.defaultBody !== null && data.defaultBody !== undefined) {
             if (typeof data.defaultBody === 'string') {
@@ -265,12 +375,11 @@ export class KennelController extends AbstractController<IKennelConfig> {
             }
         }
 
-        // Guarantee the pack is always an array — a kennel without dogs is still a kennel.
         if (!Array.isArray(dogIds)) {
             dogIds = [];
         }
 
-        return {
+        const result: any = {
             id: data.id,
             name: data.name,
             description: data.description,
@@ -280,7 +389,12 @@ export class KennelController extends AbstractController<IKennelConfig> {
             defaultBody,
             createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined
-        } as IKennelConfig;
+        };
+
+        // Preserve lineageId and parentId for version tracking.
+        if (data.lineageId) result.lineageId = data.lineageId;
+        if (data.parentId !== undefined) result.parentId = data.parentId;
+
+        return result as IKennelConfig;
     }
 }
-
