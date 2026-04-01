@@ -130,6 +130,18 @@
         </button>
         <a [routerLink]="['/kennel', kennelId]" class="btn-secondary">Zurück zum Kennel</a>
       </div>
+
+      @if (timelineVersions().length > 1) {
+        <div class="form-group">
+          <label>Versionen</label>
+          <app-version-timeline
+            [versions]="timelineVersions()"
+            [currentVersionId]="currentKennelVersionId"
+            [selectedVersionId]="selectedKennelVersionId()"
+            [pinnedVersionId]="null"
+            (versionSelected)="onKennelVersionSelected($event)" />
+        </div>
+      }
     </div>
   }
 </div>

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { IKennelConfig } from '../models/kennel-config.model';
+import { IKennelConfig, KennelVersionEntry } from '../models/kennel-config.model';
 import { Waves } from '../models/dog-entry.model';
 
 export interface ApiResponse<T = any> {
@@ -47,6 +47,10 @@ export class KennelService {
 
   delete(id: string): Observable<ApiResponse> {
     return this.http.delete<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
+  }
+
+  getVersions(id: string): Observable<ApiResponse<KennelVersionEntry[]>> {
+    return this.http.get<ApiResponse<KennelVersionEntry[]>>(`${this.baseUrl}/${encodeURIComponent(id)}/versions`);
   }
 
   run(id: string, body?: any, query?: Record<string, string>): Observable<RunResponse> {

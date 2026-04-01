@@ -226,9 +226,9 @@ export class DogToolbarComponent {
   }
 
   onDragStart(event: DragEvent, dog: DogInfo) {
-    // For serialized dogs, drag the dogId (lineage GUID) so the kennel tracks "latest".
-    const dragId = !isBaseDog(dog) && (dog as SerializedDogInfo).dogId
-      ? (dog as SerializedDogInfo).dogId!
+    // For serialized dogs, drag the lineageId (lineage GUID) so the kennel tracks "latest".
+    const dragId = !isBaseDog(dog) && (dog as SerializedDogInfo).lineageId
+      ? (dog as SerializedDogInfo).lineageId!
       : dog.id;
     event.dataTransfer?.setData('application/dog-id', dragId);
     if (event.dataTransfer) {

@@ -198,16 +198,16 @@ async function start() {
                     const kennelSet = new Set<string>(kennelDogIds);
                     for (const kid of kennelDogIds) {
                         if (kid.startsWith(BASE_DOG_PREFIX)) continue;
-                        // If this entry is a version-ID (pinned), resolve its dogId too.
+                        // If this entry is a version-ID (pinned), resolve its lineageId too.
                         const match = serializedDogs.find((d: any) => d.id === kid);
-                        if (match && (match as any).dogId) {
-                            kennelSet.add((match as any).dogId);
+                        if (match && (match as any).lineageId) {
+                            kennelSet.add((match as any).lineageId);
                         }
                     }
 
                     // Exclude dogs already in the kennel — the toolbar shows what can be ADDED.
                     serializedDogs = serializedDogs.filter((d: any) =>
-                        !kennelSet.has(d.id) && !kennelSet.has(d.dogId)
+                        !kennelSet.has(d.id) && !kennelSet.has(d.lineageId)
                     );
                     const filteredBase = baseDogsList.filter(d => !kennelSet.has(d.id));
                     res.status(200).json({ ok: true, data: [...filteredBase, ...serializedDogs] });

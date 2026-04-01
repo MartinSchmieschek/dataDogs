@@ -12,9 +12,9 @@ export function generateVersionId(): string {
 }
 
 /**
- * Forge a new dog ID — the lineage mark that binds all incarnations of one spirit.
+ * Forge a new lineage ID — the lineage mark that binds all incarnations of one spirit.
  * Arr, this GUID is shared across every branch and version of the same hound.
  */
-export function generateDogId(): string {
+export function generateLineageId(): string {
     return randomUUID();
 }

@@ -23,7 +23,7 @@ export type ReadTrackingEntry = {
 export type NodeEntry = {
     id: string;
     /** The lineage GUID — binds all incarnations of this spirit across branches */
-    dogId?: string;
+    lineageId?: string;
     /** The spirit's true name — changeable without breaking pacts */
     displayName?: string;
     name: string;
@@ -45,7 +45,7 @@ export type NodeEntry = {
     mimic: boolean;
     serializedDogConfig?: {
         theRun: string;
-        dogId?: string;
+        lineageId?: string;
         parentId?: string | null;
         displayName?: string;
         version?: number;
@@ -124,8 +124,8 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
 
             const nodeEntry = {
                 id: instanceId,
-                dogId: isSerialized
-                    ? (instance as SerializedDog<unknown>).dogId
+                lineageId: isSerialized
+                    ? (instance as SerializedDog<unknown>).lineageId
                     : undefined,
                 displayName: isSerialized
                     ? (instance as SerializedDog<unknown>).instanceConfig?.displayName
@@ -163,7 +163,7 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                 );
                 nodeEntry.serializedDogConfig = {
                     theRun: seDog.instanceConfig.theRun,
-                    dogId: seDog.instanceConfig.dogId,
+                    lineageId: seDog.instanceConfig.lineageId,
                     parentId: seDog.instanceConfig.parentId,
                     displayName: seDog.instanceConfig.displayName,
                     version: seDog.instanceConfig.version,

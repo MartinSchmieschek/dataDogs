@@ -1,7 +1,7 @@
 // The PrismaStore — our ship's hold, where all plundered data is locked away in the eldritch deep.
 // Carrion hordes trill their profane accord with eldritch plans:
 // this class is the sole keeper of persistence, and it answers to no one but Prisma.
-// Now the lineage branches like cursed coral — dogId binds incarnations, parentId traces ancestry.
+// Now the lineage branches like cursed coral — lineageId binds incarnations, parentId traces ancestry.
 import { PrismaClient } from '@prisma/client';
 import { IStore } from './IStore';
 import path from 'path';
@@ -38,8 +38,8 @@ export class PrismaStore implements IStore {
       type
     };
 
-    // The spirit's lineage marks — dogId, parentId, displayName sail as direct columns.
-    if (d.dogId !== undefined) updateData.dogId = d.dogId;
+    // The spirit's lineage marks — lineageId, parentId, displayName sail as direct columns.
+    if (d.lineageId !== undefined) updateData.lineageId = d.lineageId;
     if (d.parentId !== undefined) updateData.parentId = d.parentId;
     if (d.displayName !== undefined) updateData.displayName = d.displayName;
 
@@ -95,7 +95,7 @@ export class PrismaStore implements IStore {
         defaultQuery: row.defaultQuery,
         defaultBody: row.defaultBody,
         emoji: row.emoji,
-        dogId: row.dogId,
+        lineageId: row.lineageId,
         parentId: row.parentId,
         displayName: row.displayName,
         createdAt: row.createdAt,
@@ -124,7 +124,7 @@ export class PrismaStore implements IStore {
           defaultQuery: r.defaultQuery,
           defaultBody: r.defaultBody,
           emoji: r.emoji,
-          dogId: r.dogId,
+          lineageId: r.lineageId,
           parentId: r.parentId,
           displayName: r.displayName,
           createdAt: r.createdAt,
@@ -135,7 +135,7 @@ export class PrismaStore implements IStore {
       // SerializedDog returns its id, lineage marks, and its soul.
       return {
         id: r.id,
-        dogId: r.dogId,
+        lineageId: r.lineageId,
         parentId: r.parentId,
         displayName: r.displayName,
         createdAt: r.createdAt,
@@ -147,7 +147,7 @@ export class PrismaStore implements IStore {
   /**
    * From the many incarnations that drift through branching time, retrieve only the newest.
    * If IDs be given, each is resolved: first as a version ID (exact incarnation),
-   * then as a dogId (latest incarnation of that lineage by createdAt).
+   * then as a lineageId (latest incarnation of that lineage by createdAt).
    * If no IDs be given, the latest incarnation of every lineage surfaces.
    */
   public async findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<any>> {
@@ -168,9 +168,9 @@ export class PrismaStore implements IStore {
         continue;
       }
 
-      // Second: treat as dogId — summon the latest incarnation of that lineage.
+      // Second: treat as lineageId — summon the latest incarnation of that lineage.
       const lineageRows = rows
-        .filter((r: any) => r.dogId === requestedId)
+        .filter((r: any) => r.lineageId === requestedId)
         .sort((a: any, b: any) => {
           const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -202,36 +202,36 @@ export class PrismaStore implements IStore {
   /**
    * Sift through all rows and keep only the newest incarnation of each lineage.
    * Roiling, moaning: many incarnations lurk in the deep — only the strongest survives.
-   * Groups by dogId; fer rows without dogId, each stands alone.
+   * Groups by lineageId; fer rows without lineageId, each stands alone.
    */
   private getLatestVersionsForAll(rows: any[]): Array<{ id: string; serializedDogConfig: string }> {
-    const latestByDogId = new Map<string, any>();
+    const latestByLineageId = new Map<string, any>();
 
     rows.forEach((r: any) => {
-      // Resolve dogId: DB column first, then fall back to parsing the serialized config.
-      let dogId = r.dogId;
-      if (!dogId && r.serializedDogConfig) {
+      // Resolve lineageId: DB column first, then fall back to parsing the serialized config.
+      let lineageId = r.lineageId;
+      if (!lineageId && r.serializedDogConfig) {
         try {
           const cfg = typeof r.serializedDogConfig === 'string'
             ? JSON.parse(r.serializedDogConfig) : r.serializedDogConfig;
-          dogId = cfg.dogId;
+          lineageId = cfg.lineageId;
         } catch { /* void swallowed the config */ }
       }
-      const groupKey = dogId || r.id;
-      const existing = latestByDogId.get(groupKey);
+      const groupKey = lineageId || r.id;
+      const existing = latestByLineageId.get(groupKey);
       const rTime = r.createdAt ? new Date(r.createdAt).getTime() : 0;
 
       if (!existing) {
-        latestByDogId.set(groupKey, r);
+        latestByLineageId.set(groupKey, r);
       } else {
         const existingTime = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
         if (rTime > existingTime) {
-          latestByDogId.set(groupKey, r);
+          latestByLineageId.set(groupKey, r);
         }
       }
     });
 
-    return Array.from(latestByDogId.values()).map((r: any) => this.formatRow(r));
+    return Array.from(latestByLineageId.values()).map((r: any) => this.formatRow(r));
   }
 
   /**
@@ -241,7 +241,7 @@ export class PrismaStore implements IStore {
     return {
       id: r.id,
       type: r.type,
-      dogId: r.dogId ?? null,
+      lineageId: r.lineageId ?? null,
       parentId: r.parentId ?? null,
       displayName: r.displayName ?? null,
       name: r.name ?? null,
@@ -258,14 +258,14 @@ export class PrismaStore implements IStore {
 
   /**
    * Summon all incarnations of a spirit — every branch, every form, newest first by createdAt.
-   * The dogId binds them all, across branches and time.
+   * The lineageId binds them all, across branches and time.
    */
   public async findAllVersions(
     type: string,
-    dogId: string
+    lineageId: string
   ): Promise<Array<{ id: string; version: number; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>> {
-    // dogId is unique across types — no type filter needed, so MimicDog versions are found too.
-    const rows = await this.prisma.dog.findMany({ where: { dogId } });
+    // lineageId is unique across types — no type filter needed, so MimicDog versions are found too.
+    const rows = await this.prisma.dog.findMany({ where: { lineageId } });
 
     // Sort by createdAt — newest incarnation first, the past sinks into the deep.
     return rows
@@ -284,7 +284,7 @@ export class PrismaStore implements IStore {
           parentId: r.parentId ?? null,
           createdAt: r.createdAt ?? null,
           displayName: r.displayName ?? null,
-          dogId: r.dogId ?? null,
+          lineageId: r.lineageId ?? null,
         };
       })
       .sort((a, b) => {
@@ -296,12 +296,12 @@ export class PrismaStore implements IStore {
 
   /**
    * Summon all incarnations that share a lineage — every branch, every form.
-   * Arr, the dogId be the thread that binds them across time and branches.
+   * Arr, the lineageId be the thread that binds them across time and branches.
    */
-  public async findByDogId(
-    dogId: string
+  public async findByLineageId(
+    lineageId: string
   ): Promise<Array<{ id: string; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>> {
-    const rows = await this.prisma.dog.findMany({ where: { dogId } });
+    const rows = await this.prisma.dog.findMany({ where: { lineageId } });
 
     return rows
       .map((r: any) => ({
@@ -310,7 +310,7 @@ export class PrismaStore implements IStore {
         parentId: r.parentId ?? null,
         createdAt: r.createdAt ?? null,
         displayName: r.displayName ?? null,
-        dogId: r.dogId ?? null,
+        lineageId: r.lineageId ?? null,
       }))
       .sort((a, b) => {
         const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;

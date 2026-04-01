@@ -3,12 +3,12 @@
 // and the spirit's parentId traces the branch back to its ancestor.
 import { IStore } from '../../store/IStore';
 import { ISerializedDogConfig } from '@datadogs/core';
-import { generateVersionId, generateDogId } from './versioning';
+import { generateVersionId, generateLineageId } from './versioning';
 
 /**
  * Births a new ISerializedDogConfig from a save input — the branching rite.
- * If the spirit already exists, the new incarnation inherits its dogId and sets parentId
- * to the ancestor it was forged from. If it be a new spirit, a fresh dogId is conjured.
+ * If the spirit already exists, the new incarnation inherits its lineageId and sets parentId
+ * to the ancestor it was forged from. If it be a new spirit, a fresh lineageId is conjured.
  */
 export async function createNodeConfigFromSaveInput(
     input: {
@@ -44,7 +44,7 @@ export async function createNodeConfigFromSaveInput(
     }
 
     // Inherit the lineage mark from the ancestor, or forge a new one fer a firstborn
-    const dogId = existing?.dogId || serializedDogConfig?.dogId || generateDogId();
+    const lineageId = existing?.lineageId || serializedDogConfig?.lineageId || generateLineageId();
     const parentId = id; // The ancestor from which this incarnation was born
     const displayName = existing?.displayName || serializedDogConfig?.displayName || id;
 
@@ -53,7 +53,7 @@ export async function createNodeConfigFromSaveInput(
         config = {
             ...serializedDogConfig,
             theRun: tsCode,
-            dogId,
+            lineageId,
             parentId,
             displayName: serializedDogConfig.displayName || displayName,
             parentsRequired: parentsRequired || serializedDogConfig.parentsRequired || [],
@@ -62,10 +62,10 @@ export async function createNodeConfigFromSaveInput(
     } else {
         config = existing
             ? { ...existing }
-            : { theRun: '', parentsRequired: [], parentsOptional: [], dogId, parentId: null, displayName };
+            : { theRun: '', parentsRequired: [], parentsOptional: [], lineageId, parentId: null, displayName };
 
         config.theRun = tsCode;
-        config.dogId = dogId;
+        config.lineageId = lineageId;
         config.parentId = parentId;
         config.displayName = displayName;
         config.parentsRequired = parentsRequired || [];

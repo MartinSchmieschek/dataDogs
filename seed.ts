@@ -11,20 +11,20 @@ import { RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEv
  * Summons the first SerializedDog into the deep — a MimicDog wearing the LayoutInputProvider's form.
  * Through endless faces, countless forms, a multitude unfolds; this is the first face of many.
  * If the store already holds a hound, we leave it be — we do not disturb what already lurks in the dark.
- * Returns the dogId (lineage GUID) of the seeded hound so the kennel may reference it.
+ * Returns the lineageId (lineage GUID) of the seeded hound so the kennel may reference it.
  */
 export async function seedSerializedDog(nodesStore: IStore): Promise<string | null> {
     const nodeSeeds = await nodesStore.findByType(SerializedDog.name);
     if (!nodeSeeds || nodeSeeds.length === 0) {
         // Forge the spirit's identity — a GUID for the incarnation, a GUID for the lineage.
         const versionId = randomUUID();
-        const dogId = randomUUID();
+        const lineageId = randomUUID();
 
         // The first mimic — it imitates LayoutInputProvider and hunts recipes from the eldritch RandomDogs.
         // Corporeal laws are unwritten as suns and love retreat: it borrows another's form to live.
         const seedCfg: IMimicDogConfig = {
             id: versionId,
-            dogId,
+            lineageId,
             parentId: null,
             displayName: 'Seed Serialized 1',
             imitates: 'LayoutInputProvider',
@@ -43,22 +43,22 @@ return {
         await nodesStore.save({
             id: versionId,
             type: SerializedDog.name,
-            dogId,
+            lineageId,
             parentId: null,
             displayName: 'Seed Serialized 1',
             serializedDogConfig: JSON.stringify(seedCfg),
             createdAt: new Date(),
         });
-        console.log(`✅ Seeded initial SerializedDog into DB (dogId: ${dogId})`);
-        return dogId;
+        console.log(`✅ Seeded initial SerializedDog into DB (lineageId: ${lineageId})`);
+        return lineageId;
     }
 
-    // If a hound already lurks, extract its dogId for the kennel manifest.
+    // If a hound already lurks, extract its lineageId for the kennel manifest.
     try {
         const config = typeof nodeSeeds[0].serializedDogConfig === 'string'
             ? JSON.parse(nodeSeeds[0].serializedDogConfig)
             : nodeSeeds[0].serializedDogConfig;
-        return config.dogId || (nodeSeeds[0] as any).dogId || null;
+        return config.lineageId || (nodeSeeds[0] as any).lineageId || null;
     } catch {
         return null;
     }
@@ -69,7 +69,7 @@ return {
  * To cosmic madness laws submit, though stalwart minds entreat; every dog finds its kennel.
  * If a kennel already prowls the store, we disturb it not — the void remembers what has been.
  */
-export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string | null): Promise<void> {
+export async function seedKennelConfig(kennelsStore: IStore, seedLineageId: string | null): Promise<void> {
     // The full roster of base hounds — born of the code, not the store.
     // Each is summoned fresh upon every run, like stars that fell and rose again.
     const allBaseDogClasses = [
@@ -85,35 +85,29 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
 
     const kennelSeeds = await kennelsStore.findByType('KennelConfig');
     if (!kennelSeeds || kennelSeeds.length === 0) {
-        // The kennel references the dogId (lineage GUID), not a specific version —
+        // The kennel references the lineageId (lineage GUID), not a specific version —
         // so it always summons the latest incarnation from the branching tree.
         const dogIds = [
-            ...(seedDogId ? [seedDogId] : []),
+            ...(seedLineageId ? [seedLineageId] : []),
             ...allBaseDogs.map(dog => BASE_DOG_PREFIX + dog.name)
         ];
 
-        const defaultKennelConfig: IKennelConfig = {
-            id: 'default-kennel',
+        // Versioned kennel: lineageId is the stable "default-kennel", id is a GUID for this version.
+        const versionId = randomUUID();
+        const kennelLineageId = 'default-kennel';
+
+        await kennelsStore.save({
+            id: versionId,
+            type: 'KennelConfig',
+            lineageId: kennelLineageId,
+            parentId: null,
             name: 'Default Kennel',
             description: 'Standard-Kennel mit allen verfügbaren Dogs',
             dogIds,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        };
-
-        // Bind the dogIds to the abyss as a JSON string — the store speaks only in primitive tongues.
-        await kennelsStore.save({
-            id: defaultKennelConfig.id,
-            type: 'KennelConfig',
-            name: defaultKennelConfig.name,
-            description: defaultKennelConfig.description,
-            dogIds: defaultKennelConfig.dogIds,
-            defaultQuery: defaultKennelConfig.defaultQuery ? JSON.stringify(defaultKennelConfig.defaultQuery) : undefined,
-            defaultBody: defaultKennelConfig.defaultBody ? JSON.stringify(defaultKennelConfig.defaultBody) : undefined,
-            createdAt: defaultKennelConfig.createdAt?.toISOString(),
-            updatedAt: defaultKennelConfig.updatedAt?.toISOString()
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         });
-        console.log('✅ Seeded initial Kennel-Config into DB');
+        console.log(`✅ Seeded initial Kennel-Config into DB (lineageId: ${kennelLineageId})`);
     }
 }
 
@@ -122,8 +116,8 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
  * In luminous space, blackened stars must be seeded before the hunt can begin.
  */
 export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
-    const seedDogId = await seedSerializedDog(nodesStore);
-    await seedKennelConfig(kennelsStore, seedDogId);
+    const seedLineageId = await seedSerializedDog(nodesStore);
+    await seedKennelConfig(kennelsStore, seedLineageId);
 }
 
 /**

@@ -112,7 +112,7 @@ export class ConfigRouteHandler {
                 return;
             }
 
-            // For versioned entities (nodes), return only the latest incarnation per dogId.
+            // For versioned entities (nodes), return only the latest incarnation per lineageId.
             console.log(`[ConfigRouteHandler.handleList] subpath=${subpath}, calling listLatest()`);
             const result = await controller.listLatest();
             if (result.ok) {
@@ -174,7 +174,7 @@ export class ConfigRouteHandler {
                 const displayName = input.displayName || input.baseId || `node-${Date.now()}`;
                 const tsCode = input.tsCode || input.theRun || '';
 
-                // Repack into ISerializedDogConfig format — the controller forges GUIDs fer id and dogId.
+                // Repack into ISerializedDogConfig format — the controller forges GUIDs fer id and lineageId.
                 input = {
                     displayName,
                     theRun: tsCode,
@@ -236,7 +236,7 @@ export class ConfigRouteHandler {
                 res.status(200).json({
                     ok: true,
                     id: result.id,
-                    dogId: (result.data as any)?.dogId,
+                    lineageId: (result.data as any)?.lineageId,
                     displayName: (result.data as any)?.displayName,
                 });
             } else {
@@ -304,7 +304,7 @@ export class ConfigRouteHandler {
 
     /**
      * Handles PATCH /api/:subpath/:id/rename — changes the displayName across all incarnations.
-     * The id is the dogId (lineage GUID). Every version sharing this dogId gets the new name.
+     * The id is the lineageId (lineage GUID). Every version sharing this lineageId gets the new name.
      */
     private async handleRename(req: Request, res: Response): Promise<void> {
         try {
@@ -332,7 +332,7 @@ export class ConfigRouteHandler {
 
     /**
      * Handles GET /api/:subpath/:id/versions — summons all incarnations of a spirit across branches.
-     * The id is treated as a dogId (lineage GUID) — all incarnations of that lineage are returned.
+     * The id is treated as a lineageId (lineage GUID) — all incarnations of that lineage are returned.
      * To cosmic forms from tangent planes we end as we began: all incarnations preserved in the deep.
      */
     private async handleGetVersions(req: Request, res: Response): Promise<void> {
@@ -346,7 +346,7 @@ export class ConfigRouteHandler {
                 return;
             }
 
-            // The id is the dogId — the lineage GUID that binds all incarnations across branches.
+            // The id is the lineageId — the lineage GUID that binds all incarnations across branches.
             const versions = await controller.getVersions(id);
             res.status(200).json({ ok: true, data: versions });
         } catch (e) {

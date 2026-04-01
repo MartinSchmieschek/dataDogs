@@ -7,7 +7,7 @@ export interface ReadTrackingEntry {
 
 export interface DogEntry {
   id: string;
-  dogId?: string;
+  lineageId?: string;
   displayName?: string;
   name: string;
   icon?: string;
@@ -25,7 +25,7 @@ export interface DogEntry {
   mimic: boolean;
   serializedDogConfig?: {
     theRun: string;
-    dogId?: string;
+    lineageId?: string;
     parentId?: string | null;
     displayName?: string;
     version?: number;

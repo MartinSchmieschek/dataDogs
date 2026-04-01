@@ -45,9 +45,9 @@
               </div>
               <div class="kennel-text">
                 <h3 class="kennel-title">
-                  <a [routerLink]="['/kennel', kennel.id]">{{ kennel.name || kennel.id }}</a>
+                  <a [routerLink]="['/kennel', kennelRef(kennel)]">{{ kennel.name || kennelRef(kennel) }}</a>
                 </h3>
-                <span class="kennel-id-badge">ID: {{ kennel.id }}</span>
+                <span class="kennel-id-badge">ID: {{ kennelRef(kennel) }}</span>
                 @if (kennel.description) {
                   <p class="kennel-desc">{{ kennel.description }}</p>
                 }
