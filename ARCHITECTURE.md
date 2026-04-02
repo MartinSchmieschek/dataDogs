@@ -482,7 +482,7 @@ flowchart LR
 
 ## Version Management — each save, another throat
 
-**Fass** is the **roil**: every save of a SerializedDog can birth a new version — **my-node-v2** screaming beside **my-node-v1**. Nothing is erased; the store only accumulates. Madness, but bounded by IDs and integers.
+**Fass** is the **roil**: every save of a SerializedDog or Kennel births a new version — a fresh GUID beside the old. Nothing is erased; the store only accumulates. Both Dogs and Kennels share the same branching model: `lineageId` binds all incarnations, `parentId` traces ancestry, `id` is the unique version GUID. The UI's version-timeline lets you travel through the tree — for Dogs with pinning, for Kennels without.
 
 ### How Versions are Managed
 
@@ -540,9 +540,13 @@ interface IHuntingSeason {
 
 ### IKennelConfig
 
+Kennels are versioned: every save breeds a new incarnation. The `lineageId` is the stable identifier (e.g. `"my-kennel"`), the `id` is a GUID per version. `parentId` traces the ancestry.
+
 ```typescript
 interface IKennelConfig {
-    id: string;
+    id: string;                                 // Version GUID (per incarnation)
+    lineageId?: string;                         // Stable kennel ID (e.g. "my-kennel")
+    parentId?: string | null;                   // Ancestor version GUID
     name?: string;
     description?: string;
     dogIds: string[];                           // Array of dog IDs
@@ -557,9 +561,10 @@ interface IKennelConfig {
 
 ```typescript
 interface ISerializedDogConfig {
-    id: string;
+    id: string;                                 // Version GUID
+    lineageId?: string;                         // Lineage GUID (binds all versions)
+    parentId?: string | null;                   // Ancestor version GUID
     theRun: string;                             // TypeScript code as string
-    version: number;                            // Version number
     parentsRequired?: string[];                 // Required parent IDs
     parentsOptional?: string[];                 // Optional parent IDs
 }

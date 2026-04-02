@@ -53,14 +53,14 @@ const PY = 12;
               <title>{{ tip(n) }}</title>
             </circle>
             <!-- 📍 marker on the node the kennel actually uses -->
-            @if (n.v.id === pinnedVersionId) {
+            @if (showPinControls && n.v.id === pinnedVersionId) {
               <text [attr.x]="n.x" [attr.y]="n.y - r(n) - 4" class="marker clickable"
                 (click)="unpin($event)">📍</text>
             }
           }
 
           <!-- pin/unpin toggle on selected node -->
-          @if (selNode) {
+          @if (showPinControls && selNode) {
             <text
               [attr.x]="selNode.x"
               [attr.y]="selNode.y - r(selNode) - 4"
@@ -102,6 +102,8 @@ export class VersionTimelineComponent implements OnDestroy, OnChanges {
   @Input() currentVersionId = '';
   @Input() selectedVersionId: string | null = null;
   @Input() pinnedVersionId: string | null = null;
+  /** Whether to show pin/unpin controls. Set to false for kennel timelines. */
+  @Input() showPinControls = true;
   @Output() versionSelected = new EventEmitter<string>();
   @Output() pinToggled = new EventEmitter<string | null>();
 

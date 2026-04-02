@@ -22,6 +22,18 @@
     </div>
   </header>
 
+  @if (timelineVersions().length > 1) {
+    <div class="kennel-version-bar">
+      <app-version-timeline
+        [versions]="timelineVersions()"
+        [currentVersionId]="currentKennelVersionId"
+        [selectedVersionId]="selectedKennelVersionId()"
+        [pinnedVersionId]="null"
+        [showPinControls]="false"
+        (versionSelected)="onKennelVersionSelected($event)" />
+    </div>
+  }
+
   @if (paramsOpen) {
     <div class="params-panel">
       <div class="params-section">

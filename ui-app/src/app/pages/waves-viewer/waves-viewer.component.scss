@@ -21,6 +21,12 @@
   }
 }
 
+.kennel-version-bar {
+  border-bottom: 1px solid #222;
+  background: #0a0a0a;
+  flex-shrink: 0;
+}
+
 .back-link {
   color: #0066cc;
   text-decoration: none;
