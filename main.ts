@@ -26,6 +26,7 @@ import {
     NearbyLandmarksPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
+import { DbNearbyRetriever, DbNearbyQueryPact } from '@datadogs/dogs-db';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
@@ -75,6 +76,7 @@ async function start() {
         OsmLandmarksRetriever,
         HueBridgeEnvRetriever,
         HuePlaygroundRetriever,
+        DbNearbyRetriever,
     ];
 
     // Breathe life into each hound — from tangent planes they rise, ready to hunt the data seas.
@@ -90,7 +92,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, DbNearbyQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);

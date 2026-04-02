@@ -34,7 +34,8 @@
       "@datadogs/dogs-geo": ["packages/dogs-geo/src/index.ts"],
       "@datadogs/dogs-warframe": ["packages/dogs-warframe/src/index.ts"],
       "@datadogs/dogs-hue": ["packages/dogs-hue/src/index.ts"],
-      "@datadogs/dogs-talking": ["packages/dogs-talking/src/index.ts"]
+      "@datadogs/dogs-talking": ["packages/dogs-talking/src/index.ts"],
+      "@datadogs/dogs-db": ["packages/dogs-db/src/index.ts"]
     },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

@@ -6,6 +6,7 @@ import { IStore } from './store/IStore';
 import { SerializedDog, IKennelConfig, BASE_DOG_PREFIX, type IMimicDogConfig } from '@datadogs/core';
 import { TalkingDog } from '@datadogs/dogs-talking';
 import { RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever } from '@datadogs/dogs-demo';
+import { DbNearbyRetriever } from '@datadogs/dogs-db';
 
 /**
  * Summons the first SerializedDog into the deep — a MimicDog wearing the LayoutInputProvider's form.
@@ -118,12 +119,88 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
 }
 
 /**
+ * Raises the Deutsche Bahn kennel from the iron abyss — a gathering place
+ * for hounds that sniff out nearby stations and departures.
+ * The MimicDog maps QueryRetriever params (lat, lng, distance, results)
+ * into the DbNearbyQueryPact's shape so the DbNearbyRetriever may feast.
+ */
+export async function seedDbKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'db-nearby-kennel';
+    const existing = await kennelsStore.load(kennelId);
+    if (existing) return; // Already seeded, disturb it not
+
+    // Forge the MimicDog that maps query params to DbNearbyQuery
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        dogId: mimicDogId,
+        parentId: null,
+        displayName: 'DB GPS Query Mapper',
+        imitates: 'DbNearbyQueryProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    lat: QueryRetriever.lat,
+    lng: QueryRetriever.lng,
+    distance: QueryRetriever.distance || "1000",
+    results: QueryRetriever.results || "8"
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        dogId: mimicDogId,
+        parentId: null,
+        displayName: 'DB GPS Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    // Raise the kennel: DbNearbyRetriever as lead, plus QueryRetriever and the MimicDog
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'DB Nearby',
+        description: 'Deutsche Bahn: Haltestellen und Abfahrten in der Naehe',
+        emoji: '\uD83D\uDE82',
+        dogIds: [
+            BASE_DOG_PREFIX + 'DbNearbyRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: { lat: '50.1109', lng: '8.6821' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await kennelsStore.save({
+        id: kennelConfig.id,
+        type: 'KennelConfig',
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultBody: undefined,
+        createdAt: kennelConfig.createdAt?.toISOString(),
+        updatedAt: kennelConfig.updatedAt?.toISOString(),
+    });
+
+    console.log(`\u2705 Seeded DB Nearby Kennel (kennelId: ${kennelId}, mimicDogId: ${mimicDogId})`);
+}
+
+/**
  * Performs all seeding rites in their proper order — first the hound, then the kennel.
  * In luminous space, blackened stars must be seeded before the hunt can begin.
  */
 export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const seedDogId = await seedSerializedDog(nodesStore);
     await seedKennelConfig(kennelsStore, seedDogId);
+    await seedDbKennel(nodesStore, kennelsStore);
 }
 
 /**
