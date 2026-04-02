@@ -208,6 +208,161 @@ Or skip the terminal -- the [UI](ui-app/README.md) does all of this with a few c
 
 ---
 
+## Creating a new BaseDog Package
+
+Every BaseDog lives in its own package under `packages/`. Follow these steps to add a new one.
+
+### 1. Scaffold the package
+
+```bash
+mkdir -p packages/dogs-mydog/src
+```
+
+Create three files:
+
+**`packages/dogs-mydog/package.json`**
+```json
+{
+  "name": "@datadogs/dogs-mydog",
+  "version": "0.1.0-alpha.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "private": true,
+  "dependencies": { "@datadogs/core": "file:../core" },
+  "peerDependencies": { "@datadogs/core": "0.1.0-alpha.1" },
+  "scripts": { "build": "tsc" },
+  "devDependencies": { "typescript": "^5.0.0" }
+}
+```
+
+**`packages/dogs-mydog/tsconfig.json`**
+```json
+{
+  "compilerOptions": {
+    "target": "es2016", "module": "commonjs", "lib": ["ES2020"],
+    "strict": true, "esModuleInterop": true, "skipLibCheck": true,
+    "moduleResolution": "node", "declaration": true,
+    "outDir": "./dist", "rootDir": "./src"
+  },
+  "include": ["src/**/*"]
+}
+```
+
+**`packages/dogs-mydog/src/index.ts`** — barrel export for all public symbols.
+
+### 2. Define a Pact (if the Dog needs input)
+
+A Pact declares _what data shape_ the Dog requires, without specifying _who provides it_. At runtime, a MimicDog or another Dog fulfills it.
+
+```typescript
+import { createPact } from "@datadogs/core";
+
+export interface MyDogQuery {
+    someParam: string;
+}
+
+export const MyDogQueryPact = createPact<MyDogQuery>(
+    "MyDogQueryProvider",
+    { fromSourceType: "MyDogQuery" }
+);
+```
+
+### 3. Write the Dog class
+
+Extend `Dog<YieldType>` and implement:
+
+| Member | Purpose |
+|---|---|
+| `get name()` | Return `MyRetriever.name` (the class name) |
+| `get icon()` | Return `getBaseDogIcon(MyRetriever.name)` |
+| `get required()` | Pact/Dog classes that must run before this Dog |
+| `get optional()` | Pact/Dog classes that are used if present |
+| `yieldCollectorFactory` | Async function that does the actual work |
+
+```typescript
+import { Dog, IHuntingDog, IHuntingSeason, getBaseDogIcon } from "@datadogs/core";
+import { MyDogQueryPact, type MyDogQuery } from "./pacts";
+
+export class MyRetriever extends Dog<MyResult> {
+    get name() { return MyRetriever.name; }
+    get icon() { return getBaseDogIcon(MyRetriever.name); }
+    get required() { return [MyDogQueryPact]; }
+    get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
+
+    protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<MyResult> => {
+        const queryDog = season.exhausted.find(d => this.matchesParent(MyDogQueryPact, d));
+        const query = (queryDog?.collected as MyDogQuery | undefined) ?? ({} as MyDogQuery);
+        // ... fetch data, transform, return
+    };
+}
+```
+
+### 4. Register in the platform
+
+**`packages/core/src/platform/baseDogIcons.ts`** — add an icon entry:
+```typescript
+MyRetriever: '🔮',
+```
+
+**`main.ts`** — three touches:
+```typescript
+import { MyRetriever, MyDogQueryPact } from '@datadogs/dogs-mydog';
+// add to allBaseDogClasses array:
+const allBaseDogClasses = [ ..., MyRetriever ];
+// add Pact to allPacts array:
+const allPacts = [ ..., MyDogQueryPact ];
+```
+
+### 5. Wire up the build
+
+**Root `tsconfig.json`** — add path mapping:
+```json
+"@datadogs/dogs-mydog": ["packages/dogs-mydog/src/index.ts"]
+```
+
+**Root `package.json`** — add dependency, build script, and typecheck:
+```json
+"dependencies": { "@datadogs/dogs-mydog": "file:packages/dogs-mydog" }
+"scripts": {
+  "build:dogs-mydog": "cd packages/dogs-mydog && npx tsc",
+  "build:dogs": "... && npm run build:dogs-mydog",
+  "typecheck:dogs": "... && cd ../dogs-mydog && npx tsc --noEmit"
+}
+```
+
+Then run `npm install` so the symlink in `node_modules/@datadogs/dogs-mydog` is created.
+
+### 6. Seed a Kennel (optional)
+
+In `seed.ts`, create a MimicDog that maps `QueryRetriever` params to your Pact, then a `KennelConfig` with `dogIds`:
+
+```typescript
+dogIds: [
+    BASE_DOG_PREFIX + 'MyRetriever',       // lead dog (1st = public response)
+    BASE_DOG_PREFIX + 'QueryRetriever',     // captures ?param=value from URL
+    mimicDogId,                              // MimicDog that fulfills MyDogQueryPact
+],
+defaultQuery: { someParam: 'defaultValue' },
+```
+
+The MimicDog's `theRun` maps QueryRetriever fields to your Pact interface:
+```typescript
+theRun: `return { someParam: QueryRetriever.someparam }`
+// Note: QueryRetriever lowercases all keys
+```
+
+### 7. Verify
+
+```bash
+npm run build:dogs-mydog          # compiles the package
+npx tsc --noEmit -p tsconfig.build.json  # typechecks the whole project
+npm start                         # server starts, seed runs, kennel is callable
+curl http://localhost:3000/my-kennel?someParam=test
+```
+
+---
+
 ## Development
 
 ### Startup Tests
@@ -221,7 +376,8 @@ See [Default Kennel seed](#default-kennel-seed-server-run-and-ui) under *Getting
 ### Project Structure
 
 ```
-main.ts                       Entry point
+main.ts                       Entry point, dog registration, pact registration
+seed.ts                       Database seeds (dogs + kennels)
 api/
   Controller.ts               Generic CRUD controller with versioning
   KennelController.ts         Kennel-specific controller
@@ -234,13 +390,20 @@ api/
 store/
   IStore.ts                   Store interface
   PrismaStore.ts              Prisma/SQLite implementation
+  prisma/schema.prisma        Database schema
 services/
   WavesConverter.ts           Converts execution results to Wave format
   TypeDefBuilder.ts           Generates TypeScript definitions for VM context
   CompilerCache.ts            Caches compiled TypeScript
   SwaggerGenerator.ts         Generates OpenAPI specs from Kennel runs
-dogs/                         BaseDog implementations (plugin-like)
-packages/core/                datadogs library (Dog, Kennel, Wave engine)
+packages/
+  core/                       datadogs library (Dog, Kennel, Wave engine, Pacts)
+  dogs-demo/                  Demo dogs (recipes, flags, random data)
+  dogs-geo/                   Geo dogs (routes, isochrones, OSM landmarks)
+  dogs-db/                    Public transport (nearby stops + departures via MOTIS)
+  dogs-hue/                   Philips Hue integration
+  dogs-talking/               TalkingDog (HTML rendering)
+  dogs-warframe/              Warframe API integration
 ui-app/                       Angular frontend (see ui-app/README.md)
 ```
 
