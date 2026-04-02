@@ -26,6 +26,12 @@ import {
     NearbyLandmarksPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
+import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
+import { WeatherRetriever, WeatherQueryPact } from '@datadogs/dogs-weather';
+import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-quality';
+import { GeocodingRetriever, GeocodingQueryPact } from '@datadogs/dogs-geocoding';
+import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
+import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
@@ -75,6 +81,12 @@ async function start() {
         OsmLandmarksRetriever,
         HueBridgeEnvRetriever,
         HuePlaygroundRetriever,
+        PublicTransportRetriever,
+        WeatherRetriever,
+        AirQualityRetriever,
+        GeocodingRetriever,
+        WikiNearbyRetriever,
+        SunRetriever,
     ];
 
     // Breathe life into each hound — from tangent planes they rise, ready to hunt the data seas.
@@ -90,7 +102,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);

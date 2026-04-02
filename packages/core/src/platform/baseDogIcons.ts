@@ -25,6 +25,12 @@ const BASE_DOG_ICONS: Record<string, string> = {
     OsmLandmarksRetriever: '\uD83C\uDFDB\uFE0F',
     HueBridgeEnvRetriever: '\uD83D\uDD10',
     HuePlaygroundRetriever: '\uD83D\uDCA1',
+    PublicTransportRetriever: '\uD83D\uDE8C',
+    WeatherRetriever: '\u26C5',
+    AirQualityRetriever: '\uD83C\uDF2B\uFE0F',
+    GeocodingRetriever: '\uD83D\uDCCD',
+    WikiNearbyRetriever: '\uD83D\uDCDA',
+    SunRetriever: '\u2600\uFE0F',
 };
 
 /** Look up a hound's sigil by its class name -- returns undefined if the hound be unmarked */
