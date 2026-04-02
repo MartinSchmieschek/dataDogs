@@ -34,8 +34,13 @@
       "@datadogs/dogs-geo": ["packages/dogs-geo/src/index.ts"],
       "@datadogs/dogs-warframe": ["packages/dogs-warframe/src/index.ts"],
       "@datadogs/dogs-hue": ["packages/dogs-hue/src/index.ts"],
-      "@datadogs/dogs-talking": ["packages/dogs-talking/src/index.ts"]
-    },
+      "@datadogs/dogs-talking": ["packages/dogs-talking/src/index.ts"],
+      "@datadogs/dogs-public-transport": ["packages/dogs-public-transport/src/index.ts"],
+      "@datadogs/dogs-weather": ["packages/dogs-weather/src/index.ts"],
+      "@datadogs/dogs-air-quality": ["packages/dogs-air-quality/src/index.ts"],
+      "@datadogs/dogs-geocoding": ["packages/dogs-geocoding/src/index.ts"],
+      "@datadogs/dogs-wikipedia": ["packages/dogs-wikipedia/src/index.ts"],
+      "@datadogs/dogs-sun": ["packages/dogs-sun/src/index.ts"]    },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */
     // "typeRoots": [],                                  /* Specify multiple folders that act like './node_modules/@types'. */

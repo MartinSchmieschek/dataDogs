@@ -622,12 +622,29 @@ flowchart LR
 
 ## Important Files — grimoire entries
 
-- **[main.ts](main.ts)** — Express gate, registry, routes, startup tests  
+### Core engine
+- **[main.ts](main.ts)** — Express gate, dog + pact registration, startup tests  
+- **[seed.ts](seed.ts)** — Database seeds (SerializedDogs, MimicDogs, KennelConfigs)  
 - **[packages/core/src/KennelRun.ts](packages/core/src/KennelRun.ts)** — fillKennel, autoMimic, orchestration  
 - **[packages/core/src/harverster.ts](packages/core/src/harverster.ts)** — SeasonRunner, waves  
 - **[packages/core/src/dogs/SerializedDog.ts](packages/core/src/dogs/SerializedDog.ts)** — VM, context, yield  
-- **[store/PrismaStore.ts](store/PrismaStore.ts)** — persistence, versions  
+- **[packages/core/src/dogs/createPact.ts](packages/core/src/dogs/createPact.ts)** — Pact factory  
+- **[packages/core/src/dogs/MimicDog.ts](packages/core/src/dogs/MimicDog.ts)** — Shapeshifter dogs  
 - **[packages/core/src/core/entities/abstractHuntingDog.ts](packages/core/src/core/entities/abstractHuntingDog.ts)** — Dog base, dependencies, read tracking  
+- **[packages/core/src/platform/baseDogIcons.ts](packages/core/src/platform/baseDogIcons.ts)** — Icon registry for all BaseDogs  
+- **[store/PrismaStore.ts](store/PrismaStore.ts)** — persistence, versions  
+
+### Dog packages
+- **[packages/dogs-demo/](packages/dogs-demo/)** — RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever  
+- **[packages/dogs-geo/](packages/dogs-geo/)** — BloodhoundRouteRetriever, BloodhoundIsochroneRetriever, OsmLandmarksRetriever  
+- **[packages/dogs-public-transport/](packages/dogs-public-transport/)** — PublicTransportRetriever (nearby stops + departures via MOTIS)  
+- **[packages/dogs-hue/](packages/dogs-hue/)** — HuePlaygroundRetriever, HueBridgeEnvRetriever  
+- **[packages/dogs-talking/](packages/dogs-talking/)** — TalkingDog (HTML rendering)  
+- **[packages/dogs-warframe/](packages/dogs-warframe/)** — WarframeAlertsRetriever  
+
+### Adding a new BaseDog package
+
+See [Creating a new BaseDog Package](README.md#creating-a-new-basedog-package) in the README for a step-by-step guide. In short: scaffold a package under `packages/`, extend `Dog<T>`, define a Pact if input is needed, register in `main.ts` + `baseDogIcons.ts`, wire the build in root `package.json` + `tsconfig.json`, run `npm install`, optionally seed a Kennel in `seed.ts`.  
 
 ---
 
