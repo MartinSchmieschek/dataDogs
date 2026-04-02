@@ -637,7 +637,7 @@ flowchart LR
 ### Dog packages
 - **[packages/dogs-demo/](packages/dogs-demo/)** — RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever  
 - **[packages/dogs-geo/](packages/dogs-geo/)** — BloodhoundRouteRetriever, BloodhoundIsochroneRetriever, OsmLandmarksRetriever  
-- **[packages/dogs-db/](packages/dogs-db/)** — PublicTransportRetriever (nearby stops + departures via MOTIS)  
+- **[packages/dogs-public-transport/](packages/dogs-public-transport/)** — PublicTransportRetriever (nearby stops + departures via MOTIS)  
 - **[packages/dogs-hue/](packages/dogs-hue/)** — HuePlaygroundRetriever, HueBridgeEnvRetriever  
 - **[packages/dogs-talking/](packages/dogs-talking/)** — TalkingDog (HTML rendering)  
 - **[packages/dogs-warframe/](packages/dogs-warframe/)** — WarframeAlertsRetriever  

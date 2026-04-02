@@ -61,4 +61,61 @@ Ideen, die noch reifen müssen. Kein fester Zeitplan.
 
 ---
 
-*Letztes Update: März 2026*
+## Kombinations-Kennels (API-gesteuert)
+
+Dogs können sich gegenseitig füttern — perfekt für LLMs und Automatisierung über die API. Alle Kennels sind über `GET /:kennelId?params` oder `POST /:kennelId` aufrufbar. Ein LLM kann die API nutzen, um Daten aus mehreren Dogs zu kombinieren:
+
+### Ideen für zusammengesetzte Kennels
+
+- **Geocoding + Weather + PublicTransport** — Adresse eingeben → GPS auflösen → Wetter + Abfahrten in einem Kennel. Drei Dogs in einer Pipeline, das Ergebnis ist ein vollständiger Standort-Überblick.
+- **Geocoding + Wikipedia + Landmarks** — "Was ist hier interessant?" → Adresse zu GPS → Wikipedia-Artikel + OSM-Landmarks in der Nähe.
+- **Weather + AirQuality + Sun** — Kombiniertes Umwelt-Dashboard per GPS: Wetter, Luftqualität, Pollenflug, UV-Index, Sonnenzeiten.
+
+### Anleitung für LLMs
+
+Ein LLM kann die dataDogs API direkt nutzen. Jeder Kennel hat einen eigenen Endpoint:
+
+```
+GET /weather-kennel?lat=50.1109&lng=8.6821
+GET /air-quality-kennel?lat=50.1109&lng=8.6821
+GET /public-transport-kennel?lat=50.1109&lng=8.6821
+GET /sun-kennel?lat=50.1109&lng=8.6821
+GET /wiki-nearby-kennel?lat=50.1109&lng=8.6821&radius=1000
+GET /geocoding-kennel?address=Hauptwache+Frankfurt
+GET /geocoding-kennel?lat=50.1109&lng=8.6821&address=
+```
+
+Workflow für ein LLM:
+1. Nutzer gibt eine Adresse → `GET /geocoding-kennel?address=...` → bekommt lat/lng
+2. Mit lat/lng parallel abfragen: Weather, PublicTransport, AirQuality, Wikipedia
+3. Ergebnisse zusammenfassen und dem Nutzer präsentieren
+
+Zum Erstellen neuer Kennels über die API:
+```bash
+# Neuen Kennel anlegen
+curl -X POST http://localhost:3000/api/kennels \
+  -H "Content-Type: application/json" \
+  -d '{"id": "my-combo", "name": "Standort-Dashboard", "dogIds": ["base:WeatherRetriever", "base:AirQualityRetriever", "base:SunRetriever"]}'
+
+# Kennel ausführen
+curl http://localhost:3000/my-combo?lat=50.1109&lng=8.6821
+```
+
+---
+
+## Changelog — Neue Dogs (April 2026)
+
+| Package | Dog | Kennel-ID | API | Beschreibung |
+|---|---|---|---|---|
+| `dogs-public-transport` | PublicTransportRetriever | `public-transport-kennel` | MOTIS | Haltestellen + Abfahrten (Bus, Tram, U-Bahn, S-Bahn, Zug) |
+| `dogs-weather` | WeatherRetriever | `weather-kennel` | Open-Meteo | Aktuelles Wetter + 48h Vorhersage, optional nach Uhrzeit |
+| `dogs-air-quality` | AirQualityRetriever | `air-quality-kennel` | Open-Meteo AQ | Feinstaub, Ozon, NO2, Pollenflug |
+| `dogs-geocoding` | GeocodingRetriever | `geocoding-kennel` | Nominatim/OSM | Adresse → GPS und GPS → Adresse |
+| `dogs-wikipedia` | WikiNearbyRetriever | `wiki-nearby-kennel` | Wikipedia API | Artikel über Orte in der Nähe mit Summary + Thumbnail |
+| `dogs-sun` | SunRetriever | `sun-kennel` | Open-Meteo | Sonnenauf-/untergang, Tageslänge, UV-Index, 7-Tage |
+
+Alle Dogs nutzen **kostenlose APIs ohne API-Key**. Alle akzeptieren GPS-Koordinaten (`lat`/`lng`) als Input. Siehe [Creating a new BaseDog Package](README.md#creating-a-new-basedog-package) für die Anleitung zum Erstellen neuer Dogs.
+
+---
+
+*Letztes Update: April 2026*
