@@ -6,7 +6,7 @@ import { IStore } from './store/IStore';
 import { SerializedDog, IKennelConfig, BASE_DOG_PREFIX, type IMimicDogConfig } from '@datadogs/core';
 import { TalkingDog } from '@datadogs/dogs-talking';
 import { RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever } from '@datadogs/dogs-demo';
-import { DbNearbyRetriever } from '@datadogs/dogs-db';
+import { PublicTransportRetriever } from '@datadogs/dogs-db';
 
 /**
  * Summons the first SerializedDog into the deep — a MimicDog wearing the LayoutInputProvider's form.
@@ -119,17 +119,17 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
 }
 
 /**
- * Raises the Deutsche Bahn kennel from the iron abyss — a gathering place
+ * Raises the public transport kennel from the transit abyss — a gathering place
  * for hounds that sniff out nearby stations and departures.
  * The MimicDog maps QueryRetriever params (lat, lng, distance, results)
- * into the DbNearbyQueryPact's shape so the DbNearbyRetriever may feast.
+ * into the PublicTransportQueryPact's shape so the PublicTransportRetriever may feast.
  */
-export async function seedDbKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
-    const kennelId = 'db-nearby-kennel';
+export async function seedPublicTransportKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'public-transport-kennel';
     const existing = await kennelsStore.load(kennelId);
     if (existing) return; // Already seeded, disturb it not
 
-    // Forge the MimicDog that maps query params to DbNearbyQuery
+    // Forge the MimicDog that maps query params to PublicTransportQuery
     const mimicVersionId = randomUUID();
     const mimicDogId = randomUUID();
 
@@ -138,7 +138,7 @@ export async function seedDbKennel(nodesStore: IStore, kennelsStore: IStore): Pr
         dogId: mimicDogId,
         parentId: null,
         displayName: 'DB GPS Query Mapper',
-        imitates: 'DbNearbyQueryProvider',
+        imitates: 'PublicTransportQueryProvider',
         parentsRequired: ['QueryRetriever'],
         parentsOptional: [],
         theRun: `
@@ -161,14 +161,14 @@ return {
         createdAt: new Date(),
     });
 
-    // Raise the kennel: DbNearbyRetriever as lead, plus QueryRetriever and the MimicDog
+    // Raise the kennel: PublicTransportRetriever as lead, plus QueryRetriever and the MimicDog
     const kennelConfig: IKennelConfig = {
         id: kennelId,
-        name: 'DB Nearby',
-        description: 'Deutsche Bahn: Haltestellen und Abfahrten in der Naehe',
+        name: 'Public Transport Nearby',
+        description: 'OEPNV: Haltestellen und Abfahrten in der Naehe (Bus, Tram, U-Bahn, S-Bahn, Zug)',
         emoji: '\uD83D\uDE82',
         dogIds: [
-            BASE_DOG_PREFIX + 'DbNearbyRetriever',
+            BASE_DOG_PREFIX + 'PublicTransportRetriever',
             BASE_DOG_PREFIX + 'QueryRetriever',
             mimicDogId,
         ],
@@ -200,7 +200,7 @@ return {
 export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const seedDogId = await seedSerializedDog(nodesStore);
     await seedKennelConfig(kennelsStore, seedDogId);
-    await seedDbKennel(nodesStore, kennelsStore);
+    await seedPublicTransportKennel(nodesStore, kennelsStore);
 }
 
 /**

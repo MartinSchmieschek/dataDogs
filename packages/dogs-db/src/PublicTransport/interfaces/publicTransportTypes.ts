@@ -1,12 +1,12 @@
 /**
  * =========================================================================
- *  DEUTSCHE BAHN TYPES — forms dredged from the iron abyss
+ *  PUBLIC TRANSPORT TYPES — forms dredged from the transit abyss
  * =========================================================================
  */
 
 /** Eine Haltestelle / Station in der Naehe */
-export interface DbStation {
-    /** ID der Haltestelle (HAFAS/EVA-Nummer) */
+export interface TransitStation {
+    /** ID der Haltestelle (DELFI-ID) */
     id: string;
     /** Name der Haltestelle */
     name: string;
@@ -16,36 +16,40 @@ export interface DbStation {
     latitude: number;
     /** Laengengrad */
     longitude: number;
+    /** Verfuegbare Verkehrsmittel (z.B. ["BUS", "TRAM", "SUBURBAN"]) */
+    modes: string[];
 }
 
 /** Eine einzelne Abfahrt von einer Haltestelle */
-export interface DbDeparture {
-    /** Zugnummer / Linienname (z.B. "RE 1", "S3", "ICE 579") */
+export interface TransitDeparture {
+    /** Linienname (z.B. "RE 1", "S3", "Bus 36", "U5") */
     line: string;
+    /** Verkehrsmittel-Typ (z.B. "BUS", "TRAM", "SUBURBAN", "SUBWAY", "HIGHSPEED") */
+    mode: string;
     /** Richtung / Zielort */
     direction: string;
     /** Geplante Abfahrtszeit (ISO string) */
     plannedWhen: string | null;
-    /** Tatsaechliche Abfahrtszeit mit Verspaetung (ISO string) */
+    /** Tatsaechliche Abfahrtszeit (ISO string) */
     when: string | null;
-    /** Verspaetung in Sekunden */
+    /** Verspaetung in Minuten */
     delay: number | null;
     /** Gleis / Plattform */
     platform: string | null;
 }
 
 /** Ergebnis fuer eine Haltestelle mit ihren Abfahrten */
-export interface DbStationDepartures {
+export interface TransitStationDepartures {
     /** Die Haltestelle selbst */
-    station: DbStation;
+    station: TransitStation;
     /** Naechste Abfahrten von dieser Haltestelle */
-    departures: DbDeparture[];
+    departures: TransitDeparture[];
 }
 
-/** Gesamtergebnis des DB Nearby Retrievers */
-export interface DbNearbyResult {
+/** Gesamtergebnis des PublicTransport Retrievers */
+export interface PublicTransportNearbyResult {
     /** Liste nahegelegener Haltestellen mit Abfahrten */
-    stations: DbStationDepartures[];
+    stations: TransitStationDepartures[];
     /** Anzahl gefundener Stationen */
     stationCount: number;
     /** Suchkoordinaten */
