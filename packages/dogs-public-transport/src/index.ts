@@ -1,6 +1,6 @@
 /**
  * =========================================================================
- *  INDEX OF THE TRANSIT ABYSS — dogs-db barrel export
+ *  INDEX OF THE TRANSIT ABYSS — dogs-public-transport barrel export
  * =========================================================================
  *
  *  Arr, matey! From brooding platforms are we beheld, by that which

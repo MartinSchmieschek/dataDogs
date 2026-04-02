@@ -400,7 +400,7 @@ packages/
   core/                       datadogs library (Dog, Kennel, Wave engine, Pacts)
   dogs-demo/                  Demo dogs (recipes, flags, random data)
   dogs-geo/                   Geo dogs (routes, isochrones, OSM landmarks)
-  dogs-db/                    Public transport (nearby stops + departures via MOTIS)
+  dogs-public-transport/      Public transport (nearby stops + departures via MOTIS)
   dogs-hue/                   Philips Hue integration
   dogs-talking/               TalkingDog (HTML rendering)
   dogs-warframe/              Warframe API integration
