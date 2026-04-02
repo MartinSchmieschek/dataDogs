@@ -3,9 +3,10 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { KennelService } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
-import { IKennelConfig } from '../../models/kennel-config.model';
+import { IKennelConfig, KennelVersionEntry } from '../../models/kennel-config.model';
 import { DogEntry, Waves } from '../../models/dog-entry.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
+import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
@@ -26,7 +27,7 @@ import { apiAbsoluteUrl } from '../../config/api-base';
     RouterLink, FormsModule,
     GraphCanvasScaleComponent, VoidMythicBackdropComponent, VisNetworkComponent, DogSidePanelComponent,
     FloatingPanelWindowComponent,
-    LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent
+    LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent, VersionTimelineComponent
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
@@ -53,6 +54,26 @@ export class WavesViewerComponent implements OnInit {
   isDragging = false;
   private dragEndTimer: any = null;
 
+  // --- Kennel version timeline ---
+  kennelVersions = signal<KennelVersionEntry[]>([]);
+  /** The version GUID currently viewed — null means "latest". */
+  activeKennelVersionId = signal<string | null>(null);
+  selectedKennelVersionId = signal<string | null>(null);
+
+  timelineVersions = computed<TimelineVersion[]>(() => {
+    return this.kennelVersions().map(v => ({
+      id: v.id,
+      version: v.version,
+      parentId: v.parentId,
+      createdAt: v.createdAt,
+      displayName: v.config?.name,
+    }));
+  });
+
+  get currentKennelVersionId(): string {
+    return this.activeKennelVersionId() || this.kennelConfig()?.id || '';
+  }
+
   paramsOpen = false;
   queryParams = signal<Array<{ key: string; value: string }>>([]);
   bodyJson = signal('{}');
@@ -73,13 +94,21 @@ export class WavesViewerComponent implements OnInit {
     return d ? `Node: ${d.displayName || d.name}` : '';
   });
 
+  /** Append ?version=... to a URL if a specific kennel version is selected. */
+  private appendVersionParam(url: string): string {
+    const v = this.activeKennelVersionId();
+    if (!v) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}version=${encodeURIComponent(v)}`;
+  }
+
   /** Swagger UI & OpenAPI — direkt Express :3000 (neuer Tab, kein Angular-Origin). */
   get swaggerDocsUrl(): string {
-    return apiAbsoluteUrl(`/api/kennels/${this.kennelId}/docs`);
+    return this.appendVersionParam(apiAbsoluteUrl(`/api/kennels/${this.kennelId}/docs`));
   }
 
   get swaggerJsonUrl(): string {
-    return apiAbsoluteUrl(`/api/kennels/${this.kennelId}/swagger.json`);
+    return this.appendVersionParam(apiAbsoluteUrl(`/api/kennels/${this.kennelId}/swagger.json`));
   }
 
   /**
@@ -90,16 +119,19 @@ export class WavesViewerComponent implements OnInit {
     const base = apiAbsoluteUrl(`/${this.kennelId}`);
     const q = this.buildQueryRecord();
     const keys = Object.keys(q).filter((k) => k.trim());
-    if (keys.length === 0) return base;
     const params = new URLSearchParams();
     keys.forEach((k) => params.set(k, q[k]));
-    return `${base}?${params.toString()}`;
+    const v = this.activeKennelVersionId();
+    if (v) params.set('version', v);
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
   }
 
   ngOnInit() {
     this.kennelId = this.route.snapshot.params['id'];
     this.loadWaves();
     this.loadAvailableDogs();
+    this.loadKennelVersions();
   }
 
   onComfortVideoClick(): void {
@@ -118,12 +150,14 @@ export class WavesViewerComponent implements OnInit {
       if (raw) body = JSON.parse(raw);
     } catch { /* invalid JSON - ignore, send without body */ }
 
-    this.kennelService.run(this.kennelId, body, query).subscribe({
+    const version = this.activeKennelVersionId() ?? undefined;
+    this.kennelService.run(this.kennelId, body, query, version).subscribe({
       next: (res) => {
         if (res.ok) {
           this.waves.set(res.waves);
           this.kennelConfig.set(res.kennelConfig);
           this.syncParamsFromConfig(res.kennelConfig);
+          this.loadKennelVersions();
 
           const sel = this.selectedDog();
           if (sel) {
@@ -230,6 +264,25 @@ export class WavesViewerComponent implements OnInit {
     this.dogService.getAll(this.kennelId).subscribe({
       next: (res) => this.availableDogs.set(res.data ?? []),
     });
+  }
+
+  private loadKennelVersions() {
+    this.kennelService.getVersions(this.kennelId).subscribe({
+      next: (res) => {
+        if (res.ok && res.data) {
+          this.kennelVersions.set(res.data);
+        }
+      }
+    });
+  }
+
+  onKennelVersionSelected(versionId: string) {
+    this.selectedKennelVersionId.set(versionId);
+    // If the selected version is the newest, clear the override so URLs stay clean.
+    const versions = this.kennelVersions();
+    const newest = versions.length > 0 ? versions[0] : null;
+    this.activeKennelVersionId.set(newest?.id === versionId ? null : versionId);
+    this.loadWaves();
   }
 
   onDogSelected(dog: DogEntry) {

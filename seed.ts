@@ -13,24 +13,52 @@ import { GeocodingRetriever } from '@datadogs/dogs-geocoding';
 import { WikiNearbyRetriever } from '@datadogs/dogs-wikipedia';
 import { SunRetriever } from '@datadogs/dogs-sun';
 
+/** Check if a kennel with this lineageId already exists. */
+async function kennelExists(store: IStore, kennelLineageId: string): Promise<boolean> {
+    const all = await store.findByType('KennelConfig');
+    return all.some((r: any) => r.lineageId === kennelLineageId);
+}
+
+/** Save a versioned kennel seed — lineageId is the stable kennel ID, id is a fresh GUID. */
+async function saveKennelSeed(store: IStore, kennelLineageId: string, data: {
+    name?: string; description?: string; emoji?: string;
+    dogIds: string[]; defaultQuery?: any; defaultBody?: any;
+}): Promise<void> {
+    const versionId = randomUUID();
+    await store.save({
+        id: versionId,
+        type: 'KennelConfig',
+        lineageId: kennelLineageId,
+        parentId: null,
+        name: data.name,
+        description: data.description,
+        emoji: data.emoji,
+        dogIds: data.dogIds,
+        defaultQuery: data.defaultQuery ? JSON.stringify(data.defaultQuery) : undefined,
+        defaultBody: data.defaultBody ? JSON.stringify(data.defaultBody) : undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    });
+}
+
 /**
  * Summons the first SerializedDog into the deep — a MimicDog wearing the LayoutInputProvider's form.
  * Through endless faces, countless forms, a multitude unfolds; this is the first face of many.
  * If the store already holds a hound, we leave it be — we do not disturb what already lurks in the dark.
- * Returns the dogId (lineage GUID) of the seeded hound so the kennel may reference it.
+ * Returns the lineageId (lineage GUID) of the seeded hound so the kennel may reference it.
  */
 export async function seedSerializedDog(nodesStore: IStore): Promise<string | null> {
     const nodeSeeds = await nodesStore.findByType(SerializedDog.name);
     if (!nodeSeeds || nodeSeeds.length === 0) {
         // Forge the spirit's identity — a GUID for the incarnation, a GUID for the lineage.
         const versionId = randomUUID();
-        const dogId = randomUUID();
+        const lineageId = randomUUID();
 
         // The first mimic — it imitates LayoutInputProvider and hunts recipes from the eldritch RandomDogs.
         // Corporeal laws are unwritten as suns and love retreat: it borrows another's form to live.
         const seedCfg: IMimicDogConfig = {
             id: versionId,
-            dogId,
+            lineageId,
             parentId: null,
             displayName: 'Seed Serialized 1',
             imitates: 'LayoutInputProvider',
@@ -49,22 +77,22 @@ return {
         await nodesStore.save({
             id: versionId,
             type: SerializedDog.name,
-            dogId,
+            lineageId,
             parentId: null,
             displayName: 'Seed Serialized 1',
             serializedDogConfig: JSON.stringify(seedCfg),
             createdAt: new Date(),
         });
-        console.log(`✅ Seeded initial SerializedDog into DB (dogId: ${dogId})`);
-        return dogId;
+        console.log(`✅ Seeded initial SerializedDog into DB (lineageId: ${lineageId})`);
+        return lineageId;
     }
 
-    // If a hound already lurks, extract its dogId for the kennel manifest.
+    // If a hound already lurks, extract its lineageId for the kennel manifest.
     try {
         const config = typeof nodeSeeds[0].serializedDogConfig === 'string'
             ? JSON.parse(nodeSeeds[0].serializedDogConfig)
             : nodeSeeds[0].serializedDogConfig;
-        return config.dogId || (nodeSeeds[0] as any).dogId || null;
+        return config.lineageId || (nodeSeeds[0] as any).lineageId || null;
     } catch {
         return null;
     }
@@ -75,7 +103,7 @@ return {
  * To cosmic madness laws submit, though stalwart minds entreat; every dog finds its kennel.
  * If a kennel already prowls the store, we disturb it not — the void remembers what has been.
  */
-export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string | null): Promise<void> {
+export async function seedKennelConfig(kennelsStore: IStore, seedLineageId: string | null): Promise<void> {
     // The full roster of base hounds — born of the code, not the store.
     // Each is summoned fresh upon every run, like stars that fell and rose again.
     const allBaseDogClasses = [
@@ -91,10 +119,10 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
 
     const kennelSeeds = await kennelsStore.findByType('KennelConfig');
     if (!kennelSeeds || kennelSeeds.length === 0) {
-        // The kennel references the dogId (lineage GUID), not a specific version —
+        // The kennel references the lineageId (lineage GUID), not a specific version —
         // so it always summons the latest incarnation from the branching tree.
         const dogIds = [
-            ...(seedDogId ? [seedDogId] : []),
+            ...(seedLineageId ? [seedLineageId] : []),
             ...allBaseDogs.map(dog => BASE_DOG_PREFIX + dog.name)
         ];
 
@@ -108,16 +136,12 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
         };
 
         // Bind the dogIds to the abyss as a JSON string — the store speaks only in primitive tongues.
-        await kennelsStore.save({
-            id: defaultKennelConfig.id,
-            type: 'KennelConfig',
+        await saveKennelSeed(kennelsStore, defaultKennelConfig.id, {
             name: defaultKennelConfig.name,
             description: defaultKennelConfig.description,
             dogIds: defaultKennelConfig.dogIds,
-            defaultQuery: defaultKennelConfig.defaultQuery ? JSON.stringify(defaultKennelConfig.defaultQuery) : undefined,
-            defaultBody: defaultKennelConfig.defaultBody ? JSON.stringify(defaultKennelConfig.defaultBody) : undefined,
-            createdAt: defaultKennelConfig.createdAt?.toISOString(),
-            updatedAt: defaultKennelConfig.updatedAt?.toISOString()
+            defaultQuery: defaultKennelConfig.defaultQuery,
+            defaultBody: defaultKennelConfig.defaultBody,
         });
         console.log('✅ Seeded initial Kennel-Config into DB');
     }
@@ -131,7 +155,7 @@ export async function seedKennelConfig(kennelsStore: IStore, seedDogId: string |
  */
 export async function seedPublicTransportKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'public-transport-kennel';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return; // Already seeded, disturb it not
 
     // Forge the MimicDog that maps query params to PublicTransportQuery
@@ -140,7 +164,7 @@ export async function seedPublicTransportKennel(nodesStore: IStore, kennelsStore
 
     const mimicCfg: IMimicDogConfig = {
         id: mimicVersionId,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'DB GPS Query Mapper',
         imitates: 'PublicTransportQueryProvider',
@@ -159,7 +183,7 @@ return {
     await nodesStore.save({
         id: mimicVersionId,
         type: SerializedDog.name,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'DB GPS Query Mapper',
         serializedDogConfig: JSON.stringify(mimicCfg),
@@ -182,17 +206,13 @@ return {
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded DB Nearby Kennel (kennelId: ${kennelId}, mimicDogId: ${mimicDogId})`);
@@ -203,8 +223,8 @@ return {
  * In luminous space, blackened stars must be seeded before the hunt can begin.
  */
 export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
-    const seedDogId = await seedSerializedDog(nodesStore);
-    await seedKennelConfig(kennelsStore, seedDogId);
+    const seedLineageId = await seedSerializedDog(nodesStore);
+    await seedKennelConfig(kennelsStore, seedLineageId);
     await seedPublicTransportKennel(nodesStore, kennelsStore);
     await seedWeatherKennel(nodesStore, kennelsStore);
     await seedAirQualityKennel(nodesStore, kennelsStore);
@@ -228,7 +248,7 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
  */
 export async function seedCompareKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'compare-locations';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     // Wave 2: Fetch both locations by calling /smart-guide kennel
@@ -236,7 +256,7 @@ export async function seedCompareKennel(nodesStore: IStore, kennelsStore: IStore
     const fetcherDogId = randomUUID();
     const fetcherCfg = {
         id: fetcherVersionId,
-        dogId: fetcherDogId,
+        lineageId: fetcherDogId,
         parentId: null,
         displayName: 'Fetch Both Locations',
         parentsRequired: ['QueryRetriever'],
@@ -260,7 +280,7 @@ return { locationA, locationB, addressA: from, addressB: to }
     await nodesStore.save({
         id: fetcherVersionId,
         type: SerializedDog.name,
-        dogId: fetcherDogId,
+        lineageId: fetcherDogId,
         parentId: null,
         displayName: 'Fetch Both Locations',
         serializedDogConfig: JSON.stringify(fetcherCfg),
@@ -272,7 +292,7 @@ return { locationA, locationB, addressA: from, addressB: to }
     const comparatorDogId = randomUUID();
     const comparatorCfg = {
         id: comparatorVersionId,
-        dogId: comparatorDogId,
+        lineageId: comparatorDogId,
         parentId: null,
         displayName: 'Location Comparator',
         parentsRequired: [fetcherDogId],
@@ -333,7 +353,7 @@ return {
     await nodesStore.save({
         id: comparatorVersionId,
         type: SerializedDog.name,
-        dogId: comparatorDogId,
+        lineageId: comparatorDogId,
         parentId: null,
         displayName: 'Location Comparator',
         serializedDogConfig: JSON.stringify(comparatorCfg),
@@ -355,17 +375,13 @@ return {
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Compare Locations Kennel (kennelId: ${kennelId})`);
@@ -385,11 +401,11 @@ return {
  */
 export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'smart-guide';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     // --- Wave 2: Geocoding ---
-    const geoMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const geoMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...geoMimic,
         displayName: 'SG: Address → Geocoding',
@@ -399,7 +415,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
     });
 
     // --- Wave 4: GPS Mimics (read from GeocodingRetriever) ---
-    const weatherMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const weatherMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...weatherMimic,
         displayName: 'SG: GPS → Weather',
@@ -408,7 +424,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude) }`,
     });
 
-    const airMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const airMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...airMimic,
         displayName: 'SG: GPS → AirQuality',
@@ -417,7 +433,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude) }`,
     });
 
-    const sunMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const sunMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...sunMimic,
         displayName: 'SG: GPS → Sun',
@@ -426,7 +442,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude), days: "3" }`,
     });
 
-    const transportMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const transportMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...transportMimic,
         displayName: 'SG: GPS → Transport',
@@ -435,7 +451,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude), distance: "500", results: "5" }`,
     });
 
-    const wikiMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const wikiMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...wikiMimic,
         displayName: 'SG: GPS → Wiki',
@@ -449,7 +465,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
     const recommenderDogId = randomUUID();
     const recommenderCfg = {
         id: recommenderVersionId,
-        dogId: recommenderDogId,
+        lineageId: recommenderDogId,
         parentId: null,
         displayName: 'Activity Recommender',
         parentsRequired: ['WeatherRetriever', 'AirQualityRetriever', 'SunRetriever'],
@@ -531,7 +547,7 @@ return {
     await nodesStore.save({
         id: recommenderVersionId,
         type: SerializedDog.name,
-        dogId: recommenderDogId,
+        lineageId: recommenderDogId,
         parentId: null,
         displayName: 'Activity Recommender',
         serializedDogConfig: JSON.stringify(recommenderCfg),
@@ -543,7 +559,7 @@ return {
     const highlightDogId = randomUUID();
     const highlightCfg = {
         id: highlightVersionId,
-        dogId: highlightDogId,
+        lineageId: highlightDogId,
         parentId: null,
         displayName: 'Wiki Highlight Picker',
         parentsRequired: ['WikiNearbyRetriever'],
@@ -578,7 +594,7 @@ return {
     await nodesStore.save({
         id: highlightVersionId,
         type: SerializedDog.name,
-        dogId: highlightDogId,
+        lineageId: highlightDogId,
         parentId: null,
         displayName: 'Wiki Highlight Picker',
         serializedDogConfig: JSON.stringify(highlightCfg),
@@ -590,7 +606,7 @@ return {
     const leadDogId = randomUUID();
     const leadCfg = {
         id: leadVersionId,
-        dogId: leadDogId,
+        lineageId: leadDogId,
         parentId: null,
         displayName: 'Smart Guide',
         parentsRequired: [
@@ -626,9 +642,9 @@ return {
     // Hmm, the lead dog accesses SerializedDogs by their storageId as globals.
     // Let me fix the theRun to use the display names instead.
     // Actually, SerializedDog parents are accessed by their storageId in the VM context.
-    // But the recommender and highlight dogs are SerializedDogs referenced by dogId.
+    // But the recommender and highlight dogs are SerializedDogs referenced by lineageId.
     // The VM context maps parent names. Let me check...
-    // For SerializedDogs, the global variable name in VM is the storageId (which is the versionId or dogId).
+    // For SerializedDogs, the global variable name in VM is the storageId (which is the versionId or lineageId).
     // That won't be a clean variable name. Let me use a different approach:
     // Reference them via season.exhausted.find pattern? No, SerializedDog code runs in VM with parent yields as globals.
     // The global names for SerializedDog parents are their displayName (cleaned) or storageId.
@@ -660,7 +676,7 @@ return {
     await nodesStore.save({
         id: leadVersionId,
         type: SerializedDog.name,
-        dogId: leadDogId,
+        lineageId: leadDogId,
         parentId: null,
         displayName: 'Smart Guide',
         serializedDogConfig: JSON.stringify(leadCfg),
@@ -681,12 +697,12 @@ return {
             BASE_DOG_PREFIX + 'SunRetriever',
             BASE_DOG_PREFIX + 'PublicTransportRetriever',
             BASE_DOG_PREFIX + 'WikiNearbyRetriever',
-            geoMimic.dogId,
-            weatherMimic.dogId,
-            airMimic.dogId,
-            sunMimic.dogId,
-            transportMimic.dogId,
-            wikiMimic.dogId,
+            geoMimic.lineageId,
+            weatherMimic.lineageId,
+            airMimic.lineageId,
+            sunMimic.lineageId,
+            transportMimic.lineageId,
+            wikiMimic.lineageId,
             recommenderDogId,
             highlightDogId,
         ],
@@ -695,17 +711,13 @@ return {
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Smart Guide Kennel (kennelId: ${kennelId})`);
@@ -729,11 +741,11 @@ return {
  */
 export async function seedAddressLookupKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'address-lookup';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     // --- Wave 2: Geocoding MimicDog (reads from QueryRetriever) ---
-    const geoMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const geoMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...geoMimic,
         displayName: 'Address → GeocodingQuery',
@@ -743,7 +755,7 @@ export async function seedAddressLookupKennel(nodesStore: IStore, kennelsStore: 
     });
 
     // --- Wave 4: Mimics that read FROM GeocodingRetriever's yield ---
-    const weatherMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const weatherMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...weatherMimic,
         displayName: 'Geocoded GPS → WeatherQuery',
@@ -755,7 +767,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude) }
 `,
     });
 
-    const airMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const airMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...airMimic,
         displayName: 'Geocoded GPS → AirQualityQuery',
@@ -767,7 +779,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude) }
 `,
     });
 
-    const sunMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const sunMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...sunMimic,
         displayName: 'Geocoded GPS → SunQuery',
@@ -779,7 +791,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude), days: "3" }
 `,
     });
 
-    const transportMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const transportMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...transportMimic,
         displayName: 'Geocoded GPS → TransportQuery',
@@ -791,7 +803,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude), distance: "500",
 `,
     });
 
-    const wikiMimic = { dogId: randomUUID(), versionId: randomUUID() };
+    const wikiMimic = { lineageId: randomUUID(), versionId: randomUUID() };
     await saveMimic(nodesStore, {
         ...wikiMimic,
         displayName: 'Geocoded GPS → WikiQuery',
@@ -809,7 +821,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude), radius: "500", l
 
     const leadCfg = {
         id: leadVersionId,
-        dogId: leadDogId,
+        lineageId: leadDogId,
         parentId: null,
         displayName: 'Address Lookup Dashboard',
         parentsRequired: [
@@ -885,7 +897,7 @@ return {
     await nodesStore.save({
         id: leadVersionId,
         type: SerializedDog.name,
-        dogId: leadDogId,
+        lineageId: leadDogId,
         parentId: null,
         displayName: 'Address Lookup Dashboard',
         serializedDogConfig: JSON.stringify(leadCfg),
@@ -907,29 +919,25 @@ return {
             BASE_DOG_PREFIX + 'SunRetriever',
             BASE_DOG_PREFIX + 'PublicTransportRetriever',
             BASE_DOG_PREFIX + 'WikiNearbyRetriever',
-            geoMimic.dogId,
-            weatherMimic.dogId,
-            airMimic.dogId,
-            sunMimic.dogId,
-            transportMimic.dogId,
-            wikiMimic.dogId,
+            geoMimic.lineageId,
+            weatherMimic.lineageId,
+            airMimic.lineageId,
+            sunMimic.lineageId,
+            transportMimic.lineageId,
+            wikiMimic.lineageId,
         ],
         defaultQuery: { address: 'Brandenburger Tor, Berlin' },
         createdAt: new Date(),
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Address Lookup Kennel (kennelId: ${kennelId})`);
@@ -937,12 +945,12 @@ return {
 
 /** Helper: save a MimicDog to the store */
 async function saveMimic(store: IStore, opts: {
-    versionId: string; dogId: string; displayName: string;
+    versionId: string; lineageId: string; displayName: string;
     imitates: string; parentsRequired: string[]; theRun: string;
 }): Promise<void> {
     const cfg: IMimicDogConfig = {
         id: opts.versionId,
-        dogId: opts.dogId,
+        lineageId: opts.lineageId,
         parentId: null,
         displayName: opts.displayName,
         imitates: opts.imitates,
@@ -953,7 +961,7 @@ async function saveMimic(store: IStore, opts: {
     await store.save({
         id: opts.versionId,
         type: SerializedDog.name,
-        dogId: opts.dogId,
+        lineageId: opts.lineageId,
         parentId: null,
         displayName: opts.displayName,
         serializedDogConfig: JSON.stringify(cfg),
@@ -968,37 +976,37 @@ async function saveMimic(store: IStore, opts: {
  */
 export async function seedLocationDashboardKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'location-dashboard';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     // We need 5 MimicDogs (one per Pact) + 1 SerializedDog (lead combiner)
-    const mimics: Array<{ dogId: string; versionId: string; displayName: string; imitates: string; theRun: string }> = [
+    const mimics: Array<{ lineageId: string; versionId: string; displayName: string; imitates: string; theRun: string }> = [
         {
-            dogId: randomUUID(), versionId: randomUUID(),
+            lineageId: randomUUID(), versionId: randomUUID(),
             displayName: 'Dashboard Weather Mapper',
             imitates: 'WeatherQueryProvider',
             theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng }`,
         },
         {
-            dogId: randomUUID(), versionId: randomUUID(),
+            lineageId: randomUUID(), versionId: randomUUID(),
             displayName: 'Dashboard AirQuality Mapper',
             imitates: 'AirQualityQueryProvider',
             theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng }`,
         },
         {
-            dogId: randomUUID(), versionId: randomUUID(),
+            lineageId: randomUUID(), versionId: randomUUID(),
             displayName: 'Dashboard Sun Mapper',
             imitates: 'SunQueryProvider',
             theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, days: "3" }`,
         },
         {
-            dogId: randomUUID(), versionId: randomUUID(),
+            lineageId: randomUUID(), versionId: randomUUID(),
             displayName: 'Dashboard Transport Mapper',
             imitates: 'PublicTransportQueryProvider',
             theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, distance: "500", results: "5" }`,
         },
         {
-            dogId: randomUUID(), versionId: randomUUID(),
+            lineageId: randomUUID(), versionId: randomUUID(),
             displayName: 'Dashboard Wiki Mapper',
             imitates: 'WikiNearbyQueryProvider',
             theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, radius: "500", limit: "5", lang: "de" }`,
@@ -1009,7 +1017,7 @@ export async function seedLocationDashboardKennel(nodesStore: IStore, kennelsSto
     for (const m of mimics) {
         const cfg: IMimicDogConfig = {
             id: m.versionId,
-            dogId: m.dogId,
+            lineageId: m.lineageId,
             parentId: null,
             displayName: m.displayName,
             imitates: m.imitates,
@@ -1020,7 +1028,7 @@ export async function seedLocationDashboardKennel(nodesStore: IStore, kennelsSto
         await nodesStore.save({
             id: m.versionId,
             type: SerializedDog.name,
-            dogId: m.dogId,
+            lineageId: m.lineageId,
             parentId: null,
             displayName: m.displayName,
             serializedDogConfig: JSON.stringify(cfg),
@@ -1034,7 +1042,7 @@ export async function seedLocationDashboardKennel(nodesStore: IStore, kennelsSto
 
     const leadCfg = {
         id: leadVersionId,
-        dogId: leadDogId,
+        lineageId: leadDogId,
         parentId: null,
         displayName: 'Location Dashboard',
         parentsRequired: [
@@ -1106,7 +1114,7 @@ return {
     await nodesStore.save({
         id: leadVersionId,
         type: SerializedDog.name,
-        dogId: leadDogId,
+        lineageId: leadDogId,
         parentId: null,
         displayName: 'Location Dashboard',
         serializedDogConfig: JSON.stringify(leadCfg),
@@ -1127,24 +1135,20 @@ return {
             BASE_DOG_PREFIX + 'SunRetriever',
             BASE_DOG_PREFIX + 'PublicTransportRetriever',
             BASE_DOG_PREFIX + 'WikiNearbyRetriever',
-            ...mimics.map(m => m.dogId),
+            ...mimics.map(m => m.lineageId),
         ],
         defaultQuery: { lat: '50.1109', lng: '8.6821' },
         createdAt: new Date(),
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Location Dashboard Kennel (kennelId: ${kennelId})`);
@@ -1155,7 +1159,7 @@ return {
  */
 export async function seedSunKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'sun-kennel';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     const mimicVersionId = randomUUID();
@@ -1163,7 +1167,7 @@ export async function seedSunKennel(nodesStore: IStore, kennelsStore: IStore): P
 
     const mimicCfg: IMimicDogConfig = {
         id: mimicVersionId,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Sun Query Mapper',
         imitates: 'SunQueryProvider',
@@ -1175,7 +1179,7 @@ export async function seedSunKennel(nodesStore: IStore, kennelsStore: IStore): P
     await nodesStore.save({
         id: mimicVersionId,
         type: SerializedDog.name,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Sun Query Mapper',
         serializedDogConfig: JSON.stringify(mimicCfg),
@@ -1197,17 +1201,13 @@ export async function seedSunKennel(nodesStore: IStore, kennelsStore: IStore): P
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Sun Kennel (kennelId: ${kennelId})`);
@@ -1218,7 +1218,7 @@ export async function seedSunKennel(nodesStore: IStore, kennelsStore: IStore): P
  */
 export async function seedWikiNearbyKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'wiki-nearby-kennel';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     const mimicVersionId = randomUUID();
@@ -1226,7 +1226,7 @@ export async function seedWikiNearbyKennel(nodesStore: IStore, kennelsStore: ISt
 
     const mimicCfg: IMimicDogConfig = {
         id: mimicVersionId,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Wiki Nearby Query Mapper',
         imitates: 'WikiNearbyQueryProvider',
@@ -1246,7 +1246,7 @@ return {
     await nodesStore.save({
         id: mimicVersionId,
         type: SerializedDog.name,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Wiki Nearby Query Mapper',
         serializedDogConfig: JSON.stringify(mimicCfg),
@@ -1268,17 +1268,13 @@ return {
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Wiki Nearby Kennel (kennelId: ${kennelId})`);
@@ -1290,7 +1286,7 @@ return {
  */
 export async function seedGeocodingKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'geocoding-kennel';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     const mimicVersionId = randomUUID();
@@ -1298,7 +1294,7 @@ export async function seedGeocodingKennel(nodesStore: IStore, kennelsStore: ISto
 
     const mimicCfg: IMimicDogConfig = {
         id: mimicVersionId,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Geocoding Query Mapper',
         imitates: 'GeocodingQueryProvider',
@@ -1317,7 +1313,7 @@ return {
     await nodesStore.save({
         id: mimicVersionId,
         type: SerializedDog.name,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Geocoding Query Mapper',
         serializedDogConfig: JSON.stringify(mimicCfg),
@@ -1339,17 +1335,13 @@ return {
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Geocoding Kennel (kennelId: ${kennelId})`);
@@ -1360,7 +1352,7 @@ return {
  */
 export async function seedAirQualityKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'air-quality-kennel';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     const mimicVersionId = randomUUID();
@@ -1368,7 +1360,7 @@ export async function seedAirQualityKennel(nodesStore: IStore, kennelsStore: ISt
 
     const mimicCfg: IMimicDogConfig = {
         id: mimicVersionId,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'AirQuality Query Mapper',
         imitates: 'AirQualityQueryProvider',
@@ -1380,7 +1372,7 @@ export async function seedAirQualityKennel(nodesStore: IStore, kennelsStore: ISt
     await nodesStore.save({
         id: mimicVersionId,
         type: SerializedDog.name,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'AirQuality Query Mapper',
         serializedDogConfig: JSON.stringify(mimicCfg),
@@ -1402,17 +1394,13 @@ export async function seedAirQualityKennel(nodesStore: IStore, kennelsStore: ISt
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Air Quality Kennel (kennelId: ${kennelId})`);
@@ -1424,7 +1412,7 @@ export async function seedAirQualityKennel(nodesStore: IStore, kennelsStore: ISt
  */
 export async function seedWeatherKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const kennelId = 'weather-kennel';
-    const existing = await kennelsStore.load(kennelId);
+    const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
     // Forge the MimicDog that maps query params to WeatherQuery
@@ -1433,7 +1421,7 @@ export async function seedWeatherKennel(nodesStore: IStore, kennelsStore: IStore
 
     const mimicCfg: IMimicDogConfig = {
         id: mimicVersionId,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Weather Query Mapper',
         imitates: 'WeatherQueryProvider',
@@ -1452,7 +1440,7 @@ return {
     await nodesStore.save({
         id: mimicVersionId,
         type: SerializedDog.name,
-        dogId: mimicDogId,
+        lineageId: mimicDogId,
         parentId: null,
         displayName: 'Weather Query Mapper',
         serializedDogConfig: JSON.stringify(mimicCfg),
@@ -1474,17 +1462,13 @@ return {
         updatedAt: new Date(),
     };
 
-    await kennelsStore.save({
-        id: kennelConfig.id,
-        type: 'KennelConfig',
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
         name: kennelConfig.name,
         description: kennelConfig.description,
         emoji: kennelConfig.emoji,
         dogIds: kennelConfig.dogIds,
-        defaultQuery: kennelConfig.defaultQuery ? JSON.stringify(kennelConfig.defaultQuery) : undefined,
+        defaultQuery: kennelConfig.defaultQuery,
         defaultBody: undefined,
-        createdAt: kennelConfig.createdAt?.toISOString(),
-        updatedAt: kennelConfig.updatedAt?.toISOString(),
     });
 
     console.log(`\u2705 Seeded Weather Kennel (kennelId: ${kennelId}, mimicDogId: ${mimicDogId})`);

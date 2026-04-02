@@ -53,12 +53,15 @@ export class KennelService {
     return this.http.get<ApiResponse<KennelVersionEntry[]>>(`${this.baseUrl}/${encodeURIComponent(id)}/versions`);
   }
 
-  run(id: string, body?: any, query?: Record<string, string>): Observable<RunResponse> {
+  run(id: string, body?: any, query?: Record<string, string>, version?: string): Observable<RunResponse> {
     let params = new HttpParams();
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
         params = params.set(key, value);
       });
+    }
+    if (version) {
+      params = params.set('version', version);
     }
     // Auch {} ist ein gültiger Body (z. B. BodyRetriever); nicht nur "keys.length > 0".
     const hasBody = body !== undefined && body !== null;

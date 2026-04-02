@@ -152,10 +152,10 @@ export class KennelRunHandler {
         }
 
         // Add the new mimic lineageId values to the kennel's dogIds so next run finds them.
+        // Use updateInPlace so auto-mimics don't pollute the version history.
         if (newLineageIds.length > 0) {
             const updatedDogIds = [...(config.dogIds ?? []), ...newLineageIds];
-            await this.deps.kennelsController.save({
-                id: config.id,
+            await this.deps.kennelsController.heal(config.id, {
                 dogIds: updatedDogIds,
             } as any);
         }
@@ -226,7 +226,7 @@ export class KennelRunHandler {
      */
     private async handleSwaggerJson(req: any, res: any): Promise<void> {
         try {
-            const config = await this.loadKennelConfig(req.params.id);
+            const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
@@ -251,13 +251,14 @@ export class KennelRunHandler {
      */
     private async handleSwaggerUi(req: any, res: any): Promise<void> {
         try {
-            const config = await this.loadKennelConfig(req.params.id);
+            const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }
             const title = config.name || config.id;
-            const specUrl = `/api/kennels/${config.id}/swagger.json`;
+            const versionSuffix = req.query.version ? `?version=${req.query.version}` : '';
+            const specUrl = `/api/kennels/${req.params.id}/swagger.json${versionSuffix}`;
             const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -383,7 +384,7 @@ export class KennelRunHandler {
         if (kennelId === 'api' || kennelId === 'kennel' || kennelId === 'edit') return;
 
         try {
-            const config = await this.loadKennelConfig(kennelId);
+            const config = await this.loadKennelConfig(kennelId, req.query.version);
             if (!config) {
                 res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
                 return;
@@ -420,7 +421,7 @@ export class KennelRunHandler {
         if (kennelId === 'api' || kennelId === 'kennel' || kennelId === 'edit') return;
 
         try {
-            const config = await this.loadKennelConfig(kennelId);
+            const config = await this.loadKennelConfig(kennelId, req.query.version);
             if (!config) {
                 res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
                 return;

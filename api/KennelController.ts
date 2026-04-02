@@ -183,6 +183,44 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Heal the current version — mend its wounds without reincarnation.
+     * Used for internal bookkeeping (e.g. auto-mimic dogIds additions)
+     * that should not pollute the version history.
+     */
+    async heal(id: string, patch: Partial<ISaveKennelInput>): Promise<IControllerResponse<IKennelConfig>> {
+        try {
+            const existing = await this.resolveKennel(id);
+            if (!existing) {
+                return { ok: false, error: `Kennel mit ID ${id} nicht gefunden` };
+            }
+
+            const versionId = existing.id;
+            const lineageId = (existing as any).lineageId || id;
+
+            await this.store.save({
+                id: versionId,
+                type: this.KENNEL_TYPE,
+                lineageId,
+                parentId: (existing as any).parentId ?? null,
+                name: patch.name !== undefined ? patch.name : existing.name,
+                description: patch.description !== undefined ? patch.description : existing.description,
+                emoji: patch.emoji !== undefined ? patch.emoji : existing.emoji,
+                dogIds: patch.dogIds !== undefined ? patch.dogIds : existing.dogIds,
+                defaultQuery: (patch.defaultQuery !== undefined ? patch.defaultQuery : existing.defaultQuery)
+                    ? JSON.stringify(patch.defaultQuery !== undefined ? patch.defaultQuery : existing.defaultQuery) : undefined,
+                defaultBody: (patch.defaultBody !== undefined ? patch.defaultBody : existing.defaultBody)
+                    ? JSON.stringify(patch.defaultBody !== undefined ? patch.defaultBody : existing.defaultBody) : undefined,
+                createdAt: existing.createdAt?.toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+
+            return { ok: true, id: lineageId, data: existing };
+        } catch (error) {
+            return { ok: false, error: String(error) };
+        }
+    }
+
+    /**
      * Resolves a kennel by version ID or lineageId.
      * First tries exact match (version GUID), then resolves as lineageId (latest version).
      */
