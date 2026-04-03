@@ -21,9 +21,13 @@ import {
     BloodhoundRouteRetriever,
     BloodhoundIsochroneRetriever,
     OsmLandmarksRetriever,
+    OsmForestPolygonsRetriever,
+    OsmStreetsGeometryRetriever,
     BloodhoundRouteQueryPact,
     BloodhoundIsochronePact,
     NearbyLandmarksPact,
+    OsmForestGeometryPact,
+    OsmStreetsGeometryPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
 import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
@@ -79,6 +83,8 @@ async function start() {
         BloodhoundRouteRetriever,
         BloodhoundIsochroneRetriever,
         OsmLandmarksRetriever,
+        OsmForestPolygonsRetriever,
+        OsmStreetsGeometryRetriever,
         HueBridgeEnvRetriever,
         HuePlaygroundRetriever,
         PublicTransportRetriever,
@@ -102,7 +108,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, OsmForestGeometryPact, OsmStreetsGeometryPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
