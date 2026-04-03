@@ -104,7 +104,7 @@ export class KennelRunHandler {
         // Once persisted, their lineageId is added to the kennel so next run loads them via the factory.
         await this.persistNewMimics(config, season.exhausted);
 
-        return convertSeasonToWaves(season);
+        return convertSeasonToWaves(season, config);
     }
 
     /**

@@ -1,7 +1,15 @@
 // The WavesConverter — the chronicler of the hunt, who turns the raw season into Waves of plunder.
 // After the dogs have hunted, their season must be charted in a form the crew can read.
 // Carrion hordes trill their profane accord with eldritch plans: each wave is a tide of results.
-import { IHuntingSeason, IWaveEntry, IHuntingDog, SerializedDog, MimicDog } from '@datadogs/core';
+import {
+    IHuntingSeason,
+    IWaveEntry,
+    IReadTrackingEntry,
+    IHuntingDog,
+    SerializedDog,
+    MimicDog,
+    IKennelConfig,
+} from '@datadogs/core';
 import { TypeDefBuilder } from './TypeDefBuilder';
 
 /**
@@ -54,6 +62,14 @@ export type NodeEntry = {
     };
     readFrom?: ReadTrackingEntry[];
     readBy?: ReadTrackingEntry[];
+    /**
+     * Liegt dieser Knoten auf einem transitiven Pfad, der das Lead-Ergebnis speist —
+     * Lead selbst, statische parentsRequired/parentsOptional-Kette, und per readFrom
+ * weiterverfolgte Datenquellen, globales readTracking, und Initiatoren der ersten Welle,
+ * die den Lead noch per Kanten-Graph erreichen. Nur gesetzt, wenn eine Kennel-Config
+ * übergeben wurde; sonst undefined (unbekannt).
+ */
+    onLeadDependencyPath?: boolean;
 };
 
 /**
@@ -73,12 +89,227 @@ function resolveInstanceId(instance: any): string {
         : instance.name;
 }
 
+/** Gleicht Lead-Suche mit SwaggerGenerator / API: erster dogIds-Eintrag, base:-Prefix optional. */
+function findLeadNodeEntry(waves: Waves, kennelConfig: IKennelConfig): NodeEntry | null {
+    const leadId = kennelConfig.dogIds?.[0];
+    if (!leadId) return null;
+    const searchId = leadId.startsWith('base:') ? leadId.substring(5) : leadId;
+
+    for (const wave of waves) {
+        for (const node of wave) {
+            if (node.id === searchId ||
+                node.id === leadId ||
+                node.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '')) {
+                return node;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Ein parentsRequired/Optional-Eintrag kann storageId, dogId oder Base-Dog-Name sein —
+ * parallel zu SerializedDog.findParentDog.
+ */
+function resolveParentRefToNode(ref: string, nodes: NodeEntry[]): NodeEntry | undefined {
+    return nodes.find(n =>
+        n.id === ref ||
+        (n.dogId != null && n.dogId === ref) ||
+        n.name === ref
+    );
+}
+
+/**
+ * Transitiver Abschluss vom Lead zu allen Knoten, von denen das Lead (statisch) abhängt,
+ * plus Fixpunkt-Erweiterung über readFrom (welche Quellen jeder Knoten in der Hülle las).
+ */
+function computeLeadDependencyClosure(lead: NodeEntry, allNodes: NodeEntry[]): Set<string> {
+    const closure = new Set<string>();
+    const queue: string[] = [lead.id];
+
+    while (queue.length > 0) {
+        const id = queue.shift()!;
+        if (closure.has(id)) continue;
+        closure.add(id);
+        const node = allNodes.find(n => n.id === id);
+        if (!node) continue;
+
+        const refs = [
+            ...(node.parentsRequired || []),
+            ...(node.parentsOptional || []),
+        ];
+        for (const ref of refs) {
+            const parent = resolveParentRefToNode(ref, allNodes);
+            if (parent) {
+                queue.push(parent.id);
+            }
+        }
+    }
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const id of closure) {
+            const node = allNodes.find(n => n.id === id);
+            if (!node?.readFrom?.length) continue;
+            for (const rt of node.readFrom) {
+                const source = allNodes.find(n =>
+                    n.name === rt.sourceInstanceName ||
+                    n.id === rt.sourceInstanceName
+                );
+                if (source && !closure.has(source.id)) {
+                    closure.add(source.id);
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    return closure;
+}
+
+function cleanParentRefForEdge(parentId: string): string {
+    return parentId.startsWith('base:') ? parentId.substring(5) : parentId;
+}
+
+/** Parent → Kinder (gleiche Semantik wie der UI-Graph). */
+function buildParentToChildrenMapFromWaves(waves: Waves): Map<string, Set<string>> {
+    const children = new Map<string, Set<string>>();
+    const add = (parentId: string, childId: string) => {
+        if (!children.has(parentId)) children.set(parentId, new Set());
+        children.get(parentId)!.add(childId);
+    };
+    for (const wave of waves) {
+        for (const dog of wave) {
+            for (const pid of dog.parentsRequired ?? []) {
+                add(cleanParentRefForEdge(pid), dog.id);
+            }
+            for (const pid of dog.parentsOptional ?? []) {
+                add(cleanParentRefForEdge(pid), dog.id);
+            }
+        }
+    }
+    return children;
+}
+
+/** Forward-Erreichbarkeit entlang Parent→Kind (Datenfluss zum Lead). */
+function canReachForward(
+    children: Map<string, Set<string>>,
+    start: string,
+    target: string
+): boolean {
+    const q: string[] = [start];
+    const seen = new Set<string>();
+    while (q.length > 0) {
+        const x = q.shift()!;
+        if (x === target) return true;
+        if (seen.has(x)) continue;
+        seen.add(x);
+        for (const c of children.get(x) ?? []) {
+            if (!seen.has(c)) q.push(c);
+        }
+    }
+    return false;
+}
+
+/**
+ * Initiatoren in Welle 0, die den Lead noch über den Kanten-Graph „vorwärts“ erreichen,
+ * in die Hülle aufnehmen (löst Lücken, wenn Eltern-Ketten nicht alle Reads abbilden).
+ */
+function extendClosureWithWaveZeroReachableToLead(
+    waves: Waves,
+    leadId: string,
+    closure: Set<string>
+): boolean {
+    if (!waves.length || !waves[0].length) return false;
+    const children = buildParentToChildrenMapFromWaves(waves);
+    let changed = false;
+    for (const n of waves[0]) {
+        if (closure.has(n.id)) continue;
+        if (canReachForward(children, n.id, leadId)) {
+            closure.add(n.id);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/**
+ * Vollständiges readTracking: jede Kante Reader→Quelle zieht die Quelle in die Hülle,
+ * wenn der Reader schon drin ist (Fixpunkt bis stabil).
+ */
+function closureContainsReader(
+    closure: Set<string>,
+    allNodes: NodeEntry[],
+    readerInstance: IHuntingDog<unknown>
+): boolean {
+    const rid = resolveInstanceId(readerInstance);
+    if (closure.has(rid)) return true;
+    return allNodes.some(
+        n => closure.has(n.id) && n.name === readerInstance.name
+    );
+}
+
+function expandClosureWithGlobalReadTracking(
+    closure: Set<string>,
+    allNodes: NodeEntry[],
+    readTracking: IReadTrackingEntry[]
+): void {
+    let pass = true;
+    while (pass) {
+        pass = false;
+        for (const rt of readTracking) {
+            const sourceId = resolveInstanceId(rt.sourceInstance);
+            if (!closureContainsReader(closure, allNodes, rt.readerInstance)) continue;
+            if (closure.has(sourceId)) continue;
+            const sourceNode = allNodes.find(
+                n => n.id === sourceId || n.name === rt.sourceInstance.name
+            );
+            if (sourceNode) {
+                closure.add(sourceNode.id);
+                pass = true;
+            }
+        }
+    }
+}
+
+function applyLeadPathAnnotation(
+    waves: Waves,
+    kennelConfig: IKennelConfig,
+    readTracking: IReadTrackingEntry[]
+): void {
+    const flat = waves.flat();
+    const lead = findLeadNodeEntry(waves, kennelConfig);
+    if (!lead) {
+        return;
+    }
+
+    const closure = computeLeadDependencyClosure(lead, flat);
+
+    let iter = 0;
+    const maxIter = 32;
+    while (iter < maxIter) {
+        iter++;
+        const sizeBefore = closure.size;
+        expandClosureWithGlobalReadTracking(closure, flat, readTracking);
+        extendClosureWithWaveZeroReachableToLead(waves, lead.id, closure);
+        if (closure.size === sizeBefore) break;
+    }
+
+    for (const n of flat) {
+        n.onLeadDependencyPath = closure.has(n.id);
+    }
+}
+
 /**
  * Convert the raw IHuntingSeason into Waves — the structured chronicle of the hunt.
  * Each wave is a parallel surge; each node entry is a dog's full account of what it seized.
  * ReadTracking is resolved bidirectionally: who fed this dog, and who did this dog feed.
+ *
+ * @param kennelConfig — wenn gesetzt, markiert jeder Knoten `onLeadDependencyPath`, ob er
+ *   nach einem Run transitiv zum Lead-Ergebnis beiträgt (Eltern-Graph rekursiv + readFrom).
  */
-export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
+export function convertSeasonToWaves(theHunt: IHuntingSeason, kennelConfig?: IKennelConfig): Waves {
     const waves: Waves = [];
 
     theHunt.wave.forEach((wave: IWaveEntry[]) => {
@@ -188,6 +419,10 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
             return nodeEntry;
         }));
     });
+
+    if (kennelConfig) {
+        applyLeadPathAnnotation(waves, kennelConfig, theHunt.readTracking ?? []);
+    }
 
     return waves;
 }

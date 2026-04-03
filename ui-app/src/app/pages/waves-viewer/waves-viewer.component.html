@@ -122,7 +122,8 @@
               [canvasScale]="graphCanvasScale"
               (dogSelected)="onDogSelected($event)"
               (dogSectionEdit)="onDogSectionEdit($event)"
-              (dogDeleted)="onDogDeleted($event)" />
+              (dogDeleted)="onDogDeleted($event)"
+              (branchCutRequested)="onBranchCutRequested($event)" />
           </app-graph-canvas-scale>
         </div>
       } @else if (!loading()) {
