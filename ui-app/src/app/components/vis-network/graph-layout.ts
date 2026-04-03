@@ -113,19 +113,66 @@ export function separateOverlappingNodes(
  * die Linie verläuft aus dem Knoten waagrecht heraus und trifft den Zielknoten waagrecht —
  * kein senkrechter „Vorhang“/Hängen entlang der Sehne.
  */
+/** Kontrollpunkte wie in `cubicBezierPathD` — für Mittelpunkt auf der Kurve (t=0.5). */
+function cubicBezierControlPoints(
+  rx1: number,
+  ry1: number,
+  rx2: number,
+  ry2: number
+): { cx1: number; cy1: number; cx2: number; cy2: number } {
+  const gap = Math.max(rx2 - rx1, 1);
+  const stretch = Math.min(100, gap * 0.42);
+  return {
+    cx1: rx1 + stretch,
+    cy1: ry1,
+    cx2: rx2 - stretch,
+    cy2: ry2,
+  };
+}
+
+/**
+ * Punkt auf der kubischen Bézier bei t ∈ [0,1] — gleiche Geometrie wie die sichtbare Kante.
+ */
+export function cubicBezierPointAt(
+  rx1: number,
+  ry1: number,
+  rx2: number,
+  ry2: number,
+  t: number
+): { x: number; y: number } {
+  const { cx1, cy1, cx2, cy2 } = cubicBezierControlPoints(rx1, ry1, rx2, ry2);
+  const mt = 1 - t;
+  const x =
+    mt ** 3 * rx1 +
+    3 * mt ** 2 * t * cx1 +
+    3 * mt * t ** 2 * cx2 +
+    t ** 3 * rx2;
+  const y =
+    mt ** 3 * ry1 +
+    3 * mt ** 2 * t * cy1 +
+    3 * mt * t ** 2 * cy2 +
+    t ** 3 * ry2;
+  return { x, y };
+}
+
 export function cubicBezierPathD(
   rx1: number,
   ry1: number,
   rx2: number,
   ry2: number
 ): string {
-  const gap = Math.max(rx2 - rx1, 1);
-  const stretch = Math.min(100, gap * 0.42);
-  const cx1 = rx1 + stretch;
-  const cy1 = ry1;
-  const cx2 = rx2 - stretch;
-  const cy2 = ry2;
+  const { cx1, cy1, cx2, cy2 } = cubicBezierControlPoints(rx1, ry1, rx2, ry2);
   return `M ${rx1} ${ry1} C ${cx1} ${cy1} ${cx2} ${cy2} ${rx2} ${ry2}`;
+}
+
+/** Mittelpunkt auf der sichtbaren Kantenkurve (t = 0.5) — Position für z. B. Scheren-Button. */
+export function cubicBezierMidpoint(
+  rx1: number,
+  ry1: number,
+  rx2: number,
+  ry2: number
+): { x: number; y: number } {
+  return cubicBezierPointAt(rx1, ry1, rx2, ry2, 0.5);
 }
 
 /**
@@ -220,6 +267,47 @@ export function recomputeEdgeSegments(nodes: PlacedNode[], waves: Waves): EdgeSe
   });
 
   return edges;
+}
+
+/**
+ * Adjazenz Parent → Kinder (gleiche Kanten wie `recomputeEdgeSegments`).
+ */
+export function buildParentToChildrenMap(waves: Waves): Map<string, Set<string>> {
+  const children = new Map<string, Set<string>>();
+  const add = (parentId: string, childId: string) => {
+    if (!children.has(parentId)) children.set(parentId, new Set());
+    children.get(parentId)!.add(childId);
+  };
+  for (const wave of waves) {
+    for (const dog of wave) {
+      for (const pid of dog.parentsRequired ?? []) {
+        add(cleanParentId(pid), dog.id);
+      }
+      for (const pid of dog.parentsOptional ?? []) {
+        add(cleanParentId(pid), dog.id);
+      }
+    }
+  }
+  return children;
+}
+
+/**
+ * Transitiver Teilbaum ab `childRootId` (inkl.): alle Knoten, die von dort nur „nach rechts“
+ * über Eltern→Kind-Kanten erreichbar sind — für „Zweig aus Kennel schneiden“ (B1).
+ */
+export function collectDescendantBranchNodeIds(waves: Waves, childRootId: string): Set<string> {
+  const children = buildParentToChildrenMap(waves);
+  const out = new Set<string>();
+  const q: string[] = [childRootId];
+  while (q.length > 0) {
+    const id = q.shift()!;
+    if (out.has(id)) continue;
+    out.add(id);
+    for (const c of children.get(id) ?? []) {
+      if (!out.has(c)) q.push(c);
+    }
+  }
+  return out;
 }
 
 /**

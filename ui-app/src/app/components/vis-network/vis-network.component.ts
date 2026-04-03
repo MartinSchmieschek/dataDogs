@@ -18,6 +18,8 @@ import {
 
   buildGraphViewModel,
 
+  cubicBezierMidpoint,
+
   GRAPH_NODE_H,
 
   GRAPH_NODE_W,
@@ -190,6 +192,32 @@ export interface EdgeReadOverlayVM {
 
           }
 
+          @for (s of edgeCutSlots(); track s.key) {
+
+            <div
+
+              class="edge-cut-slot"
+
+              [style.left.px]="s.left"
+
+              [style.top.px]="s.top">
+
+              <button
+
+                type="button"
+
+                class="edge-cut-btn"
+
+                title="Zweig aus Kennel entfernen (nicht Lead-Pfad; alle Knoten dieses Teilbaums aus dogIds)"
+
+                (pointerdown)="$event.stopPropagation()"
+
+                (click)="onBranchCutClick(s, $event)">✂</button>
+
+            </div>
+
+          }
+
         </div>
 
       }
@@ -282,6 +310,52 @@ export interface EdgeReadOverlayVM {
 
     }
 
+    .edge-cut-slot {
+
+      position: absolute;
+
+      z-index: 3;
+
+      transform: translate(-50%, -50%);
+
+      pointer-events: auto;
+
+    }
+
+    .edge-cut-btn {
+
+      margin: 0;
+
+      padding: 1px 5px;
+
+      font-size: 13px;
+
+      line-height: 1.2;
+
+      cursor: pointer;
+
+      border-radius: 4px;
+
+      border: 1px solid rgba(120, 120, 140, 0.55);
+
+      background: rgba(20, 22, 32, 0.92);
+
+      color: #c8cad8;
+
+      opacity: 0.5;
+
+    }
+
+    .edge-cut-btn:hover {
+
+      opacity: 1;
+
+      border-color: #889;
+
+      color: #fff;
+
+    }
+
   `]
 
 })
@@ -304,6 +378,9 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
   @Output() dogSectionEdit = new EventEmitter<{ dog: DogEntry; section: DogPanelSectionId }>();
 
   @Output() dogDeleted = new EventEmitter<string>();
+
+  /** Kante Parent → Kind: gesamten Teilbaum ab Kind aus `dogIds` des Kennels streichen. */
+  @Output() branchCutRequested = new EventEmitter<{ fromId: string; toId: string }>();
 
   /** Erster Eintrag in kennel.dogIds — für Lead-Stern am Knoten */
   @Input() kennelLeadDogIdsSlot: string | null = null;
@@ -445,6 +522,41 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
     }
 
     return out;
+
+  });
+
+
+
+  /** Scheren-Position: Mitte der Bézier-Kante — nur bei Kanten abseits des Lead-Pfads (`onLeadDependencyPath`). */
+  edgeCutSlots = computed(() => {
+
+    const vm = this.viewModel();
+
+    if (!vm) return [];
+
+    const map = vm.dogMap;
+
+    return vm.renderEdges
+      .filter(e => edgeShowsBranchCutForOffLeadPath(map.get(e.fromId), map.get(e.toId)))
+      .map(e => {
+
+        const mid = cubicBezierMidpoint(e.rx1, e.ry1, e.rx2, e.ry2);
+
+        return {
+
+          key: e.key,
+
+          left: mid.x,
+
+          top: mid.y,
+
+          fromId: e.fromId,
+
+          toId: e.toId,
+
+        };
+
+      });
 
   });
 
@@ -676,6 +788,15 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
     this.dogSectionEdit.emit({ dog, section });
   }
 
+  onBranchCutClick(
+    s: { fromId: string; toId: string },
+    ev: Event
+  ): void {
+    ev.stopPropagation();
+    ev.preventDefault();
+    this.branchCutRequested.emit({ fromId: s.fromId, toId: s.toId });
+  }
+
   onViewportPointerDown(e: PointerEvent) {
 
     if (e.button !== 0) return;
@@ -683,6 +804,8 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
     const t = e.target as HTMLElement;
 
     if (t.closest('.graph-node-slot')) return;
+
+    if (t.closest('.edge-cut-slot')) return;
 
 
 
@@ -836,6 +959,17 @@ function formatReadByLines(readBy: ReadTrackingEntry[] | undefined): string[] {
 
   return out;
 
+}
+
+/**
+ * Schere nur auf Kanten, die nicht vollständig zum Lead-Ergebnis gehören —
+ * beide Enden müssen `onLeadDependencyPath === true` sein, sonst ist die Kante „abschneidbar“.
+ */
+function edgeShowsBranchCutForOffLeadPath(
+  from: DogEntry | undefined,
+  to: DogEntry | undefined
+): boolean {
+  return !(from?.onLeadDependencyPath === true && to?.onLeadDependencyPath === true);
 }
 
 

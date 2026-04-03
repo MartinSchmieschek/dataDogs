@@ -35,6 +35,8 @@ export interface DogEntry {
   };
   readFrom?: ReadTrackingEntry[];
   readBy?: ReadTrackingEntry[];
+  /** Transitiver Beitrag zum Lead-Ergebnis (nur gesetzt wenn die API Config mitschickt). */
+  onLeadDependencyPath?: boolean;
 }
 
 export type Waves = DogEntry[][];

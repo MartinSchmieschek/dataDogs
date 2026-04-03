@@ -15,7 +15,8 @@ import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-
 import { FloatingPanelWindowComponent } from '../../components/floating-panel-window/floating-panel-window.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.component';
-import { findKennelDogIndex } from '../../utils/kennel-dog-id-match';
+import { findKennelDogIndex, graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
+import { collectDescendantBranchNodeIds } from '../../components/vis-network/graph-layout';
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { apiAbsoluteUrl } from '../../config/api-base';
@@ -312,7 +313,48 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
+<<<<<<< Updated upstream
   onDogMovedToFirst(lineageId: string) {
+=======
+  /**
+   * B1: Kante Parent→Kind — transitiven Teilbaum ab dem Kind-Knoten aus `dogIds` entfernen, neu laden (ohne Dialog).
+   */
+  onBranchCutRequested(ev: { fromId: string; toId: string }) {
+    const config = this.kennelConfig();
+    const waves = this.waves();
+    if (!config || !waves?.length) return;
+
+    const branchIds = collectDescendantBranchNodeIds(waves, ev.toId);
+    const flat = this.flatDogList();
+
+    const before = [...(config.dogIds ?? [])];
+    const nextIds = before.filter(kid => {
+      for (const nodeId of branchIds) {
+        const dog = flat.find(d => d.id === nodeId);
+        if (graphNodeIdMatchesKennelDogId(nodeId, kid, dog?.dogId)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (nextIds.length === before.length) {
+      this.error.set('Kein passender dogIds-Eintrag zum Entfernen (ID-Abgleich).');
+      return;
+    }
+
+    this.kennelService.update(this.kennelId, { dogIds: nextIds }).subscribe({
+      next: () => {
+        this.selectedDog.set(null);
+        this.loadWaves();
+        this.loadAvailableDogs();
+      },
+      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Kennel-Update fehlgeschlagen'),
+    });
+  }
+
+  onDogMovedToFirst(dogId: string) {
+>>>>>>> Stashed changes
     this.reorderKennelDogIds(ids => {
       const idx = findKennelDogIndex(ids, lineageId);
       if (idx <= 0) return ids;
