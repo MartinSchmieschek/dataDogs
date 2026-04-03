@@ -24,3 +24,8 @@ export * from './Bloodhound/pacts';
 export * from './OpenStreetMap/OsmLandmarksRetriever';
 export * from './OpenStreetMap/pacts';
 export * from './OpenStreetMap/overpassLandmarks';
+export * from './OpenStreetMap/osmGeometryEnums';
+export * from './OpenStreetMap/osmGeometryPacts';
+export * from './OpenStreetMap/overpassGeometryCore';
+export * from './OpenStreetMap/OsmForestPolygonsRetriever';
+export * from './OpenStreetMap/OsmStreetsGeometryRetriever';

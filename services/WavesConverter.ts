@@ -108,13 +108,13 @@ function findLeadNodeEntry(waves: Waves, kennelConfig: IKennelConfig): NodeEntry
 }
 
 /**
- * Ein parentsRequired/Optional-Eintrag kann storageId, dogId oder Base-Dog-Name sein —
+ * Ein parentsRequired/Optional-Eintrag kann storageId, lineageId oder Base-Dog-Name sein —
  * parallel zu SerializedDog.findParentDog.
  */
 function resolveParentRefToNode(ref: string, nodes: NodeEntry[]): NodeEntry | undefined {
     return nodes.find(n =>
         n.id === ref ||
-        (n.dogId != null && n.dogId === ref) ||
+        (n.lineageId != null && n.lineageId === ref) ||
         n.name === ref
     );
 }

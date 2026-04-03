@@ -23,6 +23,8 @@ const BASE_DOG_ICONS: Record<string, string> = {
     BloodhoundRouteRetriever: '\uD83D\uDDFA\uFE0F',
     BloodhoundIsochroneRetriever: '\u23F1\uFE0F',
     OsmLandmarksRetriever: '\uD83C\uDFDB\uFE0F',
+    OsmForestPolygonsRetriever: '\uD83C\uDF32',
+    OsmStreetsGeometryRetriever: '\uD83D\uDEE3\uFE0F',
     HueBridgeEnvRetriever: '\uD83D\uDD10',
     HuePlaygroundRetriever: '\uD83D\uDCA1',
     PublicTransportRetriever: '\uD83D\uDE8C',

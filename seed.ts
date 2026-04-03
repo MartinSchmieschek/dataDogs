@@ -230,6 +230,10 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
     await seedAirQualityKennel(nodesStore, kennelsStore);
     await seedGeocodingKennel(nodesStore, kennelsStore);
     await seedWikiNearbyKennel(nodesStore, kennelsStore);
+    await seedOsmForestPolygonsKennel(nodesStore, kennelsStore);
+    await seedOsmStreetsGeometryKennel(nodesStore, kennelsStore);
+    await seedBloodhoundRouteKennel(nodesStore, kennelsStore);
+    await seedBloodhoundIsochroneKennel(nodesStore, kennelsStore);
     await seedSunKennel(nodesStore, kennelsStore);
     await seedLocationDashboardKennel(nodesStore, kennelsStore);
     await seedAddressLookupKennel(nodesStore, kennelsStore);
@@ -1278,6 +1282,279 @@ return {
     });
 
     console.log(`\u2705 Seeded Wiki Nearby Kennel (kennelId: ${kennelId})`);
+}
+
+/**
+ * OSM Wald-/Flaechen-Polygone (landuse/natural) als GeoJSON — Kreis aus lat/lng/radius.
+ */
+export async function seedOsmForestPolygonsKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'osm-forest-polygons-kennel';
+    const existing = await kennelExists(kennelsStore, kennelId);
+    if (existing) return;
+
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'OSM Forest Geometry Query Mapper',
+        imitates: 'OsmForestGeometryQueryProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    lat: QueryRetriever.lat,
+    lng: QueryRetriever.lng,
+    radius: QueryRetriever.radius || "400",
+    landuse: ["forest"],
+    natural: ["wood"],
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'OSM Forest Geometry Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'OSM Waldflaechen',
+        description: 'OpenStreetMap: Wald und Landuse/Natural-Polygone im Umkreis (GeoJSON)',
+        emoji: '\uD83C\uDF32',
+        dogIds: [
+            BASE_DOG_PREFIX + 'OsmForestPolygonsRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: { lat: '50.1109', lng: '8.6821', radius: '400' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery,
+        defaultBody: undefined,
+    });
+
+    console.log(`\u2705 Seeded OSM Forest Polygons Kennel (kennelId: ${kennelId})`);
+}
+
+/**
+ * OSM Strassen (highway) als Linien-GeoJSON — Kreis aus lat/lng/radius.
+ */
+export async function seedOsmStreetsGeometryKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'osm-streets-geometry-kennel';
+    const existing = await kennelExists(kennelsStore, kennelId);
+    if (existing) return;
+
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'OSM Streets Geometry Query Mapper',
+        imitates: 'OsmStreetsGeometryQueryProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    lat: QueryRetriever.lat,
+    lng: QueryRetriever.lng,
+    radius: QueryRetriever.radius || "400",
+    preset: "major_only",
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'OSM Streets Geometry Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'OSM Strassen',
+        description: 'OpenStreetMap: Hauptstrassen (motorway bis tertiary) im Umkreis als GeoJSON-Linien',
+        emoji: '\uD83D\uDEE3\uFE0F',
+        dogIds: [
+            BASE_DOG_PREFIX + 'OsmStreetsGeometryRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: { lat: '50.1109', lng: '8.6821', radius: '400' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery,
+        defaultBody: undefined,
+    });
+
+    console.log(`\u2705 Seeded OSM Streets Geometry Kennel (kennelId: ${kennelId})`);
+}
+
+/**
+ * OpenRouteService: Route zwischen zwei GPS-Punkten (Segmente, Distanz, Geometrie).
+ * Query: startlat, startlng, endlat, endlng (optional profile, z. B. foot-walking).
+ */
+export async function seedBloodhoundRouteKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'bloodhound-route-kennel';
+    const existing = await kennelExists(kennelsStore, kennelId);
+    if (existing) return;
+
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Bloodhound Route Query Mapper',
+        imitates: 'BloodhoundQueryProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    startlat: QueryRetriever.startlat,
+    startlng: QueryRetriever.startlng,
+    endlat: QueryRetriever.endlat,
+    endlng: QueryRetriever.endlng,
+    profile: QueryRetriever.profile || "foot-walking"
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Bloodhound Route Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'Bloodhound Route',
+        description: 'OpenRouteService: Fuss-Route zwischen zwei Koordinaten (GeoJSON, Segmente)',
+        emoji: '\uD83D\uDDFA\uFE0F',
+        dogIds: [
+            BASE_DOG_PREFIX + 'BloodhoundRouteRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: {
+            startlat: '50.1109',
+            startlng: '8.6821',
+            endlat: '50.1136',
+            endlng: '8.6865',
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery,
+        defaultBody: undefined,
+    });
+
+    console.log(`\u2705 Seeded Bloodhound Route Kennel (kennelId: ${kennelId})`);
+}
+
+/**
+ * OpenRouteService: Erreichbarkeits-Isochrone um einen Punkt (Zeit in Sekunden).
+ * Query: lat, lng, range (Sekunden), optional profile.
+ */
+export async function seedBloodhoundIsochroneKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'bloodhound-isochrone-kennel';
+    const existing = await kennelExists(kennelsStore, kennelId);
+    if (existing) return;
+
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Bloodhound Isochrone Query Mapper',
+        imitates: 'BloodhoundIsochroneProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    lat: QueryRetriever.lat,
+    lng: QueryRetriever.lng,
+    range: QueryRetriever.range || "600",
+    profile: QueryRetriever.profile || "foot-walking"
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Bloodhound Isochrone Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'Bloodhound Isochrone',
+        description: 'OpenRouteService: Fuss-Isochrone um einen Punkt (Erreichbarkeit in Sekunden)',
+        emoji: '\u23F1\uFE0F',
+        dogIds: [
+            BASE_DOG_PREFIX + 'BloodhoundIsochroneRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: { lat: '50.1109', lng: '8.6821', range: '600' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery,
+        defaultBody: undefined,
+    });
+
+    console.log(`\u2705 Seeded Bloodhound Isochrone Kennel (kennelId: ${kennelId})`);
 }
 
 /**

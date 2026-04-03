@@ -313,9 +313,6 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
-<<<<<<< Updated upstream
-  onDogMovedToFirst(lineageId: string) {
-=======
   /**
    * B1: Kante Parent→Kind — transitiven Teilbaum ab dem Kind-Knoten aus `dogIds` entfernen, neu laden (ohne Dialog).
    */
@@ -331,7 +328,7 @@ export class WavesViewerComponent implements OnInit {
     const nextIds = before.filter(kid => {
       for (const nodeId of branchIds) {
         const dog = flat.find(d => d.id === nodeId);
-        if (graphNodeIdMatchesKennelDogId(nodeId, kid, dog?.dogId)) {
+        if (graphNodeIdMatchesKennelDogId(nodeId, kid, dog?.lineageId)) {
           return false;
         }
       }
@@ -353,8 +350,7 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
-  onDogMovedToFirst(dogId: string) {
->>>>>>> Stashed changes
+  onDogMovedToFirst(lineageId: string) {
     this.reorderKennelDogIds(ids => {
       const idx = findKennelDogIndex(ids, lineageId);
       if (idx <= 0) return ids;
