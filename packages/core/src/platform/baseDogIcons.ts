@@ -31,6 +31,12 @@ const BASE_DOG_ICONS: Record<string, string> = {
     GeocodingRetriever: '\uD83D\uDCCD',
     WikiNearbyRetriever: '\uD83D\uDCDA',
     SunRetriever: '\u2600\uFE0F',
+    SpeciesRetriever: '\uD83E\uDD8E',
+    BirdRetriever: '\uD83E\uDD86',
+    PhenologyRetriever: '\uD83C\uDF38',
+    WebcamRetriever: '\uD83D\uDCF7',
+    RegionalNewsRetriever: '\uD83D\uDCF0',
+    TransitTripRetriever: '\uD83D\uDE82',
 };
 
 /** Look up a hound's sigil by its class name -- returns undefined if the hound be unmarked */

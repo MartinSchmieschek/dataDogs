@@ -40,7 +40,14 @@
       "@datadogs/dogs-air-quality": ["packages/dogs-air-quality/src/index.ts"],
       "@datadogs/dogs-geocoding": ["packages/dogs-geocoding/src/index.ts"],
       "@datadogs/dogs-wikipedia": ["packages/dogs-wikipedia/src/index.ts"],
-      "@datadogs/dogs-sun": ["packages/dogs-sun/src/index.ts"]    },
+      "@datadogs/dogs-sun": ["packages/dogs-sun/src/index.ts"],
+      "@datadogs/dogs-biodiversity": ["packages/dogs-biodiversity/src/index.ts"],
+      "@datadogs/dogs-birds": ["packages/dogs-birds/src/index.ts"],
+      "@datadogs/dogs-phenology": ["packages/dogs-phenology/src/index.ts"],
+      "@datadogs/dogs-webcams": ["packages/dogs-webcams/src/index.ts"],
+      "@datadogs/dogs-regional-news": ["packages/dogs-regional-news/src/index.ts"],
+      "@datadogs/dogs-transit-trips": ["packages/dogs-transit-trips/src/index.ts"]
+    },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */
     // "typeRoots": [],                                  /* Specify multiple folders that act like './node_modules/@types'. */
