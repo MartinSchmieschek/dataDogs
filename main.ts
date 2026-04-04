@@ -32,6 +32,12 @@ import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-qua
 import { GeocodingRetriever, GeocodingQueryPact } from '@datadogs/dogs-geocoding';
 import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
 import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
+import { SpeciesRetriever, BiodiversityQueryPact } from '@datadogs/dogs-biodiversity';
+import { BirdRetriever, BirdQueryPact } from '@datadogs/dogs-birds';
+import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology';
+import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
+import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
+import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
@@ -90,6 +96,12 @@ async function start() {
         GeocodingRetriever,
         WikiNearbyRetriever,
         SunRetriever,
+        SpeciesRetriever,
+        BirdRetriever,
+        PhenologyRetriever,
+        WebcamRetriever,
+        RegionalNewsRetriever,
+        TransitTripRetriever,
     ];
 
     // Breathe life into each hound — from tangent planes they rise, ready to hunt the data seas.
@@ -105,7 +117,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
