@@ -100,6 +100,28 @@ export class KennelListComponent implements OnInit {
     }
   }
 
+  importFromClipboard() {
+    navigator.clipboard.readText().then(text => {
+      try {
+        const bundle = JSON.parse(text);
+        this.kennelService.importBundle(bundle).subscribe({
+          next: (res) => {
+            if (res.ok) {
+              this.loadKennels();
+            } else {
+              this.error.set(res.error ?? 'Import fehlgeschlagen');
+            }
+          },
+          error: (err) => this.error.set(err.error?.error ?? err.message),
+        });
+      } catch {
+        this.error.set('Clipboard enthält kein gültiges JSON');
+      }
+    }).catch(() => {
+      this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
+    });
+  }
+
   onCreateKennel(data: KennelFormData) {
     this.kennelService
       .create({

@@ -10,9 +10,14 @@
 
       <h1>Kennel Liste</h1>
 
-      <button type="button" class="create-btn" (click)="showCreateForm.set(!showCreateForm())">
-        + Neuen Kennel erstellen
-      </button>
+      <div class="list-actions">
+        <button type="button" class="create-btn" (click)="showCreateForm.set(!showCreateForm())">
+          + Neuen Kennel erstellen
+        </button>
+        <button type="button" class="create-btn" (click)="importFromClipboard()">
+          Kennel importieren (Clipboard)
+        </button>
+      </div>
 
       @if (showCreateForm()) {
         <app-kennel-form
