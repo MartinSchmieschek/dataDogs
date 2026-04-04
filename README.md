@@ -105,7 +105,17 @@ const filtered = recipes.filter(r => r.rating > 4);
 return { topRecipes: filtered, count: filtered.length };
 ```
 
-**Versioning** -- Every save breeds a new version (`dog-v1`, `dog-v2`, ...). Old versions remain in the database. Latest is loaded by default. Browse any ancestor from the UI. No lineage is ever severed.
+**Dog versioning** -- Every save breeds a new version (`dog-v1`, `dog-v2`, ...). Old versions remain in the database. Latest is loaded by default. Browse any ancestor from the UI. No lineage is ever severed.
+
+**Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
+
+**Kennel export & import** -- `GET /api/kennels/:id/export` bundles a Kennel with all its dogs and version history into a portable JSON artifact. `POST /api/kennels/import` re-creates it elsewhere. If the Kennel ID already exists, the system auto-suffixes (`-copy`, `-copy-2`, ...) and remaps all internal references. Copy and paste across instances.
+
+**Caching** -- Two-tier memory so dogs don't repeat themselves:
+- **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication. Two requests for the same key share one Promise instead of firing twice.
+- **Area cache** (`AreaCacheStrategy`) -- Geographic awareness for location-based dogs. Uses Haversine distance to detect when a new query falls inside an already-cached territory. If a 5 km radius around point A is cached and you ask for 3 km around a nearby point B that sits inside A's circle, the cached result is returned without refetching. Larger areas swallow smaller ones on eviction.
+
+Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aware). The cache is injected at runtime -- dogs that don't implement the interface are unaffected.
 
 **Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data-flow traceability across the pack.
 
@@ -132,6 +142,9 @@ return { topRecipes: filtered, count: filtered.length };
 | `DELETE` | `/api/kennels/:id` | Dissolve the pack |
 | `GET/POST` | `/api/kennels/:id/run` | Unleash the hunt, return Waves + config |
 | `GET/POST` | `/api/kennels/:id/execute` | Unleash the hunt, return the lead's yield |
+| `GET` | `/api/kennels/:id/versions` | List all versions of a Kennel's lineage |
+| `GET` | `/api/kennels/:id/export` | Export Kennel bundle (dogs + history) as JSON |
+| `POST` | `/api/kennels/import` | Import a Kennel bundle (auto-renames on collision) |
 | `GET` | `/api/kennels/:id/swagger.json` | Xata -- the Kennel's truth as OpenAPI spec |
 | `GET` | `/api/kennels/:id/docs` | Swagger UI — generated from the run |
 
@@ -384,7 +397,9 @@ api/
   AbstractController.ts       Base class for all controllers
   routes/
     ConfigRouteHandler.ts     REST routes + /save endpoint
-    KennelRunHandler.ts       Run/execute/public/swagger endpoints
+    KennelRunHandler.ts       Run/execute/public endpoints
+    KennelBundleHandler.ts    Export/import Kennel bundles
+    KennelSwaggerHandler.ts   Swagger/OpenAPI spec generation
   utils/
     versioning.ts             Version ID extraction and generation
 store/
@@ -396,14 +411,22 @@ services/
   TypeDefBuilder.ts           Generates TypeScript definitions for VM context
   CompilerCache.ts            Caches compiled TypeScript
   SwaggerGenerator.ts         Generates OpenAPI specs from Kennel runs
+  CacheHandler.ts             KV cache with TTL and in-flight deduplication
+  AreaCacheStrategy.ts        Geographic area cache (Haversine containment)
 packages/
-  core/                       datadogs library (Dog, Kennel, Wave engine, Pacts)
+  core/                       datadogs library (Dog, Kennel, Wave engine, Pacts, Cache interfaces)
   dogs-demo/                  Demo dogs (recipes, flags, random data)
+  dogs-biodiversity/          Species and plant GPS observations
+  dogs-birds/                 Bird sightings by GPS location
   dogs-geo/                   Geo dogs (routes, isochrones, OSM landmarks)
-  dogs-public-transport/      Public transport (nearby stops + departures via MOTIS)
   dogs-hue/                   Philips Hue integration
+  dogs-phenology/             Phenological seasons and bloom phases
+  dogs-public-transport/      Public transport (nearby stops + departures via MOTIS)
+  dogs-regional-news/         Local news and events via RSS feeds
   dogs-talking/               TalkingDog (HTML rendering)
+  dogs-transit-trips/         Complete bus and train journey data
   dogs-warframe/              Warframe API integration
+  dogs-webcams/               Live webcams by GPS location
 ui-app/                       Angular frontend (see ui-app/README.md)
 ```
 
