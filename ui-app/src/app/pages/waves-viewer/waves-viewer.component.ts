@@ -447,6 +447,26 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
+  exportKennel() {
+    this.kennelService.exportBundle(this.kennelId).subscribe({
+      next: (bundle: any) => {
+        const json = JSON.stringify(bundle, null, 2);
+        navigator.clipboard.writeText(json).then(() => {
+          console.log('Kennel bundle copied to clipboard');
+        }).catch(() => {
+          // Fallback: download as file
+          const blob = new Blob([json], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${this.kennelId}.kennel.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      },
+    });
+  }
+
   createNewDog() {
     const displayName = `dog-${Date.now()}`;
     this.dogService.create({

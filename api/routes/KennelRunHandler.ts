@@ -29,6 +29,10 @@ export class KennelRunHandler {
         app.get('/api/kennels/:id/swagger.json', (req: any, res: any) => this.handleSwaggerJson(req, res));
         app.get('/api/kennels/:id/docs', (req: any, res: any) => this.handleSwaggerUi(req, res));
 
+        // Export/Import — carry a kennel's soul across the void.
+        app.get('/api/kennels/:id/export', (req: any, res: any) => this.handleExport(req, res));
+        app.post('/api/kennels/import', (req: any, res: any) => this.handleImport(req, res));
+
         // The run routes — unleash the full pack and return all waves of plunder.
         app.get('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
         app.post('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
@@ -216,6 +220,221 @@ export class KennelRunHandler {
         } else {
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
             res.status(200).json(result);
+        }
+    }
+
+    /**
+     * GET /api/kennels/:id/export
+     * Exports a kennel and all its serialized dogs as a portable bundle.
+     * IDs are preserved as-is — remapping happens on import, not here.
+     */
+    private async handleExport(req: any, res: any): Promise<void> {
+        try {
+            const config = await this.loadKennelConfig(req.params.id, req.query.version);
+            if (!config) {
+                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
+
+            const { nodesStore } = this.deps;
+            const dogs: any[] = [];
+
+            // Collect all non-base dog references from the kennel.
+            const serializedIds = (config.dogIds ?? []).filter(id => !id.startsWith('base:'));
+
+            if (serializedIds.length > 0) {
+                // Load from both SerializedDog and MimicDog types — the factory resolution.
+                const [serialized, mimics] = await Promise.all([
+                    nodesStore.findLatestVersionsByType(SerializedDog.name, serializedIds),
+                    nodesStore.findLatestVersionsByType(MimicDog.name, serializedIds),
+                ]);
+
+                for (const row of [...serialized, ...mimics]) {
+                    const cfg = typeof row.serializedDogConfig === 'string'
+                        ? JSON.parse(row.serializedDogConfig)
+                        : row.serializedDogConfig;
+                    dogs.push({
+                        lineageId: (row as any).lineageId || cfg.lineageId,
+                        versionId: row.id,
+                        displayName: (row as any).displayName || cfg.displayName,
+                        type: cfg.imitates ? 'MimicDog' : 'SerializedDog',
+                        config: cfg,
+                    });
+                }
+            }
+
+            // Load kennel version history.
+            const kennelLineageId = (config as any).lineageId || req.params.id;
+            const kennelVersions = await this.deps.kennelsController.getVersions(kennelLineageId);
+
+            const bundle = {
+                bundleVersion: 1,
+                kennel: {
+                    kennelId: kennelLineageId,
+                    name: config.name,
+                    description: config.description,
+                    emoji: config.emoji,
+                    dogIds: config.dogIds,
+                    defaultQuery: config.defaultQuery,
+                    defaultBody: config.defaultBody,
+                },
+                kennelVersions: kennelVersions.map(v => ({
+                    id: v.id,
+                    parentId: v.parentId,
+                    createdAt: v.createdAt,
+                    config: v.config,
+                })),
+                dogs,
+            };
+
+            res.json(bundle);
+        } catch (err) {
+            console.error('[KennelRunHandler.handleExport]', err);
+            res.status(500).json({ error: String(err) });
+        }
+    }
+
+    /**
+     * POST /api/kennels/import
+     * Imports a kennel bundle — all IDs are regenerated, references remapped.
+     * If kennelId already exists, the import is refused.
+     */
+    private async handleImport(req: any, res: any): Promise<void> {
+        try {
+            const bundle = req.body;
+            if (!bundle?.kennel || !Array.isArray(bundle.dogs)) {
+                res.status(400).json({ error: 'Invalid bundle: kennel and dogs[] required' });
+                return;
+            }
+
+            const { nodesStore } = this.deps;
+            const kennelId = bundle.kennel.kennelId;
+
+            // Check if kennel already exists.
+            const existing = await this.deps.kennelsController.getById(kennelId);
+            if (existing.ok && existing.data) {
+                res.status(409).json({ error: `Kennel '${kennelId}' existiert bereits` });
+                return;
+            }
+
+            // Build ID mapping: old lineageId/versionId → new lineageId.
+            const idMap = new Map<string, string>();
+            for (const dog of bundle.dogs) {
+                const newLineageId = generateLineageId();
+                if (dog.lineageId) idMap.set(dog.lineageId, newLineageId);
+                if (dog.versionId) idMap.set(dog.versionId, newLineageId);
+            }
+
+            // Remap a reference: if it's in the map, use the new ID. Otherwise keep as-is (base: refs, unknown refs).
+            const remap = (ref: string): string => idMap.get(ref) ?? ref;
+
+            // Create all dogs with new IDs.
+            for (const dog of bundle.dogs) {
+                const newLineageId = idMap.get(dog.lineageId) || generateLineageId();
+                const newVersionId = generateVersionId();
+
+                const cfg = { ...dog.config };
+                cfg.id = newVersionId;
+                cfg.lineageId = newLineageId;
+                cfg.parentId = null;
+                cfg.displayName = dog.displayName || cfg.displayName;
+
+                // Remap parent references.
+                if (Array.isArray(cfg.parentsRequired)) {
+                    cfg.parentsRequired = cfg.parentsRequired.map(remap);
+                }
+                if (Array.isArray(cfg.parentsOptional)) {
+                    cfg.parentsOptional = cfg.parentsOptional.map(remap);
+                }
+
+                const type = cfg.imitates ? MimicDog.name : SerializedDog.name;
+
+                await nodesStore.save({
+                    id: newVersionId,
+                    type,
+                    lineageId: newLineageId,
+                    parentId: null,
+                    displayName: cfg.displayName,
+                    serializedDogConfig: JSON.stringify(cfg),
+                    createdAt: new Date(),
+                });
+            }
+
+            // Remap kennel dogIds.
+            const remapDogIds = (ids: string[]) => (ids ?? []).map(remap);
+
+            // Restore kennel versions if present, otherwise create a single version.
+            const versions = Array.isArray(bundle.kennelVersions) && bundle.kennelVersions.length > 0
+                ? bundle.kennelVersions
+                : null;
+
+            if (versions) {
+                // Sort oldest first so parentId chain is preserved.
+                const sorted = [...versions].sort((a: any, b: any) => {
+                    const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return aT - bT;
+                });
+
+                // Map old version IDs to new ones for parentId remapping.
+                const versionIdMap = new Map<string, string>();
+                for (const v of sorted) {
+                    versionIdMap.set(v.id, generateVersionId());
+                }
+
+                for (const v of sorted) {
+                    const newVersionId = versionIdMap.get(v.id)!;
+                    const oldParentId = v.parentId;
+                    const newParentId = oldParentId ? (versionIdMap.get(oldParentId) ?? null) : null;
+                    const vCfg = v.config || bundle.kennel;
+
+                    await this.deps.nodesStore.save({
+                        id: newVersionId,
+                        type: 'KennelConfig',
+                        lineageId: kennelId,
+                        parentId: newParentId,
+                        name: vCfg.name,
+                        description: vCfg.description,
+                        emoji: vCfg.emoji,
+                        dogIds: remapDogIds(vCfg.dogIds),
+                        defaultQuery: vCfg.defaultQuery ? JSON.stringify(vCfg.defaultQuery) : undefined,
+                        defaultBody: vCfg.defaultBody ? JSON.stringify(vCfg.defaultBody) : undefined,
+                        createdAt: v.createdAt ? new Date(v.createdAt).toISOString() : new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    });
+                }
+            } else {
+                // No version history — create a single version.
+                const createResult = await this.deps.kennelsController.create({
+                    id: kennelId,
+                    name: bundle.kennel.name,
+                    description: bundle.kennel.description,
+                    emoji: bundle.kennel.emoji,
+                    dogIds: remapDogIds(bundle.kennel.dogIds),
+                });
+
+                if (!createResult.ok) {
+                    res.status(500).json({ error: createResult.error });
+                    return;
+                }
+
+                // Set defaultQuery/defaultBody if present.
+                if (bundle.kennel.defaultQuery || bundle.kennel.defaultBody) {
+                    await this.deps.kennelsController.heal(kennelId, {
+                        defaultQuery: bundle.kennel.defaultQuery,
+                        defaultBody: bundle.kennel.defaultBody,
+                    } as any);
+                }
+            }
+
+            res.json({
+                ok: true,
+                kennelId,
+                idMap: Object.fromEntries(idMap),
+            });
+        } catch (err) {
+            console.error('[KennelRunHandler.handleImport]', err);
+            res.status(500).json({ error: String(err) });
         }
     }
 

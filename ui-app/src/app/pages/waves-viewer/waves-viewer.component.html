@@ -19,6 +19,7 @@
       <a [href]="swaggerDocsUrl" target="_blank" rel="noopener" class="btn-swagger">Swagger</a>
       <a [href]="swaggerJsonUrl" target="_blank" rel="noopener" class="btn-swagger btn-swagger--json">JSON</a>
       <a [routerLink]="['/kennel', kennelId, 'edit']" class="btn-edit">Bearbeiten</a>
+      <button class="btn-export" (click)="exportKennel()" title="Kennel + Dogs als JSON exportieren">Export</button>
     </div>
   </header>
 
