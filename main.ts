@@ -40,6 +40,8 @@ import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
 import { KennelRunHandler } from './api/routes/KennelRunHandler';
+import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
+import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
@@ -241,6 +243,10 @@ async function start() {
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+    const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
+    const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore);
+    kennelSwaggerHandler.registerRoutes(app);
+    kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);
 
     console.log('App started.');

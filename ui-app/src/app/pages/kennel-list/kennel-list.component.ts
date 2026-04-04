@@ -97,6 +97,20 @@ export class KennelListComponent implements OnInit {
     }
     if (action === 'waves') {
       void this.router.navigate(['/kennel', ref]);
+      return;
+    }
+    if (action === 'delete') {
+      if (!confirm(`Kennel "${kennel.name || ref}" wirklich löschen? Alle Versionen werden entfernt.`)) return;
+      this.kennelService.delete(ref).subscribe({
+        next: (res) => {
+          if (res.ok) {
+            this.loadKennels();
+          } else {
+            this.error.set(res.error ?? 'Löschen fehlgeschlagen');
+          }
+        },
+        error: (err) => this.error.set(err.error?.error ?? err.message),
+      });
     }
   }
 

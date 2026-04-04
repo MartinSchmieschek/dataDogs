@@ -221,6 +221,36 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Delete a kennel and ALL its versions.
+     * Accepts lineageId or version-GUID — resolves lineageId first, then deletes every incarnation.
+     */
+    async delete(id: string): Promise<IControllerResponse<void>> {
+        try {
+            // Resolve to lineageId.
+            const resolved = await this.resolveKennel(id);
+            if (!resolved) {
+                return { ok: false, error: `Kennel mit ID ${id} nicht gefunden` };
+            }
+            const lineageId = (resolved as any).lineageId || id;
+
+            // Find all versions and delete each one.
+            const versions = await this.store.findAllVersions(this.entityType, lineageId);
+            for (const v of versions) {
+                await this.store.delete(v.id);
+            }
+
+            // If no versions found, try deleting by the id directly (fallback).
+            if (versions.length === 0) {
+                await this.store.delete(id);
+            }
+
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, error: String(error) };
+        }
+    }
+
+    /**
      * Resolves a kennel by version ID or lineageId.
      * First tries exact match (version GUID), then resolves as lineageId (latest version).
      */
