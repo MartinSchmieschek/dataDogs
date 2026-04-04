@@ -16,7 +16,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
@@ -29,10 +29,20 @@ import { getBaseDogIcon } from '@datadogs/core';
  * Through endless faces countless forms, this vessel plunders boundaries
  * from the OpenRouteService abyss, where corporeal laws be unwritten.
  */
-export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult> {
+export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult> implements ICacheable {
+    private cacheHandler?: ICacheHandler;
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
+
     /** Arr, the name by which the abyss knows this cursed hound */
     get name(): string {
         return BloodhoundIsochroneRetriever.name;
+    }
+
+    get description(): string {
+        return 'Calculates reachability polygons (isochrones) from a center point via OpenRouteService.';
     }
 
     /** The sigil of our vessel, glimpsed in luminous space of blackened stars */
@@ -70,19 +80,25 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
             throw new Error('BloodhoundIsochroneRetriever: Missing required params (lat, lng, range)');
         }
 
-        // Descend into the abyss and retrieve the isochrone geometries
-        const response = await calculateIsochrone(lat, lng, profile, range);
+        const key = `isochrone:${profile}:${lat}:${lng}:${range}`;
 
-        // Roiling, moaning, this realm of ours — transform the eldritch coordinates
-        // from the void's [lng, lat] tongue to our crew's [lat, lng] convention
-        const features: IsochroneFeatureResult[] = response.features.map(feature => ({
-            coordinates: feature.geometry.coordinates[0].map(
-                coord => [coord[1], coord[0]] as [number, number]
-            ),
-            value: feature.properties.value,
-            center: [feature.properties.center[1], feature.properties.center[0]] as [number, number]
-        }));
+        const fetchIsochrone = async (): Promise<BloodhoundIsochroneResult> => {
+            const response = await calculateIsochrone(lat, lng, profile, range);
 
-        return { features, raw: response };
+            const features: IsochroneFeatureResult[] = response.features.map(feature => ({
+                coordinates: feature.geometry.coordinates[0].map(
+                    coord => [coord[1], coord[0]] as [number, number]
+                ),
+                value: feature.properties.value,
+                center: [feature.properties.center[1], feature.properties.center[0]] as [number, number]
+            }));
+
+            return { features, raw: response };
+        };
+
+        if (this.cacheHandler) {
+            return this.cacheHandler.getOrFetch(key, 24 * 60 * 60_000, fetchIsochrone);
+        }
+        return fetchIsochrone();
     };
 }

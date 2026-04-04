@@ -15,6 +15,9 @@ import { SerializedDog, type SerializedDogVmGlobalsSupplier } from './dogs/Seria
 import { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
+import { ICacheHandler } from './cache/ICacheHandler';
+import { isCacheable } from './cache/ICacheable';
+import { isAreaCacheable, IAreaCache } from './cache/IAreaCache';
 
 /**
  * Arr, this prefix brands a dog as a base-class hound in the dogIds manifest.
@@ -61,6 +64,8 @@ export class KennelRun {
     private queryData?: Record<string, string>;
     private bodyData?: any;
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
+    private cacheHandler?: ICacheHandler;
+    private areaCache?: IAreaCache<unknown>;
 
     /**
      * Summon the captain and provision the vessel.
@@ -79,13 +84,17 @@ export class KennelRun {
         serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => [],
         queryData?: Record<string, string>,
         bodyData?: any,
-        vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = []
+        vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = [],
+        cacheHandler?: ICacheHandler,
+        areaCache?: IAreaCache<unknown>
     ) {
         this.baseDogClasses = baseDogClasses;
         this.serializedDogFactory = serializedDogFactory;
         this.queryData = queryData;
         this.bodyData = bodyData;
         this.vmGlobalsSuppliers = vmGlobalsSuppliers;
+        this.cacheHandler = cacheHandler;
+        this.areaCache = areaCache;
 
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Arr, 'tis a proper charter -- anchor it to the captain
@@ -169,6 +178,26 @@ export class KennelRun {
             kennel.forEach(dog => {
                 if (dog instanceof SerializedDog) {
                     (dog as SerializedDog<unknown>).setVmGlobalsSuppliers(this.vmGlobalsSuppliers);
+                }
+            });
+        }
+
+        // Cache-Injection — every hound that implements ICacheable receives the cache handler
+        if (this.cacheHandler) {
+            kennel.forEach(dog => {
+                if (isCacheable(dog)) {
+                    dog.setCacheHandler(this.cacheHandler!);
+                    console.log(`[KennelRun.fillKennel] Cache-Handler injected into: ${dog.name}`);
+                }
+            });
+        }
+
+        // Area-Cache Injection — geo-hounds that track territories receive the shared area cache
+        if (this.areaCache) {
+            kennel.forEach(dog => {
+                if (isAreaCacheable(dog)) {
+                    dog.setAreaCache(this.areaCache!);
+                    console.log(`[KennelRun.fillKennel] Area-Cache injected into: ${dog.name}`);
                 }
             });
         }

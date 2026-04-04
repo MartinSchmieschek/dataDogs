@@ -28,6 +28,10 @@ export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
         return WarframeAlertsRetriever.name;
     }
 
+    get description(): string {
+        return 'Fetches current Warframe alerts and world state data.';
+    }
+
     /**
      * The icon, if one exists -- a sigil against the void, or perhaps a beacon into it.
      * @returns The icon string, or undefined if no sigil be found in the deep, arr

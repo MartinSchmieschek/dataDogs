@@ -1,17 +1,19 @@
 // The KennelRunHandler — the huntmaster who unleashes the hounds.
 // Vome speaks: to cosmic madness laws submit — the waves obey the dependency graph.
-import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun } from '@datadogs/core';
+import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun, type ICacheHandler } from '@datadogs/core';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
+import type { CacheHandler } from '../../services/CacheHandler';
 
 /** The provisions required to arm the KennelRunHandler. */
 export interface IKennelRunDeps {
     kennelsController: KennelController;
     nodesStore: IStore;
     baseDogsMap: Map<string, new () => any>;
+    cacheHandler?: ICacheHandler;
 }
 
 export class KennelRunHandler {
@@ -56,13 +58,19 @@ export class KennelRunHandler {
     /** Run a kennel and return waves. */
     public async runKennel(config: IKennelConfig, query?: Record<string, string>, body?: any): Promise<Waves> {
 
+        const areaCache = this.deps.cacheHandler
+            ? (this.deps.cacheHandler as CacheHandler).getAreaCache?.()
+            : undefined;
+
         const kennelRun = new KennelRun(
             config,
             this.deps.baseDogsMap,
             this.createSerializedDogFactory(),
             query || {},
             body,
-            kennelVmGlobalsSuppliers
+            kennelVmGlobalsSuppliers,
+            this.deps.cacheHandler,
+            areaCache
         );
         const season = await kennelRun.run();
         await this.persistNewMimics(config, season.exhausted);

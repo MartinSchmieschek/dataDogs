@@ -33,6 +33,11 @@ export { createPact, type CreatePactFromSourceOptions } from './dogs/createPact'
 // Through endless faces, countless forms -- the shapeshifter
 export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 
+// The cache pacts -- memory across voyages, dedup of in-flight hunts, area-based geo caching
+export { ICacheHandler } from './cache/ICacheHandler';
+export { ICacheable, isCacheable } from './cache/ICacheable';
+export { IAreaCache, IAreaCacheable, isAreaCacheable, CachedArea } from './cache/IAreaCache';
+
 // The map-reader, the cargo-bearer, the far-sailing dog, and the sigils they wear
 export { QueryRetriever } from './platform/QueryRetriever';
 export { BodyRetriever } from './platform/BodyRetriever';

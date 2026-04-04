@@ -51,6 +51,10 @@ export class QueryRetriever extends Dog<Record<string, string>> {
         return QueryRetriever.name;
     }
 
+    get description(): string {
+        return 'Provides the HTTP query parameters as yield for other dogs to consume.';
+    }
+
     /** The map-reader's sigil -- fetched from the central icon registry */
     get icon(): string | undefined {
         return getBaseDogIcon(QueryRetriever.name);

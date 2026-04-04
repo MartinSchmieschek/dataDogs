@@ -27,6 +27,8 @@ export type NodeEntry = {
     /** The spirit's true name — changeable without breaking pacts */
     displayName?: string;
     name: string;
+    /** A brief description of what this dog does */
+    description?: string;
     icon?: string;
     result: any;
     error?: string;
@@ -131,6 +133,7 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason): Waves {
                     ? (instance as SerializedDog<unknown>).instanceConfig?.displayName
                     : undefined,
                 name: instanceName,
+                description: (instance as IHuntingDog<unknown>).description ?? undefined,
                 icon: (isSerialized
                     ? (instance as SerializedDog<unknown>).icon
                     : (instance as IHuntingDog<unknown>).icon) ?? undefined,

@@ -23,6 +23,10 @@ export abstract class FetchBaseDog<T> extends Dog<T> {
     /** The URL of the distant API -- the coordinates of the port we sail toward */
     abstract get apiUrl(): string;
 
+    get description(): string {
+        return 'Abstract base for dogs that fetch data from external URLs.';
+    }
+
     /** No parents required -- this hound sails alone into the unknown */
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
         return [];

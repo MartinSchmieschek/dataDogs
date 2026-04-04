@@ -14,13 +14,14 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, type CachedArea } from "@datadogs/core";
 import { NearbyLandmarksPact, type OsmLandmarksQueryInput } from "./pacts";
 import {
     clampRadiusM,
     fetchNearbyLandmarks,
     parseLandmarkFacets,
     type OsmLandmarksResult,
+    type OsmLandmarkElement,
 } from "./overpassLandmarks";
 import { getBaseDogIcon } from "@datadogs/core";
 
@@ -31,10 +32,49 @@ import { getBaseDogIcon } from "@datadogs/core";
  * cartographer was meant to catalogue. The void yields its secrets, matey,
  * through endless faces countless forms, each landmark a whisper from the deep.
  */
-export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> {
+/**
+ * Haversine distance between two points in meters — used for area-cache filtering.
+ */
+function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+    const R = 6_371_000;
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const sinDLat = Math.sin(dLat / 2);
+    const sinDLng = Math.sin(dLng / 2);
+    const h = sinDLat * sinDLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinDLng * sinDLng;
+    return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * Filter landmark elements to only those within a given radius from center.
+ */
+function filterElementsByRadius(elements: OsmLandmarkElement[], lat: number, lng: number, radiusM: number): OsmLandmarkElement[] {
+    return elements.filter(el => {
+        if (el.lat == null || el.lon == null) return true;
+        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lon }) <= radiusM;
+    });
+}
+
+export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements ICacheable, IAreaCacheable<OsmLandmarksResult> {
+    private cacheHandler?: ICacheHandler;
+    private areaCache?: IAreaCache<OsmLandmarksResult>;
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
+
+    setAreaCache(cache: IAreaCache<OsmLandmarksResult>): void {
+        this.areaCache = cache;
+    }
+
     /** Arr, the name by which the abyss calls this landmark-huntin' hound */
     get name(): string {
         return OsmLandmarksRetriever.name;
+    }
+
+    get description(): string {
+        return 'Finds nearby landmarks (tourism, historic, museums, peaks) via the Overpass/OpenStreetMap API.';
     }
 
     /** The sigil branded upon our vessel by cosmic forces beyond comprehension */
@@ -54,8 +94,7 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> {
 
     /**
      * Arr, plunder the nearby landmarks from the Overpass abyss!
-     * To cosmic madness laws submit, though stalwart minds entreat —
-     * we parse, we clamp, we fetch, and pray the void returns data.
+     * Area-cache aware: if a larger area was already cached, filter down instead of re-fetching.
      */
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmLandmarksResult> => {
         const queryDog = season.exhausted.find((d) => this.matchesParent(NearbyLandmarksPact, d));
@@ -67,11 +106,44 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> {
         const radiusM = clampRadiusM(parseFloat(query.radius ?? ""));
         const facets = parseLandmarkFacets(query.preset);
 
-        // If coordinates be lost to the void, no landmarks can be dredged from the deep
         if (Number.isNaN(lat) || Number.isNaN(lng)) {
             throw new Error("OsmLandmarksRetriever: Missing required query params (lat, lng)");
         }
 
-        return fetchNearbyLandmarks(lat, lng, radiusM, facets);
+        const discriminant = `landmarks:${[...facets].sort().join(',')}`;
+
+        // Check area cache first — does a larger cached area already cover this query?
+        if (this.areaCache) {
+            const covering = this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
+            if (covering) {
+                const filtered = filterElementsByRadius(covering.data.elements, lat, lng, radiusM);
+                return { center: { lat, lng }, radiusM, preset: facets, elements: filtered };
+            }
+        }
+
+        const key = `landmarks:${lat}:${lng}:${radiusM}:${discriminant}`;
+
+        const fetchLandmarks = async (): Promise<OsmLandmarksResult> => {
+            const result = await fetchNearbyLandmarks(lat, lng, radiusM, facets);
+
+            // Store in area cache for future containment checks
+            if (this.areaCache) {
+                this.areaCache.store({
+                    center: { lat, lng },
+                    radiusM,
+                    data: result,
+                    cacheKey: key,
+                    cachedAt: Date.now(),
+                    discriminant,
+                });
+            }
+
+            return result;
+        };
+
+        if (this.cacheHandler) {
+            return this.cacheHandler.getOrFetch(key, 6 * 60 * 60_000, fetchLandmarks);
+        }
+        return fetchLandmarks();
     };
 }

@@ -45,6 +45,7 @@ import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { CacheHandler } from './services/CacheHandler';
 
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
@@ -196,6 +197,7 @@ async function start() {
             const baseDogsList = allBaseDogs.map(dog => ({
                 id: BASE_DOG_PREFIX + dog.name,
                 name: dog.name,
+                description: dog.description,
                 type: 'BaseDog',
                 icon: dog.icon,
             }));
@@ -240,9 +242,12 @@ async function start() {
     const routeHandler = new ConfigRouteHandler(registry);
     routeHandler.registerRoutes(app, '/api');
 
+    // The cache — memory across voyages, so no hound fetches what the hold already brims with.
+    const cacheHandler = new CacheHandler();
+
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
-    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore);
     kennelSwaggerHandler.registerRoutes(app);

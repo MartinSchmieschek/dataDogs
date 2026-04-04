@@ -22,6 +22,7 @@ import { getBaseDogIcon } from '@datadogs/core';
  */
 export class WikiNearbyRetriever extends Dog<WikiNearbyResult> {
     get name(): string { return WikiNearbyRetriever.name; }
+    get description(): string { return 'Finds nearby Wikipedia articles for given GPS coordinates.'; }
     get icon(): string | undefined { return getBaseDogIcon(WikiNearbyRetriever.name); }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [WikiNearbyQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
