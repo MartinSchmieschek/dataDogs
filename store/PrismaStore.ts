@@ -285,6 +285,14 @@ export class PrismaStore implements IStore {
           createdAt: r.createdAt ?? null,
           displayName: r.displayName ?? null,
           lineageId: r.lineageId ?? null,
+          // Kennel-specific fields (null for SerializedDogs, populated for KennelConfigs)
+          name: r.name ?? null,
+          description: r.description ?? null,
+          dogIds: r.dogIds ?? null,
+          defaultQuery: r.defaultQuery ?? null,
+          defaultBody: r.defaultBody ?? null,
+          emoji: r.emoji ?? null,
+          updatedAt: r.updatedAt ?? null,
         };
       })
       .sort((a, b) => {

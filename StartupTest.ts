@@ -1226,8 +1226,8 @@ export class StartupTest {
                 name: 'Export Test Kennel',
                 description: 'For export/import testing',
                 emoji: '🧪',
-                dogIds: JSON.stringify([dogLineageId, 'base:QueryRetriever']),
-                defaultQuery: JSON.stringify({ test: 'value' }),
+                dogIds: [dogLineageId, 'base:QueryRetriever'],
+                defaultQuery: { test: 'value' },
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             });
@@ -1243,8 +1243,8 @@ export class StartupTest {
                 name: 'Export Test Kennel v2',
                 description: 'Updated description',
                 emoji: '🧪',
-                dogIds: JSON.stringify([dogLineageId, 'base:QueryRetriever']),
-                defaultQuery: JSON.stringify({ test: 'value2' }),
+                dogIds: [dogLineageId, 'base:QueryRetriever'],
+                defaultQuery: { test: 'value2' },
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             });
@@ -1295,7 +1295,7 @@ export class StartupTest {
             // 4. Validate the bundle.
             if (!bundle.dogs || bundle.dogs.length === 0) throw new Error('Bundle hat keine Dogs');
             if (!bundle.kennelVersions || bundle.kennelVersions.length < 2) throw new Error('Bundle hat weniger als 2 Kennel-Versionen');
-            if (bundle.dogs[0].lineageId !== dogLineageId) throw new Error('Dog lineageId stimmt nicht');
+            if (bundle.dogs[0].lineageId !== dogLineageId) throw new Error(`Dog lineageId stimmt nicht: got '${bundle.dogs[0]?.lineageId}', expected '${dogLineageId}', serializedIds=${JSON.stringify(serializedIds)}, dogs.length=${bundle.dogs.length}`);
 
             // 5. Simulate import with a new kennelId.
             const importKennelId = `test-import-kennel-${Date.now()}`;
