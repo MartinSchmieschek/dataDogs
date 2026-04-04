@@ -209,17 +209,25 @@ export class KennelRun {
 
         for (const depClass of allDependencyClasses) {
             const isPact = (depClass as any).__isPact === true;
-            const hasMimic = kennel.some(d =>
-                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesClasses.includes(depClass)
-            );
+            // Resolve the pact's name for name-based matching (guards against class identity issues
+            // when the same module is loaded from different paths).
+            const depPactName = isPact
+                ? (Array.from(this.baseDogClasses.entries()).find(([_, cls]) => cls === depClass)?.[0]
+                   || (() => { try { return new (depClass as any)().name; } catch { return undefined; } })())
+                : undefined;
+            const matchesMimic = (d: IDog<unknown>) => {
+                if (!(d instanceof MimicDog)) return false;
+                const mimic = d as MimicDog<unknown>;
+                return mimic.imitatesClasses.includes(depClass)
+                    || (depPactName != null && mimic.imitatesName === depPactName);
+            };
+            const hasMimic = kennel.some(matchesMimic);
             const hasReal = kennel.some(d =>
                 !(d instanceof MimicDog) && d instanceof depClass
             );
 
             if (hasReal && hasMimic) {
-                const mimicIdx = kennel.findIndex(d =>
-                    d instanceof MimicDog && (d as MimicDog<unknown>).imitatesClasses.includes(depClass)
-                );
+                const mimicIdx = kennel.findIndex(matchesMimic);
                 if (mimicIdx >= 0) {
                     console.log(`[KennelRun.autoMimic] Echter Dog vorhanden, entferne Mimic fuer ${depClass.name}`);
                     kennel.splice(mimicIdx, 1);

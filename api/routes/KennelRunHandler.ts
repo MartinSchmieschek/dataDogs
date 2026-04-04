@@ -55,6 +55,7 @@ export class KennelRunHandler {
 
     /** Run a kennel and return waves. */
     public async runKennel(config: IKennelConfig, query?: Record<string, string>, body?: any): Promise<Waves> {
+
         const kennelRun = new KennelRun(
             config,
             this.deps.baseDogsMap,
@@ -77,7 +78,20 @@ export class KennelRunHandler {
                 nodesStore.findLatestVersionsByType(SerializedDog.name, ids),
                 nodesStore.findLatestVersionsByType(MimicDog.name, ids),
             ]);
-            return [...serialized, ...mimics].map((sd: any) => {
+            // Deduplicate by lineageId — if a dog exists as both SerializedDog and MimicDog type,
+            // keep only the most recent version (MimicDog wins when type was upgraded via save).
+            const byLineage = new Map<string, any>();
+            for (const sd of [...serialized, ...mimics]) {
+                const row = sd as any;
+                const cfg = typeof row.serializedDogConfig === 'string'
+                    ? JSON.parse(row.serializedDogConfig) : row.serializedDogConfig;
+                const lid = cfg.lineageId || row.lineageId || row.id;
+                const existing = byLineage.get(lid);
+                if (!existing || new Date(row.createdAt) > new Date(existing.createdAt)) {
+                    byLineage.set(lid, row);
+                }
+            }
+            return Array.from(byLineage.values()).map((sd: any) => {
                 const config = typeof sd.serializedDogConfig === 'string'
                     ? JSON.parse(sd.serializedDogConfig)
                     : sd.serializedDogConfig;
