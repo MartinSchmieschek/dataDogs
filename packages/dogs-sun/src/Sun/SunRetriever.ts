@@ -16,6 +16,7 @@ import { getBaseDogIcon } from '@datadogs/core';
 
 export class SunRetriever extends Dog<SunResult> {
     get name(): string { return SunRetriever.name; }
+    get description(): string { return 'Fetches sunrise, sunset, and daylight data for given GPS coordinates.'; }
     get icon(): string | undefined { return getBaseDogIcon(SunRetriever.name); }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [SunQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }

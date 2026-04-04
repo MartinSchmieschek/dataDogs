@@ -25,6 +25,10 @@ export class HueBridgeEnvRetriever extends HueBridgeQueryPact {
         return HueBridgeEnvRetriever.name;
     }
 
+    get description(): string {
+        return 'Reads Philips Hue Bridge connection details from environment variables.';
+    }
+
     /** @returns The icon sigil of this retriever, drawn from the abyss of base dog glyphs. */
     get icon(): string | undefined {
         return getBaseDogIcon(HueBridgeEnvRetriever.name);

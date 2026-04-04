@@ -10,6 +10,8 @@ export interface DogEntry {
   lineageId?: string;
   displayName?: string;
   name: string;
+  /** A brief description of what this dog does */
+  description?: string;
   icon?: string;
   result: any;
   error?: string;

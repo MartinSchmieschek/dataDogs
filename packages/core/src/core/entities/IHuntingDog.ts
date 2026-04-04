@@ -30,6 +30,8 @@ export type DogClass<T> = new (...args: any[]) => T;
 export interface IHuntingDog<Y> {
     /** The hound's true name -- spoken aloud, it echoes through the abyss */
     get name(): string
+    /** A brief description of what this hound does -- whispered to mortals who dare inspect it */
+    get description(): string | undefined
     /** An optional sigil (e.g. emoji) the hound wears in the UI, a glyph against the dark */
     get icon(): string | undefined
     /** Can this hound answer the call? Does it have what it needs from the exhausted crew? */

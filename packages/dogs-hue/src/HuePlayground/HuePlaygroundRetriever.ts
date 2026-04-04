@@ -25,6 +25,10 @@ export class HuePlaygroundRetriever extends Dog<HuePlaygroundDirector> {
         return HuePlaygroundRetriever.name;
     }
 
+    get description(): string {
+        return 'Controls Philips Hue lights via the Hue Bridge API.';
+    }
+
     /** @returns The icon sigil of this retriever, plundered from the base dog glyph manifest. */
     get icon(): string | undefined {
         return getBaseDogIcon(HuePlaygroundRetriever.name);

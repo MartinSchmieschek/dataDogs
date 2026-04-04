@@ -22,6 +22,7 @@ import { getBaseDogIcon } from '@datadogs/core';
  */
 export class AirQualityRetriever extends Dog<AirQualityResult> {
     get name(): string { return AirQualityRetriever.name; }
+    get description(): string { return 'Fetches current air quality index and pollutant levels from Open-Meteo.'; }
     get icon(): string | undefined { return getBaseDogIcon(AirQualityRetriever.name); }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [AirQualityQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }

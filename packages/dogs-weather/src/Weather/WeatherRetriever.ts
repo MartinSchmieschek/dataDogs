@@ -12,7 +12,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
 import { getWeather } from "./weatherApiClient";
 import type { WeatherResult } from "./interfaces/weatherTypes";
 import { WeatherQueryPact, type WeatherQuery } from "./pacts";
@@ -24,9 +24,19 @@ import { getBaseDogIcon } from '@datadogs/core';
  * Temperature, wind, humidity, precipitation — all moods of the
  * sky-void dredged from the Open-Meteo abyss.
  */
-export class WeatherRetriever extends Dog<WeatherResult> {
+export class WeatherRetriever extends Dog<WeatherResult> implements ICacheable {
+    private cacheHandler?: ICacheHandler;
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
+
     get name(): string {
         return WeatherRetriever.name;
+    }
+
+    get description(): string {
+        return 'Fetches current weather and hourly forecast from Open-Meteo for given GPS coordinates.';
     }
 
     get icon(): string | undefined {
@@ -52,6 +62,13 @@ export class WeatherRetriever extends Dog<WeatherResult> {
             throw new Error('WeatherRetriever: Missing required query params (lat, lng)');
         }
 
-        return await getWeather(lat, lng, query['time'], query['date']);
+        const key = `weather:${lat}:${lng}:${query['date'] ?? 'today'}:${query['time'] ?? 'now'}`;
+
+        if (this.cacheHandler) {
+            return this.cacheHandler.getOrFetch(key, 15 * 60_000, () =>
+                getWeather(lat, lng, query['time'], query['date'])
+            );
+        }
+        return getWeather(lat, lng, query['time'], query['date']);
     };
 }
