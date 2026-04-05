@@ -28,6 +28,13 @@ import { getBaseDogIcon } from '@datadogs/core';
 export class WebcamRetriever extends Dog<WebcamResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
 
+    constructor() {
+        super();
+        if (!process.env.WINDY_API_KEY?.trim()) {
+            throw new Error('WebcamRetriever: WINDY_API_KEY not set. Get one at https://api.windy.com/keys');
+        }
+    }
+
     setCacheHandler(handler: ICacheHandler): void {
         this.cacheHandler = handler;
     }

@@ -11,6 +11,8 @@
  * chase the same quarry at once.
  */
 
+import { IAreaCache } from './IAreaCache';
+
 export interface ICacheHandler {
     /** Retrieve a cached value, or undefined if not present or expired. */
     get<T>(key: string): T | undefined;
@@ -37,4 +39,7 @@ export interface ICacheHandler {
 
     /** Purge all expired entries. */
     prune(): void;
+
+    /** Get or create a shared area cache for geo-based deduplication. */
+    getAreaCache<T>(): IAreaCache<T>;
 }

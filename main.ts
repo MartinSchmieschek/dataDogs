@@ -39,7 +39,25 @@ import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
 import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
 import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
 import { TrailRetriever, TrailQueryPact } from '@datadogs/dogs-trails';
-import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
+import { AstronomyRetriever, AstronomyQueryPact } from '@datadogs/dogs-astronomy';
+import { WaterRetriever, WaterQueryPact } from '@datadogs/dogs-water';
+import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@datadogs/dogs-historical-weather';
+import { ChargingStationRetriever, ChargingQueryPact } from '@datadogs/dogs-charging';
+import { NoiseRetriever, NoiseQueryPact } from '@datadogs/dogs-noise';
+import { ParkingRetriever, ParkingQueryPact } from '@datadogs/dogs-parking';
+import { PlaygroundRetriever, PlaygroundQueryPact } from '@datadogs/dogs-playground';
+import { DrinkingWaterRetriever, DrinkingWaterQueryPact } from '@datadogs/dogs-drinking-water';
+import { OpenFoodRetriever, OpenFoodQueryPact } from '@datadogs/dogs-food';
+import { CurrencyRetriever, CurrencyQueryPact } from '@datadogs/dogs-currency';
+import { HolidayRetriever, HolidayQueryPact } from '@datadogs/dogs-holidays';
+import { WikiSearchRetriever, WikiSearchQueryPact } from '@datadogs/dogs-wiki-search';
+import { SeasonRetriever, SeasonQueryPact } from '@datadogs/dogs-season';
+import { IPGeoRetriever, IPGeoQueryPact } from '@datadogs/dogs-ip-geo';
+import { RandomFactRetriever, RandomFactQueryPact } from '@datadogs/dogs-random-fact';
+import { SpaceRetriever, SpaceQueryPact } from '@datadogs/dogs-space';
+import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@datadogs/dogs-open-library';
+import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@datadogs/dogs-github-trending';
+import { ISerializedDogConfig, SerializedDog, type ICacheHandler } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
@@ -49,12 +67,12 @@ import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRoute
 import { KennelRunHandler } from './api/routes/KennelRunHandler';
 import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
+import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
+import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
 import { StartupTest } from './StartupTest';
-import fs from 'fs';
-import path from 'path';
-import { runSeeds } from './seed';
+import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
-import { CacheHandler } from './services/CacheHandler';
+import { SqliteCacheHandler } from './services/SqliteCacheHandler';
 
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
@@ -107,70 +125,45 @@ async function start() {
         TransitTripRetriever,
         ElevationRetriever,
         TrailRetriever,
+        AstronomyRetriever,
+        WaterRetriever,
+        HistoricalWeatherRetriever,
+        ChargingStationRetriever,
+        NoiseRetriever,
+        ParkingRetriever,
+        PlaygroundRetriever,
+        DrinkingWaterRetriever,
+        OpenFoodRetriever,
+        CurrencyRetriever,
+        HolidayRetriever,
+        WikiSearchRetriever,
+        SeasonRetriever,
+        IPGeoRetriever,
+        RandomFactRetriever,
+        SpaceRetriever,
+        OpenLibraryRetriever,
+        GitHubTrendingRetriever,
     ];
 
-    // Validate API keys — dogs that require external credentials must declare themselves before the hunt.
-    // If a key is missing, the server refuses to sail and tells you exactly what to set.
-    const requiredEnvKeys: { envVar: string; dogs: string[]; hint: string }[] = [
-        {
-            envVar: 'ORS_API_KEYS',
-            dogs: ['BloodhoundRouteRetriever', 'BloodhoundIsochroneRetriever'],
-            hint: 'Comma-separated OpenRouteService API keys. Get a free key at https://openrouteservice.org/dev/#/signup',
-        },
-        {
-            envVar: 'WINDY_API_KEY',
-            dogs: ['WebcamRetriever'],
-            hint: 'Windy Webcams API key. Get one at https://api.windy.com/keys',
-        },
-        {
-            envVar: 'EBIRD_API_KEY',
-            dogs: ['BirdRetriever'],
-            hint: 'eBird API key (Cornell Lab). Request one at https://ebird.org/api/keygen',
-        },
-        {
-            envVar: 'HUE_BRIDGE_HOST',
-            dogs: ['HueBridgeEnvRetriever'],
-            hint: 'IP address of your Philips Hue Bridge (e.g. 192.168.0.99). Find it via the Hue app or your router.',
-        },
-        {
-            envVar: 'HUE_BRIDGE_USER',
-            dogs: ['HueBridgeEnvRetriever'],
-            hint: 'Philips Hue Bridge API username. Generate one via https://developers.meethue.com/develop/get-started-2/',
-        },
-    ];
-
-    const missingKeys = requiredEnvKeys.filter(k => !process.env[k.envVar]?.trim());
-    const disabledDogNames = new Set<string>();
-    if (missingKeys.length > 0) {
-        console.warn('\n╔══════════════════════════════════════════════════════════════╗');
-        console.warn('║  MISSING API KEYS — the following dogs cannot hunt          ║');
-        console.warn('╚══════════════════════════════════════════════════════════════╝');
-        for (const mk of missingKeys) {
-            console.warn(`\n  ✗ ${mk.envVar} (required by ${mk.dogs.join(', ')})`);
-            console.warn(`    → Set in .env: ${mk.envVar}=your-key-here`);
-            console.warn(`    → ${mk.hint}`);
-            mk.dogs.forEach(name => disabledDogNames.add(name));
-        }
-        console.warn('\nThese dogs will be excluded from kennels. Set the missing keys in .env to enable them.\n');
-    }
-
-    // Filter out dogs whose API keys are missing — they stay in the harbour.
-    const enabledBaseDogClasses = allBaseDogClasses.filter(DogClass => !disabledDogNames.has(DogClass.name));
-
-    // Breathe life into each hound — from tangent planes they rise, ready to hunt the data seas.
-    const allBaseDogs = enabledBaseDogClasses.map(DogClass => new DogClass());
-
-    // Chart the hounds by name upon our map — a roster of those who shall answer the call.
+    // Breathe life into each hound — those who lack their credentials perish in the constructor.
+    // The survivors form the pack; the fallen are mourned in the logs.
+    const allBaseDogs: InstanceType<typeof allBaseDogClasses[number]>[] = [];
     const baseDogsMap = new Map<string, new () => any>();
-    enabledBaseDogClasses.forEach(DogClass => {
-        const instance = new DogClass();
-        baseDogsMap.set(instance.name, DogClass);
-    });
+
+    for (const DogClass of allBaseDogClasses) {
+        try {
+            const instance = new DogClass();
+            allBaseDogs.push(instance);
+            baseDogsMap.set(instance.name, DogClass);
+        } catch (err: any) {
+            console.warn(`  ✗ ${DogClass.name} could not rise — ${err.message}`);
+        }
+    }
 
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
@@ -245,82 +238,18 @@ async function start() {
     const startupTest = new StartupTest();
     await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap);
 
-    // GET /api/nodes — summons the manifest of hounds.
-    // If ?kennelId=xxx is given, only dogs that crew that kennel are returned.
-    // Without kennelId, all base dogs and all serialized dogs are returned.
-    app.get('/api/nodes', async (req: any, res: any) => {
-        try {
-            const controller = registry.get('nodes');
-            if (!controller) { res.status(404).json({ error: 'Node-Controller nicht gefunden' }); return; }
-
-            const kennelId = req.query.kennelId as string | undefined;
-
-            // Only list SerializedDogs — MimicDogs are pact-bound and never appear in the toolbar.
-            // listLatest() queries by entityType 'SerializedDog', so MimicDogs (type 'MimicDog') are excluded.
-            const result = await controller.listLatest();
-            let serializedDogs = result.ok && result.data ? result.data : [];
-            const baseDogsList = allBaseDogs.map(dog => ({
-                id: BASE_DOG_PREFIX + dog.name,
-                name: dog.name,
-                description: dog.description,
-                type: 'BaseDog',
-                icon: dog.icon,
-            }));
-
-            // If a kennel is specified, filter to only dogs that are in that kennel's dogIds.
-            if (kennelId) {
-                const kennelController = registry.get('kennels');
-                const kennelResult = kennelController ? await kennelController.getById(kennelId) : null;
-                const kennelDogIds: string[] = (kennelResult?.data as any)?.dogIds ?? [];
-
-                if (kennelDogIds.length > 0) {
-                    // Build a set of all identifiers the kennel uses — both the raw entries
-                    // AND the resolved dogIds (lineage GUIDs) for pinned version references.
-                    const kennelSet = new Set<string>(kennelDogIds);
-                    for (const kid of kennelDogIds) {
-                        if (kid.startsWith(BASE_DOG_PREFIX)) continue;
-                        // If this entry is a version-ID (pinned), resolve its lineageId too.
-                        const match = serializedDogs.find((d: any) => d.id === kid);
-                        if (match && (match as any).lineageId) {
-                            kennelSet.add((match as any).lineageId);
-                        }
-                    }
-
-                    // Exclude dogs already in the kennel — the toolbar shows what can be ADDED.
-                    serializedDogs = serializedDogs.filter((d: any) =>
-                        !kennelSet.has(d.id) && !kennelSet.has(d.lineageId)
-                    );
-                    const filteredBase = baseDogsList.filter(d => !kennelSet.has(d.id));
-                    res.status(200).json({ ok: true, data: [...filteredBase, ...serializedDogs] });
-                    return;
-                }
-            }
-
-            res.status(200).json({ ok: true, data: [...baseDogsList, ...serializedDogs] });
-        } catch (e) {
-            console.error('[/api/nodes]', e);
-            res.status(500).json({ error: String(e) });
-        }
-    });
-
-    // GET /api/readme — the project's README, rendered as plain text for those who seek the truth.
-    app.get('/api/readme', (_req: any, res: any) => {
-        try {
-            const readmePath = path.join(__dirname, 'README.md');
-            const content = fs.readFileSync(readmePath, 'utf-8');
-            res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-            res.send(content);
-        } catch (e) {
-            res.status(500).json({ error: 'README.md not found' });
-        }
-    });
+    // Summon the nodes manifest and the sacred scrolls — each handler a star in the eldritch sky.
+    const nodesRouteHandler = new NodesRouteHandler(registry, allBaseDogs);
+    nodesRouteHandler.registerRoutes(app);
+    const readmeRouteHandler = new ReadmeRouteHandler(__dirname);
+    readmeRouteHandler.registerRoutes(app);
 
     // Raise the CRUD sails — all routes for nodes and kennels now billow in the cosmic wind.
     const routeHandler = new ConfigRouteHandler(registry);
     routeHandler.registerRoutes(app, '/api');
 
     // The cache — memory across voyages, so no hound fetches what the hold already brims with.
-    const cacheHandler = new CacheHandler();
+    const cacheHandler: ICacheHandler = new SqliteCacheHandler('./cache.db');
 
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.

@@ -47,7 +47,25 @@
       "@datadogs/dogs-webcams": ["packages/dogs-webcams/src/index.ts"],
       "@datadogs/dogs-regional-news": ["packages/dogs-regional-news/src/index.ts"],
       "@datadogs/dogs-transit-trips": ["packages/dogs-transit-trips/src/index.ts"],
-      "@datadogs/dogs-trails": ["packages/dogs-trails/src/index.ts"]
+      "@datadogs/dogs-trails": ["packages/dogs-trails/src/index.ts"],
+      "@datadogs/dogs-astronomy": ["packages/dogs-astronomy/src/index.ts"],
+      "@datadogs/dogs-water": ["packages/dogs-water/src/index.ts"],
+      "@datadogs/dogs-historical-weather": ["packages/dogs-historical-weather/src/index.ts"],
+      "@datadogs/dogs-charging": ["packages/dogs-charging/src/index.ts"],
+      "@datadogs/dogs-noise": ["packages/dogs-noise/src/index.ts"],
+      "@datadogs/dogs-parking": ["packages/dogs-parking/src/index.ts"],
+      "@datadogs/dogs-playground": ["packages/dogs-playground/src/index.ts"],
+      "@datadogs/dogs-drinking-water": ["packages/dogs-drinking-water/src/index.ts"],
+      "@datadogs/dogs-food": ["packages/dogs-food/src/index.ts"],
+      "@datadogs/dogs-currency": ["packages/dogs-currency/src/index.ts"],
+      "@datadogs/dogs-holidays": ["packages/dogs-holidays/src/index.ts"],
+      "@datadogs/dogs-wiki-search": ["packages/dogs-wiki-search/src/index.ts"],
+      "@datadogs/dogs-season": ["packages/dogs-season/src/index.ts"],
+      "@datadogs/dogs-ip-geo": ["packages/dogs-ip-geo/src/index.ts"],
+      "@datadogs/dogs-random-fact": ["packages/dogs-random-fact/src/index.ts"],
+      "@datadogs/dogs-space": ["packages/dogs-space/src/index.ts"],
+      "@datadogs/dogs-open-library": ["packages/dogs-open-library/src/index.ts"],
+      "@datadogs/dogs-github-trending": ["packages/dogs-github-trending/src/index.ts"]
     },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

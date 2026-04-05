@@ -20,6 +20,15 @@ import { getBaseDogIcon } from "@datadogs/core";
  * From the void of `.env`, eldritch anchor points are dredged forth.
  */
 export class HueBridgeEnvRetriever extends HueBridgeQueryPact {
+    constructor() {
+        super();
+        const host = process.env.HUE_BRIDGE_HOST?.trim();
+        const user = process.env.HUE_BRIDGE_USER?.trim();
+        if (!host || !user) {
+            throw new Error('HueBridgeEnvRetriever: HUE_BRIDGE_HOST and HUE_BRIDGE_USER must be set in .env');
+        }
+    }
+
     /** @returns The name of this cursed vessel, whispered from corporeal laws unwritten. */
     get name(): string {
         return HueBridgeEnvRetriever.name;
