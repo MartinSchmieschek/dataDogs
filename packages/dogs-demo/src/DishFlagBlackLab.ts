@@ -41,7 +41,7 @@ export class DishFlagBlackLab extends Dog<string>{
     }
 
     get description(): string {
-        return 'Resolves a dish name to a representative emoji.';
+        return 'Generates a placeholder image URL from the tags of a random recipe.';
     }
 
     /** The icon -- a cursed glyph, for in luminous space blackened stars gaze upon us */

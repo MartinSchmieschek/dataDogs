@@ -29,7 +29,7 @@ import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } fro
 import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
 import { WeatherRetriever, WeatherQueryPact } from '@datadogs/dogs-weather';
 import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-quality';
-import { GeocodingRetriever, GeocodingQueryPact } from '@datadogs/dogs-geocoding';
+import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@datadogs/dogs-geocoding';
 import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
 import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
 import { SpeciesRetriever, BiodiversityQueryPact } from '@datadogs/dogs-biodiversity';
@@ -38,6 +38,7 @@ import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology
 import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
 import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
 import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
+import { TrailRetriever, TrailQueryPact } from '@datadogs/dogs-trails';
 import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
@@ -49,6 +50,8 @@ import { KennelRunHandler } from './api/routes/KennelRunHandler';
 import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { StartupTest } from './StartupTest';
+import fs from 'fs';
+import path from 'path';
 import { runSeeds } from './seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CacheHandler } from './services/CacheHandler';
@@ -102,14 +105,64 @@ async function start() {
         WebcamRetriever,
         RegionalNewsRetriever,
         TransitTripRetriever,
+        ElevationRetriever,
+        TrailRetriever,
     ];
 
+    // Validate API keys — dogs that require external credentials must declare themselves before the hunt.
+    // If a key is missing, the server refuses to sail and tells you exactly what to set.
+    const requiredEnvKeys: { envVar: string; dogs: string[]; hint: string }[] = [
+        {
+            envVar: 'ORS_API_KEYS',
+            dogs: ['BloodhoundRouteRetriever', 'BloodhoundIsochroneRetriever'],
+            hint: 'Comma-separated OpenRouteService API keys. Get a free key at https://openrouteservice.org/dev/#/signup',
+        },
+        {
+            envVar: 'WINDY_API_KEY',
+            dogs: ['WebcamRetriever'],
+            hint: 'Windy Webcams API key. Get one at https://api.windy.com/keys',
+        },
+        {
+            envVar: 'EBIRD_API_KEY',
+            dogs: ['BirdRetriever'],
+            hint: 'eBird API key (Cornell Lab). Request one at https://ebird.org/api/keygen',
+        },
+        {
+            envVar: 'HUE_BRIDGE_HOST',
+            dogs: ['HueBridgeEnvRetriever'],
+            hint: 'IP address of your Philips Hue Bridge (e.g. 192.168.0.99). Find it via the Hue app or your router.',
+        },
+        {
+            envVar: 'HUE_BRIDGE_USER',
+            dogs: ['HueBridgeEnvRetriever'],
+            hint: 'Philips Hue Bridge API username. Generate one via https://developers.meethue.com/develop/get-started-2/',
+        },
+    ];
+
+    const missingKeys = requiredEnvKeys.filter(k => !process.env[k.envVar]?.trim());
+    const disabledDogNames = new Set<string>();
+    if (missingKeys.length > 0) {
+        console.warn('\n╔══════════════════════════════════════════════════════════════╗');
+        console.warn('║  MISSING API KEYS — the following dogs cannot hunt          ║');
+        console.warn('╚══════════════════════════════════════════════════════════════╝');
+        for (const mk of missingKeys) {
+            console.warn(`\n  ✗ ${mk.envVar} (required by ${mk.dogs.join(', ')})`);
+            console.warn(`    → Set in .env: ${mk.envVar}=your-key-here`);
+            console.warn(`    → ${mk.hint}`);
+            mk.dogs.forEach(name => disabledDogNames.add(name));
+        }
+        console.warn('\nThese dogs will be excluded from kennels. Set the missing keys in .env to enable them.\n');
+    }
+
+    // Filter out dogs whose API keys are missing — they stay in the harbour.
+    const enabledBaseDogClasses = allBaseDogClasses.filter(DogClass => !disabledDogNames.has(DogClass.name));
+
     // Breathe life into each hound — from tangent planes they rise, ready to hunt the data seas.
-    const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
+    const allBaseDogs = enabledBaseDogClasses.map(DogClass => new DogClass());
 
     // Chart the hounds by name upon our map — a roster of those who shall answer the call.
     const baseDogsMap = new Map<string, new () => any>();
-    allBaseDogClasses.forEach(DogClass => {
+    enabledBaseDogClasses.forEach(DogClass => {
         const instance = new DogClass();
         baseDogsMap.set(instance.name, DogClass);
     });
@@ -117,7 +170,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
@@ -247,6 +300,18 @@ async function start() {
         } catch (e) {
             console.error('[/api/nodes]', e);
             res.status(500).json({ error: String(e) });
+        }
+    });
+
+    // GET /api/readme — the project's README, rendered as plain text for those who seek the truth.
+    app.get('/api/readme', (_req: any, res: any) => {
+        try {
+            const readmePath = path.join(__dirname, 'README.md');
+            const content = fs.readFileSync(readmePath, 'utf-8');
+            res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+            res.send(content);
+        } catch (e) {
+            res.status(500).json({ error: 'README.md not found' });
         }
     });
 

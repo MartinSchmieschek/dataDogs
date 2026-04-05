@@ -37,6 +37,8 @@ const BASE_DOG_ICONS: Record<string, string> = {
     WebcamRetriever: '\uD83D\uDCF7',
     RegionalNewsRetriever: '\uD83D\uDCF0',
     TransitTripRetriever: '\uD83D\uDE82',
+    ElevationRetriever: '\u26F0\uFE0F',
+    TrailRetriever: '\uD83E\uDDB6',
 };
 
 /** Look up a hound's sigil by its class name -- returns undefined if the hound be unmarked */

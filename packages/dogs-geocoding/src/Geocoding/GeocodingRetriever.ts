@@ -25,7 +25,7 @@ import { getBaseDogIcon } from '@datadogs/core';
  */
 export class GeocodingRetriever extends Dog<GeocodingResult> {
     get name(): string { return GeocodingRetriever.name; }
-    get description(): string { return 'Converts addresses to GPS coordinates (geocoding) via Nominatim/OpenStreetMap.'; }
+    get description(): string { return 'Converts addresses to GPS coordinates (forward) or GPS coordinates to addresses (reverse) via Nominatim/OpenStreetMap.'; }
     get icon(): string | undefined { return getBaseDogIcon(GeocodingRetriever.name); }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [GeocodingQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }

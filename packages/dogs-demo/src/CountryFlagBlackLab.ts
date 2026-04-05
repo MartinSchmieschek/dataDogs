@@ -41,7 +41,7 @@ export class CountryFlagBlackLab extends Dog<string>{
     }
 
     get description(): string {
-        return 'Resolves a country name to its flag emoji.';
+        return 'Generates a placeholder image URL for the cuisine of a random recipe.';
     }
 
     /** The icon -- a sigil pulled from the deep, corporeal laws unwritten as suns retreat */
