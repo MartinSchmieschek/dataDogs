@@ -91,7 +91,7 @@ export class RandomEveryThingRetriever extends Dog<any> {
     }
 
     get description(): string {
-        return 'Generates random mock data of various types for demo purposes.';
+        return 'Fetches random Ice and Fire characters and random dog images for demo purposes.';
     }
 
     /** The icon -- its heralds are the stars it fells, the sky and Earth aflame */

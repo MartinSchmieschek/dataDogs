@@ -42,6 +42,8 @@ Dogs don't run at once. They go out in waves:
 
 The engine calculates wave order from the dependency graph. The scheduler decides; there is no separate rulebook.
 
+> *Vome — To cosmic madness laws submit, though stalwart minds entreat.*
+
 ### Dependencies
 
 Dogs can depend on other dogs' catches:
@@ -61,6 +63,8 @@ const LayoutInputPact = createPact<ILayoutInput>('LayoutInputProvider', {
 ```
 
 Pacts are created with `createPact<T>(name)` or with `{ fromSourceType: 'YourInterfaceOrTypeName' }` so the editor/VM types are derived from TypeScript sources at startup (see `TypeDefBuilder.registerPacts`). They produce a valid Dog class marked with `__isPact: true`. They cannot run on their own -- they exist purely to declare what must be.
+
+> *Jahu — Corporeal laws are unwrit, as suns and love retreat.*
 
 ### MimicDog
 
@@ -82,6 +86,26 @@ When a Dog requires a Pact that no one in the Kennel fulfills, the system conjur
 Core rule: **Who requires via a Pact accepts Mimics. Who requires a real class demands the real Dog.**
 
 *(Loader verse **Lohk** — [`ui-app/src/app/data/requiem-loading.ts`](ui-app/src/app/data/requiem-loading.ts).)*
+
+#### What Mimics reveal during a run
+
+When you run a Kennel (`/api/kennels/:id/run`), auto-created MimicDogs appear in the Waves response and tell you exactly **what a dog really needs**:
+
+| Field | What it tells you |
+|-------|-------------------|
+| `mimic: true` | This node is a shapeshifter, not a real dog. |
+| `name` | The Pact it imitates — the **data contract** the consuming dog requires (e.g. `NearbyLandmarksPact`). |
+| `displayName` | Auto-created mimics are prefixed `auto-mimic-` (e.g. `auto-mimic-NearbyLandmarksPact`). |
+| `error` | Always `"MimicDog for '<PactName>' needs user code"` — the placeholder code throws on purpose. |
+| `serializedDogConfig.theRun` | The placeholder TypeScript — replace this with your transformation logic. |
+| `editable: true` | You can open the Mimic in the editor and write the code that fulfills the Pact. |
+| `deletable: false` | Auto-mimics cannot be deleted — remove the consuming dog or add a real dog that fulfills the Pact instead. |
+
+> *Oull — From endless faces, countless forms, a multitude unfolds.*
+
+**Reading Mimics as a blueprint:** Every auto-mimic is a gap in the pipeline. Its `name` tells you which Pact is unfulfilled, and the Pact's TypeScript type (visible in the editor's IntelliSense) tells you the exact data shape the consuming dog expects. Write `theRun` code that returns that shape, and the mimic becomes a real transformer.
+
+**Persistence:** After the first run, auto-created mimics are saved to the database and added to the Kennel's `dogIds`. On subsequent runs they load from the store instead of being re-conjured. When you edit a mimic's `theRun` and save, it keeps its `imitates` binding and becomes a productive member of the pack.
 
 ### Data Pipelines
 
@@ -105,7 +129,32 @@ const filtered = recipes.filter(r => r.rating > 4);
 return { topRecipes: filtered, count: filtered.length };
 ```
 
-**Dog versioning** -- Every save breeds a new version (`dog-v1`, `dog-v2`, ...). Old versions remain in the database. Latest is loaded by default. Browse any ancestor from the UI. No lineage is ever severed.
+**Dog versioning** -- Every SerializedDog carries four identity fields:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `id` | GUID | Unique identifier of **this specific version**. Every save produces a new one. |
+| `lineageId` | GUID | Stable identifier binding **all versions** of the same logical dog. Created once when the dog is first bred. Never changes across saves. |
+| `parentId` | GUID \| null | Points to the previous version's `id`. Forms a tree -- not a flat list. Branching is possible: two versions can share the same `parentId`. |
+| `displayName` | string | Human-readable name. Changeable at any time via `PATCH /api/nodes/:id/rename` -- the rename propagates across all versions sharing the `lineageId`. |
+
+Example lineage:
+
+```
+Create "my-parser"   → id: aaa, lineageId: LLL, parentId: null,  displayName: "my-parser"
+Save (edit code)     → id: bbb, lineageId: LLL, parentId: aaa,   displayName: "my-parser"
+Save again           → id: ccc, lineageId: LLL, parentId: bbb,   displayName: "my-parser"
+Branch off bbb       → id: ddd, lineageId: LLL, parentId: bbb,   displayName: "my-parser"
+```
+
+> *Khra — To cosmic forms from tangent planes, we end as we began.*
+
+**Resolving a dog reference** -- When a Kennel's `dogIds` entry points to a SerializedDog, the store resolves it in order:
+1. **Exact `id` match** -- pinned to a specific version (useful for reproducibility).
+2. **`lineageId` match** -- returns the newest version by `createdAt` (the default "latest" behavior).
+3. **`displayName` fallback** -- matched by name if neither ID hits.
+
+In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are referenced by `lineageId` (latest) or by exact `id` (pinned version).
 
 **Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
 
@@ -115,7 +164,7 @@ return { topRecipes: filtered, count: filtered.length };
 - **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication. Two requests for the same key share one Promise instead of firing twice.
 - **Area cache** (`AreaCacheStrategy`) -- Geographic awareness for location-based dogs. Uses Haversine distance to detect when a new query falls inside an already-cached territory. If a 5 km radius around point A is cached and you ask for 3 km around a nearby point B that sits inside A's circle, the cached result is returned without refetching. Larger areas swallow smaller ones on eviction.
 
-Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aware). The cache is injected at runtime -- dogs that don't implement the interface are unaffected.
+Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aware). The cache is injected at runtime -- dogs that don't implement the interface are unaffected. *Khra* -- what was fetched once defies time.
 
 **Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data-flow traceability across the pack.
 
@@ -153,18 +202,26 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aw
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/api/nodes` | List all dogs (BaseDogs + SerializedDogs) |
+| `GET` | `/api/nodes?kennelId=xxx` | List dogs **not yet** in that Kennel (toolbar: what can be added) |
 | `GET` | `/api/nodes/:id` | Load a specific dog or version |
-| `GET` | `/api/nodes/:id/versions` | List all versions of a dog |
+| `GET` | `/api/nodes/:id/versions` | List all versions of a dog's lineage |
 | `POST` | `/api/nodes` | Breed a new SerializedDog |
 | `POST` | `/save?id=:id` | Save code + parents (breeds new version) |
+| `PUT` | `/api/nodes/:id` | Update a dog (creates new version, keeps lineage) |
+| `PATCH` | `/api/nodes/:id/rename` | Rename a dog across all versions (`{ "displayName": "new-name" }`) |
 | `DELETE` | `/api/nodes/:id` | Put a dog down |
 
 ### Public
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/:kennelId` | Run Kennel, return lead dog's yield |
-| `POST` | `/:kennelId` | Same, with body data |
+| `GET/POST` | `/:kennelId` | Run Kennel, return lead dog's yield |
+
+### Meta
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/readme` | Project README as rendered HTML |
 
 ---
 
@@ -380,7 +437,7 @@ curl http://localhost:3000/my-kennel?someParam=test
 
 ### Startup Tests
 
-The app runs a test suite on every boot -- store ops, controller CRUD, BaseDog availability, TypeDefBuilder, SerializedDog execution. All must pass before the server starts listening.
+The app runs a test suite on every boot -- store ops, controller CRUD, BaseDog availability, TypeDefBuilder, SerializedDog execution. All must pass before the server starts listening. *Ris* -- in luminous space blackened stars; they gaze, accuse, deny.
 
 ### Seeds
 
@@ -436,4 +493,5 @@ ui-app/                       Angular frontend (see ui-app/README.md)
 
 [MIT](LICENSE) — Copyright (c) 2026 Martin.
 
+> *Netra — Carrion hordes trill their profane accord with eldritch plans.*
 > The hunt goes on in the repository.

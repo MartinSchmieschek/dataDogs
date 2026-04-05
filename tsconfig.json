@@ -46,7 +46,8 @@
       "@datadogs/dogs-phenology": ["packages/dogs-phenology/src/index.ts"],
       "@datadogs/dogs-webcams": ["packages/dogs-webcams/src/index.ts"],
       "@datadogs/dogs-regional-news": ["packages/dogs-regional-news/src/index.ts"],
-      "@datadogs/dogs-transit-trips": ["packages/dogs-transit-trips/src/index.ts"]
+      "@datadogs/dogs-transit-trips": ["packages/dogs-transit-trips/src/index.ts"],
+      "@datadogs/dogs-trails": ["packages/dogs-trails/src/index.ts"]
     },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

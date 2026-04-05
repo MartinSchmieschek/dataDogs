@@ -29,7 +29,7 @@ export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
     }
 
     get description(): string {
-        return 'Fetches current Warframe alerts and world state data.';
+        return 'Fetches the Warframe World State and yields a Kubrow with 40+ methods: alerts, sorties, archon hunts, invasions, fissures, void storms, void trader, syndicate missions, daily deals, flash sales, nightwave, goals, conquests, descents, PVP challenges, calendar seasons, persistent enemies, global upgrades, and full static mission lookup.';
     }
 
     /**

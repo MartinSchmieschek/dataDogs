@@ -43,7 +43,7 @@ export class TalkingDog extends Dog<string> {
     }
 
     get description(): string {
-        return 'Generates text output from a layout template using parent dog yields.';
+        return 'Renders dog yields into formatted output using layout templates (tinder, biography, recipe, article, gallery).';
     }
 
     /** The sigil branded upon the hull — its heralds are the stars it fells. */
