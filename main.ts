@@ -249,7 +249,7 @@ async function start() {
     routeHandler.registerRoutes(app, '/api');
 
     // The cache — memory across voyages, so no hound fetches what the hold already brims with.
-    const cacheHandler: ICacheHandler = new SqliteCacheHandler('./cache.db');
+    const cacheHandler: ICacheHandler = new SqliteCacheHandler(process.env.CACHE_DB_PATH || './cache.db');
 
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.

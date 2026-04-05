@@ -9,6 +9,11 @@ node_modules/
 dev.db
 store/prisma/*.db
 
+# Cache DB (SQLite)
+cache.db
+cache.db-shm
+cache.db-wal
+
 # Build output
 dist/
 
