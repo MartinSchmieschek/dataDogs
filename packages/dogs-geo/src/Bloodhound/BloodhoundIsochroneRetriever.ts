@@ -17,7 +17,7 @@
  */
 
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { BloodhoundIsochronePact, type BloodhoundIsochroneInput } from "./pacts";
+import { BloodhoundIsochronePact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
 import { getBaseDogIcon } from '@datadogs/core';
@@ -31,6 +31,13 @@ import { getBaseDogIcon } from '@datadogs/core';
  */
 export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
+
+    constructor() {
+        super();
+        if (!process.env.ORS_API_KEYS?.trim()) {
+            throw new Error('BloodhoundIsochroneRetriever: ORS_API_KEYS not set. Get a free key at https://openrouteservice.org/dev/#/signup');
+        }
+    }
 
     setCacheHandler(handler: ICacheHandler): void {
         this.cacheHandler = handler;
@@ -60,6 +67,14 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
         return [];
     }
 
+    /** Carry the movement profiles into the VM so SerializedDog children can use them */
+    getVmContextContributions(): Record<string, any> {
+        return {
+            BloodhoundProfile,
+            DEFAULT_BLOODHOUND_PROFILE,
+        };
+    }
+
     /**
      * Arr, here we plunder the isochrone from the deep!
      * Corporeal laws are unwritten as suns and love retreat —
@@ -72,7 +87,7 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
 
         const lat = parseFloat(input.lat);
         const lng = parseFloat(input.lng);
-        const profile = input.profile ?? 'foot-walking';
+        const profile = input.profile ?? DEFAULT_BLOODHOUND_PROFILE;
         const range = parseInt(input.range, 10);
 
         // If the coordinates be lost to the void, we cannot sail — abandon ship!

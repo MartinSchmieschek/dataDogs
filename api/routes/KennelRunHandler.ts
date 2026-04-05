@@ -4,9 +4,7 @@ import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
-import { kennelVmGlobalsSuppliers } from '../../services/kennelVmGlobals';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
-import type { CacheHandler } from '../../services/CacheHandler';
 
 /** The provisions required to arm the KennelRunHandler. */
 export interface IKennelRunDeps {
@@ -59,7 +57,7 @@ export class KennelRunHandler {
     public async runKennel(config: IKennelConfig, query?: Record<string, string>, body?: any): Promise<Waves> {
 
         const areaCache = this.deps.cacheHandler
-            ? (this.deps.cacheHandler as CacheHandler).getAreaCache?.()
+            ? this.deps.cacheHandler.getAreaCache()
             : undefined;
 
         const kennelRun = new KennelRun(
@@ -68,7 +66,7 @@ export class KennelRunHandler {
             this.createSerializedDogFactory(),
             query || {},
             body,
-            kennelVmGlobalsSuppliers,
+            [],
             this.deps.cacheHandler,
             areaCache
         );

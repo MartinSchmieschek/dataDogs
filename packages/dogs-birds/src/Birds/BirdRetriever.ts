@@ -28,6 +28,13 @@ import { getBaseDogIcon } from '@datadogs/core';
 export class BirdRetriever extends Dog<BirdResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
 
+    constructor() {
+        super();
+        if (!process.env.EBIRD_API_KEY?.trim()) {
+            throw new Error('BirdRetriever: EBIRD_API_KEY not set. Get a free key at https://ebird.org/api/keygen');
+        }
+    }
+
     setCacheHandler(handler: ICacheHandler): void {
         this.cacheHandler = handler;
     }

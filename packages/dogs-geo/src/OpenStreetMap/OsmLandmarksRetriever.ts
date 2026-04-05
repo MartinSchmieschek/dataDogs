@@ -20,6 +20,11 @@ import {
     clampRadiusM,
     fetchNearbyLandmarks,
     parseLandmarkFacets,
+    LandmarksOverpassFacet,
+    DEFAULT_LANDMARKS_FACETS,
+    DEFAULT_LANDMARK_RADIUS_M,
+    MAX_LANDMARK_RADIUS_M,
+    OsmLandmarkElementType,
     type OsmLandmarksResult,
     type OsmLandmarkElement,
 } from "./overpassLandmarks";
@@ -90,6 +95,17 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
     /** No optional horrors burden this crew */
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
         return [];
+    }
+
+    /** Carry the Overpass toolkit into the VM so SerializedDog children can use them */
+    getVmContextContributions(): Record<string, any> {
+        return {
+            LandmarksOverpassFacet,
+            DEFAULT_LANDMARKS_FACETS,
+            DEFAULT_LANDMARK_RADIUS_M,
+            MAX_LANDMARK_RADIUS_M,
+            OsmLandmarkElementType,
+        };
     }
 
     /**

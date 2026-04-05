@@ -1,13 +1,13 @@
 // Arr, this be the seeding rite — spoken once at the dawn of time (or a fresh database).
 // We end as we began: from the void we summon the first hound and its kennel.
 import { randomUUID } from 'crypto';
-import { PrismaStore } from './store/PrismaStore';
-import { IStore } from './store/IStore';
+import { PrismaStore } from '../store/PrismaStore';
+import { IStore } from '../store/IStore';
 import { SerializedDog, IKennelConfig, BASE_DOG_PREFIX, type IMimicDogConfig } from '@datadogs/core';
 import { TalkingDog } from '@datadogs/dogs-talking';
 import { RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever } from '@datadogs/dogs-demo';
-import { VoidHuntDataCode } from './seed-data/VoidHuntData';
-import { VoidHuntGalleryCode } from './seed-data/VoidHuntGallery';
+import { VoidHuntDataCode } from './VoidHuntData';
+import { VoidHuntGalleryCode } from './VoidHuntGallery';
 
 /** Check if a kennel with this lineageId already exists. */
 async function kennelExists(store: IStore, kennelLineageId: string): Promise<boolean> {

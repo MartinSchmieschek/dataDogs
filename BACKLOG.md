@@ -26,6 +26,9 @@ Prioritized technical debt and release topics (as of: code review / release chec
 - [ ] **Serialized Dog — rename:** A serialized dog must support **renaming** (display name / identifier as needed) without breaking references where the model allows — UI + persistence + contract updates as required.
 - [ ] **History — parent / branch from past:** Version history should be modeled with an explicit **parent** (or equivalent lineage) so users can **navigate backward** in time and **start a new line** from any historical version (fork-style continuation, not only linear “latest”).
 - [ ] **Tag/release workflow** (align SemVer with root version; UI `ui-app` is at `0.0.0`); optional release job building UI.
+- [ ] **UI — Auto-Run after Code-Save:** After a successful save, automatically reload Waves so the result is visible immediately. Side Panel fires `saved` → Waves Viewer reacts with `loadWaves()`. Wiring exists — only the auto-trigger is missing instead of the manual click. Bonus: visual feedback in the graph showing which dog just updated.
+- [ ] **UI — Keyboard Shortcuts:** `Ctrl+S` → save in Dog Editor (`saveCode()` in Side Panel), `Ctrl+Enter` → reload Waves (`loadWaves()` in Viewer), `Escape` → close Side Panel. Monaco already intercepts `Ctrl+S` — needs forwarding to the save flow. `Ctrl+Enter` via global `@HostListener` in WavesViewerComponent.
+- [ ] **UI — Diff-View between Versions:** Side-by-side diff of two dog versions. Monaco has `createDiffEditor()` built in — select two versions (e.g. current + one from Timeline), diff editor opens. Red/green shows what was removed/added.
 
 ---
 
@@ -34,6 +37,14 @@ Prioritized technical debt and release topics (as of: code review / release chec
 - [ ] **Dependencies:** `fs` (`0.0.1-security`) — whether needed; `vm2` — briefly note risk/roadmap (see README *Dependency notes*).
 - [ ] Run **`npm audit`** before releases.
 - [ ] **Optional:** `CONTRIBUTING.md`, `SECURITY.md` for a public repo.
+- [ ] **UI — Body-Editor as Monaco:** Replace plain textarea in Waves Viewer params panel with a small Monaco JSON editor (`automaticLayout: true`, `vs-dark`, validation). Consistent with rest of app.
+- [ ] **UI — Execution-Time & Logs per Dog:** Show how long each dog took. Surface console output per dog.
+- [ ] **UI — Dog-Status color coding in Graph:** Error = red, OK = green, Pending = grey.
+- [ ] **UI — HTML-Preview Fullscreen:** Pop-out button for the iframe so TalkingDog layouts can be tested at full size.
+- [ ] **UI — Query/Body Presets:** Save and quickly switch between different param sets ("Recipe Test", "Biography Test").
+- [ ] **UI — WebSocket Live-Updates:** Stream Waves during execution instead of returning everything at the end.
+- [ ] **UI — Dog search/filter in Toolbar:** Toolbar becomes cluttered with many dogs — add search/filter.
+- [ ] **UI — Toast-Notifications:** Elegant toasts for Save/Error/Success instead of inline errors.
 
 ---
 

@@ -39,6 +39,11 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
         return undefined;
     }
 
+    /** Extra globals this hound provides to SerializedDog children. Override to carry tools into the VM. */
+    getVmContextContributions(): Record<string, any> | undefined {
+        return undefined;
+    }
+
     /** The hound's true name -- each must declare it or be lost to the void */
     abstract get name():string
 

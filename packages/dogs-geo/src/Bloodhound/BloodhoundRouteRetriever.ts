@@ -19,7 +19,7 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
-import { BloodhoundRouteQueryPact, type BloodhoundRouteQuery } from "./pacts";
+import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery } from "./pacts";
 import { getBaseDogIcon } from '@datadogs/core';
 
 /**
@@ -31,6 +31,13 @@ import { getBaseDogIcon } from '@datadogs/core';
  */
 export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
+
+    constructor() {
+        super();
+        if (!process.env.ORS_API_KEYS?.trim()) {
+            throw new Error('BloodhoundRouteRetriever: ORS_API_KEYS not set. Get a free key at https://openrouteservice.org/dev/#/signup');
+        }
+    }
 
     setCacheHandler(handler: ICacheHandler): void {
         this.cacheHandler = handler;
@@ -60,6 +67,14 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         return [];
     }
 
+    /** Carry the movement profiles into the VM so SerializedDog children can use them */
+    getVmContextContributions(): Record<string, any> {
+        return {
+            BloodhoundProfile,
+            DEFAULT_BLOODHOUND_PROFILE,
+        };
+    }
+
     /**
      * Arr, here we plunder the route from the abyss!
      * Through endless faces, countless forms, a multitude unfolds —
@@ -73,7 +88,7 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         const startLng = parseFloat(query['startlng']);
         const endLat = parseFloat(query['endlat']);
         const endLng = parseFloat(query['endlng']);
-        const profile = query['profile'] || 'foot-walking';
+        const profile = query['profile'] || DEFAULT_BLOODHOUND_PROFILE;
 
         // If the coordinates be swallowed by the void, we cannot navigate the deep
         if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
