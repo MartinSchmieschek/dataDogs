@@ -69,6 +69,21 @@ export function cleanParentId(parentId: string): string {
 }
 
 /**
+ * parentsRequired speichert oft die Lineage-GUID; Knoten-IDs bei SerializedDogs sind die Version (storageId).
+ * Löst Parent-Referenzen auf die tatsächliche Knoten-ID für Kanten auf.
+ */
+export function resolveParentRefToNodeId(parentRef: string, nodes: PlacedNode[]): string {
+  const cleaned = cleanParentId(parentRef);
+  if (nodes.some((n) => n.id === cleaned)) return cleaned;
+  const byLineage = nodes.find(
+    (n) =>
+      n.dog.lineageId != null &&
+      (n.dog.lineageId === parentRef || n.dog.lineageId === cleaned)
+  );
+  return byLineage?.id ?? cleaned;
+}
+
+/**
  * Gleich große AABB: iterativ entlang der kleineren Überlappungsachse trennen.
  */
 export function separateOverlappingNodes(
@@ -258,10 +273,10 @@ export function recomputeEdgeSegments(nodes: PlacedNode[], waves: Waves): EdgeSe
   waves.forEach(wave => {
     wave.forEach(dog => {
       (dog.parentsRequired ?? []).forEach(pid => {
-        pushEdge(cleanParentId(pid), dog.id, false);
+        pushEdge(resolveParentRefToNodeId(pid, nodes), dog.id, false);
       });
       (dog.parentsOptional ?? []).forEach(pid => {
-        pushEdge(cleanParentId(pid), dog.id, true);
+        pushEdge(resolveParentRefToNodeId(pid, nodes), dog.id, true);
       });
     });
   });

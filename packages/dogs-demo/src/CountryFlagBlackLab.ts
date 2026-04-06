@@ -40,6 +40,10 @@ export class CountryFlagBlackLab extends Dog<string>{
         return CountryFlagBlackLab.name
     }
 
+    get description(): string {
+        return 'Generates a placeholder image URL for the cuisine of a random recipe.';
+    }
+
     /** The icon -- a sigil pulled from the deep, corporeal laws unwritten as suns retreat */
     get icon(): string | undefined {
         return getBaseDogIcon(CountryFlagBlackLab.name);

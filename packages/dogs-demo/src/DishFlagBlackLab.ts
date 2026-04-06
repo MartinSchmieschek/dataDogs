@@ -40,6 +40,10 @@ export class DishFlagBlackLab extends Dog<string>{
         return DishFlagBlackLab.name
     }
 
+    get description(): string {
+        return 'Generates a placeholder image URL from the tags of a random recipe.';
+    }
+
     /** The icon -- a cursed glyph, for in luminous space blackened stars gaze upon us */
     get icon(): string | undefined {
         return getBaseDogIcon(DishFlagBlackLab.name);

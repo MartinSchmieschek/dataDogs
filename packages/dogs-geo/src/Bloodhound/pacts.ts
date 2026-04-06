@@ -15,6 +15,21 @@
 
 import { createPact } from "@datadogs/core";
 
+/** Movement profiles supported by OpenRouteService */
+export enum BloodhoundProfile {
+    FootWalking = "foot-walking",
+    Hiking = "foot-hiking",
+    DrivingCar = "driving-car",
+    CyclingRegular = "cycling-regular",
+    CyclingRoad = "cycling-road",
+    CyclingMountain = "cycling-mountain",
+    CyclingElectric = "cycling-electric",
+    Wheelchair = "wheelchair",
+}
+
+/** The default profile when none is specified */
+export const DEFAULT_BLOODHOUND_PROFILE = BloodhoundProfile.FootWalking;
+
 /** Query parameters for the BloodhoundRouteRetriever — the vessel's heading through the void (lowercase keys from the QueryRetriever) */
 export interface BloodhoundRouteQuery {
     /** Arr, the latitude where our voyage begins — the first coordinate whispered to the void */

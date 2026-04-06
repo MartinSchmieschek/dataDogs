@@ -31,6 +31,10 @@ export class PublicTransportRetriever extends Dog<PublicTransportNearbyResult> {
         return PublicTransportRetriever.name;
     }
 
+    get description(): string {
+        return 'Finds nearby public transport stops and departures.';
+    }
+
     /** The mark of our vessel — the transit sigil */
     get icon(): string | undefined {
         return getBaseDogIcon(PublicTransportRetriever.name);

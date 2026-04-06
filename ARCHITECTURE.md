@@ -597,6 +597,31 @@ Copy [`.env.example`](.env.example) to `.env` and fill in secrets locally (API k
 
 Before first run or after schema changes: from the repo root, `npm run prisma:sync` runs `prisma generate` and `prisma db push` against `store/prisma/schema.prisma`. For production, prefer migrations (`prisma migrate`) and a managed Postgres instance when you leave the SQLite hunting grounds.
 
+#### Store (Prisma) — setup
+
+The persistence layer (`store/PrismaStore.ts`) uses Prisma with SQLite locally or Postgres in the cloud. Local setup:
+
+```bash
+npm install
+npm install -D prisma
+npx prisma generate
+```
+
+**SQLite (dev, recommended):**
+```bash
+export DATABASE_URL="file:./dev.db"
+npx prisma db push
+```
+
+**Postgres (cloud — Supabase, Neon, etc.):**
+Change `provider` in `store/prisma/schema.prisma` to `"postgresql"`, then:
+```bash
+export DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+npx prisma db push
+```
+
+At runtime, `main.ts` instantiates `PrismaStore` with `process.env.DATABASE_URL` (default: `file:./dev.db`). All env vars including `DATABASE_URL` are documented in [`.env.example`](.env.example) — secrets in `.env` only, never committed.
+
 ### Static UI
 
 `npm run ui:build` builds the Angular app into `ui-app/dist/`. Deploy that folder behind any static host or CDN. The browser must reach the **same origin** as the API, or you configure CORS and absolute API URLs — the dev proxy does not exist in a static build, so wire your reverse proxy (nginx, Caddy, platform defaults) to forward `/api` and `/save` to the Node backend, or bake the backend URL into the Angular environment for your deployment.

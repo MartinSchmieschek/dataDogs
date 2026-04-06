@@ -71,6 +71,14 @@ export class KennelService {
     return this.http.get<RunResponse>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, { params });
   }
 
+  exportBundle(id: string): Observable<any> {
+    return this.http.get(`${this.baseUrl}/${encodeURIComponent(id)}/export`);
+  }
+
+  importBundle(bundle: any): Observable<ApiResponse> {
+    return this.http.post<ApiResponse>(`${this.baseUrl}/import`, bundle);
+  }
+
   execute(id: string, body?: any, query?: Record<string, string>): Observable<any> {
     let params = new HttpParams();
     if (query) {

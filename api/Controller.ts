@@ -41,10 +41,13 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 displayName: input.displayName || input.id || id,
             } as T;
 
+            // Resolve the type brand: if the entity imitates a Pact, it is a MimicDog.
+            const resolvedType = (input as any).imitates ? 'MimicDog' : this.entityType;
+
             // Commit the entity to the deep — its soul sealed in the store.
             await this.store.save({
                 id,
-                type: this.entityType,
+                type: resolvedType,
                 lineageId,
                 parentId: null,
                 displayName: entity.displayName,
@@ -117,10 +120,15 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 };
             }
 
+            // Resolve the final type: the new incarnation's imitates field takes precedence over the ancestor's.
+            const mergedImitates = (entity as any).imitates
+                || ((entity as any).serializedDogConfig && typeof (entity as any).serializedDogConfig === 'object' && (entity as any).serializedDogConfig.imitates);
+            const resolvedType = mergedImitates ? 'MimicDog' : (existingType || this.entityType);
+
             // Seal the merged entity in the store — inherit the ancestor's type brand if it differs.
             await this.store.save({
                 id: saveId,
-                type: existingType || this.entityType,
+                type: resolvedType,
                 lineageId,
                 parentId,
                 displayName,

@@ -47,6 +47,10 @@ export class BodyRetriever extends Dog<any> {
         return BodyRetriever.name;
     }
 
+    get description(): string {
+        return 'Provides the HTTP request body as yield for other dogs to consume.';
+    }
+
     /** The cargo-bearer's sigil -- fetched from the central icon registry */
     get icon(): string | undefined {
         return getBaseDogIcon(BodyRetriever.name);
