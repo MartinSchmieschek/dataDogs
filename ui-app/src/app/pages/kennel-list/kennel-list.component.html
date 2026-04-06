@@ -2,73 +2,123 @@
   <div class="kennel-backdrop-layer" aria-hidden="true">
     <app-void-mythic-backdrop />
   </div>
+
   <div class="kennel-shell-inner">
-    <div class="container">
-      @if (loading()) {
-        <app-loading-indicator />
-      }
-
-      <h1>Kennel Liste</h1>
-
-      <div class="list-actions">
-        <button type="button" class="create-btn" (click)="showCreateForm.set(!showCreateForm())">
-          + Neuen Kennel erstellen
-        </button>
-        <button type="button" class="create-btn" (click)="importFromClipboard()">
-          Kennel importieren (Clipboard)
-        </button>
-      </div>
-
-      @if (showCreateForm()) {
-        <app-kennel-form
-          (submitted)="onCreateKennel($event)"
-          (cancelled)="showCreateForm.set(false)" />
-      }
-
-      @if (error()) {
-        <div
-          class="error comfort-error-trigger"
-          role="button"
-          tabindex="0"
-          title="Klick: Fernes Signal"
-          (click)="onComfortVideoClick()"
-          (keydown.enter)="onComfortVideoClick()"
-          (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
-          {{ error() }}
-        </div>
-      }
-
-      <div class="kennel-list">
-        @for (kennel of kennels(); track kennel.id) {
-          <article class="kennel-card">
-            <div class="kennel-card-main">
-              <div
-                class="kennel-emoji"
-                [class.kennel-emoji--empty]="!hasEmojiStored(kennel)"
-                aria-hidden="true">
-                <span class="kennel-emoji-char">{{ kennelEmojiForList(kennel) }}</span>
-              </div>
-              <div class="kennel-text">
-                <h3 class="kennel-title">
-                  <a [routerLink]="['/kennel', kennelRef(kennel)]">{{ kennel.name || kennelRef(kennel) }}</a>
-                </h3>
-                <span class="kennel-id-badge">ID: {{ kennelRef(kennel) }}</span>
-                @if (kennel.description) {
-                  <p class="kennel-desc">{{ kennel.description }}</p>
-                }
-              </div>
-              <div class="kennel-actions-wrap">
-                <app-kennel-action-fan
-                  layout="row"
-                  [executeUsesPost]="hasBody(kennel)"
-                  (action)="onFanAction(kennel, $event)" />
-              </div>
-            </div>
-          </article>
-        } @empty {
-          <div class="empty">Keine Kennels gefunden</div>
+    <div class="kennel-page">
+      <main class="kennel-panel">
+        @if (loading()) {
+          <app-loading-indicator />
         }
-      </div>
+
+        <header class="kennel-panel-head">
+          <h1 class="kennel-panel-title">Kennels</h1>
+          <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
+        </header>
+
+        <div class="kennel-toolbar" role="search">
+          <label class="kennel-sr-only" for="kennel-search">Kennels durchsuchen</label>
+          <input
+            id="kennel-search"
+            class="kennel-search"
+            type="search"
+            autocomplete="off"
+            placeholder="Name, ID oder Beschreibung …"
+            [value]="searchQuery()"
+            (input)="searchQuery.set($any($event.target).value)" />
+
+          <div class="kennel-sort">
+            <label class="kennel-sort-label" for="kennel-sort-key">Sortierung</label>
+            <select
+              id="kennel-sort-key"
+              class="kennel-sort-select"
+              [value]="sortKey()"
+              (change)="onSortKeyChange($event)">
+              <option value="name">Name</option>
+              <option value="id">ID</option>
+              <option value="updated">Zuletzt geändert</option>
+            </select>
+            <button
+              type="button"
+              class="kennel-sort-dir"
+              (click)="toggleSortDir()"
+              [attr.aria-label]="sortDir() === 'asc' ? 'Absteigend sortieren' : 'Aufsteigend sortieren'"
+              [title]="sortDir() === 'asc' ? 'Aufsteigend' : 'Absteigend'">
+              {{ sortDir() === 'asc' ? '↑' : '↓' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="kennel-actions">
+          <button type="button" class="kennel-btn" (click)="showCreateForm.set(!showCreateForm())">
+            Neuer Kennel
+          </button>
+          <button type="button" class="kennel-btn kennel-btn--ghost" (click)="importFromClipboard()">
+            Import (Clipboard)
+          </button>
+        </div>
+
+        @if (showCreateForm()) {
+          <app-kennel-form
+            (submitted)="onCreateKennel($event)"
+            (cancelled)="showCreateForm.set(false)" />
+        }
+
+        @if (error()) {
+          <div
+            class="kennel-error comfort-error-trigger"
+            role="button"
+            tabindex="0"
+            title="Klick: Fernes Signal"
+            (click)="onComfortVideoClick()"
+            (keydown.enter)="onComfortVideoClick()"
+            (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
+            {{ error() }}
+          </div>
+        }
+
+        <div class="kennel-list" role="list">
+          @for (kennel of filteredKennels(); track kennel.id) {
+            <article class="kennel-row" role="listitem">
+              <div class="kennel-row-main">
+                <div
+                  class="kennel-emoji"
+                  [class.kennel-emoji--empty]="!hasEmojiStored(kennel)"
+                  aria-hidden="true">
+                  <span class="kennel-emoji-char">{{ kennelEmojiForList(kennel) }}</span>
+                </div>
+                <div class="kennel-text">
+                  <h3 class="kennel-title">
+                    <a [routerLink]="['/kennel', kennelRef(kennel)]">{{ kennel.name || kennelRef(kennel) }}</a>
+                  </h3>
+                  <div class="kennel-meta">
+                    <span class="kennel-id">{{ kennelRef(kennel) }}</span>
+                    @if (kennel.updatedAt || kennel.createdAt) {
+                      <span class="kennel-date">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</span>
+                    }
+                  </div>
+                  @if (kennel.description) {
+                    <p class="kennel-desc">{{ kennel.description }}</p>
+                  }
+                </div>
+                <div class="kennel-actions-wrap">
+                  <app-kennel-action-fan
+                    layout="row"
+                    [executeUsesPost]="hasBody(kennel)"
+                    (action)="onFanAction(kennel, $event)" />
+                </div>
+              </div>
+            </article>
+          } @empty {
+            @if (!loading()) {
+              @if (kennels().length === 0) {
+                <div class="kennel-empty">Keine Kennels vorhanden.</div>
+              } @else {
+                <div class="kennel-empty">Keine Treffer für diese Suche.</div>
+              }
+            }
+          }
+        </div>
+      </main>
     </div>
   </div>
 </div>

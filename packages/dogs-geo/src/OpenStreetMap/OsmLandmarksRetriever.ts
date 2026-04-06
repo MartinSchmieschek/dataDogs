@@ -22,6 +22,7 @@ import {
     parseLandmarkFacets,
     LandmarksOverpassFacet,
     DEFAULT_LANDMARKS_FACETS,
+    ALL_LANDMARKS_OVERPASS_FACETS,
     DEFAULT_LANDMARK_RADIUS_M,
     MAX_LANDMARK_RADIUS_M,
     OsmLandmarkElementType,
@@ -79,7 +80,7 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
     }
 
     get description(): string {
-        return 'Finds nearby landmarks (tourism, historic, museums, peaks) via the Overpass/OpenStreetMap API.';
+        return 'Finds nearby OSM landmarks (tourism, historic, museums, peaks, cemeteries, bridges, nature, amenities, …) via Overpass — use preset "full" or list facets.';
     }
 
     /** The sigil branded upon our vessel by cosmic forces beyond comprehension */
@@ -102,6 +103,7 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
         return {
             LandmarksOverpassFacet,
             DEFAULT_LANDMARKS_FACETS,
+            ALL_LANDMARKS_OVERPASS_FACETS,
             DEFAULT_LANDMARK_RADIUS_M,
             MAX_LANDMARK_RADIUS_M,
             OsmLandmarkElementType,

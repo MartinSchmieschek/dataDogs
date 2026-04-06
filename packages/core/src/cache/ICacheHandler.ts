@@ -15,13 +15,13 @@ import { IAreaCache } from './IAreaCache';
 
 export interface ICacheHandler {
     /** Retrieve a cached value, or undefined if not present or expired. */
-    get<T>(key: string): T | undefined;
+    get<T>(key: string): Promise<T | undefined>;
 
     /** Store a value under a key with a TTL in milliseconds. */
-    set<T>(key: string, value: T, ttlMs: number): void;
+    set<T>(key: string, value: T, ttlMs: number): Promise<void>;
 
     /** Check if a non-expired entry exists for this key. */
-    has(key: string): boolean;
+    has(key: string): Promise<boolean>;
 
     /**
      * The dark heart of the cache:
@@ -32,13 +32,13 @@ export interface ICacheHandler {
     getOrFetch<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T>;
 
     /** Remove a specific cache entry. */
-    invalidate(key: string): void;
+    invalidate(key: string): Promise<void>;
 
     /** Remove all entries whose keys start with a given prefix. */
-    invalidateByPrefix(prefix: string): void;
+    invalidateByPrefix(prefix: string): Promise<void>;
 
     /** Purge all expired entries. */
-    prune(): void;
+    prune(): Promise<void>;
 
     /** Get or create a shared area cache for geo-based deduplication. */
     getAreaCache<T>(): IAreaCache<T>;

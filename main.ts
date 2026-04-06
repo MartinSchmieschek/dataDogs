@@ -14,6 +14,7 @@ import {
     RandomEveryThingRetriever,
     CountryFlagBlackLab,
     DishFlagBlackLab,
+    FoodPornRetriever,
 } from '@datadogs/dogs-demo';
 import { TalkingDog, LayoutInputPact } from '@datadogs/dogs-talking';
 import { WarframeAlertsRetriever } from '@datadogs/dogs-warframe';
@@ -21,9 +22,15 @@ import {
     BloodhoundRouteRetriever,
     BloodhoundIsochroneRetriever,
     OsmLandmarksRetriever,
+    OsmTracksRetriever,
+    OsmVegetationRetriever,
+    OsmFastRoadsRetriever,
     BloodhoundRouteQueryPact,
     BloodhoundIsochronePact,
     NearbyLandmarksPact,
+    NearbyTracksPact,
+    NearbyVegetationPact,
+    NearbyFastRoadsPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
 import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
@@ -61,6 +68,7 @@ import { ISerializedDogConfig, SerializedDog, type ICacheHandler } from '@datado
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
+import path from 'path';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
@@ -72,13 +80,25 @@ import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
-import { SqliteCacheHandler } from './services/SqliteCacheHandler';
+import { PrismaCacheHandler } from './services/PrismaCacheHandler';
 
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
     console.error('Failed to start', e);
     process.exit(1);
 });
+
+/** Prisma-URL für die Cache-DB (zweites Schema): wie DATABASE_URL, `file:…`. CACHE_DB_PATH → file:… */
+function cacheDatabaseUrlFromEnv(): string {
+    const url = process.env.CACHE_DATABASE_URL?.trim();
+    if (url) return url;
+    const pathOnly = process.env.CACHE_DB_PATH?.trim();
+    if (pathOnly) {
+        if (pathOnly.startsWith('file:')) return pathOnly;
+        return `file:${pathOnly.replace(/\\/g, '/')}`;
+    }
+    return 'file:./cache.db';
+}
 
 async function start() {
     // Seek the DATABASE_URL from the env scroll; should it bear no name, sail to the local waters of dev.db.
@@ -103,12 +123,16 @@ async function start() {
         CountryFlagBlackLab,
         DishFlagBlackLab,
         RandomEveryThingRetriever,
+        FoodPornRetriever,
         QueryRetriever,
         BodyRetriever,
         WarframeAlertsRetriever,
         BloodhoundRouteRetriever,
         BloodhoundIsochroneRetriever,
         OsmLandmarksRetriever,
+        OsmTracksRetriever,
+        OsmVegetationRetriever,
+        OsmFastRoadsRetriever,
         HueBridgeEnvRetriever,
         HuePlaygroundRetriever,
         PublicTransportRetriever,
@@ -163,7 +187,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
@@ -226,6 +250,9 @@ async function start() {
 
     app.use(express.json());
 
+    // Static assets (Swagger UI hero, etc.) — served from /static/*
+    app.use('/static', express.static(path.join(__dirname, 'public')));
+
     // Assemble the registry — a chart of all controllers that sail under our black flag.
     const registry = new ControllerRegistry();
     const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
@@ -248,8 +275,8 @@ async function start() {
     const routeHandler = new ConfigRouteHandler(registry);
     routeHandler.registerRoutes(app, '/api');
 
-    // The cache — memory across voyages, so no hound fetches what the hold already brims with.
-    const cacheHandler: ICacheHandler = new SqliteCacheHandler(process.env.CACHE_DB_PATH || './cache.db');
+    // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
+    const cacheHandler: ICacheHandler = new PrismaCacheHandler(cacheDatabaseUrlFromEnv());
 
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.

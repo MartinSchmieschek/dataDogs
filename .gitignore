@@ -19,6 +19,7 @@ dist/
 
 # Prisma client
 node_modules/@prisma/
+store/generated/
 
 # env
 .env

@@ -14,7 +14,7 @@
     "node": ">=18.19.0"
   },
   "scripts": {
-    "postinstall": "npm run build:packages && cd ui-app && npm install --prefer-offline",
+    "postinstall": "npm run build:packages && prisma generate && node scripts/prisma-cache.cjs generate && cd ui-app && npm install --prefer-offline",
     "build:core": "cd packages/core && npx tsc",
     "build:dogs-demo": "cd packages/dogs-demo && npx tsc",
     "build:dogs-geo": "cd packages/dogs-geo && npx tsc",
@@ -54,8 +54,8 @@
     "build:dogs-github-trending": "cd packages/dogs-github-trending && npx tsc",
     "build:dogs": "npm run build:dogs-demo && npm run build:dogs-geo && npm run build:dogs-warframe && npm run build:dogs-hue && npm run build:dogs-talking && npm run build:dogs-public-transport && npm run build:dogs-weather && npm run build:dogs-air-quality && npm run build:dogs-geocoding && npm run build:dogs-wikipedia && npm run build:dogs-sun && npm run build:dogs-biodiversity && npm run build:dogs-birds && npm run build:dogs-phenology && npm run build:dogs-webcams && npm run build:dogs-regional-news && npm run build:dogs-transit-trips && npm run build:dogs-trails && npm run build:dogs-astronomy && npm run build:dogs-water && npm run build:dogs-historical-weather && npm run build:dogs-charging && npm run build:dogs-noise && npm run build:dogs-parking && npm run build:dogs-playground && npm run build:dogs-drinking-water && npm run build:dogs-food && npm run build:dogs-currency && npm run build:dogs-holidays && npm run build:dogs-wiki-search && npm run build:dogs-season && npm run build:dogs-ip-geo && npm run build:dogs-random-fact && npm run build:dogs-space && npm run build:dogs-open-library && npm run build:dogs-github-trending",
     "build:packages": "npm run build:core && npm run build:dogs",
-    "build": "npm run build:packages && prisma generate && tsc -p tsconfig.build.json",
-    "prisma:sync": "prisma generate && prisma db push",
+    "build": "npm run build:packages && prisma generate && node scripts/prisma-cache.cjs generate && tsc -p tsconfig.build.json",
+    "prisma:sync": "prisma generate && node scripts/prisma-cache.cjs generate && prisma db push && node scripts/prisma-cache.cjs push",
     "dev": "npm run prisma:sync && concurrently -n backend,ui -c blue,green \"ts-node -r tsconfig-paths/register main.ts\" \"npm run ui\"",
     "start": "ts-node -r tsconfig-paths/register main.ts",
     "start:prod": "node dist/main.js",
@@ -110,7 +110,6 @@
     "@prisma/client": "^5.5.0",
     "@types/express": "^5.0.3",
     "@types/swagger-ui-express": "^4.1.8",
-    "better-sqlite3": "^12.8.0",
     "dotenv": "^17.3.1",
     "express": "^5.1.0",
     "fs": "^0.0.1-security",
@@ -124,7 +123,6 @@
     "vm2": "^3.10.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "concurrently": "^9.2.1",
     "prisma": "^5.5.0",
     "tsconfig-paths": "^4.2.0"

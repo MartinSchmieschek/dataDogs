@@ -25,6 +25,9 @@ const BASE_DOG_TYPES = [
   'BloodhoundRouteRetriever',
   'BloodhoundIsochroneRetriever',
   'OsmLandmarksRetriever',
+  'OsmTracksRetriever',
+  'OsmVegetationRetriever',
+  'OsmFastRoadsRetriever',
   'HueBridgeEnvRetriever',
   'HuePlaygroundRetriever',
 ];
