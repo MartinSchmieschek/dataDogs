@@ -225,6 +225,7 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
     await seedWeatherKennel(nodesStore, kennelsStore);
     await seedAirQualityKennel(nodesStore, kennelsStore);
     await seedGeocodingKennel(nodesStore, kennelsStore);
+    await seedIsochroneKennel(nodesStore, kennelsStore);
     await seedWikiNearbyKennel(nodesStore, kennelsStore);
     await seedSunKennel(nodesStore, kennelsStore);
     await seedLocationDashboardKennel(nodesStore, kennelsStore);
@@ -233,6 +234,7 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
     await seedCompareKennel(nodesStore, kennelsStore);
     await seedWindMapKennel(nodesStore, kennelsStore);
     await seedTransitScoutKennel(nodesStore, kennelsStore);
+    await seedTransitScoutJsonKennel(nodesStore, kennelsStore);
     await seedNaturkundlerKennel(nodesStore, kennelsStore);
     await seedEarthPulseKennel(nodesStore, kennelsStore);
     await seedVoidStormsKennel(nodesStore, kennelsStore);
@@ -1351,6 +1353,72 @@ return {
 }
 
 /**
+ * Isochrone (OpenRouteService): Erreichbarkeit als Polygon vom Mittelpunkt aus.
+ * Query: lat, lng, range (Sekunden, Standard 900), optional profile (z. B. foot-walking).
+ */
+export async function seedIsochroneKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'isochrone-kennel';
+    const existing = await kennelExists(kennelsStore, kennelId);
+    if (existing) return;
+
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Isochrone Query Mapper',
+        imitates: 'BloodhoundIsochroneProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    lat: QueryRetriever.lat,
+    lng: QueryRetriever.lng,
+    range: QueryRetriever.range || "900"
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Isochrone Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'Isochrone',
+        description: 'Erreichbarkeit (Isochrone) vom Punkt aus — OpenRouteService, Profil z. B. zu Fuss oder Rad',
+        emoji: '\u23F1\uFE0F',
+        dogIds: [
+            BASE_DOG_PREFIX + 'BloodhoundIsochroneRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: { lat: '50.1109', lng: '8.6821', range: '900' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery,
+        defaultBody: undefined,
+    });
+
+    console.log(`\u2705 Seeded Isochrone Kennel (kennelId: ${kennelId})`);
+}
+
+/**
  * Raises the air quality kennel from the breathing void.
  */
 export async function seedAirQualityKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
@@ -1708,6 +1776,75 @@ return {
     });
 
     console.log(`\u2705 Seeded Transit Scout Kennel (kennelId: ${kennelId})`);
+}
+
+/**
+ * Wie transit-scout (MOTIS: Trips/Haltestellen), aber nur JSON — kein HTML-Lead.
+ * Query: lat, lng, distance, results (→ limit), optional stations, line.
+ */
+export async function seedTransitScoutJsonKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+    const kennelId = 'transit-scout-json';
+    const existing = await kennelExists(kennelsStore, kennelId);
+    if (existing) return;
+
+    const mimicVersionId = randomUUID();
+    const mimicDogId = randomUUID();
+
+    const mimicCfg: IMimicDogConfig = {
+        id: mimicVersionId,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Transit Trip JSON Query Mapper',
+        imitates: 'TransitTripQueryProvider',
+        parentsRequired: ['QueryRetriever'],
+        parentsOptional: [],
+        theRun: `
+return {
+    lat: QueryRetriever.lat,
+    lng: QueryRetriever.lng,
+    distance: QueryRetriever.distance || "3000",
+    stations: QueryRetriever.stations || "5",
+    line: QueryRetriever.line || undefined,
+    limit: QueryRetriever.results || QueryRetriever.limit || "50"
+}
+`,
+    };
+
+    await nodesStore.save({
+        id: mimicVersionId,
+        type: SerializedDog.name,
+        lineageId: mimicDogId,
+        parentId: null,
+        displayName: 'Transit Trip JSON Query Mapper',
+        serializedDogConfig: JSON.stringify(mimicCfg),
+        createdAt: new Date(),
+    });
+
+    const kennelConfig: IKennelConfig = {
+        id: kennelId,
+        name: 'Transit Scout (JSON)',
+        description: 'OEPNV-Trips (MOTIS) als JSON — gleiche Parameter wie transit-scout, ohne Karte',
+        emoji: '\uD83D\uDCE6',
+        dogIds: [
+            BASE_DOG_PREFIX + 'TransitTripRetriever',
+            BASE_DOG_PREFIX + 'QueryRetriever',
+            mimicDogId,
+        ],
+        defaultQuery: { lat: '50.1109', lng: '8.6821', distance: '3000', results: '50' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    await saveKennelSeed(kennelsStore, kennelConfig.id, {
+        name: kennelConfig.name,
+        description: kennelConfig.description,
+        emoji: kennelConfig.emoji,
+        dogIds: kennelConfig.dogIds,
+        defaultQuery: kennelConfig.defaultQuery,
+        defaultBody: undefined,
+    });
+
+    console.log(`\u2705 Seeded Transit Scout JSON Kennel (kennelId: ${kennelId})`);
 }
 
 const TRANSIT_RENDERER_CODE = `
