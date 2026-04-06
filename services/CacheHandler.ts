@@ -40,14 +40,16 @@ export class CacheHandler implements ICacheHandler {
 
     constructor(pruneIntervalMs: number = 60_000) {
         // Periodically purge expired entries so the hold doesn't overflow
-        this.pruneTimer = setInterval(() => this.prune(), pruneIntervalMs);
+        this.pruneTimer = setInterval(() => {
+            void this.prune().catch((e) => console.error('[CacheHandler] prune', e));
+        }, pruneIntervalMs);
         // unref so Node can exit cleanly without waiting for the timer
         if (this.pruneTimer && typeof this.pruneTimer === 'object' && 'unref' in this.pruneTimer) {
             this.pruneTimer.unref();
         }
     }
 
-    get<T>(key: string): T | undefined {
+    async get<T>(key: string): Promise<T | undefined> {
         const entry = this.store.get(key);
         if (!entry) return undefined;
         if (Date.now() >= entry.expiresAt) {
@@ -57,42 +59,39 @@ export class CacheHandler implements ICacheHandler {
         return entry.value as T;
     }
 
-    set<T>(key: string, value: T, ttlMs: number): void {
+    async set<T>(key: string, value: T, ttlMs: number): Promise<void> {
         this.store.set(key, {
             value,
             expiresAt: Date.now() + ttlMs,
         });
     }
 
-    has(key: string): boolean {
-        return this.get(key) !== undefined;
+    async has(key: string): Promise<boolean> {
+        return (await this.get(key)) !== undefined;
     }
 
-    getOrFetch<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T> {
-        // 1. Cache-Hit — plunder already in the hold
-        const cached = this.get<T>(key);
+    async getOrFetch<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T> {
+        const cached = await this.get<T>(key);
         if (cached !== undefined) {
             console.log(`[CacheHandler] HIT: ${key}`);
-            return Promise.resolve(cached);
+            return cached;
         }
 
-        // 2. In-flight request — another hound already chases this quarry, share its Promise
         const existing = this.inflight.get(key);
         if (existing) {
             console.log(`[CacheHandler] DEDUP: ${key} (waiting for in-flight request)`);
             return existing as Promise<T>;
         }
 
-        // 3. Cache miss — sail forth, cache the spoils on return
         console.log(`[CacheHandler] MISS: ${key} (fetching)`);
         const promise = factory()
-            .then(result => {
-                this.set(key, result, ttlMs);
+            .then(async (result) => {
+                await this.set(key, result, ttlMs);
                 this.inflight.delete(key);
                 console.log(`[CacheHandler] STORED: ${key} (TTL: ${Math.round(ttlMs / 1000)}s)`);
                 return result;
             })
-            .catch(err => {
+            .catch((err) => {
                 this.inflight.delete(key);
                 throw err;
             });
@@ -101,11 +100,11 @@ export class CacheHandler implements ICacheHandler {
         return promise;
     }
 
-    invalidate(key: string): void {
+    async invalidate(key: string): Promise<void> {
         this.store.delete(key);
     }
 
-    invalidateByPrefix(prefix: string): void {
+    async invalidateByPrefix(prefix: string): Promise<void> {
         for (const key of this.store.keys()) {
             if (key.startsWith(prefix)) {
                 this.store.delete(key);
@@ -113,7 +112,7 @@ export class CacheHandler implements ICacheHandler {
         }
     }
 
-    prune(): void {
+    async prune(): Promise<void> {
         const now = Date.now();
         for (const [key, entry] of this.store) {
             if (now >= entry.expiresAt) {
