@@ -16,10 +16,10 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
-import { BloodhoundRouteQueryPact, type BloodhoundRouteQuery } from "./pacts";
+import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery } from "./pacts";
 import { getBaseDogIcon } from '@datadogs/core';
 
 /**
@@ -29,10 +29,27 @@ import { getBaseDogIcon } from '@datadogs/core';
  * of OpenRouteService, each waypoint a deeper descent into the abyss.
  * In luminous space blackened stars gaze, accuse, deny — yet still we sail.
  */
-export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
+export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> implements ICacheable {
+    private cacheHandler?: ICacheHandler;
+
+    constructor() {
+        super();
+        if (!process.env.ORS_API_KEYS?.trim()) {
+            throw new Error('BloodhoundRouteRetriever: ORS_API_KEYS not set. Get a free key at https://openrouteservice.org/dev/#/signup');
+        }
+    }
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
+
     /** Arr, the name whispered by the void when it speaks of this hound */
     get name(): string {
         return BloodhoundRouteRetriever.name;
+    }
+
+    get description(): string {
+        return 'Calculates a walking/driving route between two coordinates via OpenRouteService.';
     }
 
     /** The mark of our vessel — branded upon us by forces beyond the deep */
@@ -50,6 +67,14 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
         return [];
     }
 
+    /** Carry the movement profiles into the VM so SerializedDog children can use them */
+    getVmContextContributions(): Record<string, any> {
+        return {
+            BloodhoundProfile,
+            DEFAULT_BLOODHOUND_PROFILE,
+        };
+    }
+
     /**
      * Arr, here we plunder the route from the abyss!
      * Through endless faces, countless forms, a multitude unfolds —
@@ -63,31 +88,38 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> {
         const startLng = parseFloat(query['startlng']);
         const endLat = parseFloat(query['endlat']);
         const endLng = parseFloat(query['endlng']);
-        const profile = query['profile'] || 'foot-walking';
+        const profile = query['profile'] || DEFAULT_BLOODHOUND_PROFILE;
 
         // If the coordinates be swallowed by the void, we cannot navigate the deep
         if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
             throw new Error('BloodhoundRouteRetriever: Missing required query params (startlat, startlng, endlat, endlng)');
         }
 
-        // Descend into the eldritch depths and retrieve the route
-        const response = await calculateRoute(startLat, startLng, endLat, endLng, profile);
-        const coordinates = response.features[0].geometry.coordinates;
-        const travelSteps = processRouteResponse(response);
+        const key = `route:${profile}:${startLat}:${startLng}:${endLat}:${endLng}`;
 
-        // Accumulate the dread — each segment adds to the cosmic distance traversed
-        let cumulativeKm = 0;
-        let cumulativeMinutes = 0;
-        const segments: RouteSegment[] = travelSteps.map(step => {
-            cumulativeKm += step.lengthInKm;
-            cumulativeMinutes += step.travelDurationInMinutes;
-            return {
-                traveldKm: cumulativeKm,
-                time: cumulativeMinutes,
-                points: [step.startPoint, step.endPoint]
-            };
-        });
+        const fetchRoute = async (): Promise<BloodhoundRouteResult> => {
+            const response = await calculateRoute(startLat, startLng, endLat, endLng, profile);
+            const coordinates = response.features[0].geometry.coordinates;
+            const travelSteps = processRouteResponse(response);
 
-        return { coordinates, segments, travelSteps };
+            let cumulativeKm = 0;
+            let cumulativeMinutes = 0;
+            const segments: RouteSegment[] = travelSteps.map(step => {
+                cumulativeKm += step.lengthInKm;
+                cumulativeMinutes += step.travelDurationInMinutes;
+                return {
+                    traveldKm: cumulativeKm,
+                    time: cumulativeMinutes,
+                    points: [step.startPoint, step.endPoint]
+                };
+            });
+
+            return { coordinates, segments, travelSteps };
+        };
+
+        if (this.cacheHandler) {
+            return this.cacheHandler.getOrFetch(key, 24 * 60 * 60_000, fetchRoute);
+        }
+        return fetchRoute();
     };
 }

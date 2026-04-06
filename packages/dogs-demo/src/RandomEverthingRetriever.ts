@@ -90,6 +90,10 @@ export class RandomEveryThingRetriever extends Dog<any> {
         return RandomEveryThingRetriever.name
     }
 
+    get description(): string {
+        return 'Fetches random Ice and Fire characters and random dog images for demo purposes.';
+    }
+
     /** The icon -- its heralds are the stars it fells, the sky and Earth aflame */
     get icon(): string | undefined {
         return getBaseDogIcon(RandomEveryThingRetriever.name);

@@ -60,7 +60,7 @@ export class SwaggerGenerator {
         ].join('\n');
 
         const queryParams = this.buildQueryParams(config.defaultQuery);
-        const hasBody = config.defaultBody != null;
+        const meaningfulBody = this.hasMeaningfulDefaultBody(config.defaultBody);
 
         const schemas: Record<string, any> = {
             Response: {
@@ -70,7 +70,7 @@ export class SwaggerGenerator {
             },
         };
 
-        if (hasBody) {
+        if (meaningfulBody) {
             schemas.RequestBody = {
                 ...this.inferSchema(config.defaultBody),
                 description: 'Request-Body (wird an BodyRetriever Dogs weitergegeben)',
@@ -108,22 +108,36 @@ export class SwaggerGenerator {
         };
 
         const postOp: any = {
-            ...getOp,
-            summary: `${kennelName} (mit Body)`,
+            summary: `${kennelName} (POST mit Body)`,
+            description: `Fuehrt den Kennel mit JSON-Body aus (Default-Body des Kennels dient als Schema/Beispiel).`,
             operationId: `post_${this.safeId(config.id)}`,
-            ...(hasBody ? {
-                requestBody: {
-                    required: false,
-                    description: 'Request-Body Daten',
-                    content: {
-                        'application/json': {
-                            schema: { $ref: '#/components/schemas/RequestBody' },
-                            example: config.defaultBody,
-                        },
+            parameters: [...queryParams],
+            requestBody: {
+                required: true,
+                description: 'Request-Body Daten (an BodyRetriever)',
+                content: {
+                    'application/json': {
+                        schema: { $ref: '#/components/schemas/RequestBody' },
+                        example: config.defaultBody,
                     },
                 },
-            } : {}),
+            },
+            responses: {
+                '200': {
+                    description: `Lead Dog Result (${leadDog?.name || 'unknown'})`,
+                    content: this.buildResponseContent(leadDog),
+                },
+                '404': { description: 'Kennel nicht gefunden' },
+                '500': { description: 'Ausfuehrungsfehler' },
+            },
         };
+
+        const pathMethods: Record<string, any> = {};
+        if (meaningfulBody) {
+            pathMethods.post = postOp;
+        } else {
+            pathMethods.get = getOp;
+        }
 
         return {
             openapi: '3.0.3',
@@ -134,13 +148,18 @@ export class SwaggerGenerator {
             },
             servers: [{ url: '', description: 'Data Hunt Server' }],
             paths: {
-                [`/${config.id}`]: {
-                    get: getOp,
-                    post: postOp,
-                },
+                [`/${config.id}`]: pathMethods,
             },
             components: { schemas },
         };
+    }
+
+    /** true, wenn der Kennel einen echten Default-Body hat (nicht null/undefined und nicht leeres Objekt `{}`). */
+    private static hasMeaningfulDefaultBody(body: any): boolean {
+        if (body == null) return false;
+        if (Array.isArray(body)) return body.length > 0;
+        if (typeof body === 'object') return Object.keys(body).length > 0;
+        return true;
     }
 
     /** Findet den Lead Dog (erster Eintrag in dogIds) in den Waves */

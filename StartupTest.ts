@@ -2,9 +2,11 @@ import { IStore } from './store/IStore';
 import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX, Dog, IHuntingDog, createPact, MimicDog, IMimicDogConfig, KennelRun } from '@datadogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
+import { KennelController } from './api/KennelController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
+import { generateVersionId, generateLineageId } from './api/utils/versioning';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
 
 /**
@@ -84,6 +86,9 @@ export class StartupTest {
             await this.testFillKennelMimicRemovedWhenRealDogPresent(baseDogsMap);
             await this.testRunSeasonWithMimicConsumerRuns(baseDogsMap);
             await this.testTalkingDogAllDependenciesResolved(baseDogsMap);
+
+            // Export/Import Tests
+            await this.testKennelExportImport(nodesStore, kennelsStore, kennelsController);
         } finally {
             // Cleanup: Lösche alle erstellten Test-Daten
             await this.cleanupTestData(nodesStore, kennelsStore, nodesController, kennelsController);
@@ -1169,6 +1174,217 @@ export class StartupTest {
             if (!consumerDog || consumerDog.collected !== 42) {
                 throw new Error(`Consumer collected erwartet: 42, erhalten: ${consumerDog?.collected}`);
             }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Kennel Export/Import — export a kennel with dogs, import as new, verify structure.
+     * Through endless faces, countless forms: the kennel crosses the void and is reborn.
+     */
+    private async testKennelExportImport(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        kennelsController: AbstractController<IKennelConfig>
+    ): Promise<void> {
+        const testName = 'Kennel: Export/Import';
+        try {
+            // 1. Create a SerializedDog to include in the kennel.
+            const dogVersionId = generateVersionId();
+            const dogLineageId = generateLineageId();
+            const dogConfig: ISerializedDogConfig = {
+                id: dogVersionId,
+                lineageId: dogLineageId,
+                parentId: null,
+                displayName: 'ExportTestDog',
+                theRun: 'return { test: true }',
+                parentsRequired: [],
+                parentsOptional: [],
+            };
+            await nodesStore.save({
+                id: dogVersionId,
+                type: SerializedDog.name,
+                lineageId: dogLineageId,
+                parentId: null,
+                displayName: 'ExportTestDog',
+                serializedDogConfig: JSON.stringify(dogConfig),
+                createdAt: new Date(),
+            });
+            this.createdTestIds.push(dogVersionId);
+
+            // 2. Create a kennel referencing this dog + a BaseDog.
+            const kennelLineageId = `test-export-kennel-${Date.now()}`;
+            const kennelVersionId = generateVersionId();
+            await kennelsStore.save({
+                id: kennelVersionId,
+                type: 'KennelConfig',
+                lineageId: kennelLineageId,
+                parentId: null,
+                name: 'Export Test Kennel',
+                description: 'For export/import testing',
+                emoji: '🧪',
+                dogIds: [dogLineageId, 'base:QueryRetriever'],
+                defaultQuery: { test: 'value' },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+            this.createdTestIds.push(kennelVersionId);
+
+            // Save a second version to test version history export.
+            const kennelVersionId2 = generateVersionId();
+            await kennelsStore.save({
+                id: kennelVersionId2,
+                type: 'KennelConfig',
+                lineageId: kennelLineageId,
+                parentId: kennelVersionId,
+                name: 'Export Test Kennel v2',
+                description: 'Updated description',
+                emoji: '🧪',
+                dogIds: [dogLineageId, 'base:QueryRetriever'],
+                defaultQuery: { test: 'value2' },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+            this.createdTestIds.push(kennelVersionId2);
+
+            // 3. Build the export bundle (simulate what handleExport does).
+            const kennelConfig = await (kennelsController as KennelController).getById(kennelLineageId);
+            if (!kennelConfig.ok || !kennelConfig.data) throw new Error('Kennel nicht gefunden nach Erstellung');
+
+            const cfg = kennelConfig.data;
+            const serializedIds = (cfg.dogIds ?? []).filter((id: string) => !id.startsWith('base:'));
+            const [serialized, mimics] = await Promise.all([
+                nodesStore.findLatestVersionsByType(SerializedDog.name, serializedIds),
+                nodesStore.findLatestVersionsByType(MimicDog.name, serializedIds),
+            ]);
+
+            const dogs: any[] = [];
+            for (const row of [...serialized, ...mimics]) {
+                const rowCfg = typeof row.serializedDogConfig === 'string'
+                    ? JSON.parse(row.serializedDogConfig) : row.serializedDogConfig;
+                dogs.push({
+                    lineageId: (row as any).lineageId || rowCfg.lineageId,
+                    versionId: row.id,
+                    displayName: (row as any).displayName || rowCfg.displayName,
+                    type: rowCfg.imitates ? 'MimicDog' : 'SerializedDog',
+                    config: rowCfg,
+                });
+            }
+
+            const kennelVersions = await (kennelsController as KennelController).getVersions(kennelLineageId);
+
+            const bundle = {
+                bundleVersion: 1,
+                kennel: {
+                    kennelId: kennelLineageId,
+                    name: cfg.name,
+                    description: cfg.description,
+                    emoji: cfg.emoji,
+                    dogIds: cfg.dogIds,
+                    defaultQuery: cfg.defaultQuery,
+                },
+                kennelVersions: kennelVersions.map(v => ({
+                    id: v.id, parentId: v.parentId, createdAt: v.createdAt, config: v.config,
+                })),
+                dogs,
+            };
+
+            // 4. Validate the bundle.
+            if (!bundle.dogs || bundle.dogs.length === 0) throw new Error('Bundle hat keine Dogs');
+            if (!bundle.kennelVersions || bundle.kennelVersions.length < 2) throw new Error('Bundle hat weniger als 2 Kennel-Versionen');
+            if (bundle.dogs[0].lineageId !== dogLineageId) throw new Error(`Dog lineageId stimmt nicht: got '${bundle.dogs[0]?.lineageId}', expected '${dogLineageId}', serializedIds=${JSON.stringify(serializedIds)}, dogs.length=${bundle.dogs.length}`);
+
+            // 5. Simulate import with a new kennelId.
+            const importKennelId = `test-import-kennel-${Date.now()}`;
+            bundle.kennel.kennelId = importKennelId;
+
+            // Build ID mapping.
+            const idMap = new Map<string, string>();
+            for (const dog of bundle.dogs) {
+                const newId = generateLineageId();
+                if (dog.lineageId) idMap.set(dog.lineageId, newId);
+                if (dog.versionId) idMap.set(dog.versionId, newId);
+            }
+            const remap = (ref: string): string => idMap.get(ref) ?? ref;
+            const remapDogIds = (ids: string[]) => (ids ?? []).map(remap);
+
+            // Create dogs with new IDs.
+            for (const dog of bundle.dogs) {
+                const newLineageId = idMap.get(dog.lineageId) || generateLineageId();
+                const newVersionId = generateVersionId();
+                const importCfg = { ...dog.config };
+                importCfg.id = newVersionId;
+                importCfg.lineageId = newLineageId;
+                importCfg.parentId = null;
+                if (Array.isArray(importCfg.parentsRequired)) importCfg.parentsRequired = importCfg.parentsRequired.map(remap);
+                if (Array.isArray(importCfg.parentsOptional)) importCfg.parentsOptional = importCfg.parentsOptional.map(remap);
+
+                await nodesStore.save({
+                    id: newVersionId,
+                    type: importCfg.imitates ? MimicDog.name : SerializedDog.name,
+                    lineageId: newLineageId,
+                    parentId: null,
+                    displayName: importCfg.displayName,
+                    serializedDogConfig: JSON.stringify(importCfg),
+                    createdAt: new Date(),
+                });
+                this.createdTestIds.push(newVersionId);
+            }
+
+            // Restore kennel versions.
+            const sorted = [...bundle.kennelVersions].sort((a: any, b: any) => {
+                return (a.createdAt ? new Date(a.createdAt).getTime() : 0) - (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            });
+            const versionIdMap = new Map<string, string>();
+            for (const v of sorted) versionIdMap.set(v.id, generateVersionId());
+
+            for (const v of sorted) {
+                const newVId = versionIdMap.get(v.id)!;
+                const newParentId = v.parentId ? (versionIdMap.get(v.parentId) ?? null) : null;
+                const vCfg = v.config || bundle.kennel;
+
+                await kennelsStore.save({
+                    id: newVId,
+                    type: 'KennelConfig',
+                    lineageId: importKennelId,
+                    parentId: newParentId,
+                    name: vCfg.name,
+                    description: vCfg.description,
+                    emoji: vCfg.emoji,
+                    dogIds: remapDogIds(vCfg.dogIds || []),
+                    defaultQuery: vCfg.defaultQuery ? JSON.stringify(vCfg.defaultQuery) : undefined,
+                    createdAt: v.createdAt ? new Date(v.createdAt).toISOString() : new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                });
+                this.createdTestIds.push(newVId);
+            }
+
+            // 6. Verify the imported kennel.
+            const imported = await (kennelsController as KennelController).getById(importKennelId);
+            if (!imported.ok || !imported.data) throw new Error('Importierter Kennel nicht gefunden');
+            if (imported.data.name !== 'Export Test Kennel v2') throw new Error(`Importierter Kennel Name falsch: ${imported.data.name}`);
+
+            // Verify version history was preserved.
+            const importedVersions = await (kennelsController as KennelController).getVersions(importKennelId);
+            if (importedVersions.length < 2) throw new Error(`Importierte Versionen: ${importedVersions.length}, erwartet >= 2`);
+
+            // Verify parentId chain is intact.
+            const hasParent = importedVersions.some(v => v.parentId !== null);
+            if (!hasParent) throw new Error('Keine parentId-Verknüpfung in importierten Versionen');
+
+            // Verify dogs were remapped (no old IDs in dogIds).
+            const importedDogIds = imported.data.dogIds ?? [];
+            const hasOldId = importedDogIds.some((id: string) => id === dogLineageId);
+            if (hasOldId) throw new Error('Importierter Kennel enthält noch alte Dog-lineageId');
+
+            // Verify the remapped dog exists.
+            const newDogLineageId = idMap.get(dogLineageId);
+            if (!newDogLineageId) throw new Error('Dog lineageId nicht im idMap');
+            const loadedDogs = await nodesStore.findLatestVersionsByType(SerializedDog.name, [newDogLineageId]);
+            if (loadedDogs.length === 0) throw new Error('Importierter Dog nicht im Store gefunden');
 
             this.addResult(testName, true);
         } catch (error) {

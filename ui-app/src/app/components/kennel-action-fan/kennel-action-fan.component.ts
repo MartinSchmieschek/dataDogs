@@ -6,7 +6,8 @@ export type KennelFanAction =
   | 'edit'
   | 'waves'
   | 'swagger'
-  | 'swaggerJson';
+  | 'swaggerJson'
+  | 'delete';
 
 interface KennelFanItem {
   id: KennelFanAction;
@@ -149,6 +150,7 @@ export class KennelActionFanComponent {
       { id: 'waves', label: 'Waves', icon: '≋' },
       { id: 'swagger', label: 'Swagger UI (/docs)', icon: '📖' },
       { id: 'swaggerJson', label: 'OpenAPI JSON (swagger.json)', icon: '📄' },
+      { id: 'delete', label: 'Löschen', icon: '🗑' },
     ];
   }
 

@@ -2,49 +2,87 @@
  * =========================================================================
  *  OSM PACTS — eldritch contracts with the cartographic void
  * =========================================================================
- *
- *  Arr, these be the pacts that anchor our vessel to the OpenStreetMap
- *  abyss. From brooding gulfs are we beheld, by that which bears no
- *  name — and so we sign these typed accords, bindin' our crew to
- *  the query providers that dwell in the deep.
- *
- *  Carrion hordes trill their profane accord with eldritch plans.
- * =========================================================================
  */
 
 import { createPact } from "@datadogs/core";
 import type { LandmarksOverpassFacet } from "./overpassLandmarks";
+import type { TracksOverpassFacet } from "./overpassTracks";
+import type { VegetationOverpassFacet } from "./overpassVegetation";
+import type { FastRoadsOverpassFacet } from "./overpassFastRoads";
 
-// Arr, re-export the facet types — let all who sail these waters know the void's taxonomy
 export {
     DEFAULT_LANDMARKS_FACETS,
+    ALL_LANDMARKS_OVERPASS_FACETS,
     LandmarksOverpassFacet,
-    /** @deprecated Arr, this name be swallowed by the abyss — use LandmarksOverpassFacet */
     LandmarksPreset,
     OsmLandmarkElementType,
 } from "./overpassLandmarks";
 
+export { TracksOverpassFacet, DEFAULT_TRACKS_FACETS, ALL_TRACKS_OVERPASS_FACETS } from "./overpassTracks";
+
+export {
+    VegetationOverpassFacet,
+    DEFAULT_VEGETATION_FACETS,
+    ALL_VEGETATION_OVERPASS_FACETS,
+} from "./overpassVegetation";
+
+export {
+    FastRoadsOverpassFacet,
+    DEFAULT_FAST_ROADS_FACETS,
+    ALL_FAST_ROADS_OVERPASS_FACETS,
+} from "./overpassFastRoads";
+
 /**
  * Required query input for OsmLandmarksRetriever — the coordinates and
  * parameters we must whisper to the void (lowercase keys from QueryRetriever/Mimic).
- * Not to be confused with BloodhoundIsochroneInput, matey — that be a different horror.
  */
 export interface OsmLandmarksQueryInput {
-    /** Arr, the latitude to search around — the heart of the void from which we dredge landmarks */
     lat: string;
-    /** The longitude, matey — the east-west bearing into the eldritch deep */
     lng: string;
-    /** Search radius in meters — how far into the abyss we dare cast our net, arr */
     radius?: string;
-    /** Which OSM facets to query; omit for Tourism + Historic (see DEFAULT_LANDMARKS_FACETS). To cosmic madness laws submit. */
+    /** Facets to query; omit for Tourism + Historic. Use preset string `"full"` for all landmark facets. */
     preset?: LandmarksOverpassFacet[];
 }
 
-/** @deprecated Arr, use OsmLandmarksQueryInput — this alias be claimed by the deep */
+/** Query input for OsmTracksRetriever — same shape, different pact + facet enum */
+export interface OsmTracksQueryInput {
+    lat: string;
+    lng: string;
+    radius?: string;
+    preset?: TracksOverpassFacet[];
+}
+
+/** Query input for OsmVegetationRetriever */
+export interface OsmVegetationQueryInput {
+    lat: string;
+    lng: string;
+    radius?: string;
+    preset?: VegetationOverpassFacet[];
+}
+
+/** Query input for OsmFastRoadsRetriever */
+export interface OsmFastRoadsQueryInput {
+    lat: string;
+    lng: string;
+    radius?: string;
+    preset?: FastRoadsOverpassFacet[];
+}
+
+/** @deprecated use OsmLandmarksQueryInput */
 export type NearbyLandmarksQuery = OsmLandmarksQueryInput;
 
-/** The pact that binds the landmarks retriever to its query source — an anchor in the abyss */
-export const NearbyLandmarksPact = createPact<OsmLandmarksQueryInput>(
-    "NearbyLandmarksQueryProvider",
-    { fromSourceType: "OsmLandmarksQueryInput" }
-);
+export const NearbyLandmarksPact = createPact<OsmLandmarksQueryInput>("NearbyLandmarksQueryProvider", {
+    fromSourceType: "OsmLandmarksQueryInput",
+});
+
+export const NearbyTracksPact = createPact<OsmTracksQueryInput>("NearbyTracksQueryProvider", {
+    fromSourceType: "OsmTracksQueryInput",
+});
+
+export const NearbyVegetationPact = createPact<OsmVegetationQueryInput>("NearbyVegetationQueryProvider", {
+    fromSourceType: "OsmVegetationQueryInput",
+});
+
+export const NearbyFastRoadsPact = createPact<OsmFastRoadsQueryInput>("NearbyFastRoadsQueryProvider", {
+    fromSourceType: "OsmFastRoadsQueryInput",
+});

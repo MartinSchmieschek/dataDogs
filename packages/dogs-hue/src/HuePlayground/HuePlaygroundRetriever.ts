@@ -25,6 +25,10 @@ export class HuePlaygroundRetriever extends Dog<HuePlaygroundDirector> {
         return HuePlaygroundRetriever.name;
     }
 
+    get description(): string {
+        return 'Connects to a Philips Hue Bridge and yields a HuePlaygroundDirector with light control methods: setOn, setBrightness, toggle, setState, refresh.';
+    }
+
     /** @returns The icon sigil of this retriever, plundered from the base dog glyph manifest. */
     get icon(): string | undefined {
         return getBaseDogIcon(HuePlaygroundRetriever.name);

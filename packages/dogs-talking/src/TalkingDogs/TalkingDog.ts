@@ -42,6 +42,10 @@ export class TalkingDog extends Dog<string> {
         return TalkingDog.name
     }
 
+    get description(): string {
+        return 'Renders dog yields into formatted output using layout templates (tinder, biography, recipe, article, gallery).';
+    }
+
     /** The sigil branded upon the hull — its heralds are the stars it fells. */
     get icon(): string | undefined {
         return getBaseDogIcon(TalkingDog.name);

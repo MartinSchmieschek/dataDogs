@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
@@ -17,6 +18,7 @@ import { apiAbsoluteUrl } from '../../config/api-base';
   standalone: true,
   imports: [
     RouterLink,
+    DatePipe,
     KennelFormComponent,
     LoadingIndicatorComponent,
     VoidMythicBackdropComponent,
@@ -35,12 +37,61 @@ export class KennelListComponent implements OnInit {
   showCreateForm = signal(false);
   error = signal<string | null>(null);
 
+  searchQuery = signal('');
+  sortKey = signal<'name' | 'id' | 'updated'>('name');
+  sortDir = signal<'asc' | 'desc'>('asc');
+
+  filteredKennels = computed(() => {
+    const q = this.searchQuery().trim().toLowerCase();
+    let list = [...this.kennels()];
+    if (q) {
+      list = list.filter((k) => {
+        const ref = this.kennelRef(k).toLowerCase();
+        const name = (k.name || '').toLowerCase();
+        const desc = (k.description || '').toLowerCase();
+        return ref.includes(q) || name.includes(q) || desc.includes(q);
+      });
+    }
+    const key = this.sortKey();
+    const dir = this.sortDir() === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (key === 'name') {
+        const na = (a.name || this.kennelRef(a)).toLowerCase();
+        const nb = (b.name || this.kennelRef(b)).toLowerCase();
+        cmp = na.localeCompare(nb, 'de');
+      } else if (key === 'id') {
+        cmp = this.kennelRef(a).localeCompare(this.kennelRef(b), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      } else {
+        const ta = a.updatedAt || a.createdAt || '';
+        const tb = b.updatedAt || b.createdAt || '';
+        cmp = ta.localeCompare(tb);
+      }
+      return cmp * dir;
+    });
+    return list;
+  });
+
   ngOnInit() {
     this.loadKennels();
   }
 
   onComfortVideoClick(): void {
     this.errorVideoPopup.openPopup(this.error());
+  }
+
+  onSortKeyChange(ev: Event): void {
+    const v = (ev.target as HTMLSelectElement).value;
+    if (v === 'name' || v === 'id' || v === 'updated') {
+      this.sortKey.set(v);
+    }
+  }
+
+  toggleSortDir(): void {
+    this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
   }
 
   loadKennels() {
@@ -97,7 +148,43 @@ export class KennelListComponent implements OnInit {
     }
     if (action === 'waves') {
       void this.router.navigate(['/kennel', ref]);
+      return;
     }
+    if (action === 'delete') {
+      if (!confirm(`Kennel "${kennel.name || ref}" wirklich löschen? Alle Versionen werden entfernt.`)) return;
+      this.kennelService.delete(ref).subscribe({
+        next: (res) => {
+          if (res.ok) {
+            this.loadKennels();
+          } else {
+            this.error.set(res.error ?? 'Löschen fehlgeschlagen');
+          }
+        },
+        error: (err) => this.error.set(err.error?.error ?? err.message),
+      });
+    }
+  }
+
+  importFromClipboard() {
+    navigator.clipboard.readText().then(text => {
+      try {
+        const bundle = JSON.parse(text);
+        this.kennelService.importBundle(bundle).subscribe({
+          next: (res) => {
+            if (res.ok) {
+              this.loadKennels();
+            } else {
+              this.error.set(res.error ?? 'Import fehlgeschlagen');
+            }
+          },
+          error: (err) => this.error.set(err.error?.error ?? err.message),
+        });
+      } catch {
+        this.error.set('Clipboard enthält kein gültiges JSON');
+      }
+    }).catch(() => {
+      this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
+    });
   }
 
   onCreateKennel(data: KennelFormData) {

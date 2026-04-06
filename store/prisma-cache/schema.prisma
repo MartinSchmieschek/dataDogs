@@ -1,0 +1,17 @@
+// Eigenes SQLite-File nur für KennelRun-HTTP-Cache (KV). Store bleibt in store/prisma/schema.prisma.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma-cache-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("CACHE_DATABASE_URL")
+}
+
+model CacheEntry {
+  key       String @id
+  value     String
+  // Unix-Zeit in ms — passt nicht in SQLite INT (32 Bit); BIGINT via Prisma BigInt
+  expiresAt BigInt
+}

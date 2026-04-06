@@ -30,6 +30,8 @@ export type DogClass<T> = new (...args: any[]) => T;
 export interface IHuntingDog<Y> {
     /** The hound's true name -- spoken aloud, it echoes through the abyss */
     get name(): string
+    /** A brief description of what this hound does -- whispered to mortals who dare inspect it */
+    get description(): string | undefined
     /** An optional sigil (e.g. emoji) the hound wears in the UI, a glyph against the dark */
     get icon(): string | undefined
     /** Can this hound answer the call? Does it have what it needs from the exhausted crew? */
@@ -38,4 +40,11 @@ export interface IHuntingDog<Y> {
     collectYield(collection:IHuntingSeason):Promise<Y>
     /** What the hound has brought back from the void, or undefined if it has not yet run */
     get collected(): Y|undefined
+    /**
+     * Extra globals this hound provides to SerializedDog children in the VM context.
+     * When a SerializedDog requires this hound as a parent, these key-value pairs
+     * are inscribed alongside the parent's collected yield.
+     * Return undefined or {} if the hound carries no extra tools.
+     */
+    getVmContextContributions?(): Record<string, any> | undefined
 }

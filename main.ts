@@ -14,6 +14,7 @@ import {
     RandomEveryThingRetriever,
     CountryFlagBlackLab,
     DishFlagBlackLab,
+    FoodPornRetriever,
 } from '@datadogs/dogs-demo';
 import { TalkingDog, LayoutInputPact } from '@datadogs/dogs-talking';
 import { WarframeAlertsRetriever } from '@datadogs/dogs-warframe';
@@ -21,38 +22,83 @@ import {
     BloodhoundRouteRetriever,
     BloodhoundIsochroneRetriever,
     OsmLandmarksRetriever,
-    OsmForestPolygonsRetriever,
-    OsmStreetsGeometryRetriever,
+    OsmTracksRetriever,
+    OsmVegetationRetriever,
+    OsmFastRoadsRetriever,
     BloodhoundRouteQueryPact,
     BloodhoundIsochronePact,
     NearbyLandmarksPact,
-    OsmForestGeometryPact,
-    OsmStreetsGeometryPact,
+    NearbyTracksPact,
+    NearbyVegetationPact,
+    NearbyFastRoadsPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
 import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
 import { WeatherRetriever, WeatherQueryPact } from '@datadogs/dogs-weather';
 import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-quality';
-import { GeocodingRetriever, GeocodingQueryPact } from '@datadogs/dogs-geocoding';
+import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@datadogs/dogs-geocoding';
 import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
 import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
-import { ISerializedDogConfig, SerializedDog, BASE_DOG_PREFIX } from '@datadogs/core';
+import { SpeciesRetriever, BiodiversityQueryPact } from '@datadogs/dogs-biodiversity';
+import { BirdRetriever, BirdQueryPact } from '@datadogs/dogs-birds';
+import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology';
+import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
+import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
+import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
+import { TrailRetriever, TrailQueryPact } from '@datadogs/dogs-trails';
+import { AstronomyRetriever, AstronomyQueryPact } from '@datadogs/dogs-astronomy';
+import { WaterRetriever, WaterQueryPact } from '@datadogs/dogs-water';
+import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@datadogs/dogs-historical-weather';
+import { ChargingStationRetriever, ChargingQueryPact } from '@datadogs/dogs-charging';
+import { NoiseRetriever, NoiseQueryPact } from '@datadogs/dogs-noise';
+import { ParkingRetriever, ParkingQueryPact } from '@datadogs/dogs-parking';
+import { PlaygroundRetriever, PlaygroundQueryPact } from '@datadogs/dogs-playground';
+import { DrinkingWaterRetriever, DrinkingWaterQueryPact } from '@datadogs/dogs-drinking-water';
+import { OpenFoodRetriever, OpenFoodQueryPact } from '@datadogs/dogs-food';
+import { CurrencyRetriever, CurrencyQueryPact } from '@datadogs/dogs-currency';
+import { HolidayRetriever, HolidayQueryPact } from '@datadogs/dogs-holidays';
+import { WikiSearchRetriever, WikiSearchQueryPact } from '@datadogs/dogs-wiki-search';
+import { SeasonRetriever, SeasonQueryPact } from '@datadogs/dogs-season';
+import { IPGeoRetriever, IPGeoQueryPact } from '@datadogs/dogs-ip-geo';
+import { RandomFactRetriever, RandomFactQueryPact } from '@datadogs/dogs-random-fact';
+import { SpaceRetriever, SpaceQueryPact } from '@datadogs/dogs-space';
+import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@datadogs/dogs-open-library';
+import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@datadogs/dogs-github-trending';
+import { ISerializedDogConfig, SerializedDog, type ICacheHandler } from '@datadogs/core';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
+import path from 'path';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
 import { KennelRunHandler } from './api/routes/KennelRunHandler';
+import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
+import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
+import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
+import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
 import { StartupTest } from './StartupTest';
-import { runSeeds } from './seed';
+import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { PrismaCacheHandler } from './services/PrismaCacheHandler';
 
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
     console.error('Failed to start', e);
     process.exit(1);
 });
+
+/** Prisma-URL für die Cache-DB (zweites Schema): wie DATABASE_URL, `file:…`. CACHE_DB_PATH → file:… */
+function cacheDatabaseUrlFromEnv(): string {
+    const url = process.env.CACHE_DATABASE_URL?.trim();
+    if (url) return url;
+    const pathOnly = process.env.CACHE_DB_PATH?.trim();
+    if (pathOnly) {
+        if (pathOnly.startsWith('file:')) return pathOnly;
+        return `file:${pathOnly.replace(/\\/g, '/')}`;
+    }
+    return 'file:./cache.db';
+}
 
 async function start() {
     // Seek the DATABASE_URL from the env scroll; should it bear no name, sail to the local waters of dev.db.
@@ -77,14 +123,16 @@ async function start() {
         CountryFlagBlackLab,
         DishFlagBlackLab,
         RandomEveryThingRetriever,
+        FoodPornRetriever,
         QueryRetriever,
         BodyRetriever,
         WarframeAlertsRetriever,
         BloodhoundRouteRetriever,
         BloodhoundIsochroneRetriever,
         OsmLandmarksRetriever,
-        OsmForestPolygonsRetriever,
-        OsmStreetsGeometryRetriever,
+        OsmTracksRetriever,
+        OsmVegetationRetriever,
+        OsmFastRoadsRetriever,
         HueBridgeEnvRetriever,
         HuePlaygroundRetriever,
         PublicTransportRetriever,
@@ -93,22 +141,53 @@ async function start() {
         GeocodingRetriever,
         WikiNearbyRetriever,
         SunRetriever,
+        SpeciesRetriever,
+        BirdRetriever,
+        PhenologyRetriever,
+        WebcamRetriever,
+        RegionalNewsRetriever,
+        TransitTripRetriever,
+        ElevationRetriever,
+        TrailRetriever,
+        AstronomyRetriever,
+        WaterRetriever,
+        HistoricalWeatherRetriever,
+        ChargingStationRetriever,
+        NoiseRetriever,
+        ParkingRetriever,
+        PlaygroundRetriever,
+        DrinkingWaterRetriever,
+        OpenFoodRetriever,
+        CurrencyRetriever,
+        HolidayRetriever,
+        WikiSearchRetriever,
+        SeasonRetriever,
+        IPGeoRetriever,
+        RandomFactRetriever,
+        SpaceRetriever,
+        OpenLibraryRetriever,
+        GitHubTrendingRetriever,
     ];
 
-    // Breathe life into each hound — from tangent planes they rise, ready to hunt the data seas.
-    const allBaseDogs = allBaseDogClasses.map(DogClass => new DogClass());
-
-    // Chart the hounds by name upon our map — a roster of those who shall answer the call.
+    // Breathe life into each hound — those who lack their credentials perish in the constructor.
+    // The survivors form the pack; the fallen are mourned in the logs.
+    const allBaseDogs: InstanceType<typeof allBaseDogClasses[number]>[] = [];
     const baseDogsMap = new Map<string, new () => any>();
-    allBaseDogClasses.forEach(DogClass => {
-        const instance = new DogClass();
-        baseDogsMap.set(instance.name, DogClass);
-    });
+
+    for (const DogClass of allBaseDogClasses) {
+        try {
+            const instance = new DogClass();
+            allBaseDogs.push(instance);
+            baseDogsMap.set(instance.name, DogClass);
+        } catch (err: any) {
+            console.warn(`  ✗ ${DogClass.name} could not rise — ${err.message}`);
+        }
+    }
 
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, OsmForestGeometryPact, OsmStreetsGeometryPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
@@ -171,6 +250,9 @@ async function start() {
 
     app.use(express.json());
 
+    // Static assets (Swagger UI hero, etc.) — served from /static/*
+    app.use('/static', express.static(path.join(__dirname, 'public')));
+
     // Assemble the registry — a chart of all controllers that sail under our black flag.
     const registry = new ControllerRegistry();
     const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
@@ -183,70 +265,26 @@ async function start() {
     const startupTest = new StartupTest();
     await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap);
 
-    // GET /api/nodes — summons the manifest of hounds.
-    // If ?kennelId=xxx is given, only dogs that crew that kennel are returned.
-    // Without kennelId, all base dogs and all serialized dogs are returned.
-    app.get('/api/nodes', async (req: any, res: any) => {
-        try {
-            const controller = registry.get('nodes');
-            if (!controller) { res.status(404).json({ error: 'Node-Controller nicht gefunden' }); return; }
-
-            const kennelId = req.query.kennelId as string | undefined;
-
-            // Only list SerializedDogs — MimicDogs are pact-bound and never appear in the toolbar.
-            // listLatest() queries by entityType 'SerializedDog', so MimicDogs (type 'MimicDog') are excluded.
-            const result = await controller.listLatest();
-            let serializedDogs = result.ok && result.data ? result.data : [];
-            const baseDogsList = allBaseDogs.map(dog => ({
-                id: BASE_DOG_PREFIX + dog.name,
-                name: dog.name,
-                type: 'BaseDog',
-                icon: dog.icon,
-            }));
-
-            // If a kennel is specified, filter to only dogs that are in that kennel's dogIds.
-            if (kennelId) {
-                const kennelController = registry.get('kennels');
-                const kennelResult = kennelController ? await kennelController.getById(kennelId) : null;
-                const kennelDogIds: string[] = (kennelResult?.data as any)?.dogIds ?? [];
-
-                if (kennelDogIds.length > 0) {
-                    // Build a set of all identifiers the kennel uses — both the raw entries
-                    // AND the resolved dogIds (lineage GUIDs) for pinned version references.
-                    const kennelSet = new Set<string>(kennelDogIds);
-                    for (const kid of kennelDogIds) {
-                        if (kid.startsWith(BASE_DOG_PREFIX)) continue;
-                        // If this entry is a version-ID (pinned), resolve its lineageId too.
-                        const match = serializedDogs.find((d: any) => d.id === kid);
-                        if (match && (match as any).lineageId) {
-                            kennelSet.add((match as any).lineageId);
-                        }
-                    }
-
-                    // Exclude dogs already in the kennel — the toolbar shows what can be ADDED.
-                    serializedDogs = serializedDogs.filter((d: any) =>
-                        !kennelSet.has(d.id) && !kennelSet.has(d.lineageId)
-                    );
-                    const filteredBase = baseDogsList.filter(d => !kennelSet.has(d.id));
-                    res.status(200).json({ ok: true, data: [...filteredBase, ...serializedDogs] });
-                    return;
-                }
-            }
-
-            res.status(200).json({ ok: true, data: [...baseDogsList, ...serializedDogs] });
-        } catch (e) {
-            console.error('[/api/nodes]', e);
-            res.status(500).json({ error: String(e) });
-        }
-    });
+    // Summon the nodes manifest and the sacred scrolls — each handler a star in the eldritch sky.
+    const nodesRouteHandler = new NodesRouteHandler(registry, allBaseDogs);
+    nodesRouteHandler.registerRoutes(app);
+    const readmeRouteHandler = new ReadmeRouteHandler(__dirname);
+    readmeRouteHandler.registerRoutes(app);
 
     // Raise the CRUD sails — all routes for nodes and kennels now billow in the cosmic wind.
     const routeHandler = new ConfigRouteHandler(registry);
     routeHandler.registerRoutes(app, '/api');
 
+    // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
+    const cacheHandler: ICacheHandler = new PrismaCacheHandler(cacheDatabaseUrlFromEnv());
+
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
-    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
+    const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
+    const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore);
+    kennelSwaggerHandler.registerRoutes(app);
+    kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);
 
     console.log('App started.');

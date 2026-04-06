@@ -170,6 +170,14 @@ export class SerializedDog<T> extends Dog<T> {
                     // Type definitions: use collected or empty placeholder -- the shape matters, not the substance
                     contextObj[dogName] = parentDog.collected || {};
                 }
+
+                // If the parent carries extra tools for the VM, inscribe them too
+                if (typeof parentDog.getVmContextContributions === 'function') {
+                    const contributions = parentDog.getVmContextContributions();
+                    if (contributions) {
+                        Object.assign(contextObj, contributions);
+                    }
+                }
             }
         });
     }
@@ -377,6 +385,13 @@ export class SerializedDog<T> extends Dog<T> {
                 // Debug: log fer SerializedDog parents
                 if (parentDog instanceof SerializedDog) {
                     console.log(`[SerializedDog ${this.storageId}] Füge ${dogName} (storageId: ${(parentDog as SerializedDog<unknown>).storageId}) zum Context hinzu`);
+                }
+                // If the parent carries extra tools for the VM, inscribe them too
+                if (typeof parentDog.getVmContextContributions === 'function') {
+                    const contributions = parentDog.getVmContextContributions();
+                    if (contributions) {
+                        Object.assign(contextObj, contributions);
+                    }
                 }
             } else if (parentDog && parentDog.collected === undefined) {
                 console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} gefunden, aber collected ist undefined`);

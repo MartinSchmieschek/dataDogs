@@ -39,6 +39,10 @@ export class FoodPornRetriever extends Dog<unknown>{
         return FoodPornRetriever.name
     }
 
+    get description(): string {
+        return 'Searches YouTube for cooking videos based on a recipe name from RandomRecipesRetriever.';
+    }
+
     /**
      * Arr, the yield collector -- a thin anchor line cast into the season's exhausted depths.
      * It returns whatever horrors the request dredges up from the deep.

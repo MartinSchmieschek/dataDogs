@@ -20,12 +20,14 @@ export * from './Bloodhound/BloodhoundRouteRetriever';
 export * from './Bloodhound/BloodhoundIsochroneRetriever';
 export * from './Bloodhound/pacts';
 
-// The OpenStreetMap horrors — landmarks dredged from the roiling, moaning realm
+// The OpenStreetMap horrors — landmarks, tracks, vegetation dredged from the roiling realm
+export * from './OpenStreetMap/overpassOsmShared';
 export * from './OpenStreetMap/OsmLandmarksRetriever';
+export * from './OpenStreetMap/OsmTracksRetriever';
+export * from './OpenStreetMap/OsmVegetationRetriever';
+export * from './OpenStreetMap/OsmFastRoadsRetriever';
 export * from './OpenStreetMap/pacts';
 export * from './OpenStreetMap/overpassLandmarks';
-export * from './OpenStreetMap/osmGeometryEnums';
-export * from './OpenStreetMap/osmGeometryPacts';
-export * from './OpenStreetMap/overpassGeometryCore';
-export * from './OpenStreetMap/OsmForestPolygonsRetriever';
-export * from './OpenStreetMap/OsmStreetsGeometryRetriever';
+export * from './OpenStreetMap/overpassTracks';
+export * from './OpenStreetMap/overpassVegetation';
+export * from './OpenStreetMap/overpassFastRoads';

@@ -15,6 +15,9 @@ import { SerializedDog, type SerializedDogVmGlobalsSupplier } from './dogs/Seria
 import { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
+import { ICacheHandler } from './cache/ICacheHandler';
+import { isCacheable } from './cache/ICacheable';
+import { isAreaCacheable, IAreaCache } from './cache/IAreaCache';
 
 /**
  * Arr, this prefix brands a dog as a base-class hound in the dogIds manifest.
@@ -61,6 +64,8 @@ export class KennelRun {
     private queryData?: Record<string, string>;
     private bodyData?: any;
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
+    private cacheHandler?: ICacheHandler;
+    private areaCache?: IAreaCache<unknown>;
 
     /**
      * Summon the captain and provision the vessel.
@@ -79,13 +84,17 @@ export class KennelRun {
         serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>> = async () => [],
         queryData?: Record<string, string>,
         bodyData?: any,
-        vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = []
+        vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = [],
+        cacheHandler?: ICacheHandler,
+        areaCache?: IAreaCache<unknown>
     ) {
         this.baseDogClasses = baseDogClasses;
         this.serializedDogFactory = serializedDogFactory;
         this.queryData = queryData;
         this.bodyData = bodyData;
         this.vmGlobalsSuppliers = vmGlobalsSuppliers;
+        this.cacheHandler = cacheHandler;
+        this.areaCache = areaCache;
 
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Arr, 'tis a proper charter -- anchor it to the captain
@@ -173,6 +182,26 @@ export class KennelRun {
             });
         }
 
+        // Cache-Injection — every hound that implements ICacheable receives the cache handler
+        if (this.cacheHandler) {
+            kennel.forEach(dog => {
+                if (isCacheable(dog)) {
+                    dog.setCacheHandler(this.cacheHandler!);
+                    console.log(`[KennelRun.fillKennel] Cache-Handler injected into: ${dog.name}`);
+                }
+            });
+        }
+
+        // Area-Cache Injection — geo-hounds that track territories receive the shared area cache
+        if (this.areaCache) {
+            kennel.forEach(dog => {
+                if (isAreaCacheable(dog)) {
+                    dog.setAreaCache(this.areaCache!);
+                    console.log(`[KennelRun.fillKennel] Area-Cache injected into: ${dog.name}`);
+                }
+            });
+        }
+
         const baseDogsCount = baseDogIds.length;
         const serializedDogsCount = kennel.length - baseDogsCount;
         console.log(`[KennelRun.fillKennel] Kennel gefüllt mit ${kennel.length} Dogs (${baseDogsCount} baseDogs + ${serializedDogsCount} SerializedDogs)`);
@@ -209,17 +238,25 @@ export class KennelRun {
 
         for (const depClass of allDependencyClasses) {
             const isPact = (depClass as any).__isPact === true;
-            const hasMimic = kennel.some(d =>
-                d instanceof MimicDog && (d as MimicDog<unknown>).imitatesClasses.includes(depClass)
-            );
+            // Resolve the pact's name for name-based matching (guards against class identity issues
+            // when the same module is loaded from different paths).
+            const depPactName = isPact
+                ? (Array.from(this.baseDogClasses.entries()).find(([_, cls]) => cls === depClass)?.[0]
+                   || (() => { try { return new (depClass as any)().name; } catch { return undefined; } })())
+                : undefined;
+            const matchesMimic = (d: IDog<unknown>) => {
+                if (!(d instanceof MimicDog)) return false;
+                const mimic = d as MimicDog<unknown>;
+                return mimic.imitatesClasses.includes(depClass)
+                    || (depPactName != null && mimic.imitatesName === depPactName);
+            };
+            const hasMimic = kennel.some(matchesMimic);
             const hasReal = kennel.some(d =>
                 !(d instanceof MimicDog) && d instanceof depClass
             );
 
             if (hasReal && hasMimic) {
-                const mimicIdx = kennel.findIndex(d =>
-                    d instanceof MimicDog && (d as MimicDog<unknown>).imitatesClasses.includes(depClass)
-                );
+                const mimicIdx = kennel.findIndex(matchesMimic);
                 if (mimicIdx >= 0) {
                     console.log(`[KennelRun.autoMimic] Echter Dog vorhanden, entferne Mimic fuer ${depClass.name}`);
                     kennel.splice(mimicIdx, 1);

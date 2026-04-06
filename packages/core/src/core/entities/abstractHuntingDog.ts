@@ -29,8 +29,18 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
         return this.result
     }
 
+    /** A brief description of what this hound does. Override in subclasses to speak yer purpose. */
+    get description(): string | undefined {
+        return undefined;
+    }
+
     /** The hound's sigil -- a glyph fer the UI. Override in subclasses to brandish yer mark. */
     get icon(): string | undefined {
+        return undefined;
+    }
+
+    /** Extra globals this hound provides to SerializedDog children. Override to carry tools into the VM. */
+    getVmContextContributions(): Record<string, any> | undefined {
         return undefined;
     }
 

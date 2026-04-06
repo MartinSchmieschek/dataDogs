@@ -101,6 +101,10 @@ export class RandomRecipesRetriever extends Dog<MockData>{
         return RandomRecipesRetriever.name
     }
 
+    get description(): string {
+        return 'Generates random mock recipe data for demo purposes.';
+    }
+
     /** The icon -- a sigil to mark this hound, lest the crew forget which beast they summoned */
     get icon(): string | undefined {
         return getBaseDogIcon(RandomRecipesRetriever.name);
