@@ -10,6 +10,7 @@ import {
   OnChanges,
 } from '@angular/core';
 import { EditSectionComponent } from '../../edit-section/edit-section.component';
+import { isHtmlResultString, isMarkdownResultString } from '../../../utils/lead-result-string-format';
 
 declare const monaco: any;
 
@@ -19,7 +20,7 @@ declare const monaco: any;
   imports: [EditSectionComponent],
   template: `
     <app-edit-section title="Result" [hideHeader]="hideHeader">
-      @if (resultIsHtml) {
+      @if (resultIsHtml || resultIsMarkdown) {
         <div class="result-toolbar">
           <button type="button" class="btn-view-mode" (click)="cycleResultView()">{{ resultViewLabel() }}</button>
         </div>
@@ -69,14 +70,12 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
 
   get resultIsHtml(): boolean {
     const r = this.result;
-    if (typeof r !== 'string') return false;
-    const trimmed = r.trim();
-    return (
-      trimmed.startsWith('<html') ||
-      trimmed.startsWith('<!DOCTYPE') ||
-      trimmed.startsWith('<!doctype') ||
-      (trimmed.startsWith('<') && trimmed.includes('</'))
-    );
+    return typeof r === 'string' && isHtmlResultString(r);
+  }
+
+  get resultIsMarkdown(): boolean {
+    const r = this.result;
+    return typeof r === 'string' && isMarkdownResultString(r);
   }
 
   get resultHtmlSrc(): string {
@@ -85,24 +84,35 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
   }
 
   showHtmlPreview(): boolean {
+    if (!this.resultIsHtml) return false;
     const mode = this.resultViewMode();
     if (mode === 'html') return true;
     if (mode === 'raw') return false;
-    return this.resultIsHtml;
+    return true;
   }
 
   cycleResultView(): void {
     const current = this.resultViewMode();
-    if (current === 'auto') this.resultViewMode.set('raw');
-    else if (current === 'raw') this.resultViewMode.set('html');
-    else this.resultViewMode.set('auto');
+    if (this.resultIsHtml) {
+      if (current === 'auto') this.resultViewMode.set('raw');
+      else if (current === 'raw') this.resultViewMode.set('html');
+      else this.resultViewMode.set('auto');
+    } else if (this.resultIsMarkdown) {
+      this.resultViewMode.set(current === 'auto' ? 'raw' : 'auto');
+    }
     this.scheduleSyncMonaco();
   }
 
   resultViewLabel(): string {
     const mode = this.resultViewMode();
-    if (mode === 'raw') return 'Raw';
-    if (mode === 'html') return 'HTML';
+    if (this.resultIsHtml) {
+      if (mode === 'raw') return 'Raw';
+      if (mode === 'html') return 'HTML';
+      return 'Auto';
+    }
+    if (this.resultIsMarkdown) {
+      return mode === 'raw' ? 'Raw' : 'Auto';
+    }
     return 'Auto';
   }
 
@@ -155,6 +165,9 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
   private resultLanguage(): string {
     const r = this.result;
     if (r !== null && typeof r === 'object') return 'json';
+    if (typeof r === 'string' && this.resultIsMarkdown) {
+      return this.resultViewMode() === 'raw' ? 'plaintext' : 'markdown';
+    }
     return 'plaintext';
   }
 

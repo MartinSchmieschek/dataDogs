@@ -4,6 +4,7 @@ import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
+import { isHtmlResultString, isMarkdownResultString } from '../../services/leadResultStringFormat';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 
 /** The provisions required to arm the KennelRunHandler. */
@@ -175,12 +176,11 @@ export class KennelRunHandler {
     }
 
     private sendResult(res: any, result: any) {
-        if (typeof result === 'string' && (
-            result.trim().startsWith('<html') ||
-            result.trim().startsWith('<!DOCTYPE') ||
-            (result.trim().startsWith('<') && result.includes('</'))
-        )) {
+        if (typeof result === 'string' && isHtmlResultString(result)) {
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.status(200).send(result);
+        } else if (typeof result === 'string' && isMarkdownResultString(result)) {
+            res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
             res.status(200).send(result);
         } else {
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
