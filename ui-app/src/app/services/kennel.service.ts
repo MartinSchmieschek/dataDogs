@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { IKennelConfig, KennelVersionEntry } from '../models/kennel-config.model';
 import { Waves } from '../models/dog-entry.model';
 
@@ -79,7 +80,11 @@ export class KennelService {
     return this.http.post<ApiResponse>(`${this.baseUrl}/import`, bundle);
   }
 
-  execute(id: string, body?: any, query?: Record<string, string>): Observable<any> {
+  /**
+   * Lead-Yield: JSON-Objekt oder String (HTML / Markdown / sonstiger Text).
+   * Content-Type steuert die Auswertung (application/json vs. text/*).
+   */
+  execute(id: string, body?: any, query?: Record<string, string>): Observable<string | unknown> {
     let params = new HttpParams();
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
@@ -87,9 +92,27 @@ export class KennelService {
       });
     }
     const hasBody = body !== undefined && body !== null;
+    const url = `${this.baseUrl}/${encodeURIComponent(id)}/execute`;
+    const opts = {
+      params,
+      observe: 'response' as const,
+      responseType: 'text' as const,
+    };
+    const mapBody = map((resp: HttpResponse<string>) => {
+      const raw = resp.body ?? '';
+      const ct = resp.headers.get('Content-Type') ?? '';
+      if (ct.includes('application/json')) {
+        try {
+          return JSON.parse(raw) as unknown;
+        } catch {
+          return raw;
+        }
+      }
+      return raw;
+    });
     if (hasBody) {
-      return this.http.post(`${this.baseUrl}/${encodeURIComponent(id)}/execute`, body, { params });
+      return this.http.post(url, body, opts).pipe(mapBody);
     }
-    return this.http.get(`${this.baseUrl}/${encodeURIComponent(id)}/execute`, { params });
+    return this.http.get(url, opts).pipe(mapBody);
   }
 }

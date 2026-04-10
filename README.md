@@ -31,6 +31,12 @@ A Kennel is a covenant. It binds:
 
 The **first** entry in `dogIds` is the **lead**. When the hunt is over and the pack returns, only one voice speaks: the lead's yield is what `GET /:kennelId` and `GET /api/kennels/:id/execute` return.
 
+**Lead response shape (string yields):** If the lead returns a **string**, the server picks a content type before JSON:
+
+- **HTML** — `text/html` when the string looks like HTML (e.g. starts with `<html`, `<!DOCTYPE`, or tag-like `<`…`</`).
+- **Markdown** — `text/markdown` when it is **not** treated as HTML and either the first line is an ATX heading (`#` … `######` plus space) or the document starts with YAML **frontmatter** (`---` … `---`).
+- **Anything else** (objects, arrays, numbers, booleans, or strings that match neither rule) — `application/json` (objects and arrays as JSON; primitive strings are JSON-encoded).
+
 Who runs when -- that is decided by the dependency graph. Waves, Pacts, required parents -- the graph commands the order. The lead has no authority there. The lead answers only one question: **whose catch becomes the response.** Every other dog in the Kennel exists to feed the chain that ends at the lead.
 
 ### Waves
@@ -174,7 +180,7 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aw
 
 **Inline Kennel params** -- Edit query parameters and body data directly from the Waves Viewer. Change it, reload, see the result. Save it when it's right.
 
-**HTML result rendering** -- When a dog brings back HTML (like TalkingDog's rendered layouts), the result view renders it live in a sandboxed iframe. Toggle between HTML preview and raw JSON with one click.
+**HTML and Markdown in the UI** -- When the lead returns HTML, the result view can show a sandboxed iframe preview; toggle between preview and raw source. When the lead returns Markdown (same detection rules as the server), the editor uses Markdown highlighting and an Auto/Raw toggle. JSON and other structured yields still appear as formatted JSON in Monaco.
 
 ---
 

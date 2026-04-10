@@ -12,6 +12,7 @@ import {
   type KennelFanAction,
 } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
+import { isHtmlResultString } from '../../utils/lead-result-string-format';
 
 @Component({
   selector: 'app-kennel-list',
@@ -247,7 +248,21 @@ export class KennelListComponent implements OnInit {
     this.kennelService.execute(ref, kennel.defaultBody, kennel.defaultQuery).subscribe({
       next: (result) => {
         if (typeof result === 'string') {
-          newWindow.document.write(result);
+          if (isHtmlResultString(result)) {
+            newWindow.document.write(result);
+          } else {
+            const esc = result
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
+            newWindow.document.write(
+              '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Result</title></head><body>' +
+                '<pre style="white-space:pre-wrap;font-family:system-ui,Segoe UI,monospace;margin:1rem;">' +
+                esc +
+                '</pre></body></html>'
+            );
+          }
           newWindow.document.close();
         } else {
           newWindow.document.write('<pre>' + JSON.stringify(result, null, 2) + '</pre>');

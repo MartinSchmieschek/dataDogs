@@ -1,4 +1,5 @@
 import { IKennelConfig } from '@datadogs/core';
+import { isHtmlResultString, isMarkdownResultString } from './leadResultStringFormat';
 import { Waves, NodeEntry } from './WavesConverter';
 
 /**
@@ -188,15 +189,17 @@ export class SwaggerGenerator {
      * @returns A content-type map suitable for the OpenAPI response object.
      */
     private static buildResponseContent(leadDog: NodeEntry | null): Record<string, any> {
-        const isHtml = typeof leadDog?.result === 'string' && (
-            leadDog.result.trim().startsWith('<html') ||
-            leadDog.result.trim().startsWith('<!DOCTYPE') ||
-            (leadDog.result.trim().startsWith('<') && leadDog.result.includes('</'))
-        );
-
-        if (isHtml) {
+        const r = leadDog?.result;
+        if (typeof r === 'string' && isHtmlResultString(r)) {
             return {
                 'text/html': { schema: { type: 'string', example: '&lt;html&gt;...&lt;/html&gt;' } },
+            };
+        }
+        if (typeof r === 'string' && isMarkdownResultString(r)) {
+            return {
+                'text/markdown': {
+                    schema: { type: 'string', example: '# Ergebnis\n\n…' },
+                },
             };
         }
         return {

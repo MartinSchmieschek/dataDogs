@@ -280,6 +280,53 @@ Wave N+2: NaturMapRenderer <- NaturMapData -> HTML with Leaflet map
 
 The data dog is the key — it normalizes, filters and structures. The renderer is just cosmetics.
 
+### Step 7c — Example: two SerializedDogs → Markdown string (not HTML)
+
+Same two-stage split as Step 7b, but the **lead returns a Markdown string** (public endpoint returns that string — client may show raw `.md` or render it).
+
+**Waves (concept):**
+```
+Wave 1: QueryRetriever -> lat, lng, …
+Wave 2: WeatherRetriever, … <- Query
+Wave 3: PackData <- Weather, … -> { title, sections: [...], meta: {...} }
+Wave 4: PackMarkdown <- PackData -> "# Title\n\n…"   (markdown string)
+```
+
+- **`dogIds`:** lead first (`PackMarkdown` lineageId), then `PackData` lineageId, then `base:QueryRetriever`, …
+
+**1) SerializedDog `PackData` (JSON only)** — `parentsRequired` e.g. `["WeatherRetriever", "QueryRetriever"]`. Example yield shape:
+
+```json
+{
+  "title": "Report",
+  "generatedAt": "2026-04-10T12:00:00.000Z",
+  "sections": [
+    { "heading": "Weather", "body": "…" },
+    { "heading": "Place", "body": "…" }
+  ]
+}
+```
+
+**2) SerializedDog `PackMarkdown` (lead — data dog as only Serialized parent)** — `parentsRequired`: `[ "<PackData lineageId>" ]`. Return a **string** in Markdown. Parent global uses **lowercase `name`** from vmContext (e.g. `Packdata`), not `displayName`.
+
+**Sketch (prefer `+` concatenation for consistency with the HTML rule):**
+```typescript
+var d = Packdata;
+var out = "";
+out += "# " + d.title + "\n\n";
+out += "_Updated: " + d.generatedAt + "_\n\n";
+for (var i = 0; i < d.sections.length; i++) {
+  var s = d.sections[i];
+  out += "## " + s.heading + "\n\n";
+  out += s.body + "\n\n";
+}
+return out;
+```
+
+**API (short):** `POST /api/nodes` → PackData; `POST /api/nodes` → PackMarkdown with PackData lineageId; `POST /api/kennels` with `dogIds` order above and **defaultQuery**; run → fill Mimics/data dog → `POST /save` lead; `GET /:kennelId` → markdown string.
+
+**Note:** For **HTML** instead of raw Markdown, same layout — lead returns HTML string (follow **HTML renderer** rules for `<script>`). For **`{ snapshot, live }`** split delivery, see repo `SOCKETDOG-PLAN.md` — different contract.
+
 ### Step 8 — Verification (MANDATORY, never skip)
 
 Every kennel MUST pass these three checks before it's considered done. No exceptions.
