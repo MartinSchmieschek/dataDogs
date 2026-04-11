@@ -3,4 +3,4 @@
  * Quelle: PUBLIC_API_BASE_URL in Repo-Root-.env (siehe .env.example).
  * Leer lassen für Same-Origin im Browser (SPA und API unter derselben Origin).
  */
-export const API_ORIGIN_INJECTED = "http://localhost:3000";
+export const API_ORIGIN_INJECTED = "";
