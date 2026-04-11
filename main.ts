@@ -324,7 +324,8 @@ async function start() {
     }
 
     console.log('App started.');
-    app.listen(port, () => {
+    // Render u. a.: öffentlich erreichbar nur bei Bind an 0.0.0.0; PORT kommt von der Plattform.
+    app.listen(port, '0.0.0.0', () => {
         const base = `http://localhost:${port}`;
         if (!serveBuiltAngular) {
             console.log(`API ${base} — Dev-UI-Redirect: ${base}/ → ${devUiOrigin}/`);

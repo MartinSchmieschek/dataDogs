@@ -16,8 +16,67 @@ for (const f of files) {
     if (fs.existsSync(p)) dotenv.config({ path: p, override: true });
 }
 
-let base = (process.env.PUBLIC_API_BASE_URL || 'http://localhost:3000').trim();
+/**
+ * `.env` setzt oft PUBLIC_API_BASE_URL=localhost; fehlt der Key in `.env.integration` /
+ * `.env.production`, würde der Wert stehen bleiben. Für diese Profile gilt: wenn mindestens
+ * eine Profil-Datei existiert, kommt PUBLIC_API_BASE_URL nur aus diesen Dateien (Reihenfolge,
+ * letzte gewinnt) — fehlt der Key überall, vererben wir nicht aus `.env` (→ Same-Origin-Default).
+ */
+function applyProfilePublicApiBase() {
+    const profiles =
+        nodeEnv === 'integration'
+            ? ['.env.integration', '.env.integration.local']
+            : nodeEnv === 'production'
+              ? ['.env.production', '.env.production.local']
+              : [];
+    if (!profiles.length) return;
+
+    let lastDefined;
+    let anyProfileFile = false;
+    for (const f of profiles) {
+        const p = path.join(root, f);
+        if (!fs.existsSync(p)) continue;
+        anyProfileFile = true;
+        const parsed = dotenv.parse(fs.readFileSync(p, 'utf8'));
+        if (Object.prototype.hasOwnProperty.call(parsed, 'PUBLIC_API_BASE_URL')) {
+            lastDefined = parsed.PUBLIC_API_BASE_URL;
+        }
+    }
+    if (!anyProfileFile) return;
+    if (lastDefined !== undefined) {
+        process.env.PUBLIC_API_BASE_URL = lastDefined;
+    } else {
+        delete process.env.PUBLIC_API_BASE_URL;
+    }
+}
+applyProfilePublicApiBase();
+
+// development: Default localhost (ng serve / lokales Backend).
+// integration | production: ohne gesetzte Variable → leer = Same-Origin (window.location.origin im Browser),
+// damit Staging/Deploy (z. B. Render) nicht fälschlich localhost:3000 im Bundle landet.
+const explicit = process.env.PUBLIC_API_BASE_URL;
+let base;
+if (explicit !== undefined) {
+    base = String(explicit).trim();
+} else if (nodeEnv === 'integration' || nodeEnv === 'production') {
+    base = '';
+} else {
+    base = 'http://localhost:3000';
+}
 base = base.replace(/\/+$/, '');
+
+// Häufiger Render-Fehler: PUBLIC_API_BASE_URL=http://localhost:3000 aus Beispiel übernommen —
+// in Staging/Prod nicht einbacken, Browser nutzt dann window.location.origin.
+if ((nodeEnv === 'integration' || nodeEnv === 'production') && base) {
+    try {
+        const u = new URL(base.startsWith('http://') || base.startsWith('https://') ? base : `https://${base}`);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+            base = '';
+        }
+    } catch {
+        /* unverändert */
+    }
+}
 
 const outPath = path.join(root, 'ui-app', 'src', 'app', 'config', 'api-base.inject.ts');
 const body = `/**
