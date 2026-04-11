@@ -121,7 +121,7 @@ All components are **standalone** -- no NgModules. State is managed with **Angul
 
 ### Proxy
 
-`/api` and `/save` are forwarded to the backend at `http://localhost:3000`. Configured in [`proxy.conf.json`](proxy.conf.json).
+`/api` and `/save` are forwarded to the backend at `http://localhost:3000`. Configured in [`proxy.conf.js`](proxy.conf.js) (liest `PUBLIC_API_BASE_URL` / `PORT` aus der Repo-Root-`.env`).
 
 ---
 
@@ -132,7 +132,7 @@ All components are **standalone** -- no NgModules. State is managed with **Angul
 ```bash
 cd ui-app
 npm install
-npx ng serve --proxy-config proxy.conf.json
+npx ng serve --proxy-config proxy.conf.js
 ```
 
 Opens at `http://localhost:4300` (see `angular.json` → `serve.options.port`). The lodge is warm.

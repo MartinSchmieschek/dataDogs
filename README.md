@@ -236,7 +236,7 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aw
 | Layer | Tech |
 |-------|------|
 | Backend | Express.js, TypeScript, Node.js VM |
-| Database | Prisma ORM, SQLite (swappable to PostgreSQL) |
+| Database | Prisma ORM — SQLite for local dev; PostgreSQL for **integration** staging and production |
 | Frontend | Angular 18, Monaco Editor, vis-network |
 | Core | `datadogs` package (local, in `packages/core`) |
 
@@ -267,6 +267,12 @@ Backend only:
 npm run prisma:sync
 npm start
 ```
+
+### Integration mode (pre-release staging)
+
+**Integration mode** (`NODE_ENV=integration`) is a **staging profile** added for the stretch between local dev and a full production deploy: exercise the app against **external databases** (PostgreSQL for the main store and the HTTP cache — see [`.env.integration.example`](.env.integration.example)) and run with the **built Angular UI only** (no `ng serve`; Express serves `ui-app/dist/.../browser` from the same port as the API).
+
+Typical flow: configure `.env.integration` with your hosted URLs, run `npm run prisma:sync:integration` to align schemas, build the frontend with `npm run ui:build`, then start with **`npm run start:integration`** (alias: `npm run integration`). Use this as a **pre-release** checkpoint before going fully online.
 
 ### Quick Hunt
 

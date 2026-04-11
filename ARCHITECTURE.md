@@ -587,7 +587,7 @@ interface ISerializedDogConfig {
 | Surface | Port | Notes |
 |--------|------|--------|
 | **Backend** (Express, `main.ts`) | **3000** | API, `/save`, public `/:kennelId`, Swagger — the server that actually runs the dogs. |
-| **UI** (dev, `ng serve`) | **4300** | Proxies `/api` and `/save` to the backend via [`ui-app/proxy.conf.json`](ui-app/proxy.conf.json). Open the UI here during development. |
+| **UI** (dev, `ng serve`) | **4300** | Proxies `/api` and `/save` to the backend via [`ui-app/proxy.conf.js`](ui-app/proxy.conf.js). Open the UI here during development. |
 
 ### Environment
 

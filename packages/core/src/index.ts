@@ -17,6 +17,11 @@ export { IHuntingSeason, IWaveEntry, IReadTrackingEntry } from './core/entities/
 
 // The captain and the hunt -- orchestration of the abyss
 export { KennelRun, IKennelConfig, BASE_DOG_PREFIX } from './KennelRun';
+export {
+    KENNEL_RESERVED_SLUGS,
+    kennelLineageIdBlockedReason,
+    kennelDisplayNameBlockedReason,
+} from './kennelReservedNames';
 export { SeasonRunner } from './harverster';
 
 // Spirits trapped in code, running in sandboxed voids

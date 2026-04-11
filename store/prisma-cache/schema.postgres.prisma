@@ -1,17 +1,17 @@
-// KennelRun-HTTP-Cache — SQLite für lokale Entwicklung. PostgreSQL: schema.postgres.prisma.
+// PostgreSQL — für NODE_ENV production | integration.
+// Entwicklung: store/prisma-cache/schema.prisma (SQLite).
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma-cache-client"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("CACHE_DATABASE_URL")
 }
 
 model CacheEntry {
   key       String @id
   value     String
-  // Unix-Zeit in ms — Prisma BigInt
   expiresAt BigInt
 }

@@ -10,6 +10,7 @@ import { ErrorVideoPopupService } from '../../services/error-video-popup.service
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { KennelEmojiPickerComponent } from '../../components/kennel-emoji-picker/kennel-emoji-picker.component';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
+import { kennelDisplayNameBlockedReason } from '../../config/kennel-reserved-names';
 
 declare const monaco: any;
 
@@ -290,6 +291,15 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   save() {
     this.saving.set(true);
     this.error.set(null);
+
+    if (this.name.trim()) {
+      const nameErr = kennelDisplayNameBlockedReason(this.name);
+      if (nameErr) {
+        this.error.set(nameErr);
+        this.saving.set(false);
+        return;
+      }
+    }
 
     const dogIds = [...this.orderedDogIds()];
 

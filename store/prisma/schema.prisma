@@ -1,12 +1,10 @@
-// Prisma schema for jsonAggregator store
+// Prisma schema for jsonAggregator store — SQLite für lokale Entwicklung (NODE_ENV=development).
+// PostgreSQL: schema.postgres.prisma (Integration/Production).
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  // For local development we default to SQLite. To use SQLite set:
-  // DATABASE_URL="file:./dev.db"
-  // To switch to Postgres (cloud), change provider to "postgresql" and set a proper DATABASE_URL.
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }

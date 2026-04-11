@@ -21,6 +21,9 @@ dist/
 node_modules/@prisma/
 store/generated/
 
-# env
+# env (mehrschichtig: .env, .env.local, .env.development, … — siehe scripts/load-env.cjs)
 .env
+.env.local
+.env.integration
+.env.*.local
 .cursor/debug.log

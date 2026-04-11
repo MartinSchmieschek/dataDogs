@@ -1,7 +1,7 @@
 // Ahoy, ye who peer into this abyss — 'tis the beating black heart of the ship.
 // From brooding gulfs are we beheld by that which bears no name,
 // yet we set sail regardless, for the data must be plundered.
-import 'dotenv/config';
+// Umgebung: `node -r ./scripts/load-env.cjs …` (siehe package.json start / start:prod / dev).
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {
@@ -69,6 +69,7 @@ import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import express from "express";
 import path from 'path';
+import fs from 'fs';
 import { Controller } from './api/Controller';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
@@ -77,10 +78,29 @@ import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
+import { SPA_FALLBACK_SKIP_PREFIXES } from './api/routes/spaRouteConstants';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { PrismaCacheHandler } from './services/PrismaCacheHandler';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
+    assertRequiredDbEnv: () => void;
+    resolveCacheDatabaseUrl: () => string;
+};
+
+/** Angular-Produktionsbuild (Application-Builder → …/browser), nur wenn index.html existiert. */
+function resolveAngularBrowserDir(): string | null {
+    const candidates = [
+        path.join(__dirname, '..', 'ui-app', 'dist', 'ui-app', 'browser'),
+        path.join(__dirname, 'ui-app', 'dist', 'ui-app', 'browser'),
+    ];
+    for (const dir of candidates) {
+        if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
+    }
+    return null;
+}
 
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
@@ -88,21 +108,9 @@ start().catch(e => {
     process.exit(1);
 });
 
-/** Prisma-URL für die Cache-DB (zweites Schema): wie DATABASE_URL, `file:…`. CACHE_DB_PATH → file:… */
-function cacheDatabaseUrlFromEnv(): string {
-    const url = process.env.CACHE_DATABASE_URL?.trim();
-    if (url) return url;
-    const pathOnly = process.env.CACHE_DB_PATH?.trim();
-    if (pathOnly) {
-        if (pathOnly.startsWith('file:')) return pathOnly;
-        return `file:${pathOnly.replace(/\\/g, '/')}`;
-    }
-    return 'file:./cache.db';
-}
-
 async function start() {
-    // Seek the DATABASE_URL from the env scroll; should it bear no name, sail to the local waters of dev.db.
-    const dbUrl = process.env.DATABASE_URL ?? 'file:./dev.db';
+    dbEnv.assertRequiredDbEnv();
+    const dbUrl = process.env.DATABASE_URL!.trim();
 
     // Two stores, one for the hounds, one for their kennels — twin anchors in the eldritch deep.
     const nodesStore: IStore = new PrismaStore(dbUrl);
@@ -195,7 +203,11 @@ async function start() {
     TypeDefBuilder.registerPacts(allPacts);
 
     const app = express();
-    const port = 3000;
+    const port = Number(process.env.PORT) || 3000;
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    /** Gebautes Angular unter ui-app/dist/... ausliefern (nicht ng serve). Gilt für production und integration. */
+    const serveBuiltAngular = nodeEnv === 'production' || nodeEnv === 'integration';
+    const devUiOrigin = (process.env.DEV_UI_ORIGIN || 'http://localhost:4300').replace(/\/$/, '');
 
     /**
      * Which vessels may approach our ship cross-origin without being blown out of the water?
@@ -225,7 +237,7 @@ async function start() {
             return list.includes(origin) ? origin : undefined;
         }
 
-        if (process.env.NODE_ENV === 'production') {
+        if (nodeEnv === 'production' || nodeEnv === 'integration') {
             const fixed = process.env.CORS_ORIGIN ?? process.env.DEV_UI_ORIGIN ?? 'http://localhost:4300';
             return origin === fixed ? origin : undefined;
         }
@@ -253,6 +265,18 @@ async function start() {
     // Static assets (Swagger UI hero, etc.) — served from /static/*
     app.use('/static', express.static(path.join(__dirname, 'public')));
 
+    const angularBrowserDir = serveBuiltAngular ? resolveAngularBrowserDir() : null;
+    if (angularBrowserDir) {
+        app.use(express.static(angularBrowserDir, { index: 'index.html' }));
+    }
+
+    // Nur development: Root → ng serve (:4300). integration/production liefern die gebaute SPA von diesem Port.
+    if (!serveBuiltAngular) {
+        app.get('/', (_req, res) => {
+            res.redirect(302, `${devUiOrigin}/`);
+        });
+    }
+
     // Assemble the registry — a chart of all controllers that sail under our black flag.
     const registry = new ControllerRegistry();
     const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
@@ -276,7 +300,7 @@ async function start() {
     routeHandler.registerRoutes(app, '/api');
 
     // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
-    const cacheHandler: ICacheHandler = new PrismaCacheHandler(cacheDatabaseUrlFromEnv());
+    const cacheHandler: ICacheHandler = new PrismaCacheHandler(dbEnv.resolveCacheDatabaseUrl());
 
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
@@ -287,8 +311,24 @@ async function start() {
     kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);
 
+    // SPA-Fallback (Angular): Express 5 — kein app.get('*', …). Keine Kollision mit /api, /static (siehe spaRouteConstants).
+    if (angularBrowserDir) {
+        app.use((req: any, res: any, next: any) => {
+            if (req.method !== 'GET') return next();
+            const p = req.path as string;
+            if (SPA_FALLBACK_SKIP_PREFIXES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`))) {
+                return next();
+            }
+            res.sendFile(path.join(angularBrowserDir, 'index.html'));
+        });
+    }
+
     console.log('App started.');
     app.listen(port, () => {
-        console.log(`Server läuft auf http://localhost:${port}`);
+        const base = `http://localhost:${port}`;
+        if (!serveBuiltAngular) {
+            console.log(`API ${base} — Dev-UI-Redirect: ${base}/ → ${devUiOrigin}/`);
+        }
+        console.log(`Server läuft auf Port ${port}`);
     });
 }

@@ -1,6 +1,12 @@
 // The KennelBundleHandler — Khra's vessel, carrying a kennel's soul across the void.
 // To cosmic forms from tangent planes, we end as we began.
-import { SerializedDog, MimicDog, type IMimicDogConfig } from '@datadogs/core';
+import {
+    SerializedDog,
+    MimicDog,
+    type IMimicDogConfig,
+    kennelDisplayNameBlockedReason,
+    kennelLineageIdBlockedReason,
+} from '@datadogs/core';
 import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
@@ -114,6 +120,17 @@ export class KennelBundleHandler {
                 copyIndex++;
                 kennelId = `${originalId}-copy${copyIndex > 1 ? '-' + copyIndex : ''}`;
                 kennelName = `${bundle.kennel.name || originalId} (Kopie${copyIndex > 1 ? ' ' + copyIndex : ''})`;
+            }
+
+            const lineageErr = kennelLineageIdBlockedReason(kennelId);
+            if (lineageErr) {
+                res.status(400).json({ error: lineageErr });
+                return;
+            }
+            const displayErr = kennelDisplayNameBlockedReason(kennelName);
+            if (displayErr) {
+                res.status(400).json({ error: displayErr });
+                return;
             }
 
             // Build ID mapping: old lineageId/versionId → new lineageId.
