@@ -422,7 +422,7 @@ export class SerializedDog<T> extends Dog<T> {
         } catch (err: any) {
             //TODO: Provide proper errors to UI -- the void's messages deserve better presentation
             console.error("Script Error:", err);
-            return ("Error: " + err.message) as T
+            return ("Error: " + err.message) as unknown as T;
         }
     }
 
