@@ -1,6 +1,7 @@
 // The KennelRunHandler — the huntmaster who unleashes the hounds.
 // Vome speaks: to cosmic madness laws submit — the waves obey the dependency graph.
 import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun, type ICacheHandler } from '@datadogs/core';
+import { RESERVED_TOP_LEVEL_SEGMENTS } from './spaRouteConstants';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
@@ -28,8 +29,10 @@ export class KennelRunHandler {
         app.post('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
         app.get('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
         app.post('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
-        app.get('/:kennelId', (req: any, res: any) => this.handlePublicGet(req, res));
-        app.post('/:kennelId', (req: any, res: any) => this.handlePublicPost(req, res));
+        app.get('/:kennelId', (req: any, res: any, next: any) => void this.handlePublicGet(req, res, next));
+        app.post('/:kennelId', (req: any, res: any, next: any) =>
+            void this.handlePublicPost(req, res, next),
+        );
     }
 
     // --- Public helpers (used by KennelSwaggerHandler and KennelBundleHandler) ---
@@ -255,13 +258,23 @@ export class KennelRunHandler {
         }
     }
 
-    private async handlePublicGet(req: any, res: any): Promise<void> {
+    private async handlePublicGet(req: any, res: any, next: any): Promise<void> {
         const kennelId = req.params.kennelId;
-        if (kennelId === 'api' || kennelId === 'kennel' || kennelId === 'edit') return;
+        if (RESERVED_TOP_LEVEL_SEGMENTS.has(kennelId)) {
+            next();
+            return;
+        }
 
         try {
             const config = await this.loadKennelConfig(kennelId, req.query.version);
             if (!config) {
+                const deferSpa =
+                    (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'integration') &&
+                    typeof next === 'function';
+                if (deferSpa) {
+                    next();
+                    return;
+                }
                 res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
                 return;
             }
@@ -286,9 +299,12 @@ export class KennelRunHandler {
         }
     }
 
-    private async handlePublicPost(req: any, res: any): Promise<void> {
+    private async handlePublicPost(req: any, res: any, next: any): Promise<void> {
         const kennelId = req.params.kennelId;
-        if (kennelId === 'api' || kennelId === 'kennel' || kennelId === 'edit') return;
+        if (RESERVED_TOP_LEVEL_SEGMENTS.has(kennelId)) {
+            next();
+            return;
+        }
 
         try {
             const config = await this.loadKennelConfig(kennelId, req.query.version);

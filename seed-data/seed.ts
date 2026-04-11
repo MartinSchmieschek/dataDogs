@@ -1,4 +1,5 @@
 // Arr, this be the seeding rite — split across seed-data (see kennels/).
+import path from 'path';
 import { PrismaStore } from '../store/PrismaStore';
 import { IStore } from '../store/IStore';
 import { seedSerializedDog, seedKennelConfig } from './seed-default';
@@ -39,7 +40,12 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
 }
 
 async function prismaSeedMain(): Promise<void> {
-    const dbUrl = process.env.DATABASE_URL ?? 'file:./dev.db';
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
+        assertRequiredDbEnv: () => void;
+    };
+    dbEnv.assertRequiredDbEnv();
+    const dbUrl = process.env.DATABASE_URL!.trim();
     const nodesStore: IStore = new PrismaStore(dbUrl);
     const kennelsStore: IStore = new PrismaStore(dbUrl);
     if ((nodesStore as { init?: () => Promise<void> }).init) {

@@ -2,7 +2,11 @@
 // Now versioned: every save breeds a new incarnation, and the lineage branches like cursed coral.
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
-import { IKennelConfig } from '@datadogs/core';
+import {
+    IKennelConfig,
+    kennelDisplayNameBlockedReason,
+    kennelLineageIdBlockedReason,
+} from '@datadogs/core';
 import { generateVersionId } from './utils/versioning';
 
 /**
@@ -48,6 +52,15 @@ export class KennelController extends AbstractController<IKennelConfig> {
      */
     async create(input: ICreateKennelInput): Promise<IControllerResponse<IKennelConfig>> {
         try {
+            if (input.id?.trim()) {
+                const idErr = kennelLineageIdBlockedReason(input.id);
+                if (idErr) return { ok: false, error: idErr };
+            }
+            if (input.name?.trim()) {
+                const nameErr = kennelDisplayNameBlockedReason(input.name);
+                if (nameErr) return { ok: false, error: nameErr };
+            }
+
             const lineageId = input.id || `kennel-${Date.now()}`;
             const versionId = generateVersionId();
 
@@ -102,6 +115,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
         try {
             if (!input.id) {
                 return { ok: false, error: 'id is required' };
+            }
+            if (input.name !== undefined && input.name !== null && String(input.name).trim()) {
+                const nameErr = kennelDisplayNameBlockedReason(String(input.name));
+                if (nameErr) return { ok: false, error: nameErr };
             }
 
             // Resolve the existing kennel — by version ID or lineageId.
@@ -189,6 +206,11 @@ export class KennelController extends AbstractController<IKennelConfig> {
      */
     async heal(id: string, patch: Partial<ISaveKennelInput>): Promise<IControllerResponse<IKennelConfig>> {
         try {
+            if (patch.name !== undefined && patch.name !== null && String(patch.name).trim()) {
+                const nameErr = kennelDisplayNameBlockedReason(String(patch.name));
+                if (nameErr) return { ok: false, error: nameErr };
+            }
+
             const existing = await this.resolveKennel(id);
             if (!existing) {
                 return { ok: false, error: `Kennel mit ID ${id} nicht gefunden` };

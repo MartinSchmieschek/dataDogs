@@ -1,0 +1,27 @@
+// PostgreSQL — für NODE_ENV production | integration (npm run prisma:sync:integration / :prod).
+// Entwicklung: store/prisma/schema.prisma (SQLite).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Dog {
+  id                   String   @id
+  lineageId            String?
+  parentId             String?
+  displayName          String?
+  type                 String
+  serializedDogConfig   String?
+  name                 String?
+  description          String?
+  dogIds               String?
+  defaultQuery         String?
+  defaultBody          String?
+  emoji                String?
+  createdAt            DateTime? @default(now())
+  updatedAt            DateTime?
+}
