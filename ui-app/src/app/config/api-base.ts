@@ -1,15 +1,13 @@
-import { isDevMode } from '@angular/core';
-import { API_ORIGIN_INJECTED } from './api-base.inject';
+import { API_ORIGIN_INJECTED, API_PREFER_DELIVERY_ORIGIN } from './api-base.inject';
 
 /**
  * Basis für absolute Links (Swagger, window.open). HttpClient nutzt weiter `/api/…` (Proxy bei `ng serve`).
  *
- * **Production- & Integration-Builds** (`ng build`, default „production“): `isDevMode()` ist false.
- * Dann gilt immer die **Auslieferungs-Origin** (`window.location.origin`), außer `PUBLIC_API_BASE_URL`
- * zeigt auf einen **anderen Hostnamen** (getrennte API-Domain).
+ * **Integration/Production-UI-Build** (`API_PREFER_DELIVERY_ORIGIN` aus inject-ui-api-base.cjs): immer
+ * **Auslieferungs-Origin** (`window.location.origin`), außer `PUBLIC_API_BASE_URL` zeigt auf einen
+ * **anderen Hostnamen**. Nicht `isDevMode()` — das kann im gebündelten SPA noch true sein.
  *
- * **Development** (`ng serve`, dev-Build): gleicher Hostname, aber **anderer Port** (UI :4300, API :3000)
- * → injizierte Backend-URL nutzen.
+ * **Development**: gleicher Hostname, anderer Port (ng serve vs Express) → injizierte Backend-URL.
  */
 function stripTrailingSlashes(s: string): string {
   return s.replace(/\/+$/, '');
@@ -37,8 +35,8 @@ export function getApiOrigin(): string {
   const pageUrl = new URL(window.location.href);
   const pageOrigin = stripTrailingSlashes(pageUrl.origin);
 
-  // ── Integration & Production (optimierte Builds): Basis = Auslieferungs-URL ──
-  if (!isDevMode()) {
+  // ── Integration & Production (Build-Zeit-Flag): Basis = Auslieferungs-URL ──
+  if (API_PREFER_DELIVERY_ORIGIN) {
     if (!raw) return pageOrigin;
     const injectedUrl = parseInjectedOrigin(raw);
     if (!injectedUrl) return pageOrigin;
