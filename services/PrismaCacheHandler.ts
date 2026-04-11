@@ -1,13 +1,24 @@
 /**
  * ~~~ PRISMA CACHE HANDLER — persistent memory via dieselben ORM-Pfade wie der Store ~~~
  *
- * Eigene SQLite-Datei (CACHE_DATABASE_URL), Schema: store/prisma-cache/schema.prisma.
+ * Eigene DB (CACHE_DATABASE_URL), Schema: store/prisma-cache/schema.prisma.
  * Kein zweites natives SQL-API — nur Prisma.
+ *
+ * Client-Pfad: immer relativ zum Projektroot (process.cwd()), damit dist/main.js nicht
+ * nach dist/store/generated sucht — Prisma legt unter store/generated/ ab.
  */
 
-import { PrismaClient } from '../store/generated/prisma-cache-client';
+import path from 'path';
+import type { PrismaClient } from '../store/generated/prisma-cache-client';
 import { ICacheHandler, IAreaCache } from '@datadogs/core';
 import { AreaCacheStrategy } from './AreaCacheStrategy';
+
+function createPrismaCacheClient(dbUrl: string): PrismaClient {
+    const mod = require(path.join(process.cwd(), 'store/generated/prisma-cache-client')) as typeof import('../store/generated/prisma-cache-client');
+    return new mod.PrismaClient({
+        datasources: { db: { url: dbUrl } },
+    });
+}
 
 export class PrismaCacheHandler implements ICacheHandler {
     private prisma: PrismaClient;
@@ -16,9 +27,7 @@ export class PrismaCacheHandler implements ICacheHandler {
     private areaCaches = new Map<string, AreaCacheStrategy<unknown>>();
 
     constructor(cacheDatabaseUrl: string, pruneIntervalMs: number = 60_000) {
-        this.prisma = new PrismaClient({
-            datasources: { db: { url: cacheDatabaseUrl } },
-        });
+        this.prisma = createPrismaCacheClient(cacheDatabaseUrl);
 
         this.pruneTimer = setInterval(() => {
             void this.prune().catch((e) => console.error('[PrismaCacheHandler] prune', e));
