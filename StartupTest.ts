@@ -1,5 +1,17 @@
 import { IStore } from './store/IStore';
-import { SerializedDog, ISerializedDogConfig, IKennelConfig, BASE_DOG_PREFIX, Dog, IHuntingDog, createPact, MimicDog, IMimicDogConfig, KennelRun } from '@datadogs/core';
+import {
+    SerializedDog,
+    ISerializedDogConfig,
+    IKennelConfig,
+    BASE_DOG_PREFIX,
+    Dog,
+    IHuntingDog,
+    createPact,
+    MimicDog,
+    IMimicDogConfig,
+    KennelRun,
+    isRuntimeLogVerbose,
+} from '@datadogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { KennelController } from './api/KennelController';
@@ -46,7 +58,9 @@ export class StartupTest {
         kennelsController: AbstractController<IKennelConfig>,
         baseDogsMap: Map<string, any>
     ): Promise<TestResult[]> {
-        console.log('\n🧪 Starte Startup-Tests...\n');
+        if (isRuntimeLogVerbose()) {
+            console.log('\n🧪 Starte Startup-Tests...\n');
+        }
 
         try {
             // Store-Tests
@@ -113,27 +127,28 @@ export class StartupTest {
             return; // Keine Test-Daten erstellt
         }
         
-        console.log('\n🧹 Räume Test-Daten auf...\n');
-        
+        const v = isRuntimeLogVerbose();
+        if (v) console.log('\n🧹 Räume Test-Daten auf...\n');
+
         // Lösche NUR die spezifisch erstellten Test-IDs
         for (const testId of this.createdTestIds) {
             try {
                 // Versuche über Controller zu löschen (für SerializedDogs)
                 await nodesController.delete(testId);
-                console.log(`  🗑️  Gelöscht: ${testId}`);
+                if (v) console.log(`  🗑️  Gelöscht: ${testId}`);
             } catch (e) {
                 // Falls Controller-Löschen fehlschlägt, versuche über Store
                 try {
                     await nodesStore.delete(testId);
-                    console.log(`  🗑️  Gelöscht (via Store): ${testId}`);
+                    if (v) console.log(`  🗑️  Gelöscht (via Store): ${testId}`);
                 } catch (e2) {
                     // Ignoriere Fehler (kann sein, dass bereits gelöscht wurde oder nicht existiert)
-                    console.log(`  ⚠️  Konnte nicht löschen: ${testId} (möglicherweise bereits gelöscht)`);
+                    if (v) console.log(`  ⚠️  Konnte nicht löschen: ${testId} (möglicherweise bereits gelöscht)`);
                 }
             }
         }
-        
-        console.log(`✅ Cleanup abgeschlossen (${this.createdTestIds.length} IDs verarbeitet)\n`);
+
+        if (v) console.log(`✅ Cleanup abgeschlossen (${this.createdTestIds.length} IDs verarbeitet)\n`);
     }
 
     /**
@@ -1454,7 +1469,9 @@ export class StartupTest {
         this.results.push({ name, passed, error });
         const icon = passed ? '✅' : '❌';
         const status = passed ? 'PASS' : 'FAIL';
-        console.log(`${icon} [${status}] ${name}${error ? ` - ${error}` : ''}`);
+        if (!passed || isRuntimeLogVerbose()) {
+            console.log(`${icon} [${status}] ${name}${error ? ` - ${error}` : ''}`);
+        }
     }
 
     /**
@@ -1464,14 +1481,20 @@ export class StartupTest {
         const passed = this.results.filter(r => r.passed).length;
         const failed = this.results.filter(r => !r.passed).length;
         const total = this.results.length;
-        
+        const v = isRuntimeLogVerbose();
+
+        if (failed === 0 && !v) {
+            console.log(`Startup-Tests: ${passed}/${total} bestanden.`);
+            return;
+        }
+
         console.log('\n' + '='.repeat(50));
         console.log('📊 Test-Zusammenfassung:');
         console.log(`   Gesamt: ${total}`);
         console.log(`   ✅ Bestanden: ${passed}`);
         console.log(`   ❌ Fehlgeschlagen: ${failed}`);
         console.log('='.repeat(50) + '\n');
-        
+
         if (failed > 0) {
             console.log('⚠️  Fehlgeschlagene Tests:');
             this.results

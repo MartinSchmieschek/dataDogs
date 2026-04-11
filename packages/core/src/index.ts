@@ -17,6 +17,7 @@ export { IHuntingSeason, IWaveEntry, IReadTrackingEntry } from './core/entities/
 
 // The captain and the hunt -- orchestration of the abyss
 export { KennelRun, IKennelConfig, BASE_DOG_PREFIX } from './KennelRun';
+export { isRuntimeLogVerbose } from './runtimeLog';
 export {
     KENNEL_RESERVED_SLUGS,
     kennelLineageIdBlockedReason,

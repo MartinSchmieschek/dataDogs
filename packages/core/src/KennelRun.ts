@@ -18,6 +18,7 @@ import { IHuntingSeason } from './core/entities/IHuntingSeason';
 import { ICacheHandler } from './cache/ICacheHandler';
 import { isCacheable } from './cache/ICacheable';
 import { isAreaCacheable, IAreaCache } from './cache/IAreaCache';
+import { isRuntimeLogVerbose } from './runtimeLog';
 
 /**
  * Arr, this prefix brands a dog as a base-class hound in the dogIds manifest.
@@ -99,7 +100,9 @@ export class KennelRun {
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Arr, 'tis a proper charter -- anchor it to the captain
             this.config = configOrBaseDogs;
-            console.log(`[KennelRun.constructor] Config geladen:`, JSON.stringify(this.config, null, 2));
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelRun.constructor] Config geladen:`, JSON.stringify(this.config, null, 2));
+            }
         }
     }
 
@@ -112,8 +115,11 @@ export class KennelRun {
      * - If a GUID matches a lineageId, the newest incarnation of that lineage rises from the deep
      */
     public async fillKennel(): Promise<Array<IDog<unknown>>> {
-        console.log(`[KennelRun.fillKennel] Start`);
-        console.log(`[KennelRun.fillKennel] Config vorhanden:`, this.config ? JSON.stringify(this.config, null, 2) : 'keine');
+        const v = isRuntimeLogVerbose();
+        if (v) {
+            console.log(`[KennelRun.fillKennel] Start`);
+            console.log(`[KennelRun.fillKennel] Config vorhanden:`, this.config ? JSON.stringify(this.config, null, 2) : 'keine');
+        }
 
         const kennel: Array<IDog<unknown>> = [];
 
@@ -122,7 +128,9 @@ export class KennelRun {
         const baseDogIds = dogIds.filter(id => id.startsWith(BASE_DOG_PREFIX));
         const serializedDogIds = dogIds.filter(id => !id.startsWith(BASE_DOG_PREFIX));
 
-        console.log(`[KennelRun.fillKennel] Gefunden: ${baseDogIds.length} Basis-Dogs, ${serializedDogIds.length} SerializedDogs in dogIds`);
+        if (v) {
+            console.log(`[KennelRun.fillKennel] Gefunden: ${baseDogIds.length} Basis-Dogs, ${serializedDogIds.length} SerializedDogs in dogIds`);
+        }
 
         // Conjure fresh base-dog instances -- always new, never cached, lest old spirits haunt us
         baseDogIds.forEach(baseDogId => {
@@ -138,7 +146,7 @@ export class KennelRun {
                     baseDog = new BaseDogClass();
                 }
                 kennel.push(baseDog);
-                console.log(`[KennelRun.fillKennel] Erstellt neue Basis-Dog-Instanz: ${typeName}`);
+                if (v) console.log(`[KennelRun.fillKennel] Erstellt neue Basis-Dog-Instanz: ${typeName}`);
             } else {
                 console.warn(`[KennelRun.fillKennel] Unbekannter Basis-Dog-Typ: ${typeName}`);
             }
@@ -146,15 +154,17 @@ export class KennelRun {
 
         // Dredge SerializedDogs from the abyss if any be named in the charter
         if (serializedDogIds.length > 0) {
-            console.log(`[KennelRun.fillKennel] Lade ${serializedDogIds.length} SerializedDogs (GUIDs → Factory resolves version or lineageId)`);
+            if (v) {
+                console.log(`[KennelRun.fillKennel] Lade ${serializedDogIds.length} SerializedDogs (GUIDs → Factory resolves version or lineageId)`);
+            }
 
             // Use the factory to raise serialized spirits from the deep
             const serializedDogs = await this.serializedDogFactory(serializedDogIds);
-            console.log(`[KennelRun.fillKennel] Factory erstellt ${serializedDogs.length} SerializedDogs`);
+            if (v) console.log(`[KennelRun.fillKennel] Factory erstellt ${serializedDogs.length} SerializedDogs`);
 
             serializedDogs.forEach(dog => {
                 kennel.push(dog);
-                console.log(`[KennelRun.fillKennel] SerializedDog hinzugefügt: ${dog.storageId}`);
+                if (v) console.log(`[KennelRun.fillKennel] SerializedDog hinzugefügt: ${dog.storageId}`);
             });
         }
 
@@ -187,7 +197,7 @@ export class KennelRun {
             kennel.forEach(dog => {
                 if (isCacheable(dog)) {
                     dog.setCacheHandler(this.cacheHandler!);
-                    console.log(`[KennelRun.fillKennel] Cache-Handler injected into: ${dog.name}`);
+                    if (v) console.log(`[KennelRun.fillKennel] Cache-Handler injected into: ${dog.name}`);
                 }
             });
         }
@@ -197,14 +207,18 @@ export class KennelRun {
             kennel.forEach(dog => {
                 if (isAreaCacheable(dog)) {
                     dog.setAreaCache(this.areaCache!);
-                    console.log(`[KennelRun.fillKennel] Area-Cache injected into: ${dog.name}`);
+                    if (v) console.log(`[KennelRun.fillKennel] Area-Cache injected into: ${dog.name}`);
                 }
             });
         }
 
         const baseDogsCount = baseDogIds.length;
         const serializedDogsCount = kennel.length - baseDogsCount;
-        console.log(`[KennelRun.fillKennel] Kennel gefüllt mit ${kennel.length} Dogs (${baseDogsCount} baseDogs + ${serializedDogsCount} SerializedDogs)`);
+        if (v) {
+            console.log(
+                `[KennelRun.fillKennel] Kennel gefüllt mit ${kennel.length} Dogs (${baseDogsCount} baseDogs + ${serializedDogsCount} SerializedDogs)`,
+            );
+        }
         return kennel;
     }
 
@@ -258,7 +272,9 @@ export class KennelRun {
             if (hasReal && hasMimic) {
                 const mimicIdx = kennel.findIndex(matchesMimic);
                 if (mimicIdx >= 0) {
-                    console.log(`[KennelRun.autoMimic] Echter Dog vorhanden, entferne Mimic fuer ${depClass.name}`);
+                    if (isRuntimeLogVerbose()) {
+                        console.log(`[KennelRun.autoMimic] Echter Dog vorhanden, entferne Mimic fuer ${depClass.name}`);
+                    }
                     kennel.splice(mimicIdx, 1);
                 }
                 continue;
@@ -273,7 +289,9 @@ export class KennelRun {
                 if (BaseDogClass) {
                     const baseDog = new BaseDogClass();
                     kennel.push(baseDog);
-                    console.log(`[KennelRun.autoMimic] Auto-erstellt BaseDog '${depClass.name}' (required)`);
+                    if (isRuntimeLogVerbose()) {
+                        console.log(`[KennelRun.autoMimic] Auto-erstellt BaseDog '${depClass.name}' (required)`);
+                    }
                 }
             }
         }
@@ -293,7 +311,9 @@ export class KennelRun {
             mimic.resolveImitates(this.baseDogClasses);
             mimic.setKennelRef(kennel);
             kennel.push(mimic);
-            console.log(`[KennelRun.autoMimic] Frischen MimicDog erstellt fuer Pact '${depClass.name}'`);
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelRun.autoMimic] Frischen MimicDog erstellt fuer Pact '${depClass.name}'`);
+            }
         }
     }
 
@@ -312,7 +332,9 @@ export class KennelRun {
         const hunt = new SeasonRunner({ kennel });
         const theHunt = await hunt.run();
 
-        console.log(theHunt);
+        if (isRuntimeLogVerbose()) {
+            console.log(theHunt);
+        }
 
         return theHunt;
     }

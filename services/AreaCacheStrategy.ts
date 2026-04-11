@@ -12,7 +12,7 @@
  * No overlapping territories clutter this hold.
  */
 
-import { IAreaCache, CachedArea } from '@datadogs/core';
+import { IAreaCache, CachedArea, isRuntimeLogVerbose } from '@datadogs/core';
 
 /**
  * Calculate the haversine distance between two coordinates in meters.
@@ -94,7 +94,9 @@ export class AreaCacheStrategy<T> implements IAreaCache<T> {
             // Circle-in-circle check: distance between centers + query radius <= cached radius
             const dist = haversineDistance(center, area.center);
             if (dist + radiusM <= area.radiusM) {
-                console.log(`[AreaCache] HIT: query (${center.lat},${center.lng} r=${radiusM}m) covered by cached (${area.center.lat},${area.center.lng} r=${area.radiusM}m)`);
+                if (isRuntimeLogVerbose()) {
+                    console.log(`[AreaCache] HIT: query (${center.lat},${center.lng} r=${radiusM}m) covered by cached (${area.center.lat},${area.center.lng} r=${area.radiusM}m)`);
+                }
                 return area;
             }
         }
@@ -107,7 +109,9 @@ export class AreaCacheStrategy<T> implements IAreaCache<T> {
             if (existing.discriminant !== area.discriminant) continue;
             const dist = haversineDistance(area.center, existing.center);
             if (dist + area.radiusM <= existing.radiusM) {
-                console.log(`[AreaCache] SKIP: new area already covered by existing (${existing.center.lat},${existing.center.lng} r=${existing.radiusM}m)`);
+                if (isRuntimeLogVerbose()) {
+                    console.log(`[AreaCache] SKIP: new area already covered by existing (${existing.center.lat},${existing.center.lng} r=${existing.radiusM}m)`);
+                }
                 return;
             }
         }
@@ -117,21 +121,25 @@ export class AreaCacheStrategy<T> implements IAreaCache<T> {
             if (existing.discriminant !== area.discriminant) return true;
             const dist = haversineDistance(existing.center, area.center);
             if (dist + existing.radiusM <= area.radiusM) {
-                console.log(`[AreaCache] EVICT: smaller area (${existing.center.lat},${existing.center.lng} r=${existing.radiusM}m) swallowed by new`);
+                if (isRuntimeLogVerbose()) {
+                    console.log(`[AreaCache] EVICT: smaller area (${existing.center.lat},${existing.center.lng} r=${existing.radiusM}m) swallowed by new`);
+                }
                 return false;
             }
             return true;
         });
 
         this.areas.push(area);
-        console.log(`[AreaCache] STORED: (${area.center.lat},${area.center.lng} r=${area.radiusM}m) [${area.discriminant}] (total: ${this.areas.length})`);
+        if (isRuntimeLogVerbose()) {
+            console.log(`[AreaCache] STORED: (${area.center.lat},${area.center.lng} r=${area.radiusM}m) [${area.discriminant}] (total: ${this.areas.length})`);
+        }
     }
 
     prune(now: number, ttlMs: number): void {
         const before = this.areas.length;
         this.areas = this.areas.filter(a => a.cachedAt + ttlMs > now);
         const evicted = before - this.areas.length;
-        if (evicted > 0) {
+        if (evicted > 0 && isRuntimeLogVerbose()) {
             console.log(`[AreaCache] PRUNED: ${evicted} expired areas`);
         }
     }

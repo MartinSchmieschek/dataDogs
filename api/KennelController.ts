@@ -4,6 +4,7 @@ import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } f
 import { IStore } from '../store/IStore';
 import {
     IKennelConfig,
+    isRuntimeLogVerbose,
     kennelDisplayNameBlockedReason,
     kennelLineageIdBlockedReason,
 } from '@datadogs/core';
@@ -74,7 +75,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 updatedAt: new Date()
             };
 
-            console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}`);
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}`);
+            }
 
             await this.store.save({
                 id: versionId,
@@ -94,7 +97,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
             // Attach lineageId to the returned config so callers can reference the kennel stably.
             const result = { ...config, lineageId } as any;
 
-            console.log(`[KennelController.create] Erfolgreich gespeichert: lineageId=${lineageId}`);
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelController.create] Erfolgreich gespeichert: lineageId=${lineageId}`);
+            }
             return {
                 ok: true,
                 id: lineageId,
@@ -157,7 +162,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const lineageId = (existing as any).lineageId || input.id;
             const parentId = existing.id; // The ancestor from which this incarnation was born
 
-            console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}`);
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}`);
+            }
 
             await this.store.save({
                 id: newVersionId,
@@ -176,7 +183,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
             const result = { ...config, id: newVersionId, lineageId } as any;
 
-            console.log(`[KennelController.save] Erfolgreich gespeichert: ${newVersionId}`);
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelController.save] Erfolgreich gespeichert: ${newVersionId}`);
+            }
             return {
                 ok: true,
                 id: lineageId,

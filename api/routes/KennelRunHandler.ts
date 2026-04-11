@@ -1,6 +1,14 @@
 // The KennelRunHandler — the huntmaster who unleashes the hounds.
 // Vome speaks: to cosmic madness laws submit — the waves obey the dependency graph.
-import { SerializedDog, MimicDog, type IMimicDogConfig, IKennelConfig, KennelRun, type ICacheHandler } from '@datadogs/core';
+import {
+    SerializedDog,
+    MimicDog,
+    type IMimicDogConfig,
+    IKennelConfig,
+    KennelRun,
+    type ICacheHandler,
+    isRuntimeLogVerbose,
+} from '@datadogs/core';
 import { RESERVED_TOP_LEVEL_SEGMENTS } from './spaRouteConstants';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
@@ -149,7 +157,9 @@ export class KennelRunHandler {
             mimic.instanceConfig.displayName = cfg.displayName;
 
             newLineageIds.push(lineageId);
-            console.log(`[KennelRunHandler] Persisted new mimic '${cfg.displayName}' (lineageId: ${lineageId})`);
+            if (isRuntimeLogVerbose()) {
+                console.log(`[KennelRunHandler] Persisted new mimic '${cfg.displayName}' (lineageId: ${lineageId})`);
+            }
         }
 
         if (newLineageIds.length > 0) {
