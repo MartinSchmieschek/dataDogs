@@ -12,7 +12,7 @@
 
 import { DogClass, IHuntingDog } from "./IHuntingDog";
 import { IHuntingSeason } from "./IHuntingSeason";
-
+import { isRuntimeLogVerbose } from "../../runtimeLog";
 
 
 /**
@@ -245,7 +245,9 @@ export abstract class Dog<Y> implements IHuntingDog<Y>{
                         // Proxy around collected -- tracks all property access recursively into the deep
                         const trackedCollected = createTrackedObject(collected, sourceInstanceTarget, '');
 
-                        console.log(`[TRACK] ${readerName} greift auf collected von ${sourceName} (${sourceId}) zu`);
+                        if (isRuntimeLogVerbose()) {
+                            console.log(`[TRACK] ${readerName} greift auf collected von ${sourceName} (${sourceId}) zu`);
+                        }
                         return trackedCollected;
                     }
                     return (sourceInstanceTarget as any)[dogProp];

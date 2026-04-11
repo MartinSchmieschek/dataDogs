@@ -13,7 +13,7 @@
  * When the rot sets in (expiry), the cache forgets.
  */
 
-import { ICacheHandler, IAreaCache } from '@datadogs/core';
+import { ICacheHandler, IAreaCache, isRuntimeLogVerbose } from '@datadogs/core';
 import { AreaCacheStrategy } from './AreaCacheStrategy';
 
 interface CacheEntry {
@@ -71,24 +71,25 @@ export class CacheHandler implements ICacheHandler {
     }
 
     async getOrFetch<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T> {
+        const v = isRuntimeLogVerbose();
         const cached = await this.get<T>(key);
         if (cached !== undefined) {
-            console.log(`[CacheHandler] HIT: ${key}`);
+            if (v) console.log(`[CacheHandler] HIT: ${key}`);
             return cached;
         }
 
         const existing = this.inflight.get(key);
         if (existing) {
-            console.log(`[CacheHandler] DEDUP: ${key} (waiting for in-flight request)`);
+            if (v) console.log(`[CacheHandler] DEDUP: ${key} (waiting for in-flight request)`);
             return existing as Promise<T>;
         }
 
-        console.log(`[CacheHandler] MISS: ${key} (fetching)`);
+        if (v) console.log(`[CacheHandler] MISS: ${key} (fetching)`);
         const promise = factory()
             .then(async (result) => {
                 await this.set(key, result, ttlMs);
                 this.inflight.delete(key);
-                console.log(`[CacheHandler] STORED: ${key} (TTL: ${Math.round(ttlMs / 1000)}s)`);
+                if (v) console.log(`[CacheHandler] STORED: ${key} (TTL: ${Math.round(ttlMs / 1000)}s)`);
                 return result;
             })
             .catch((err) => {

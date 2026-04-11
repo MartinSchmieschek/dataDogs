@@ -10,7 +10,7 @@
 
 import path from 'path';
 import type { PrismaClient } from '../store/generated/prisma-cache-client';
-import { ICacheHandler, IAreaCache } from '@datadogs/core';
+import { ICacheHandler, IAreaCache, isRuntimeLogVerbose } from '@datadogs/core';
 import { AreaCacheStrategy } from './AreaCacheStrategy';
 
 function createPrismaCacheClient(dbUrl: string): PrismaClient {
@@ -71,24 +71,25 @@ export class PrismaCacheHandler implements ICacheHandler {
     }
 
     async getOrFetch<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T> {
+        const v = isRuntimeLogVerbose();
         const cached = await this.get<T>(key);
         if (cached !== undefined) {
-            console.log(`[PrismaCacheHandler] HIT: ${key}`);
+            if (v) console.log(`[PrismaCacheHandler] HIT: ${key}`);
             return cached;
         }
 
         const existing = this.inflight.get(key);
         if (existing) {
-            console.log(`[PrismaCacheHandler] DEDUP: ${key} (waiting for in-flight request)`);
+            if (v) console.log(`[PrismaCacheHandler] DEDUP: ${key} (waiting for in-flight request)`);
             return existing as Promise<T>;
         }
 
-        console.log(`[PrismaCacheHandler] MISS: ${key} (fetching)`);
+        if (v) console.log(`[PrismaCacheHandler] MISS: ${key} (fetching)`);
         const promise = factory()
             .then(async (result) => {
                 await this.set(key, result, ttlMs);
                 this.inflight.delete(key);
-                console.log(`[PrismaCacheHandler] STORED: ${key} (TTL: ${Math.round(ttlMs / 1000)}s)`);
+                if (v) console.log(`[PrismaCacheHandler] STORED: ${key} (TTL: ${Math.round(ttlMs / 1000)}s)`);
                 return result;
             })
             .catch((err) => {
@@ -115,7 +116,7 @@ export class PrismaCacheHandler implements ICacheHandler {
         const res = await this.prisma.cacheEntry.deleteMany({
             where: { expiresAt: { lte: now } },
         });
-        if (res.count > 0) {
+        if (res.count > 0 && isRuntimeLogVerbose()) {
             console.log(`[PrismaCacheHandler] PRUNED: ${res.count} expired entries`);
         }
     }

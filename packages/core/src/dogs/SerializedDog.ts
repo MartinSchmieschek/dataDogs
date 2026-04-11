@@ -15,6 +15,7 @@ import { Dog } from "../core/entities/abstractHuntingDog";
 import { DogClass, IHuntingDog } from "../core/entities/IHuntingDog";
 import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import * as vm from "vm";
+import { isRuntimeLogVerbose } from "../runtimeLog";
 
 /**
  * Input DTO fer update/save operations -- the scroll upon which a spirit's new config is writ.
@@ -383,7 +384,7 @@ export class SerializedDog<T> extends Dog<T> {
                 contextObj[dogName] = parentDog.collected;
                 this.requiredYieldsContext.set(dogName, parentDog.collected);
                 // Debug: log fer SerializedDog parents
-                if (parentDog instanceof SerializedDog) {
+                if (parentDog instanceof SerializedDog && isRuntimeLogVerbose()) {
                     console.log(`[SerializedDog ${this.storageId}] Füge ${dogName} (storageId: ${(parentDog as SerializedDog<unknown>).storageId}) zum Context hinzu`);
                 }
                 // If the parent carries extra tools for the VM, inscribe them too
@@ -402,16 +403,18 @@ export class SerializedDog<T> extends Dog<T> {
 
         this.applyVmGlobalsSuppliers(contextObj, season.exhausted);
 
-        // Debug: log all exhausted dogs and context keys
-        console.log(`[SerializedDog ${this.storageId}] Required/Optional Parent IDs:`, allParentIds);
-        console.log(`[SerializedDog ${this.storageId}] Context keys vor createContext:`, Object.keys(contextObj));
+        if (isRuntimeLogVerbose()) {
+            console.log(`[SerializedDog ${this.storageId}] Required/Optional Parent IDs:`, allParentIds);
+            console.log(`[SerializedDog ${this.storageId}] Context keys vor createContext:`, Object.keys(contextObj));
+        }
 
         // Create the VM context AFTER all variables are inscribed --
         // IMPORTANT: all variables must be set BEFORE createContext or they vanish into the void!
         const context = vm.createContext(contextObj);
 
-        // Debug: verify variables survived the crossing into the VM realm
-        console.log(`[SerializedDog ${this.storageId}] Context keys nach createContext:`, Object.keys(context));
+        if (isRuntimeLogVerbose()) {
+            console.log(`[SerializedDog ${this.storageId}] Context keys nach createContext:`, Object.keys(context));
+        }
 
         // The script -- the spirit's incantation, ready to execute
         const script = new vm.Script(wrappedCode);
