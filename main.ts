@@ -102,6 +102,15 @@ function resolveAngularBrowserDir(): string | null {
     return null;
 }
 
+/** `public/` für `/static/*` (Swagger-Info-Hintergrundbild, …). Bei `dist/main.js` liegt `__dirname` unter `dist/`. */
+function resolvePublicDir(): string | null {
+    const candidates = [path.join(__dirname, 'public'), path.join(__dirname, '..', 'public')];
+    for (const dir of candidates) {
+        if (fs.existsSync(dir)) return dir;
+    }
+    return null;
+}
+
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
     console.error('Failed to start', e);
@@ -211,10 +220,10 @@ async function start() {
 
     /**
      * Which vessels may approach our ship cross-origin without being blown out of the water?
-     * - CORS_ALLOWED_ORIGINS: A comma-split list of allowed origins — those who may seek our plunder.
-     * - In production without a list: only the single origin named in CORS_ORIGIN or DEV_UI_ORIGIN shall pass.
-     * - In development without a list: any localhost vessel on any port may dock freely,
-     *   for in luminous dev space we gaze upon all, accuse none, deny few.
+     * - CORS_ALLOWED_ORIGINS: comma-separated list — those who may seek our plunder.
+     * - integration / production: CORS_ORIGIN oder DEV_UI_ORIGIN gesetzt → nur diese eine Origin;
+     *   sonst Origin erlauben, wenn sie zum Request-Host passt (SPA + API unter derselben URL, z. B. Render).
+     * - development ohne Liste: localhost-Origins.
      */
     const isLocalDevOrigin = (origin: string): boolean => {
         try {
@@ -223,6 +232,17 @@ async function start() {
                 (u.protocol === 'http:' || u.protocol === 'https:') &&
                 (u.hostname === 'localhost' || u.hostname === '127.0.0.1')
             );
+        } catch {
+            return false;
+        }
+    };
+
+    /** Origin-Header passt zur öffentlichen URL dieses Requests (x-forwarded-host / Host). */
+    const originMatchesRequestHost = (req: any, origin: string): boolean => {
+        try {
+            const hostHeader = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
+            if (!hostHeader) return false;
+            return new URL(origin).host.toLowerCase() === hostHeader.toLowerCase();
         } catch {
             return false;
         }
@@ -238,8 +258,12 @@ async function start() {
         }
 
         if (nodeEnv === 'production' || nodeEnv === 'integration') {
-            const fixed = process.env.CORS_ORIGIN ?? process.env.DEV_UI_ORIGIN ?? 'http://localhost:4300';
-            return origin === fixed ? origin : undefined;
+            const fixedRaw = process.env.CORS_ORIGIN ?? process.env.DEV_UI_ORIGIN;
+            if (fixedRaw?.trim()) {
+                const fixed = fixedRaw.replace(/\/$/, '');
+                return origin === fixed ? origin : undefined;
+            }
+            return originMatchesRequestHost(req, origin) ? origin : undefined;
         }
 
         return isLocalDevOrigin(origin) ? origin : undefined;
@@ -263,7 +287,10 @@ async function start() {
     app.use(express.json());
 
     // Static assets (Swagger UI hero, etc.) — served from /static/*
-    app.use('/static', express.static(path.join(__dirname, 'public')));
+    const publicDir = resolvePublicDir();
+    if (publicDir) {
+        app.use('/static', express.static(publicDir));
+    }
 
     const angularBrowserDir = serveBuiltAngular ? resolveAngularBrowserDir() : null;
     if (angularBrowserDir) {
