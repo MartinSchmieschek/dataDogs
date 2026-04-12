@@ -11,12 +11,63 @@ import {
 import { getBaseDogIcon } from "@datadogs/core";
 import { TrailQueryPact, type TrailQuery } from "./pacts";
 
-const OVERPASS_URL = process.env.OVERPASS_URL ?? "https://overpass-api.de/api/interpreter";
 const DEFAULT_RADIUS_M = 3000;
 const MAX_RADIUS_M = 15000;
-// Overpass is slow under load; we ask for 90s server-side and allow 100s client-side.
-const OVERPASS_SERVER_TIMEOUT_S = 90;
-const OVERPASS_CLIENT_TIMEOUT_MS = 100_000;
+
+const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 120;
+const MIN_OVERPASS_FETCH_TIMEOUT_MS = 10_000;
+
+// Mirror-Kette fuer Overpass. Reihenfolge = Prioritaet. osm.ch (Swiss OSM Community)
+// hat in mehreren Messungen die kuerzesten Antwortzeiten und sitzt geographisch nah
+// an den typischen Hunt-Zielen (DACH). lz4 und kumi sind die klassischen Backup-
+// Mirror; der offizielle Public-Endpoint kommt zuletzt, weil er unter Last am
+// haeufigsten mit HTTP 504 / "HTTP 200 + HTML" kippt. Der User kann per
+// OVERPASS_URL / OVERPASS_URLS aus der Env vorne anstellen — die Fallbacks bleiben
+// als Sicherungsnetz immer am Ende der Kette.
+const FALLBACK_OVERPASS_URLS = [
+    "https://overpass.osm.ch/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+];
+
+function parseEnvPositiveInt(name: string, fallback: number): number {
+    const v = process.env[name];
+    if (v == null || v === "") return fallback;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function getOverpassQueryTimeoutSec(): number {
+    return parseEnvPositiveInt("OVERPASS_QUERY_TIMEOUT_SEC", DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC);
+}
+
+function getOverpassFetchTimeoutMs(): number {
+    const fromEnv = process.env.OVERPASS_FETCH_TIMEOUT_MS;
+    if (fromEnv != null && fromEnv !== "") {
+        const n = parseInt(fromEnv, 10);
+        if (Number.isFinite(n) && n >= MIN_OVERPASS_FETCH_TIMEOUT_MS) return n;
+    }
+    return (getOverpassQueryTimeoutSec() + 60) * 1000;
+}
+
+/**
+ * Build the mirror chain. `OVERPASS_URL` (single) or `OVERPASS_URLS` (comma-separated)
+ * override the primary; the hardcoded fallbacks are appended so a transient failure
+ * on one mirror still has somewhere to go. Dupes are removed while preserving order.
+ */
+function getOverpassUrlChain(): string[] {
+    const chain: string[] = [];
+    const multi = process.env.OVERPASS_URLS;
+    if (multi) {
+        for (const u of multi.split(",").map(s => s.trim()).filter(Boolean)) chain.push(u);
+    } else {
+        const single = process.env.OVERPASS_URL;
+        if (single) chain.push(single);
+    }
+    for (const u of FALLBACK_OVERPASS_URLS) chain.push(u);
+    return Array.from(new Set(chain));
+}
 
 export type TrailType = "hiking" | "bicycle" | "both";
 
@@ -105,7 +156,7 @@ function buildOverpassQuery(lat: number, lng: number, radiusM: number, trailType
     // `out geom` inlines {lat,lon} arrays on ways and on relation members — no recurse-down
     // and no node-map reconstruction needed. Relations carry their member-way geometries
     // directly, which is exactly what we need to turn routes into polylines.
-    return `[out:json][timeout:${OVERPASS_SERVER_TIMEOUT_S}];
+    return `[out:json][timeout:${getOverpassQueryTimeoutSec()}];
 (
 ${lines.join("\n")}
 );
@@ -136,6 +187,105 @@ function extractOverpassError(body: string): string {
     if (match && match[1]) return match[1].trim();
     const stripped = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     return stripped.slice(0, 200);
+}
+
+/**
+ * Errors we consider transient — worth trying the next mirror for. Covers AbortError
+ * (client timeout), network errors, HTTP 429/5xx, and Overpass' "HTTP 200 + HTML error"
+ * quirk. Anything else (e.g. a 400 bad-query) is raised immediately — no point in
+ * retrying a broken request against a different server.
+ */
+function isRetryableOverpassError(err: unknown): boolean {
+    if (!err) return false;
+    const e = err as { name?: string; message?: string; code?: string };
+    if (e.name === "AbortError") return true;
+    const msg = (e.message ?? "").toLowerCase();
+    if (!msg) return false;
+    if (msg.includes("fetch failed") || msg.includes("network") || msg.includes("econn") || msg.includes("etimedout")) return true;
+    if (msg.includes("returned non-json")) return true;
+    if (/http\s+(5\d\d|429|408)/.test(msg)) return true;
+    return false;
+}
+
+async function fetchOverpassOnce(
+    url: string,
+    overpassQuery: string,
+    fetchTimeoutMs: number,
+): Promise<OverpassElement[]> {
+    const userAgent =
+        process.env.OVERPASS_USER_AGENT ??
+        "jsonAggregator/TrailRetriever (contact: set OVERPASS_USER_AGENT)";
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), fetchTimeoutMs);
+
+    let res: Response;
+    try {
+        res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": userAgent,
+            },
+            body: `data=${encodeURIComponent(overpassQuery)}`,
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+
+    const rawBody = await res.text();
+    if (!res.ok) {
+        throw new Error(
+            `TrailRetriever: Overpass HTTP ${res.status} ${res.statusText}${rawBody ? ` — ${rawBody.slice(0, 200)}` : ""}`
+        );
+    }
+    const contentType = res.headers.get("content-type") ?? "";
+    const looksLikeHtml = rawBody.trimStart().startsWith("<");
+    if (!contentType.includes("json") || looksLikeHtml) {
+        const hint = extractOverpassError(rawBody);
+        throw new Error(
+            `TrailRetriever: Overpass returned non-JSON (${contentType || "no content-type"})${hint ? ` — ${hint}` : ""}`
+        );
+    }
+
+    let json: { elements?: OverpassElement[] };
+    try {
+        json = JSON.parse(rawBody) as { elements?: OverpassElement[] };
+    } catch (err: any) {
+        throw new Error(`TrailRetriever: Overpass JSON parse failed — ${err?.message || err}`);
+    }
+    return json.elements ?? [];
+}
+
+/**
+ * Walk the mirror chain until one server answers cleanly. Retryable errors escalate
+ * to the next mirror; permanent errors (400, parse failures) bubble up immediately.
+ * If every mirror fails we throw a combined error describing each attempt.
+ */
+async function fetchOverpassElementsWithFallback(overpassQuery: string): Promise<OverpassElement[]> {
+    const urls = getOverpassUrlChain();
+    const fetchTimeoutMs = getOverpassFetchTimeoutMs();
+    const errors: string[] = [];
+
+    for (let i = 0; i < urls.length; i++) {
+        const url = urls[i]!;
+        try {
+            return await fetchOverpassOnce(url, overpassQuery, fetchTimeoutMs);
+        } catch (err: any) {
+            const label = `${url}: ${err?.message ?? err}`;
+            errors.push(label);
+            if (!isRetryableOverpassError(err) || i === urls.length - 1) {
+                if (errors.length === 1) throw err;
+                throw new Error(
+                    `TrailRetriever: all Overpass mirrors failed — ${errors.join(" | ")}`
+                );
+            }
+        }
+    }
+
+    // Unreachable — the loop either returns or throws.
+    throw new Error("TrailRetriever: no Overpass URL configured");
 }
 
 function classifyTrailType(tags: Record<string, string>): "hiking" | "bicycle" {
@@ -212,52 +362,7 @@ export class TrailRetriever extends Dog<TrailResult> implements ICacheable, IAre
 
         const fetchTrails = async (): Promise<TrailResult> => {
             const overpassQuery = buildOverpassQuery(lat, lng, radiusM, trailType);
-            const userAgent =
-                process.env.OVERPASS_USER_AGENT ??
-                "jsonAggregator/TrailRetriever (contact: set OVERPASS_USER_AGENT)";
-
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), OVERPASS_CLIENT_TIMEOUT_MS);
-
-            let res: Response;
-            try {
-                res = await fetch(OVERPASS_URL, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded",
-                        "User-Agent": userAgent,
-                    },
-                    body: `data=${encodeURIComponent(overpassQuery)}`,
-                    signal: controller.signal,
-                });
-            } finally {
-                clearTimeout(timer);
-            }
-
-            // Overpass returns its runtime errors (timeout, rate limit, bad query) as
-            // HTTP 200 with an HTML body. `res.ok` is not enough — inspect the body.
-            const rawBody = await res.text();
-            if (!res.ok) {
-                throw new Error(
-                    `TrailRetriever: Overpass HTTP ${res.status} ${res.statusText}${rawBody ? ` — ${rawBody.slice(0, 200)}` : ""}`
-                );
-            }
-            const contentType = res.headers.get("content-type") ?? "";
-            const looksLikeHtml = rawBody.trimStart().startsWith("<");
-            if (!contentType.includes("json") || looksLikeHtml) {
-                const hint = extractOverpassError(rawBody);
-                throw new Error(
-                    `TrailRetriever: Overpass returned non-JSON (${contentType || "no content-type"})${hint ? ` — ${hint}` : ""}`
-                );
-            }
-
-            let json: { elements?: OverpassElement[] };
-            try {
-                json = JSON.parse(rawBody) as { elements?: OverpassElement[] };
-            } catch (err: any) {
-                throw new Error(`TrailRetriever: Overpass JSON parse failed — ${err?.message || err}`);
-            }
-            const rawElements = json.elements ?? [];
+            const rawElements = await fetchOverpassElementsWithFallback(overpassQuery);
 
             // Extract ways and relations with tags (actual trails).
             // `out geom` gives us inline geometries, so no node-map is needed.
