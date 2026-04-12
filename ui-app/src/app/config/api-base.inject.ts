@@ -7,4 +7,4 @@
  * damit absolute Links auf Staging/Prod nicht fälschlich localhost nutzen.
  */
 export const API_PREFER_DELIVERY_ORIGIN = false;
-export const API_ORIGIN_INJECTED = '';
+export const API_ORIGIN_INJECTED = "http://localhost:3000";

@@ -376,34 +376,66 @@ flowchart LR
 
 ## Pacts, Mimics, and Auto-Mimic — shapes not yet born
 
-**Oull** is **possibility**: a **Pact** is only a shape (`__isPact: true`), not a runner. A **MimicDog** wears that shape until truth arrives. **`autoMimic`** conjures when nothing fulfills the Pact; it **unmakes** the Mimic when a real Dog steps into the kennel. Endless faces — one graph, many outcomes.
+**Oull** is **possibility**: a **Pact** is only a shape (`__isPact: true`), not a runner. A **MimicDog** wears that shape until truth arrives. **`autoMimic`** closes every Pact-gap — but no longer by blind conjuring. It now walks a lineage-aware liturgy: **adopt first, conjure only as last resort, heal the kennel's memory on the way out.**
+
+### The four-step liturgy
+
+1. **Memory** — [`KennelRunHandler.createMimicAdopter`](api/routes/KennelRunHandler.ts) pulls **every historical version** of the kennel via `kennelsController.getVersions(lineageId)` and collects every non-base `dogId` they ever carried into a `remembered` set. Even lineages a later PUT dropped from `dogIds` survive here — the kennel never forgets.
+2. **Scan** — for each unmet Pact, the adopter queries `findLatestVersionsByType(MimicDog.name)` and keeps rows whose `serializedDogConfig.imitates` matches the Pact name.
+3. **Winner** — candidates whose `lineageId` is in `remembered` win first; tie-break by newest `createdAt`. If nothing is remembered, the newest overall match wins. If there are no candidates at all, adoption returns `null`.
+4. **Conjure** — only when adoption yields `null` does [`KennelRun.autoMimic`](packages/core/src/KennelRun.ts) forge a fresh `auto-mimic-<PactName>` placeholder with throwing `theRun`.
+
+After the season runs, **`persistNewMimics`** closes the loop: fresh mimics (no `lineageId`) are saved to the store with a new version + lineage GUID; adopted mimics keep their existing lineage. **In both cases**, the mimic's `lineageId` is healed into `config.dogIds` via `kennelsController.heal(...)` — and the in-memory config is mutated on the spot so the same `/run` response already reflects the heal. On subsequent runs, the mimics load directly through `createSerializedDogFactory` by lineage; no adoption, no conjuring.
 
 ```mermaid
 flowchart TD
-    subgraph Need["Dog requires Pact class P"]
+    subgraph Need["Dog requires Pact P"]
         Req[required / optional graph]
     end
 
-    subgraph Kennel["Dogs in kennel after fill"]
-        Real{Real Dog<br/>implements P?}
-        Mimic{MimicDog<br/>imitates P?}
+    subgraph Fill["KennelRun.fillKennel()"]
+        Real{Real Dog<br/>implements P<br/>already in kennel?}
+        Mimic{Saved MimicDog<br/>for P in dogIds?}
     end
 
-    subgraph Auto["autoMimic()"]
-        Both[Real + Mimic?]
-        Drop[Remove Mimic]
-        Spawn[Inject MimicDog / BaseDog<br/>from factory]
+    subgraph Adopt["autoMimic → MimicAdopter"]
+        Memory[Load kennel<br/>version history<br/>→ remembered lineages]
+        Scan[Query deep for<br/>latest MimicDogs<br/>where imitates = P]
+        Pick{Candidate in<br/>remembered set?}
+        Winner[Adopt winner<br/>→ carries existing<br/>lineageId + theRun]
+        Conjure[Forge fresh<br/>auto-mimic-P<br/>throwing placeholder]
+    end
+
+    subgraph Heal["persistNewMimics"]
+        FreshSave[Save new MimicDog<br/>row with new<br/>version + lineage GUID]
+        HealIds[heal config.dogIds<br/>← add mimic lineageIds<br/>+ mutate in-memory config]
     end
 
     Need --> Real
-    Real -->|yes| Both
+    Real -->|yes| OK[Wave runs]
     Real -->|no| Mimic
-    Mimic -->|yes| OK[Wave can run]
-    Mimic -->|no| Spawn
-    Both --> Drop
-    Drop --> OK
-    Spawn --> OK
+    Mimic -->|yes| OK
+    Mimic -->|no| Memory
+    Memory --> Scan
+    Scan --> Pick
+    Pick -->|remembered<br/>or newest| Winner
+    Pick -->|no match| Conjure
+    Winner --> OK
+    Conjure --> OK
+    OK --> FreshSave
+    FreshSave --> HealIds
+    HealIds --> Done[Next run:<br/>factory loads mimic<br/>directly by lineageId]
 ```
+
+### Factory dedup — MimicDog wins on type upgrade
+
+`createSerializedDogFactory` in [`api/routes/KennelRunHandler.ts`](api/routes/KennelRunHandler.ts) fetches **both** `SerializedDog` and `MimicDog` rows for the requested IDs in parallel, then deduplicates by `lineageId` keeping the newest `createdAt`. When a dog was upgraded from plain SerializedDog to MimicDog (via a save that added an `imitates` field), the MimicDog version wins — older SerializedDog incarnations are dropped silently. The factory then sniffs `config.imitates` on construction and instantiates the right class.
+
+### Pact-name matching in autoMimic
+
+To guard against class identity issues when the same module is loaded from different paths, `autoMimic` resolves each dependency Pact's **name** up front (from the `baseDogClasses` registry, or by instantiating the class) and matches mimics by `imitatesName` **in addition to** the class-identity check. A mimic fulfils a Pact if either test passes — no silent "Pact not fulfilled" when two copies of the same class exist side by side.
+
+Core rule, restated: **Who requires via a Pact accepts Mimics (fresh, adopted, or reloaded). Who requires a real class demands the real Dog.**
 
 ---
 
@@ -655,7 +687,8 @@ flowchart LR
 ### Core engine
 - **[main.ts](main.ts)** — Express gate, dog + pact registration, startup tests  
 - **[seed.ts](seed.ts)** — Database seeds (SerializedDogs, MimicDogs, KennelConfigs)  
-- **[packages/core/src/KennelRun.ts](packages/core/src/KennelRun.ts)** — fillKennel, autoMimic, orchestration  
+- **[packages/core/src/KennelRun.ts](packages/core/src/KennelRun.ts)** — fillKennel, autoMimic, orchestration, `MimicAdopter` type  
+- **[api/routes/KennelRunHandler.ts](api/routes/KennelRunHandler.ts)** — `createMimicAdopter` (lineage-aware adoption), `persistNewMimics` (heal dogIds), `createSerializedDogFactory` (lineage dedup)  
 - **[packages/core/src/harverster.ts](packages/core/src/harverster.ts)** — SeasonRunner, waves  
 - **[packages/core/src/dogs/SerializedDog.ts](packages/core/src/dogs/SerializedDog.ts)** — VM, context, yield  
 - **[packages/core/src/dogs/createPact.ts](packages/core/src/dogs/createPact.ts)** — Pact factory  

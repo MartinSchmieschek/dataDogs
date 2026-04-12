@@ -7,3 +7,4 @@
 export { ICacheHandler } from './ICacheHandler';
 export { ICacheable, isCacheable } from './ICacheable';
 export { IAreaCache, IAreaCacheable, isAreaCacheable, CachedArea } from './IAreaCache';
+export { geoBucketKey, geoBucketCenter, defaultGeoBucketM, type GeoBucketOptions } from './geoBucket';

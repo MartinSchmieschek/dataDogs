@@ -357,28 +357,44 @@ export async function seedTrailScoutKennel(nodesStore: IStore, kennelsStore: ISt
         theRun: `
 var trails = TrailRetriever;
 var elev = ElevationRetriever;
-var hikingTrails = trails.trails.filter(function(t) { return t.trailType === "hiking"; });
-var cyclingTrails = trails.trails.filter(function(t) { return t.trailType === "bicycle"; });
+// TrailRetriever ships helper functions on its yield — use them so relations
+// (hiking/bicycle routes) get resolved into polylines, not just ways.
+var toPolylines = typeof trails.toPolylines === "function"
+    ? trails.toPolylines
+    : function(t) { return t && t.segments && t.segments.length ? t.segments : (t && t.coordinates && t.coordinates.length >= 2 ? [t.coordinates] : []); };
+
+function project(t) {
+    return {
+        id: t.id,
+        name: t.name || null,
+        surface: t.surface || null,
+        distance: t.distance || null,
+        osmType: t.type,
+        segments: toPolylines(t),
+        tags: t.tags,
+    };
+}
+
+var hikingTrails = trails.trails.filter(function(t) { return t.trailType === "hiking"; }).map(project);
+var cyclingTrails = trails.trails.filter(function(t) { return t.trailType === "bicycle"; }).map(project);
+// Drop entries that ended up without drawable geometry.
+hikingTrails = hikingTrails.filter(function(t) { return t.segments && t.segments.length > 0; });
+cyclingTrails = cyclingTrails.filter(function(t) { return t.segments && t.segments.length > 0; });
+
 return {
     center: trails.center,
     elevation: elev.elevation,
     radiusM: trails.radiusM,
     trailType: trails.trailType,
     summary: {
-        totalTrails: trails.trails.length,
+        totalTrails: hikingTrails.length + cyclingTrails.length,
         hikingCount: hikingTrails.length,
         cyclingCount: cyclingTrails.length,
         elevationM: elev.elevation,
     },
-    hiking: hikingTrails.slice(0, 30).map(function(t) {
-        return { id: t.id, name: t.name || null, surface: t.surface || null,
-                 distance: t.distance || null, coordinates: t.coordinates, tags: t.tags };
-    }),
-    cycling: cyclingTrails.slice(0, 30).map(function(t) {
-        return { id: t.id, name: t.name || null, surface: t.surface || null,
-                 distance: t.distance || null, coordinates: t.coordinates, tags: t.tags };
-    }),
-}
+    hiking: hikingTrails.slice(0, 30),
+    cycling: cyclingTrails.slice(0, 30),
+};
 `,
     };
     await nodesStore.save({
@@ -490,13 +506,20 @@ html += "var td=" + trailsJson + ";";
 html += "var layers={};";
 html += "function addT(arr,col,pfx){";
 html += "for(var i=0;i<arr.length;i++){";
-html += "var t=arr[i];if(!t.coordinates||t.coordinates.length<2)continue;";
-html += "var ll=t.coordinates.map(function(c){return[c.lat,c.lon];});";
-html += "var line=L.polyline(ll,{color:col,weight:3,opacity:0.8}).addTo(map);";
+html += "var t=arr[i];var segs=t.segments||[];";
+html += "if(!segs.length)continue;";
+html += "var group=L.featureGroup();";
+html += "for(var s=0;s<segs.length;s++){";
+html += "var seg=segs[s];if(!seg||seg.length<2)continue;";
+html += "var ll=seg.map(function(c){return[c.lat,c.lon];});";
+html += "L.polyline(ll,{color:col,weight:3,opacity:0.8}).addTo(group);";
+html += "}";
+html += "if(!group.getLayers().length)continue;";
+html += "group.addTo(map);";
 html += "var nm=t.name||'(unbenannt)';var pp='<b>'+nm+'</b>';";
 html += "if(t.surface)pp+='<br/>Belag: '+t.surface;";
 html += "if(t.distance)pp+='<br/>Distanz: '+t.distance;";
-html += "line.bindPopup(pp);layers[pfx+i]=line;";
+html += "group.bindPopup(pp);layers[pfx+i]=group;";
 html += "}}";
 html += "addT(td.hiking,'#2ecc71','h');addT(td.cycling,'#3498db','c');";
 html += "document.querySelectorAll('.ti').forEach(function(el){";

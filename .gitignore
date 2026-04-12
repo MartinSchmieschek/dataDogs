@@ -1,6 +1,10 @@
 # Editor / AI tooling (local only)
 .claude/
 .vscode/
+.amar/
+.boreal/
+.nira/
+amarsDumps/
 
 # Node modules
 node_modules/

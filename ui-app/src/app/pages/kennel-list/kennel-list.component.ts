@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, OnInit } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
@@ -18,7 +18,6 @@ import { isHtmlResultString } from '../../utils/lead-result-string-format';
   selector: 'app-kennel-list',
   standalone: true,
   imports: [
-    RouterLink,
     DatePipe,
     KennelFormComponent,
     LoadingIndicatorComponent,
@@ -125,16 +124,16 @@ export class KennelListComponent implements OnInit {
     return kennel.lineageId || kennel.id;
   }
 
+  onExecute(kennel: IKennelConfig): void {
+    if (this.hasBody(kennel)) {
+      this.executeWithBody(kennel);
+    } else {
+      window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
+    }
+  }
+
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
     const ref = this.kennelRef(kennel);
-    if (action === 'execute') {
-      if (this.hasBody(kennel)) {
-        this.executeWithBody(kennel);
-      } else {
-        window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
-      }
-      return;
-    }
     if (action === 'edit') {
       void this.router.navigate(['/kennel', ref, 'edit']);
       return;

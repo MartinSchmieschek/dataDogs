@@ -6,6 +6,7 @@ import {
     type IMimicDogConfig,
     IKennelConfig,
     KennelRun,
+    type MimicAdopter,
     type ICacheHandler,
     isRuntimeLogVerbose,
 } from '@datadogs/core';
@@ -72,6 +73,8 @@ export class KennelRunHandler {
             ? this.deps.cacheHandler.getAreaCache()
             : undefined;
 
+        const mimicAdopter = await this.createMimicAdopter(config);
+
         const kennelRun = new KennelRun(
             config,
             this.deps.baseDogsMap,
@@ -80,11 +83,97 @@ export class KennelRunHandler {
             body,
             [],
             this.deps.cacheHandler,
-            areaCache
+            areaCache,
+            mimicAdopter
         );
         const season = await kennelRun.run();
         await this.persistNewMimics(config, season.exhausted);
         return convertSeasonToWaves(season);
+    }
+
+    /**
+     * Build an adopter that reuses saved MimicDogs instead of conjuring fresh placeholders.
+     *
+     * Strategy (option c — lineage-aware adoption):
+     *   1. Collect every non-base dogId this kennel has ever carried across all its versions.
+     *      This is the kennel's "memory" — mimic lineageIds it used to own before the UI (or
+     *      any client) dropped them from dogIds on a later PUT.
+     *   2. When autoMimic asks for a mimic of pact X, query the deep for all MimicDog lineages
+     *      whose config.imitates === X.
+     *   3. Prefer a candidate whose lineageId is in the kennel's memory (optionally augmented
+     *      with the caller's hint set). Tie-break on newest createdAt. Fall back to the
+     *      newest match overall if nothing is remembered.
+     *
+     * The returned mimic carries its stable lineageId; persistNewMimics later heals it back
+     * into config.dogIds so the kennel remembers it on subsequent runs without re-adopting.
+     */
+    private async createMimicAdopter(config: IKennelConfig): Promise<MimicAdopter> {
+        const { nodesStore, kennelsController } = this.deps;
+
+        // Assemble the kennel's lineage memory from every historical version.
+        const remembered = new Set<string>();
+        const kennelLineageId = (config as any).lineageId || config.id;
+        try {
+            const versions = await kennelsController.getVersions(kennelLineageId);
+            for (const v of versions) {
+                const dogIds = (v.config as IKennelConfig)?.dogIds ?? [];
+                for (const id of dogIds) {
+                    if (typeof id === 'string' && !id.startsWith('base:')) {
+                        remembered.add(id);
+                    }
+                }
+            }
+        } catch (err) {
+            if (isRuntimeLogVerbose()) {
+                console.warn('[KennelRunHandler.createMimicAdopter] history lookup failed:', err);
+            }
+        }
+
+        return async (pactName, preferredLineageIds) => {
+            // Union the kennel's own memory with any hint the core passed in.
+            const memory = new Set<string>(remembered);
+            preferredLineageIds.forEach(id => memory.add(id));
+
+            // Pull every latest MimicDog from the deep and keep only ones that imitate this pact.
+            const rows = await nodesStore.findLatestVersionsByType(MimicDog.name);
+            type Candidate = {
+                versionId: string;
+                lineageId: string;
+                createdAt: number;
+                cfg: IMimicDogConfig;
+            };
+            const candidates: Candidate[] = [];
+            for (const row of rows as any[]) {
+                const raw = typeof row.serializedDogConfig === 'string'
+                    ? (() => { try { return JSON.parse(row.serializedDogConfig); } catch { return null; } })()
+                    : row.serializedDogConfig;
+                if (!raw || raw.imitates !== pactName) continue;
+                const lineageId = raw.lineageId || row.lineageId || row.id;
+                if (!lineageId) continue;
+                const createdAt = row.createdAt ? new Date(row.createdAt).getTime() : 0;
+                candidates.push({
+                    versionId: row.id,
+                    lineageId,
+                    createdAt,
+                    cfg: raw as IMimicDogConfig,
+                });
+            }
+            if (candidates.length === 0) return null;
+
+            // Option (c): remembered lineages win; tie-break by newest createdAt.
+            // If nothing is remembered, fall back to the newest match overall.
+            const rememberedCands = candidates.filter(c => memory.has(c.lineageId));
+            const pool = rememberedCands.length > 0 ? rememberedCands : candidates;
+            pool.sort((a, b) => b.createdAt - a.createdAt);
+            const winner = pool[0];
+
+            const mimicCfg: IMimicDogConfig = {
+                ...winner.cfg,
+                id: winner.cfg.id ?? winner.versionId,
+                lineageId: winner.lineageId,
+            };
+            return new MimicDog<unknown>(mimicCfg, winner.versionId);
+        };
     }
 
     // --- Private internals ---
@@ -124,12 +213,27 @@ export class KennelRunHandler {
 
     private async persistNewMimics(config: IKennelConfig, exhausted: any[]): Promise<void> {
         const { nodesStore } = this.deps;
-        const newLineageIds: string[] = [];
+        const currentDogIds = new Set<string>(config.dogIds ?? []);
+        const freshLineageIds: string[] = [];
+        const adoptedLineageIds: string[] = [];
 
         for (const dog of exhausted) {
             if (!(dog instanceof MimicDog)) continue;
             const mimic = dog as MimicDog<unknown>;
-            if (mimic.instanceConfig?.lineageId) continue;
+            const existingLineageId = mimic.instanceConfig?.lineageId;
+
+            if (existingLineageId) {
+                // Already persisted in the deep (either from dogIds or adopted via MimicAdopter).
+                // If the kennel's dogIds don't yet remember it, heal it in so next run loads it directly.
+                if (!currentDogIds.has(existingLineageId)) {
+                    adoptedLineageIds.push(existingLineageId);
+                    currentDogIds.add(existingLineageId);
+                    if (isRuntimeLogVerbose()) {
+                        console.log(`[KennelRunHandler] Heal adopted mimic into dogIds (lineageId: ${existingLineageId})`);
+                    }
+                }
+                continue;
+            }
 
             const versionId = generateVersionId();
             const lineageId = generateLineageId();
@@ -156,17 +260,20 @@ export class KennelRunHandler {
             mimic.instanceConfig.parentId = null;
             mimic.instanceConfig.displayName = cfg.displayName;
 
-            newLineageIds.push(lineageId);
+            freshLineageIds.push(lineageId);
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelRunHandler] Persisted new mimic '${cfg.displayName}' (lineageId: ${lineageId})`);
             }
         }
 
-        if (newLineageIds.length > 0) {
-            const updatedDogIds = [...(config.dogIds ?? []), ...newLineageIds];
+        const addedLineageIds = [...freshLineageIds, ...adoptedLineageIds];
+        if (addedLineageIds.length > 0) {
+            const updatedDogIds = [...(config.dogIds ?? []), ...addedLineageIds];
             await this.deps.kennelsController.heal(config.id, {
                 dogIds: updatedDogIds,
             } as any);
+            // Keep the in-memory config in sync so the /run response reflects the heal.
+            config.dogIds = updatedDogIds;
         }
     }
 

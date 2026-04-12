@@ -84,7 +84,7 @@ A MimicDog is a SerializedDog that *imitates* a Pact. It sits between raw data s
 
 ### Auto-Mimic
 
-When a Dog requires a Pact that no one in the Kennel fulfills, the system conjures a MimicDog **from the void** — a stand-in until something real answers the Pact. When a real Dog arrives that honors the Pact, the Mimic dissolves. When that real Dog is removed, the Mimic returns. The runner closes the gap.
+When a Dog requires a Pact that no one in the Kennel fulfills, the system closes the gap in two passes: first it tries to **adopt** a saved Mimic from the kennel's own memory; only if that fails does it **conjure** a fresh placeholder from the void. Either way, the final Mimic is then **healed back into `dogIds`** so the kennel remembers it forever.
 
 > *From brooding gulfs are we beheld*  
 > *By that which bears no name.*
@@ -93,25 +93,48 @@ Core rule: **Who requires via a Pact accepts Mimics. Who requires a real class d
 
 *(Loader verse **Lohk** — [`ui-app/src/app/data/requiem-loading.ts`](ui-app/src/app/data/requiem-loading.ts).)*
 
+#### The adoption dance — lineage-aware Mimic reuse
+
+Auto-mimicking is no longer a blind "conjure a fresh placeholder on every unmet Pact" — the runner walks a four-step liturgy before anything new is born. See [`api/routes/KennelRunHandler.ts`](api/routes/KennelRunHandler.ts) (`createMimicAdopter`, `persistNewMimics`) and [`packages/core/src/KennelRun.ts`](packages/core/src/KennelRun.ts) (`autoMimic`).
+
+1. **Collect the kennel's memory.** On every run, `createMimicAdopter` fetches **all historical versions** of the kennel and harvests every non-base `dogId` it ever carried into a set of "remembered lineages". Even dogs the UI dropped from a later `PUT` remain in memory — nothing is ever truly forgotten.
+2. **Scan the deep for candidates.** For each unmet Pact, the adopter queries `findLatestVersionsByType(MimicDog.name)` and keeps only rows whose `serializedDogConfig.imitates === <PactName>`.
+3. **Pick a winner.** Candidates whose `lineageId` lives in the kennel's memory win first; tie-break by newest `createdAt`. If no remembered candidate exists, the newest overall match wins. If no candidate exists at all, adoption fails and we fall through to step 4.
+4. **Fresh conjuring as last resort.** Only when adoption returns `null` does `KennelRun.autoMimic` forge a fresh `auto-mimic-<PactName>` placeholder whose `theRun` throws `"MimicDog for '<PactName>' needs user code"`.
+
+After the season runs, **`persistNewMimics`** closes the loop: every Mimic in `exhausted` is either *already* persisted (adopted, has a `lineageId`) or freshly minted (no `lineageId`). Fresh mimics are saved to the store with a new version + lineage GUID; adopted mimics keep their existing lineage. **Both cases** trigger `kennelsController.heal(configId, { dogIds: [...old, ...addedLineageIds] })` — the kennel's own `dogIds` grow to include the mimic's `lineageId`, and the in-memory `config.dogIds` is kept in sync so the `/run` response already reflects the heal.
+
+The net effect: **the first run teaches the kennel what it needs**, and every subsequent run loads those mimics directly from `dogIds` via `createSerializedDogFactory` — no adoption, no conjuring. If a client later PUTs a new kennel version that drops the mimic lineageIds, the adopter resurrects them from history on the next run and heals them back.
+
+#### Factory dedup — MimicDog wins on type upgrade
+
+`createSerializedDogFactory` in [`api/routes/KennelRunHandler.ts`](api/routes/KennelRunHandler.ts) now fetches both `SerializedDog` and `MimicDog` rows for the requested IDs in parallel, then **deduplicates by `lineageId`**. When the same logical dog exists as both types (because someone saved an `imitates` field onto a formerly-serialized dog), the most recent `createdAt` wins — MimicDog upgrades survive, older SerializedDog incarnations are dropped silently. The factory also sniffs `config.imitates` on construction: if the field is a non-empty string, a `MimicDog` is instantiated; otherwise a `SerializedDog`.
+
 #### What Mimics reveal during a run
 
-When you run a Kennel (`/api/kennels/:id/run`), auto-created MimicDogs appear in the Waves response and tell you exactly **what a dog really needs**:
+When you run a Kennel (`/api/kennels/:id/run`), Mimics appear in the Waves response and tell you exactly **what a dog really needs**:
 
 | Field | What it tells you |
 |-------|-------------------|
 | `mimic: true` | This node is a shapeshifter, not a real dog. |
 | `name` | The Pact it imitates — the **data contract** the consuming dog requires (e.g. `NearbyLandmarksPact`). |
-| `displayName` | Auto-created mimics are prefixed `auto-mimic-` (e.g. `auto-mimic-NearbyLandmarksPact`). |
-| `error` | Always `"MimicDog for '<PactName>' needs user code"` — the placeholder code throws on purpose. |
-| `serializedDogConfig.theRun` | The placeholder TypeScript — replace this with your transformation logic. |
+| `displayName` | Fresh placeholders are prefixed `auto-mimic-` (e.g. `auto-mimic-NearbyLandmarksPact`). Adopted mimics keep whatever `displayName` they were saved with. |
+| `error` | Fresh placeholders return `"MimicDog for '<PactName>' needs user code"` — the placeholder code throws on purpose. Adopted mimics with productive `theRun` return real data instead. |
+| `serializedDogConfig.theRun` | The TypeScript code the mimic will run — either the throwing placeholder or the adopted working code. Replace it (or save a new version) to teach the mimic its voice. |
+| `serializedDogConfig.imitates` | The Pact name this mimic is bound to. **Never drop this field on save** — it's the mimic's shape. |
+| `serializedDogConfig.lineageId` | Set for adopted mimics and for fresh mimics after the first run (via `persistNewMimics`). The stable identity across all versions. |
 | `editable: true` | You can open the Mimic in the editor and write the code that fulfills the Pact. |
 | `deletable: false` | Auto-mimics cannot be deleted — remove the consuming dog or add a real dog that fulfills the Pact instead. |
 
 > *Oull — From endless faces, countless forms, a multitude unfolds.*
 
-**Reading Mimics as a blueprint:** Every auto-mimic is a gap in the pipeline. Its `name` tells you which Pact is unfulfilled, and the Pact's TypeScript type (visible in the editor's IntelliSense) tells you the exact data shape the consuming dog expects. Write `theRun` code that returns that shape, and the mimic becomes a real transformer.
+**Reading Mimics as a blueprint:** Every unfilled mimic is a gap in the pipeline. Its `name` tells you which Pact is unfulfilled, and the Pact's TypeScript type (visible in the editor's IntelliSense) tells you the exact data shape the consuming dog expects. Write `theRun` code that returns that shape, `POST /save?id=<mimic-versionId>` with the full `serializedDogConfig` (keep `imitates`!), and the mimic becomes a real transformer on the next run.
 
-**Persistence:** After the first run, auto-created mimics are saved to the database and added to the Kennel's `dogIds`. On subsequent runs they load from the store instead of being re-conjured. When you edit a mimic's `theRun` and save, it keeps its `imitates` binding and becomes a productive member of the pack.
+**Persistence (summary):**
+- **First run of a new kennel** — fresh mimics are conjured, saved to the store with brand-new `lineageId`s, and healed into `config.dogIds`. The in-memory config is mutated on the spot so the response already shows the healed `dogIds`.
+- **Subsequent runs** — the factory loads the mimics directly by `lineageId`; no adoption, no heal.
+- **Kennel version drop** — if a later PUT removes mimic lineages from `dogIds`, the adopter pulls them back from kennel-version history and heals them in again.
+- **Manual mimic edit** — editing a mimic's `theRun` via `POST /save` bumps its version but keeps the `lineageId`. The next run loads the new version through normal lineage resolution. The `imitates` binding must be preserved in the saved config.
 
 ### Data Pipelines
 
