@@ -78,34 +78,40 @@
 
         <div class="kennel-list" role="list">
           @for (kennel of filteredKennels(); track kennel.id) {
-            <article class="kennel-row" role="listitem">
-              <div class="kennel-row-main">
-                <div
-                  class="kennel-emoji"
-                  [class.kennel-emoji--empty]="!hasEmojiStored(kennel)"
-                  aria-hidden="true">
-                  <span class="kennel-emoji-char">{{ kennelEmojiForList(kennel) }}</span>
-                </div>
-                <div class="kennel-text">
-                  <h3 class="kennel-title">
-                    <a [routerLink]="['/kennel', kennelRef(kennel)]">{{ kennel.name || kennelRef(kennel) }}</a>
-                  </h3>
-                  <div class="kennel-meta">
-                    <span class="kennel-id">{{ kennelRef(kennel) }}</span>
-                    @if (kennel.updatedAt || kennel.createdAt) {
-                      <span class="kennel-date">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</span>
-                    }
-                  </div>
-                  @if (kennel.description) {
-                    <p class="kennel-desc">{{ kennel.description }}</p>
+            <article class="kennel-card" role="listitem">
+              <button
+                type="button"
+                class="kennel-emoji"
+                [class.kennel-emoji--empty]="!hasEmojiStored(kennel)"
+                (click)="onExecute(kennel)"
+                [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
+                [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
+                <span class="kennel-emoji-char" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
+                <span class="kennel-emoji-run" aria-hidden="true">▶</span>
+              </button>
+
+              <div class="kennel-text">
+                <button
+                  type="button"
+                  class="kennel-title"
+                  (click)="onExecute(kennel)"
+                  [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
+                  <span class="kennel-title-text">{{ kennel.name || kennelRef(kennel) }}</span>
+                </button>
+                <div class="kennel-meta">
+                  <span class="kennel-id">{{ kennelRef(kennel) }}</span>
+                  @if (kennel.updatedAt || kennel.createdAt) {
+                    <span class="kennel-sep" aria-hidden="true">·</span>
+                    <span class="kennel-date">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</span>
                   }
                 </div>
-                <div class="kennel-actions-wrap">
-                  <app-kennel-action-fan
-                    layout="row"
-                    [executeUsesPost]="hasBody(kennel)"
-                    (action)="onFanAction(kennel, $event)" />
-                </div>
+                @if (kennel.description) {
+                  <p class="kennel-desc">{{ kennel.description }}</p>
+                }
+              </div>
+
+              <div class="kennel-actions-wrap">
+                <app-kennel-action-fan (action)="onFanAction(kennel, $event)" />
               </div>
             </article>
           } @empty {

@@ -16,7 +16,7 @@ export { Dog } from './core/entities/abstractHuntingDog';
 export { IHuntingSeason, IWaveEntry, IReadTrackingEntry } from './core/entities/IHuntingSeason';
 
 // The captain and the hunt -- orchestration of the abyss
-export { KennelRun, IKennelConfig, BASE_DOG_PREFIX } from './KennelRun';
+export { KennelRun, IKennelConfig, BASE_DOG_PREFIX, type MimicAdopter } from './KennelRun';
 export { isRuntimeLogVerbose } from './runtimeLog';
 export {
     KENNEL_RESERVED_SLUGS,
@@ -43,6 +43,7 @@ export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 export { ICacheHandler } from './cache/ICacheHandler';
 export { ICacheable, isCacheable } from './cache/ICacheable';
 export { IAreaCache, IAreaCacheable, isAreaCacheable, CachedArea } from './cache/IAreaCache';
+export { geoBucketKey, geoBucketCenter, defaultGeoBucketM, type GeoBucketOptions } from './cache/geoBucket';
 
 // The map-reader, the cargo-bearer, the far-sailing dog, and the sigils they wear
 export { QueryRetriever } from './platform/QueryRetriever';

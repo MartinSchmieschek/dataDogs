@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey } from "@datadogs/core";
 import { NearbyTracksPact, type OsmTracksQueryInput } from "./pacts";
 import {
     clampTracksRadiusM,
@@ -95,7 +95,7 @@ export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheab
             }
         }
 
-        const key = `tracks:${lat}:${lng}:${radiusM}:${discriminant}`;
+        const key = geoBucketKey("tracks", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
 
         const fetchTracks = async (): Promise<OsmTracksResult> => {
             const result = await fetchNearbyTracks(lat, lng, radiusM, facets);

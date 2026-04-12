@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey } from "@datadogs/core";
 import { NearbyFastRoadsPact, type OsmFastRoadsQueryInput } from "./pacts";
 import {
     clampFastRoadsRadiusM,
@@ -95,7 +95,7 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
             }
         }
 
-        const key = `fastRoads:${lat}:${lng}:${radiusM}:${discriminant}`;
+        const key = geoBucketKey("fastRoads", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
 
         const fetchRoads = async (): Promise<OsmFastRoadsResult> => {
             const result = await fetchNearbyFastRoads(lat, lng, radiusM, facets);

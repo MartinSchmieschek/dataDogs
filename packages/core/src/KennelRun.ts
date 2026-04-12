@@ -58,10 +58,22 @@ export interface IKennelConfig {
  * this class fills the kennel with hounds and drives them forth
  * into the roiling madness of the data-season.
  */
+/**
+ * A lookup that adopts an existing saved MimicDog for an unmet pact instead of conjuring a fresh one.
+ * Implementations decide the adoption strategy — typically: prefer a lineageId the caller passes in
+ * `preferredLineageIds` (e.g. from a prior kennel version), fall back to the newest match in the deep.
+ * Returning `null` means "no adoption — let autoMimic forge a fresh placeholder".
+ */
+export type MimicAdopter = (
+    pactName: string,
+    preferredLineageIds: ReadonlySet<string>,
+) => Promise<MimicDog<unknown> | null>;
+
 export class KennelRun {
     private config?: IKennelConfig;
     private baseDogClasses: Map<string, new () => IDog<unknown>>;
     private serializedDogFactory: (ids: string[]) => Promise<Array<SerializedDog<unknown>>>;
+    private mimicAdopter?: MimicAdopter;
     private queryData?: Record<string, string>;
     private bodyData?: any;
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
@@ -87,10 +99,12 @@ export class KennelRun {
         bodyData?: any,
         vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = [],
         cacheHandler?: ICacheHandler,
-        areaCache?: IAreaCache<unknown>
+        areaCache?: IAreaCache<unknown>,
+        mimicAdopter?: MimicAdopter
     ) {
         this.baseDogClasses = baseDogClasses;
         this.serializedDogFactory = serializedDogFactory;
+        this.mimicAdopter = mimicAdopter;
         this.queryData = queryData;
         this.bodyData = bodyData;
         this.vmGlobalsSuppliers = vmGlobalsSuppliers;
@@ -298,9 +312,42 @@ export class KennelRun {
 
         if (pactsNeedingMimic.length === 0) return;
 
-        // Always conjure fresh mimics — never reuse saved ones from the deep.
-        // Each mimic is a placeholder; the user's code lives in the SerializedDog they write.
-        for (const depClass of pactsNeedingMimic) {
+        // Before conjuring fresh placeholders, try to adopt a saved mimic from the deep —
+        // the adopter decides which incarnation wins (typically: prefer a lineageId the kennel
+        // already remembers from a prior version, else fall back to the newest match). Adopted
+        // mimics carry a stable lineageId; the handler later heals it back into config.dogIds.
+        const stillNeedFresh: Array<new (...args: any[]) => IDog<unknown>> = [];
+        if (this.mimicAdopter) {
+            const preferred: ReadonlySet<string> = new Set(
+                (this.config?.dogIds ?? []).filter(id => !id.startsWith(BASE_DOG_PREFIX)),
+            );
+            for (const depClass of pactsNeedingMimic) {
+                let adopted: MimicDog<unknown> | null = null;
+                try {
+                    adopted = await this.mimicAdopter(depClass.name, preferred);
+                } catch (err) {
+                    if (isRuntimeLogVerbose()) {
+                        console.warn(`[KennelRun.autoMimic] Adoption fehlgeschlagen fuer '${depClass.name}':`, err);
+                    }
+                }
+                if (adopted) {
+                    adopted.resolveImitates(this.baseDogClasses);
+                    adopted.setKennelRef(kennel);
+                    kennel.push(adopted);
+                    if (isRuntimeLogVerbose()) {
+                        const lid = adopted.instanceConfig?.lineageId;
+                        console.log(`[KennelRun.autoMimic] Mimic adoptiert fuer Pact '${depClass.name}' (lineageId: ${lid})`);
+                    }
+                    continue;
+                }
+                stillNeedFresh.push(depClass);
+            }
+        } else {
+            stillNeedFresh.push(...pactsNeedingMimic);
+        }
+
+        // For any remaining unmet pact, conjure a fresh placeholder. The user fills it later.
+        for (const depClass of stillNeedFresh) {
             const mimicConfig: IMimicDogConfig = {
                 theRun: `throw new Error("MimicDog for '${depClass.name}' needs user code");`,
                 imitates: depClass.name,

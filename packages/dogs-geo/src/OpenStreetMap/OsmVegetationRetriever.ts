@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey } from "@datadogs/core";
 import { NearbyVegetationPact, type OsmVegetationQueryInput } from "./pacts";
 import {
     clampVegetationRadiusM,
@@ -95,7 +95,7 @@ export class OsmVegetationRetriever extends Dog<OsmVegetationResult> implements 
             }
         }
 
-        const key = `vegetation:${lat}:${lng}:${radiusM}:${discriminant}`;
+        const key = geoBucketKey("vegetation", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
 
         const fetchVeg = async (): Promise<OsmVegetationResult> => {
             const result = await fetchNearbyVegetation(lat, lng, radiusM, facets);

@@ -14,7 +14,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, type CachedArea } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, type CachedArea, geoBucketKey } from "@datadogs/core";
 import { NearbyLandmarksPact, type OsmLandmarksQueryInput } from "./pacts";
 import {
     clampRadiusM,
@@ -139,7 +139,7 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
             }
         }
 
-        const key = `landmarks:${lat}:${lng}:${radiusM}:${discriminant}`;
+        const key = geoBucketKey("landmarks", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
 
         const fetchLandmarks = async (): Promise<OsmLandmarksResult> => {
             const result = await fetchNearbyLandmarks(lat, lng, radiusM, facets);
