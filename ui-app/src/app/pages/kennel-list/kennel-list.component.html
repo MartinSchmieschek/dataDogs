@@ -4,127 +4,192 @@
   </div>
 
   <div class="kennel-shell-inner">
-    <div class="kennel-page">
-      <main class="kennel-panel">
-        @if (loading()) {
-          <app-loading-indicator />
-        }
-
-        <header class="kennel-panel-head">
-          <h1 class="kennel-panel-title">Kennels</h1>
-          <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
-        </header>
-
-        <div class="kennel-toolbar" role="search">
-          <label class="kennel-sr-only" for="kennel-search">Kennels durchsuchen</label>
+    <div class="kennel-work-area">
+      <!-- Schwebend, mittig, rundes Feld (gleiche Ebene wie Seitenleiste) -->
+      <div class="kennel-search-chrome">
+        <label class="kennel-sr-only" for="kennel-search-bubble">Kennels durchsuchen</label>
+        <div class="kennel-search-bubble">
+          <span class="kennel-search-bubble-icon" aria-hidden="true">⌕</span>
           <input
-            id="kennel-search"
-            class="kennel-search"
+            id="kennel-search-bubble"
+            class="kennel-search-bubble-input"
             type="search"
             autocomplete="off"
-            placeholder="Name, ID oder Beschreibung …"
+            placeholder="Durchsuchen …"
             [value]="searchQuery()"
             (input)="searchQuery.set($any($event.target).value)" />
-
-          <div class="kennel-sort">
-            <label class="kennel-sort-label" for="kennel-sort-key">Sortierung</label>
-            <select
-              id="kennel-sort-key"
-              class="kennel-sort-select"
-              [value]="sortKey()"
-              (change)="onSortKeyChange($event)">
-              <option value="name">Name</option>
-              <option value="id">ID</option>
-              <option value="updated">Zuletzt geändert</option>
-            </select>
-            <button
-              type="button"
-              class="kennel-sort-dir"
-              (click)="toggleSortDir()"
-              [attr.aria-label]="sortDir() === 'asc' ? 'Absteigend sortieren' : 'Aufsteigend sortieren'"
-              [title]="sortDir() === 'asc' ? 'Aufsteigend' : 'Absteigend'">
-              {{ sortDir() === 'asc' ? '↑' : '↓' }}
-            </button>
-          </div>
         </div>
+      </div>
 
-        <div class="kennel-actions">
-          <button type="button" class="kennel-btn" (click)="showCreateForm.set(!showCreateForm())">
-            Neuer Kennel
-          </button>
-          <button type="button" class="kennel-btn kennel-btn--ghost" (click)="importFromClipboard()">
-            Import (Clipboard)
-          </button>
-        </div>
+      <!-- Liste um ½ Leistenbreite eingerückt -->
+      <aside class="kennel-side-rail" role="toolbar" aria-label="Listenaktionen">
+        <button
+          type="button"
+          class="kennel-sort-cycle kennel-sort-cycle--rail"
+          (click)="cycleSortKey()"
+          [attr.aria-label]="'Sortieren nach: ' + sortKeyLabel() + '. Klick für nächstes Kriterium.'"
+          [title]="'Sortierung: ' + sortKeyLabel()">
+          {{ sortKeyLabel() }}
+        </button>
+        <button
+          type="button"
+          class="kennel-float-btn kennel-float-btn--accent"
+          (click)="showCreateForm.set(true)"
+          aria-label="Neuen Kennel hinzufügen"
+          title="Neuer Kennel">
+          +
+        </button>
+        <button
+          type="button"
+          class="kennel-float-btn"
+          (click)="toggleSortDir()"
+          [attr.aria-label]="sortDir() === 'asc' ? 'Sortierung: aufsteigend, zu absteigend wechseln' : 'Sortierung: absteigend, zu aufsteigend wechseln'"
+          [title]="sortDir() === 'asc' ? 'Filter: A–Z / alt → neu' : 'Filter: Z–A / neu → alt'">
+          ⇅
+        </button>
+      </aside>
 
-        @if (showCreateForm()) {
-          <app-kennel-form
-            (submitted)="onCreateKennel($event)"
-            (cancelled)="showCreateForm.set(false)" />
-        }
-
-        @if (error()) {
-          <div
-            class="kennel-error comfort-error-trigger"
-            role="button"
-            tabindex="0"
-            title="Klick: Fernes Signal"
-            (click)="onComfortVideoClick()"
-            (keydown.enter)="onComfortVideoClick()"
-            (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
-            {{ error() }}
-          </div>
-        }
-
-        <div class="kennel-list" role="list">
-          @for (kennel of filteredKennels(); track kennel.id) {
-            <article class="kennel-card" role="listitem">
-              <button
-                type="button"
-                class="kennel-emoji"
-                [class.kennel-emoji--empty]="!hasEmojiStored(kennel)"
-                (click)="onExecute(kennel)"
-                [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
-                [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
-                <span class="kennel-emoji-char" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
-                <span class="kennel-emoji-run" aria-hidden="true">▶</span>
-              </button>
-
-              <div class="kennel-text">
-                <button
-                  type="button"
-                  class="kennel-title"
-                  (click)="onExecute(kennel)"
-                  [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
-                  <span class="kennel-title-text">{{ kennel.name || kennelRef(kennel) }}</span>
-                </button>
-                <div class="kennel-meta">
-                  <span class="kennel-id">{{ kennelRef(kennel) }}</span>
-                  @if (kennel.updatedAt || kennel.createdAt) {
-                    <span class="kennel-sep" aria-hidden="true">·</span>
-                    <span class="kennel-date">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</span>
-                  }
-                </div>
-                @if (kennel.description) {
-                  <p class="kennel-desc">{{ kennel.description }}</p>
-                }
-              </div>
-
-              <div class="kennel-actions-wrap">
-                <app-kennel-action-fan (action)="onFanAction(kennel, $event)" />
-              </div>
-            </article>
-          } @empty {
-            @if (!loading()) {
-              @if (kennels().length === 0) {
-                <div class="kennel-empty">Keine Kennels vorhanden.</div>
-              } @else {
-                <div class="kennel-empty">Keine Treffer für diese Suche.</div>
-              }
+      <!-- Nur dieser Bereich scrollt (Animation bezieht sich darauf) -->
+      <div class="kennel-scroll">
+        <div class="kennel-page">
+          <main class="kennel-panel">
+            @if (loading()) {
+              <app-loading-indicator />
             }
-          }
-        </div>
-      </main>
+
+            <header class="kennel-panel-head">
+              <h1 class="kennel-panel-title">Kennels</h1>
+              <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
+            </header>
+
+            <div class="kennel-actions kennel-actions--header">
+              <button type="button" class="kennel-btn kennel-btn--ghost" (click)="importFromClipboard()">
+                Import (Clipboard)
+              </button>
+            </div>
+
+            @if (showCreateForm()) {
+              <app-kennel-form
+                (submitted)="onCreateKennel($event)"
+                (cancelled)="showCreateForm.set(false)" />
+            }
+
+            @if (error()) {
+              <div
+                class="kennel-error comfort-error-trigger"
+                role="button"
+                tabindex="0"
+                title="Klick: Fernes Signal"
+                (click)="onComfortVideoClick()"
+                (keydown.enter)="onComfortVideoClick()"
+                (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
+                {{ error() }}
+              </div>
+            }
+
+            <div class="kennel-list-wrap">
+              <div class="kennel-list" role="list">
+                @for (kennel of filteredKennels(); track kennel.id; let i = $index) {
+                  <div
+                    class="kennel-card-motion"
+                    appKennelCardMotion
+                    role="listitem"
+                    [style.animation-delay]="(i * 30) + 'ms'">
+                    <article class="kennel-card kennel-card--elevated">
+                    @if (hasEmojiStored(kennel)) {
+                      <span class="kennel-card-corner-emoji" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
+                    }
+                    <div class="kennel-card-body">
+                      <div class="kennel-card-rail" role="toolbar" [attr.aria-label]="'Aktionen für ' + (kennel.name || kennelRef(kennel))">
+                        <button
+                          type="button"
+                          class="kennel-rail-btn kennel-rail-btn--primary"
+                          (click)="onExecute(kennel)"
+                          [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
+                          [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
+                          <span aria-hidden="true">▶</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="kennel-rail-btn"
+                          (click)="openSwaggerUi(kennel)"
+                          aria-label="Swagger UI"
+                          title="Swagger UI">
+                          <span aria-hidden="true">⧉</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="kennel-rail-btn"
+                          (click)="openWaves(kennel)"
+                          aria-label="Waves"
+                          title="Waves">
+                          <span aria-hidden="true">≋</span>
+                        </button>
+                        <div class="kennel-rail-row2">
+                          <button
+                            type="button"
+                            class="kennel-rail-btn"
+                            (click)="onEditCard(kennel)"
+                            aria-label="Bearbeiten"
+                            title="Bearbeiten">
+                            <span aria-hidden="true">✎</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="kennel-rail-btn kennel-rail-btn--danger"
+                            (click)="confirmDelete(kennel)"
+                            aria-label="Löschen"
+                            title="Löschen (mit Bestätigung)">
+                            <span aria-hidden="true">🗑</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="kennel-card-main">
+                        <div class="kennel-card-top">
+                          <h3 class="kennel-card-name">
+                            {{ kennel.name || kennelRef(kennel) }}
+                          </h3>
+                          @if (kennel.description) {
+                            <p class="kennel-card-desc">{{ kennel.description }}</p>
+                          }
+                          @if (showExecutePath()) {
+                            <div class="kennel-card-meta-line">
+                              <code class="kennel-endpoint-chip">{{ executePathForDisplay(kennel) }}</code>
+                              @if (mirrorExecutePath()) {
+                                <code class="kennel-endpoint-chip kennel-endpoint-chip--mirrored" [attr.title]="'Gespiegelte Segmentreihenfolge (nur Anzeige)'">
+                                  {{ executePathMirroredSegments(kennel) }}
+                                </code>
+                              }
+                            </div>
+                          }
+                        </div>
+                      </div>
+                      <div class="kennel-card-date-foot">
+                        <span class="kennel-sr-only">Zuletzt geändert</span>
+                        @if (kennel.updatedAt || kennel.createdAt) {
+                          <time [attr.datetime]="kennel.updatedAt || kennel.createdAt">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</time>
+                        } @else {
+                          <span class="kennel-card-date-foot--empty">—</span>
+                        }
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              } @empty {
+                @if (!loading()) {
+                  @if (kennels().length === 0) {
+                    <div class="kennel-empty">Keine Kennels vorhanden.</div>
+                  } @else {
+                    <div class="kennel-empty">Keine Treffer für diese Suche.</div>
+                  }
+                }
+              }
+            </div>
+          </div>
+        </main>
+      </div>
+      </div>
     </div>
   </div>
 </div>
