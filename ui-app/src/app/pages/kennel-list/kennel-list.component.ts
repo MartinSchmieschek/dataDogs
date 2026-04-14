@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, inject, input, signal, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
@@ -7,12 +7,10 @@ import { KennelFormComponent, KennelFormData } from '../../components/kennel-for
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
-import {
-  KennelActionFanComponent,
-  type KennelFanAction,
-} from '../../components/kennel-action-fan/kennel-action-fan.component';
+import { type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { isHtmlResultString } from '../../utils/lead-result-string-format';
+import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
 
 @Component({
   selector: 'app-kennel-list',
@@ -22,7 +20,7 @@ import { isHtmlResultString } from '../../utils/lead-result-string-format';
     KennelFormComponent,
     LoadingIndicatorComponent,
     VoidMythicBackdropComponent,
-    KennelActionFanComponent,
+    KennelCardMotionDirective,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
@@ -31,6 +29,15 @@ export class KennelListComponent implements OnInit {
   private kennelService = inject(KennelService);
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
+
+  /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
+  showExecutePath = input(true);
+
+  /**
+   * Zusätzlich eine gespiegelte Pfad-Zeile: Segmentreihenfolge umgekehrt (z. B. /execute/ref/kennels/api/…).
+   * Nur Optik / Lesbarkeit; der tatsächliche Endpoint bleibt unverändert.
+   */
+  mirrorExecutePath = input(false);
 
   kennels = signal<IKennelConfig[]>([]);
   loading = signal(false);
@@ -83,10 +90,21 @@ export class KennelListComponent implements OnInit {
     this.errorVideoPopup.openPopup(this.error());
   }
 
-  onSortKeyChange(ev: Event): void {
-    const v = (ev.target as HTMLSelectElement).value;
-    if (v === 'name' || v === 'id' || v === 'updated') {
-      this.sortKey.set(v);
+  /** Sortierfeld per Klick durchschalten: Name → ID → Zuletzt geändert. */
+  cycleSortKey(): void {
+    const order: Array<'name' | 'id' | 'updated'> = ['name', 'id', 'updated'];
+    const i = order.indexOf(this.sortKey());
+    this.sortKey.set(order[(i + 1) % order.length]);
+  }
+
+  sortKeyLabel(): string {
+    switch (this.sortKey()) {
+      case 'id':
+        return 'ID';
+      case 'updated':
+        return 'Geändert';
+      default:
+        return 'Name';
     }
   }
 
@@ -124,12 +142,58 @@ export class KennelListComponent implements OnInit {
     return kennel.lineageId || kennel.id;
   }
 
+  /** Relativer Execute-Pfad zur Anzeige (wie Endpoint-Zeile in der React-Referenz). */
+  executePathForDisplay(kennel: IKennelConfig): string {
+    const ref = this.kennelRef(kennel);
+    let path = `/api/kennels/${ref}/execute`;
+    if (kennel.defaultQuery) {
+      const params = new URLSearchParams();
+      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+      });
+      const qs = params.toString();
+      if (qs) path += '?' + qs;
+    }
+    return path;
+  }
+
+  /**
+   * Derselbe Pfad mit umgekehrter Segmentreihenfolge (Pfad „gespiegelt“).
+   * Query-String bleibt angehängt.
+   */
+  executePathMirroredSegments(kennel: IKennelConfig): string {
+    const full = this.executePathForDisplay(kennel);
+    const q = full.includes('?') ? full.slice(full.indexOf('?')) : '';
+    const pathOnly = q ? full.slice(0, full.indexOf('?')) : full;
+    const segments = pathOnly.split('/').filter((s) => s.length > 0);
+    const reversed = '/' + segments.slice().reverse().join('/');
+    return reversed + q;
+  }
+
   onExecute(kennel: IKennelConfig): void {
     if (this.hasBody(kennel)) {
       this.executeWithBody(kennel);
     } else {
       window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
     }
+  }
+
+  openSwaggerUi(kennel: IKennelConfig): void {
+    const ref = this.kennelRef(kennel);
+    window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
+  }
+
+  openWaves(kennel: IKennelConfig): void {
+    void this.router.navigate(['/kennel', this.kennelRef(kennel)]);
+  }
+
+  onEditCard(kennel: IKennelConfig): void {
+    void this.router.navigate(['/kennel', this.kennelRef(kennel), 'edit']);
+  }
+
+  /** Löschen nur nach Bestätigung (Dialog). */
+  confirmDelete(kennel: IKennelConfig): void {
+    this.onFanAction(kennel, 'delete');
   }
 
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
