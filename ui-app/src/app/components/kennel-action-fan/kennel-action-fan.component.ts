@@ -18,23 +18,14 @@ interface KennelMenuItem {
 
 /**
  * Sekundäre Aktionen für eine Kennel-Zeile.
- * Waves direkt sichtbar, Edit/Swagger/Löschen in einem ⋯-Menü.
- * Execute liegt auf dem Title/Emoji und wird vom Parent gehandhabt.
+ * Ein Bearbeiten-Button öffnet das Menü (Bearbeiten, Waves, Swagger, JSON, Löschen).
+ * Execute liegt beim Parent.
  */
 @Component({
   selector: 'app-kennel-action-fan',
   standalone: true,
   template: `
     <div class="kennel-actions-row" (pointerdown)="$event.stopPropagation()">
-      <button
-        type="button"
-        class="kennel-row-btn"
-        (click)="onBtnClick('waves', $event)"
-        aria-label="Waves"
-        title="Waves">
-        <span class="kennel-row-icon" aria-hidden="true">≋</span>
-      </button>
-
       <div class="kennel-more-wrap">
         <button
           type="button"
@@ -43,9 +34,9 @@ interface KennelMenuItem {
           [attr.aria-expanded]="moreOpen"
           aria-haspopup="menu"
           (click)="toggleMore($event)"
-          aria-label="Mehr Aktionen"
-          title="Mehr">
-          <span class="kennel-row-icon" aria-hidden="true">⋯</span>
+          aria-label="Bearbeiten"
+          title="Bearbeiten">
+          <span class="kennel-row-icon" aria-hidden="true">✎</span>
         </button>
 
         @if (moreOpen) {
@@ -79,8 +70,8 @@ interface KennelMenuItem {
       gap: 6px;
     }
     .kennel-row-btn {
-      width: 34px;
-      height: 34px;
+      width: var(--kennel-fan-btn-size, 34px);
+      height: var(--kennel-fan-btn-size, 34px);
       padding: 0;
       border-radius: 50%;
       border: 1px solid rgba(110, 125, 145, 0.5);
@@ -117,7 +108,8 @@ interface KennelMenuItem {
     }
     .kennel-more-menu {
       position: absolute;
-      right: 0;
+      left: 0;
+      right: auto;
       top: calc(100% + 6px);
       z-index: 20;
       min-width: 11.5rem;
@@ -178,8 +170,8 @@ interface KennelMenuItem {
         gap: 10px;
       }
       .kennel-row-btn {
-        width: 40px;
-        height: 40px;
+        width: var(--kennel-fan-btn-size, 40px);
+        height: var(--kennel-fan-btn-size, 40px);
       }
       .kennel-row-icon {
         font-size: 16px;
@@ -203,16 +195,11 @@ export class KennelActionFanComponent {
 
   readonly menuItems: KennelMenuItem[] = [
     { id: 'edit', label: 'Bearbeiten', icon: '✎' },
+    { id: 'waves', label: 'Waves', icon: '≋' },
     { id: 'swagger', label: 'Swagger UI', icon: '📖' },
     { id: 'swaggerJson', label: 'OpenAPI JSON', icon: '📄' },
     { id: 'delete', label: 'Löschen', icon: '🗑', danger: true },
   ];
-
-  onBtnClick(id: KennelFanAction, ev: Event): void {
-    ev.stopPropagation();
-    ev.preventDefault();
-    this.action.emit(id);
-  }
 
   toggleMore(ev: Event): void {
     ev.stopPropagation();
