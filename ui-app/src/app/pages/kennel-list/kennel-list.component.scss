@@ -123,9 +123,9 @@
   --kennel-sort-slot-w: 10.5rem;
   --kennel-search-float-slot: 3.55rem;
   --kennel-create-fab-top: 4.35rem;
-  --kennel-list-pad-start: clamp(1.05rem, 4.5vw, 1.85rem);
-  --kennel-list-pad-end: clamp(0.65rem, 2.8vw, 1.15rem);
-  --kennel-list-pad-top: clamp(0.5rem, 2.2vw, 0.95rem);
+  --kennel-list-pad-start: clamp(2.625rem, 11.25vw, 4.625rem);
+  --kennel-list-pad-end: clamp(1.625rem, 7vw, 2.875rem);
+  --kennel-list-pad-top: clamp(1.25rem, 5.5vw, 2.375rem);
   flex: 1 1 auto;
   position: relative;
   display: flex;
@@ -249,6 +249,13 @@
   display: flex;
   flex-direction: column;
   gap: 1.15rem;
+}
+
+/* Kopfbereich dieselbe horizontale Spur wie die Liste — vermeidet Überlagerung mit Create-FAB */
+.kennel-panel > :not(.kennel-list-wrap) {
+  padding-left: var(--kennel-list-pad-start);
+  padding-right: var(--kennel-list-pad-end);
+  box-sizing: border-box;
 }
 
 .kennel-panel-head {
@@ -385,7 +392,7 @@
   /* Oben Platz für großes Eck-Emoji */
   padding: clamp(0.75rem, 3.5vw, 1.05rem) 0.65rem 0.45rem 0.55rem;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
   align-items: start;
   gap: 0.45rem 0.65rem;
@@ -393,8 +400,6 @@
 
 .kennel-card-rail {
   --kennel-rail-cell: 2.05rem;
-  grid-column: 1;
-  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -405,6 +410,16 @@
   min-width: 0;
 }
 
+.kennel-card-rail--start {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.kennel-card-rail--end {
+  grid-column: 3;
+  grid-row: 1;
+}
+
 .kennel-card-rail-fan {
   display: flex;
   align-items: center;
@@ -413,6 +428,11 @@
   --kennel-fan-btn-size: var(--kennel-rail-cell, 2.05rem);
   opacity: var(--kennel-focus-blend, 1);
   transition: opacity 0.45s ease;
+}
+
+/* Offenes Kontextmenü darf nicht durch Fokus-Blend transparent wirken */
+.kennel-card-rail-fan:has(app-kennel-action-fan.kennel-action-fan--open) {
+  opacity: 1;
 }
 
 .kennel-rail-btn {
@@ -573,9 +593,9 @@
 /* Mobil: seitliche Luft (Karten + Emoji + leichte 3D-Verschiebung), nicht randlos */
 @media (max-width: 640px) {
   .kennel-work-area {
-    --kennel-list-pad-start: max(clamp(1rem, 4.2vw, 1.65rem), env(safe-area-inset-left, 0px));
-    --kennel-list-pad-end: max(clamp(0.75rem, 3.5vw, 1.05rem), env(safe-area-inset-right, 0px));
-    --kennel-list-pad-top: clamp(0.45rem, 2vw, 0.85rem);
+    --kennel-list-pad-start: max(clamp(2.5rem, 10.5vw, 4.125rem), env(safe-area-inset-left, 0px));
+    --kennel-list-pad-end: max(clamp(1.875rem, 8.75vw, 2.625rem), env(safe-area-inset-right, 0px));
+    --kennel-list-pad-top: clamp(1.125rem, 5vw, 2.125rem);
     --kennel-sort-slot-w: 9rem;
     --kennel-search-row-gap: 0.5rem;
     --kennel-search-sort-gap: 0.4rem;
