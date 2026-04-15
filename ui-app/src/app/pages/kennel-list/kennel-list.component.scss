@@ -23,27 +23,56 @@
   flex-direction: column;
   min-height: 0;
   padding-inline: clamp(1rem, 4vw, 2.5rem);
+  /* Safe-Area (Notch / Home-Indicator) — mehr nutzbare Breite auf Mobilgeräten */
+  padding-inline-start: max(clamp(1rem, 4vw, 2.5rem), env(safe-area-inset-left, 0px));
+  padding-inline-end: max(clamp(1rem, 4vw, 2.5rem), env(safe-area-inset-right, 0px));
 }
 
 .kennel-search-chrome {
   position: absolute;
-  left: 50%;
-  top: 0.5rem;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  top: 0.45rem;
   z-index: 40;
-  width: min(20rem, calc(100% - 5rem));
-  display: flex;
-  justify-content: center;
+  padding: 0 var(--kennel-search-chrome-pad, clamp(0.65rem, 3vw, 1.1rem));
+  box-sizing: border-box;
   pointer-events: none;
+}
+
+.kennel-search-chrome-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--kennel-sort-slot-w, 10.5rem);
+  align-items: center;
+  column-gap: var(--kennel-search-row-gap, clamp(0.7rem, 2.2vw, 1rem));
+  width: 100%;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.kennel-search-sort-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: var(--kennel-search-sort-gap, clamp(0.5rem, 1.8vw, 0.75rem));
+  min-width: 0;
+  transition: opacity 0.16s ease, visibility 0.16s ease;
+
+  &--hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .kennel-search-bubble {
   pointer-events: auto;
   position: relative;
+  min-width: 0;
   width: 100%;
   display: flex;
   align-items: center;
-  padding: 0.42rem 0.95rem 0.42rem 2.35rem;
+  padding: 0.55rem 1rem 0.55rem 2.5rem;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(12, 16, 24, 0.78);
@@ -90,8 +119,13 @@
 }
 
 .kennel-work-area {
-  --kennel-side-rail-w: 3.35rem;
-  --kennel-search-float-slot: 3.15rem;
+  --kennel-rail-inset-start: clamp(0.15rem, 1.2vw, 0.55rem);
+  --kennel-sort-slot-w: 10.5rem;
+  --kennel-search-float-slot: 3.55rem;
+  --kennel-create-fab-top: 4.35rem;
+  --kennel-list-pad-start: clamp(1.05rem, 4.5vw, 1.85rem);
+  --kennel-list-pad-end: clamp(0.65rem, 2.8vw, 1.15rem);
+  --kennel-list-pad-top: clamp(0.5rem, 2.2vw, 0.95rem);
   flex: 1 1 auto;
   position: relative;
   display: flex;
@@ -100,28 +134,15 @@
   padding-top: var(--kennel-search-float-slot);
 }
 
-/* Schwebend links, auf einer Höhe mit der Suchblase */
-.kennel-side-rail {
+.kennel-create-fab {
   position: absolute;
-  left: clamp(0.15rem, 1.2vw, 0.55rem);
-  top: 0.5rem;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  width: var(--kennel-side-rail-w);
-  padding: 0.55rem 0.32rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
-  background: rgba(12, 16, 24, 0.78);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow:
-    0 14px 44px rgba(0, 0, 0, 0.42),
-    0 4px 14px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  pointer-events: auto;
+  left: var(--kennel-rail-inset-start);
+  top: var(--kennel-create-fab-top);
+  z-index: 35;
+  min-width: 2.85rem;
+  min-height: 2.85rem;
+  width: 2.85rem;
+  height: 2.85rem;
 }
 
 .kennel-sort-cycle {
@@ -147,13 +168,18 @@
     outline-offset: 2px;
   }
 
-  &--rail {
-    width: 2.85rem;
-    padding: 0.32rem 0.2rem;
-    font-size: 0.62rem;
-    line-height: 1.2;
+  &--beside {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 2.75rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
     text-align: center;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -165,14 +191,15 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
-  /* 50 % der schwebenden Leistenbreite: Inhalt weicht nach rechts aus */
-  padding-left: calc(var(--kennel-side-rail-w) * 0.5);
   box-sizing: border-box;
+  padding-bottom: max(0.45rem, env(safe-area-inset-bottom, 0px));
 }
 
 .kennel-float-btn {
-  width: 2.65rem;
-  height: 2.65rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -200,14 +227,21 @@
     border-color: rgba(100, 150, 210, 0.45);
     background: linear-gradient(165deg, rgba(55, 95, 160, 0.55) 0%, rgba(28, 48, 88, 0.75) 100%);
   }
+
+  &--beside {
+    font-size: 1.05rem;
+    flex-shrink: 0;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  }
 }
 
 .kennel-page {
   max-width: 760px;
   margin-left: auto;
   margin-right: auto;
-  padding: clamp(0.65rem, 2vw, 1.1rem) clamp(0.35rem, 1.5vw, 0.75rem) 2.25rem
-    clamp(0.5rem, 1.5vw, 1rem);
+  padding: clamp(0.65rem, 2vw, 1.1rem) var(--kennel-page-pad-inline, clamp(0.65rem, 2.4vw, 1rem)) 2.25rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .kennel-panel {
@@ -272,6 +306,9 @@
 
 .kennel-list-wrap {
   perspective: 1200px;
+  padding-left: var(--kennel-list-pad-start);
+  padding-right: var(--kennel-list-pad-end);
+  padding-top: var(--kennel-list-pad-top);
 }
 
 .kennel-list {
@@ -281,9 +318,10 @@
 }
 
 .kennel-card-motion {
+  --kennel-focus-blend: 1;
   transform-style: preserve-3d;
   will-change: transform, opacity;
-  animation: kennel-card-in 0.45s ease backwards;
+  animation: kennel-card-in 0.52s ease backwards;
 }
 
 @keyframes kennel-card-in {
@@ -304,28 +342,48 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   background: linear-gradient(165deg, rgba(30, 36, 48, 0.55) 0%, rgba(18, 22, 32, 0.65) 100%);
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.38s ease,
+    background 0.38s ease,
+    box-shadow 0.42s ease;
 }
 
 .kennel-card--elevated {
   box-shadow: 8px 8px 25px rgba(0, 0, 0, 0.2);
+  transition:
+    border-color 0.45s ease,
+    box-shadow 0.5s ease,
+    background 0.45s ease;
 }
 
-/* Emoji: Mitte auf der oberen linken Kartenecke (liegt halb außerhalb) */
+/* Fokus-Mitte ↔ Rand: kontinuierlicher Blend (Directive setzt --kennel-focus-blend), keine Layoutsprünge */
+.kennel-card-motion .kennel-card {
+  border-color: rgba(130, 160, 200, calc(0.12 + 0.3 * var(--kennel-focus-blend, 1)));
+  box-shadow:
+    8px 8px 25px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(100, 140, 190, calc(0.12 * var(--kennel-focus-blend, 1))),
+    calc(10px * var(--kennel-focus-blend, 1)) calc(12px * var(--kennel-focus-blend, 1)) calc(32px * var(--kennel-focus-blend, 1))
+      rgba(0, 0, 0, calc(0.14 + 0.18 * var(--kennel-focus-blend, 1)));
+}
+
+/* Emoji: Mitte auf der oberen linken Kartenecke (mindestens doppelt zur früheren Größe) */
 .kennel-card-corner-emoji {
   position: absolute;
   top: 0;
   left: 0;
-  transform: translate(-50%, -50%);
-  font-size: 1.2rem;
+  font-size: clamp(2.45rem, 7vw, 3.1rem);
   line-height: 1;
   z-index: 3;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  opacity: calc(0.78 + 0.22 * var(--kennel-focus-blend, 1));
+  transform: translate(-50%, -50%) scale(calc(0.88 + 0.12 * var(--kennel-focus-blend, 1)));
+  transition: transform 0.45s ease, opacity 0.45s ease;
 }
 
 .kennel-card-body {
-  padding: 0.55rem 0.65rem 0.45rem 0.55rem;
+  /* Oben Platz für großes Eck-Emoji */
+  padding: clamp(0.75rem, 3.5vw, 1.05rem) 0.65rem 0.45rem 0.55rem;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto auto;
@@ -337,22 +395,24 @@
   --kennel-rail-cell: 2.05rem;
   grid-column: 1;
   grid-row: 1;
-  display: grid;
-  grid-template-columns: repeat(3, var(--kennel-rail-cell));
-  gap: 0.28rem;
-  justify-content: center;
-  padding-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.32rem;
+  padding-top: 0;
   align-self: start;
   min-width: 0;
 }
 
-.kennel-rail-row2 {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(2, var(--kennel-rail-cell));
-  gap: 0.28rem;
+.kennel-card-rail-fan {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  margin-inline: auto;
+  min-height: var(--kennel-rail-cell);
+  --kennel-fan-btn-size: var(--kennel-rail-cell, 2.05rem);
+  opacity: var(--kennel-focus-blend, 1);
+  transition: opacity 0.45s ease;
 }
 
 .kennel-rail-btn {
@@ -409,14 +469,13 @@
   grid-row: 2;
   text-align: right;
   align-self: end;
-  padding: 0.2rem 0 0;
-  margin: 0.1rem 0 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0.15rem 0 0;
+  margin: 0.2rem 0 0;
+  border-top: none;
   font-size: 0.65rem;
   line-height: 1.2;
   color: rgba(145, 155, 172, 0.92);
   font-variant-numeric: tabular-nums;
-
   time {
     display: inline;
   }
@@ -441,6 +500,10 @@
   font-size: 0.7rem;
   line-height: 1.32;
   color: rgba(175, 185, 200, 0.88);
+  max-height: 12rem;
+  overflow: hidden;
+  opacity: var(--kennel-focus-blend, 1);
+  transition: opacity 0.45s ease;
 }
 
 .kennel-card-meta-line {
@@ -451,6 +514,10 @@
   margin-top: 0.28rem;
   font-size: 0.68rem;
   color: rgba(150, 160, 175, 0.95);
+  max-height: 8rem;
+  overflow: hidden;
+  opacity: var(--kennel-focus-blend, 1);
+  transition: opacity 0.45s ease;
 }
 
 .kennel-endpoint-chip {
@@ -475,33 +542,6 @@
 
 .kennel-actions--header {
   margin-top: -0.25rem;
-}
-
-/* Schmal: 2 Spalten (2+1, dann Zeile mit 2) — sehr schmal: eine Spalte */
-@media (max-width: 520px) {
-  .kennel-card-rail {
-    grid-template-columns: repeat(2, var(--kennel-rail-cell, 2.05rem));
-  }
-
-  .kennel-card-rail > .kennel-rail-btn:nth-child(3) {
-    grid-column: 1 / -1;
-    justify-self: center;
-  }
-}
-
-@media (max-width: 380px) {
-  .kennel-card-rail {
-    grid-template-columns: 1fr;
-  }
-
-  .kennel-card-rail > .kennel-rail-btn:nth-child(3) {
-    grid-column: auto;
-    justify-self: stretch;
-  }
-
-  .kennel-rail-row2 {
-    grid-template-columns: 1fr;
-  }
 }
 
 .kennel-card:hover {
@@ -530,17 +570,81 @@
   border: 0;
 }
 
-@media (max-width: 560px) {
+/* Mobil: seitliche Luft (Karten + Emoji + leichte 3D-Verschiebung), nicht randlos */
+@media (max-width: 640px) {
+  .kennel-work-area {
+    --kennel-list-pad-start: max(clamp(1rem, 4.2vw, 1.65rem), env(safe-area-inset-left, 0px));
+    --kennel-list-pad-end: max(clamp(0.75rem, 3.5vw, 1.05rem), env(safe-area-inset-right, 0px));
+    --kennel-list-pad-top: clamp(0.45rem, 2vw, 0.85rem);
+    --kennel-sort-slot-w: 9rem;
+    --kennel-search-row-gap: 0.5rem;
+    --kennel-search-sort-gap: 0.4rem;
+    --kennel-search-chrome-pad: clamp(0.45rem, 2.5vw, 0.65rem);
+    --kennel-search-float-slot: 3.2rem;
+    --kennel-create-fab-top: 4.05rem;
+    --kennel-rail-inset-start: max(0.35rem, env(safe-area-inset-left, 0px));
+  }
+
+  .kennel-shell-inner {
+    padding-inline: max(clamp(0.75rem, 4.5vw, 1.1rem), env(safe-area-inset-left, 0px))
+      max(clamp(0.75rem, 4.5vw, 1.1rem), env(safe-area-inset-right, 0px));
+  }
+
   .kennel-page {
-    padding: 0.9rem 0.75rem 2rem;
+    max-width: none;
+    padding-top: 0.55rem;
+    padding-bottom: 1.6rem;
+    padding-left: max(clamp(0.85rem, 5vw, 1.15rem), env(safe-area-inset-left, 0px));
+    padding-right: max(clamp(0.85rem, 5vw, 1.15rem), env(safe-area-inset-right, 0px));
+  }
+
+  .kennel-panel {
+    gap: 0.72rem;
+  }
+
+  .kennel-panel-head {
+    padding-bottom: 0.4rem;
   }
 
   .kennel-panel-title {
-    font-size: 1.3rem;
+    font-size: clamp(1.2rem, 4.8vw, 1.35rem);
+    letter-spacing: 0.03em;
   }
 
   .kennel-panel-lead {
-    font-size: 0.8125rem;
+    font-size: 0.78rem;
+    line-height: 1.38;
+    margin: 0.2rem 0 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .kennel-list {
+    gap: 1.15rem;
+  }
+
+  .kennel-card-body {
+    padding: clamp(0.78rem, 3.2vw, 1.05rem) clamp(0.6rem, 2.5vw, 0.85rem) 0.55rem clamp(0.65rem, 2.8vw, 0.9rem);
+    gap: 0.5rem 0.6rem;
+  }
+
+  /* Listenblock etwas nach unten, damit + nicht auf die erste Karte drückt */
+  .kennel-list-wrap {
+    margin-top: 0.35rem;
+  }
+
+  .kennel-search-chrome {
+    top: max(0.28rem, env(safe-area-inset-top, 0px));
+  }
+
+  .kennel-search-bubble {
+    padding: 0.4rem 0.85rem 0.4rem 2.3rem;
+  }
+
+  .kennel-search-chrome-row {
+    grid-template-columns: minmax(0, 1fr) var(--kennel-sort-slot-w);
   }
 
   .kennel-btn {
@@ -549,23 +653,34 @@
     text-align: center;
   }
 
-  .kennel-shell-inner {
-    padding-inline: clamp(0.65rem, 3vw, 1.25rem);
+  .kennel-sort-cycle--beside {
+    font-size: 0.64rem;
+    padding: 0.34rem 0.48rem;
+    min-height: 2.5rem;
   }
 
-  .kennel-work-area {
-    --kennel-side-rail-w: 3.15rem;
+  .kennel-float-btn--beside {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 0.98rem;
   }
 
-  .kennel-sort-cycle--rail {
+  .kennel-create-fab {
+    min-width: 2.65rem;
+    min-height: 2.65rem;
     width: 2.65rem;
-    padding: 0.28rem 0.18rem;
-    font-size: 0.58rem;
+    height: 2.65rem;
   }
 
   .kennel-rail-btn {
     width: 2.15rem;
     height: 2.15rem;
     font-size: 0.88rem;
+  }
+
+  .kennel-card-corner-emoji {
+    font-size: clamp(2.05rem, 5.8vw, 2.85rem);
   }
 }

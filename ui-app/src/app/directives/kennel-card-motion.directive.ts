@@ -43,6 +43,16 @@ function scrollProgressInViewport(el: HTMLElement, root: HTMLElement | null): nu
   return clamp01((vh - rect.top) / (vh + h));
 }
 
+/** Ziel-Blend aus Abstand zur Mitte: weicher Verlauf (keine harte Schwelle → weniger Scroll-Feedback). */
+function focusBlendTarget(offCenter: number): number {
+  if (offCenter <= 0.2) return 1;
+  if (offCenter >= 0.52) return 0;
+  return 1 - (offCenter - 0.2) / 0.32;
+}
+
+/** Exponentielles Glätten pro Frame (Overlay statt Zustandsklasse). */
+const KENNEL_FOCUS_BLEND_LERP = 0.14;
+
 /**
  * 0 = Kartenmitte liegt auf der vertikalen Mitte des sichtbaren Bereichs,
  * 1 = weit weg von der Mitte (oben/unten) → für zusätzliche Verkleinerung.
@@ -80,6 +90,7 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
   private raf = 0;
   private unsub: (() => void) | null = null;
   private scrollRoot: HTMLElement | null = null;
+  private focusBlend = 1;
 
   ngAfterViewInit(): void {
     const host = this.el.nativeElement;
@@ -90,6 +101,12 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
         this.raf = 0;
         const p = scrollProgressInViewport(host, this.scrollRoot);
         const offCenter = verticalCenterDistance(host, this.scrollRoot);
+        const targetBlend = focusBlendTarget(offCenter);
+        this.focusBlend += (targetBlend - this.focusBlend) * KENNEL_FOCUS_BLEND_LERP;
+        if (this.focusBlend < 0.001) this.focusBlend = 0;
+        if (this.focusBlend > 0.999) this.focusBlend = 1;
+        this.renderer.setStyle(host, '--kennel-focus-blend', this.focusBlend.toFixed(4));
+        this.renderer.setStyle(host, 'z-index', this.focusBlend > 0.45 ? '2' : '1');
         /*
          * Bogen: von leicht unten-links (Eintritt) über Mitte nach oben-rechts (Austritt),
          * mit negativem X-Bias in der Mitte → Masse nicht in die untere rechte Ecke.

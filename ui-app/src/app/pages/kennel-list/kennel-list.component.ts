@@ -7,7 +7,7 @@ import { KennelFormComponent, KennelFormData } from '../../components/kennel-for
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
-import { type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
+import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { isHtmlResultString } from '../../utils/lead-result-string-format';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
@@ -21,6 +21,7 @@ import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.d
     LoadingIndicatorComponent,
     VoidMythicBackdropComponent,
     KennelCardMotionDirective,
+    KennelActionFanComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
@@ -47,6 +48,12 @@ export class KennelListComponent implements OnInit {
   searchQuery = signal('');
   sortKey = signal<'name' | 'id' | 'updated'>('name');
   sortDir = signal<'asc' | 'desc'>('asc');
+
+  /** Sort-Buttons neben der Suche ausblenden, solange gefiltert wird (nichtleerer Suchtext). */
+  hideSortBesideSearch = computed(() => this.searchQuery().trim().length > 0);
+
+  /** Erhöhen bei Sortwechsel → @for-Track ändert sich, Karten-Animationen laufen erneut. */
+  listOrderEpoch = signal(0);
 
   filteredKennels = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
@@ -95,6 +102,7 @@ export class KennelListComponent implements OnInit {
     const order: Array<'name' | 'id' | 'updated'> = ['name', 'id', 'updated'];
     const i = order.indexOf(this.sortKey());
     this.sortKey.set(order[(i + 1) % order.length]);
+    this.listOrderEpoch.update((n) => n + 1);
   }
 
   sortKeyLabel(): string {
@@ -110,6 +118,7 @@ export class KennelListComponent implements OnInit {
 
   toggleSortDir(): void {
     this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
+    this.listOrderEpoch.update((n) => n + 1);
   }
 
   loadKennels() {
@@ -131,10 +140,6 @@ export class KennelListComponent implements OnInit {
   kennelEmojiForList(k: IKennelConfig): string {
     const e = k.emoji?.trim();
     return e || '🐕';
-  }
-
-  hasEmojiStored(k: IKennelConfig): boolean {
-    return !!k.emoji?.trim();
   }
 
   /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */
@@ -176,24 +181,6 @@ export class KennelListComponent implements OnInit {
     } else {
       window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
     }
-  }
-
-  openSwaggerUi(kennel: IKennelConfig): void {
-    const ref = this.kennelRef(kennel);
-    window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
-  }
-
-  openWaves(kennel: IKennelConfig): void {
-    void this.router.navigate(['/kennel', this.kennelRef(kennel)]);
-  }
-
-  onEditCard(kennel: IKennelConfig): void {
-    void this.router.navigate(['/kennel', this.kennelRef(kennel), 'edit']);
-  }
-
-  /** Löschen nur nach Bestätigung (Dialog). */
-  confirmDelete(kennel: IKennelConfig): void {
-    this.onFanAction(kennel, 'delete');
   }
 
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
