@@ -1,7 +1,7 @@
 // The KennelSwaggerHandler — Xata's herald, forging truth from the hunt into OpenAPI scrolls.
 // Its heralds are the stars it fells, the sky and Earth aflame.
-import { IKennelConfig } from '@datadogs/core';
-import { SwaggerGenerator } from '../../services/SwaggerGenerator';
+import { castGrimoire } from '@datadogs/swaggrid';
+import { toSwaggridCast } from '../../services/swaggridAdapter';
 import { KennelRunHandler } from './KennelRunHandler';
 
 /**
@@ -36,7 +36,7 @@ export class KennelSwaggerHandler {
             const body = config.defaultBody;
             const waves = await this.runHandler.runKennel(config, query, body);
 
-            const spec = SwaggerGenerator.generate(config, waves);
+            const spec = castGrimoire(toSwaggridCast(config, waves));
             res.json(spec);
         } catch (err) {
             console.error('[KennelSwaggerHandler.handleSwaggerJson]', err);
