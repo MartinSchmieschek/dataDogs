@@ -502,11 +502,12 @@ services/
   WavesConverter.ts           Converts execution results to Wave format
   TypeDefBuilder.ts           Generates TypeScript definitions for VM context
   CompilerCache.ts            Caches compiled TypeScript
-  SwaggerGenerator.ts         Generates OpenAPI specs from Kennel runs
+  swaggridAdapter.ts          Maps Kennel runs to @datadogs/swaggrid
   CacheHandler.ts             KV cache with TTL and in-flight deduplication
   AreaCacheStrategy.ts        Geographic area cache (Haversine containment)
 packages/
   core/                       datadogs library (Dog, Kennel, Wave engine, Pacts, Cache interfaces)
+  swaggrid/                   OpenAPI generation (castGrimoire) — no domain deps
   dogs-demo/                  Demo dogs (recipes, flags, random data)
   dogs-biodiversity/          Species and plant GPS observations
   dogs-birds/                 Bird sightings by GPS location
