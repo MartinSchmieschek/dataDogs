@@ -115,7 +115,7 @@ Für **`snapshot` = „aktueller Stand aller Teilnehmer“** muss der Server bei
 | 3 | WebSocket-Server + Raum-Logik | neu, z. B. `services/` oder `api/ws/` |
 | 4 | `http.createServer` + `ws` | [`main.ts`](main.ts), [`package.json`](package.json) |
 | 5 | Hub ↔ `snapshot` (wenn gewünscht) | [`KennelRunHandler`](api/routes/KennelRunHandler.ts) oder neuer Route |
-| 6 | Swagger | [`KennelSwaggerHandler`](api/routes/KennelSwaggerHandler.ts) / Generator |
+| 6 | Swagger | [`KennelSwaggerHandler`](api/routes/KennelSwaggerHandler.ts) / [`@datadogs/swaggrid`](packages/swaggrid/) |
 | 7 | UI Preview | [`ui-app`](ui-app/) Waves-Viewer / Kennel-Antwort |
 
 ---

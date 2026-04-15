@@ -106,10 +106,10 @@
                     <article class="kennel-card kennel-card--elevated">
                     <span class="kennel-card-corner-emoji" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
                     <div class="kennel-card-body">
-                      <div class="kennel-card-rail" role="toolbar" [attr.aria-label]="'Aktionen für ' + (kennel.name || kennelRef(kennel))">
-                        <div class="kennel-card-rail-fan">
-                          <app-kennel-action-fan (action)="onFanAction(kennel, $event)" />
-                        </div>
+                      <div
+                        class="kennel-card-rail kennel-card-rail--start"
+                        role="toolbar"
+                        [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
                         <button
                           type="button"
                           class="kennel-rail-btn kennel-rail-btn--primary"
@@ -138,6 +138,14 @@
                               }
                             </div>
                           }
+                        </div>
+                      </div>
+                      <div
+                        class="kennel-card-rail kennel-card-rail--end"
+                        role="toolbar"
+                        [attr.aria-label]="'Bearbeiten und mehr: ' + (kennel.name || kennelRef(kennel))">
+                        <div class="kennel-card-rail-fan">
+                          <app-kennel-action-fan [alignMenuToEnd]="true" (action)="onFanAction(kennel, $event)" />
                         </div>
                       </div>
                       <div class="kennel-card-date-foot">

@@ -2,18 +2,22 @@ import {
   Component,
   ElementRef,
   EventEmitter,
+  HostBinding,
   HostListener,
+  Input,
   Output,
   inject,
 } from '@angular/core';
 
-export type KennelFanAction = 'edit' | 'waves' | 'swagger' | 'swaggerJson' | 'delete';
+export type KennelFanAction = 'edit' | 'share' | 'waves' | 'swagger' | 'swaggerJson' | 'delete';
 
 interface KennelMenuItem {
   id: KennelFanAction;
   label: string;
   icon: string;
   danger?: boolean;
+  /** Nur schmale Viewports (Teilen / Web Share API) */
+  mobileOnly?: boolean;
 }
 
 /**
@@ -26,7 +30,7 @@ interface KennelMenuItem {
   standalone: true,
   template: `
     <div class="kennel-actions-row" (pointerdown)="$event.stopPropagation()">
-      <div class="kennel-more-wrap">
+      <div class="kennel-more-wrap" [class.kennel-more-wrap--open]="moreOpen">
         <button
           type="button"
           class="kennel-row-btn kennel-more-btn"
@@ -50,6 +54,7 @@ interface KennelMenuItem {
                 role="menuitem"
                 class="kennel-more-item"
                 [class.kennel-more-item--danger]="item.danger"
+                [class.kennel-more-item--mobile-only]="item.mobileOnly"
                 (click)="menuAction(item.id, $event)">
                 <span class="kennel-more-icon" aria-hidden="true">{{ item.icon }}</span>
                 <span class="kennel-more-label">{{ item.label }}</span>
@@ -105,36 +110,60 @@ interface KennelMenuItem {
 
     .kennel-more-wrap {
       position: relative;
+      z-index: 0;
+    }
+
+    .kennel-more-wrap--open {
+      z-index: 480;
     }
     .kennel-more-menu {
+      /* Immer LTR: Icon links, Label rechts — unabhängig von Seiten-RTL / Bidi */
+      direction: ltr;
+      unicode-bidi: isolate;
       position: absolute;
       left: 0;
       right: auto;
       top: calc(100% + 6px);
-      z-index: 20;
+      z-index: 500;
       min-width: 11.5rem;
       display: flex;
       flex-direction: column;
       padding: 0.3rem;
-      border: 1px solid rgba(140, 160, 190, 0.28);
+      border: 1px solid rgba(140, 160, 190, 0.35);
       border-radius: 8px;
-      background: linear-gradient(170deg, rgba(30, 38, 52, 0.98) 0%, rgba(18, 22, 32, 0.99) 100%);
+      background: linear-gradient(170deg, rgba(28, 36, 50, 1) 0%, rgba(16, 20, 30, 1) 100%);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
       animation: kennel-more-in 0.12s ease-out;
+      isolation: isolate;
+    }
+
+    :host(.kennel-action-fan--menu-end) .kennel-more-menu {
+      left: auto;
+      right: 0;
     }
     @keyframes kennel-more-in {
       from { opacity: 0; transform: translateY(-4px); }
       to   { opacity: 1; transform: translateY(0); }
     }
     .kennel-more-item {
-      all: unset;
+      direction: ltr;
+      unicode-bidi: isolate;
+      box-sizing: border-box;
+      margin: 0;
+      width: 100%;
+      border: none;
+      font: inherit;
+      text-align: start;
       display: flex;
+      flex-direction: row;
       align-items: center;
+      justify-content: flex-start;
       gap: 0.65rem;
       padding: 0.5rem 0.65rem;
       border-radius: 5px;
       font-size: 0.825rem;
-      color: rgba(220, 228, 240, 0.94);
+      color: rgba(220, 228, 240, 0.96);
+      background: rgba(12, 16, 24, 0.55);
       cursor: pointer;
       transition: background 0.1s ease, color 0.1s ease;
     }
@@ -165,6 +194,16 @@ interface KennelMenuItem {
       background: rgba(255, 255, 255, 0.08);
     }
 
+    .kennel-more-item--mobile-only {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .kennel-more-item--mobile-only {
+        display: flex;
+      }
+    }
+
     @media (max-width: 560px) {
       .kennel-actions-row {
         gap: 10px;
@@ -189,12 +228,26 @@ interface KennelMenuItem {
 export class KennelActionFanComponent {
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
 
+  /** Menü rechts am Text: Dropdown nach links öffnen */
+  @Input() alignMenuToEnd = false;
+
   @Output() action = new EventEmitter<KennelFanAction>();
 
   moreOpen = false;
 
+  @HostBinding('class.kennel-action-fan--open')
+  get fanMenuOpen(): boolean {
+    return this.moreOpen;
+  }
+
+  @HostBinding('class.kennel-action-fan--menu-end')
+  get menuEndHost(): boolean {
+    return this.alignMenuToEnd;
+  }
+
   readonly menuItems: KennelMenuItem[] = [
     { id: 'edit', label: 'Bearbeiten', icon: '✎' },
+    { id: 'share', label: 'Teilen', icon: '↗', mobileOnly: true },
     { id: 'waves', label: 'Waves', icon: '≋' },
     { id: 'swagger', label: 'Swagger UI', icon: '📖' },
     { id: 'swaggerJson', label: 'OpenAPI JSON', icon: '📄' },

@@ -189,6 +189,19 @@ export class KennelListComponent implements OnInit {
       void this.router.navigate(['/kennel', ref, 'edit']);
       return;
     }
+    if (action === 'share') {
+      const url = new URL(`/kennel/${encodeURIComponent(ref)}`, window.location.origin).href;
+      const title = kennel.name || ref;
+      const payload = { title, text: `${title} – DataDogs`, url };
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        void navigator.share(payload).catch(() => {
+          void navigator.clipboard?.writeText(url);
+        });
+      } else {
+        void navigator.clipboard?.writeText(url).catch(() => {});
+      }
+      return;
+    }
     if (action === 'swagger') {
       window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
       return;
