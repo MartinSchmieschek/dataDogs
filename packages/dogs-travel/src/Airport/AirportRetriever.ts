@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { fetchAirportIndex, resolveAirport, type AirportIndex } from "./airportApiClient";
 import type { AirportResult } from "./interfaces/airportTypes";
 import { AirportQueryPact, type AirportQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const AIRPORT_INDEX_KEY = "airport-index:mwgg";
 const AIRPORT_INDEX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +22,7 @@ export class AirportRetriever extends Dog<AirportResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(AirportRetriever.name);
+        return "\uD83D\uDEEB";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

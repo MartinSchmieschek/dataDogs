@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getBibleReference } from "./bibleApiClient";
 import type { BibleResult } from "./interfaces/bibleTypes";
 import { BibleQueryPact, type BibleQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const BIBLE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class BibleRetriever extends Dog<BibleResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(BibleRetriever.name);
+        return "\u271D\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

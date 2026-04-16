@@ -18,7 +18,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { fetchLocalTransitNetwork } from "./transitTripApiClient";
 import type { TransitTripResult } from "./interfaces/transitTripTypes";
 import { TransitTripQueryPact, type TransitTripQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the TransitTripRetriever — a spectral hound that charts
@@ -42,7 +41,7 @@ export class TransitTripRetriever extends Dog<TransitTripResult> implements ICac
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(TransitTripRetriever.name);
+        return "\uD83D\uDE82";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

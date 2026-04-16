@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getWaybackSnapshot } from "./waybackApiClient";
 import type { WaybackResult } from "./interfaces/waybackTypes";
 import { WaybackQueryPact, type WaybackQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const WAYBACK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class WaybackRetriever extends Dog<WaybackResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WaybackRetriever.name);
+        return "\u23F3";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

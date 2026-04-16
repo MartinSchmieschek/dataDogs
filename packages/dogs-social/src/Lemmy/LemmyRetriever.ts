@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryLemmy } from "./lemmyApiClient";
 import type { LemmyResult } from "./interfaces/lemmyTypes";
 import { LemmyQueryPact, type LemmyQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const LEMMY_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class LemmyRetriever extends Dog<LemmyResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(LemmyRetriever.name);
+        return "\uD83C\uDF31";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getNationalize } from "./nationalizeApiClient";
 import type { NationalizeResult } from "./interfaces/nationalizeTypes";
 import { NameQueryPact, type NameQuery } from "../shared/pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const NATIONALIZE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class NationalizeRetriever extends Dog<NationalizeResult> implements ICac
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(NationalizeRetriever.name);
+        return "\uD83C\uDFF3\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

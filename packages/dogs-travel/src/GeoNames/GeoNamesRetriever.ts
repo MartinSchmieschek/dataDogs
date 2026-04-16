@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, 
 import { GeoPointPact, type GeoPoint } from "@datadogs/geo-pact";
 import { getNearbyPlaces } from "./geoNamesApiClient";
 import type { GeoNamesResult } from "./interfaces/geoNamesTypes";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const GEONAMES_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class GeoNamesRetriever extends Dog<GeoNamesResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(GeoNamesRetriever.name);
+        return "\uD83C\uDFD9\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

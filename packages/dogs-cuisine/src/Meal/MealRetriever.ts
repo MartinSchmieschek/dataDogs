@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryMeal } from "./mealApiClient";
 import type { RecipeResult } from "../shared/recipeTypes";
 import { MealQueryPact, type MealQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const MEAL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class MealRetriever extends Dog<RecipeResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(MealRetriever.name);
+        return "\uD83C\uDF7D\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

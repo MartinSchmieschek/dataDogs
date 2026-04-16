@@ -29,7 +29,6 @@ import {
     type OsmLandmarksResult,
     type OsmLandmarkElement,
 } from "./overpassLandmarks";
-import { getBaseDogIcon } from "@datadogs/core";
 
 /**
  * Arr, the OsmLandmarksRetriever — a hound that dredges landmarks from the
@@ -85,7 +84,7 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
 
     /** The sigil branded upon our vessel by cosmic forces beyond comprehension */
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmLandmarksRetriever.name);
+        return "\uD83C\uDFDB\uFE0F";
     }
 
     /** The pact that binds us — an eldritch accord with the query provider, matey */

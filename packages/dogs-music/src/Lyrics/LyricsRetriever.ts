@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getLyrics } from "./lyricsApiClient";
 import type { LyricsResult } from "./interfaces/lyricsTypes";
 import { LyricsQueryPact, type LyricsQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const LYRICS_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class LyricsRetriever extends Dog<LyricsResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(LyricsRetriever.name);
+        return "\uD83C\uDFA4";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

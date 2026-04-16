@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryStackExchange } from "./stackExchangeApiClient";
 import type { StackExchangeResult } from "./interfaces/stackExchangeTypes";
 import { StackExchangeQueryPact, type StackExchangeQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const SE_CACHE_TTL_MS = 30 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class StackExchangeRetriever extends Dog<StackExchangeResult> implements 
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(StackExchangeRetriever.name);
+        return "\u2753";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryCocktail } from "./cocktailApiClient";
 import type { RecipeResult } from "../shared/recipeTypes";
 import { CocktailQueryPact, type CocktailQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const COCKTAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class CocktailRetriever extends Dog<RecipeResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(CocktailRetriever.name);
+        return "\uD83C\uDF79";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

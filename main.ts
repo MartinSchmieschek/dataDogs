@@ -70,7 +70,6 @@ import { RandomFactRetriever, RandomFactQueryPact } from '@datadogs/dogs-random-
 import { SpaceRetriever, SpaceQueryPact } from '@datadogs/dogs-space';
 import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@datadogs/dogs-open-library';
 import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@datadogs/dogs-github-trending';
-import { JsonStorageRetriever } from '@datadogs/dogs-storage';
 import { GeoPointPact } from '@datadogs/geo-pact';
 import {
     JokeRetriever, JokeQueryPact,
@@ -165,7 +164,16 @@ import {
 import {
     CoinGeckoRetriever, CoinGeckoQueryPact,
 } from '@datadogs/dogs-crypto';
-import { ISerializedDogConfig, SerializedDog, type ICacheHandler } from '@datadogs/core';
+import {
+    ISerializedDogConfig,
+    SerializedDog,
+    type ICacheHandler,
+    WebSocketChannelRetriever,
+    ChannelLiveSnippetRetriever,
+    JsonStorageRetriever,
+} from '@datadogs/core';
+import http from 'http';
+import { ChannelHub } from './services/ChannelHub';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import { JsonStorageService } from './services/JsonStorageService';
@@ -240,6 +248,16 @@ async function start() {
     const jsonStorageService = new JsonStorageService(dbEnv.resolveJsonStorageDatabaseUrl());
     JsonStorageRetriever.initService(jsonStorageService);
 
+    // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
+    const channelHub = new ChannelHub({
+        heartbeatSec: Number(process.env.WS_HEARTBEAT_SEC) || undefined,
+        emptyTtlSec: Number(process.env.WS_EMPTY_TTL_SEC) || undefined,
+        maxMessageBytes: Number(process.env.WS_MAX_MESSAGE_BYTES) || undefined,
+        maxPeersPerChannel: Number(process.env.WS_MAX_PEERS_PER_CHANNEL) || undefined,
+        path: process.env.WS_PATH || undefined,
+    });
+    WebSocketChannelRetriever.initService(channelHub);
+
     // Arr, the full crew of base hounds — each born of corporeal law, each ready to hunt.
     // To cosmic madness laws submit, though stalwart minds entreat.
     const allBaseDogClasses = [
@@ -293,6 +311,8 @@ async function start() {
         OpenLibraryRetriever,
         GitHubTrendingRetriever,
         JsonStorageRetriever,
+        WebSocketChannelRetriever,
+        ChannelLiveSnippetRetriever,
         JokeRetriever,
         DadJokeRetriever,
         ChuckNorrisRetriever,
@@ -510,9 +530,13 @@ async function start() {
         });
     }
 
+    // Eigener http.Server, damit der ChannelHub seinen WebSocketServer per Upgrade-Handler anhaengen kann.
+    const httpServer = http.createServer(app);
+    await channelHub.attach(httpServer);
+
     console.log('App started.');
     // Render u. a.: öffentlich erreichbar nur bei Bind an 0.0.0.0; PORT kommt von der Plattform.
-    app.listen(port, '0.0.0.0', () => {
+    httpServer.listen(port, '0.0.0.0', () => {
         const base = `http://localhost:${port}`;
         if (!serveBuiltAngular) {
             console.log(`API ${base} — Dev-UI-Redirect: ${base}/ → ${devUiOrigin}/`);

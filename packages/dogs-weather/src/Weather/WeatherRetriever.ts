@@ -16,7 +16,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, 
 import { getWeather } from "./weatherApiClient";
 import type { WeatherResult } from "./interfaces/weatherTypes";
 import { WeatherQueryPact, type WeatherQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the WeatherRetriever — a spectral hound that sniffs out
@@ -40,7 +39,7 @@ export class WeatherRetriever extends Dog<WeatherResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WeatherRetriever.name);
+        return "\u26C5";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

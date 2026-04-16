@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getChuckNorris } from "./chuckNorrisApiClient";
 import type { ChuckNorrisResult } from "./interfaces/chuckNorrisTypes";
 import { ChuckNorrisQueryPact, type ChuckNorrisQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class ChuckNorrisRetriever extends Dog<ChuckNorrisResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class ChuckNorrisRetriever extends Dog<ChuckNorrisResult> implements ICac
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(ChuckNorrisRetriever.name);
+        return "\uD83E\uDD4B";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

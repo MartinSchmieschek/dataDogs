@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { querySportsDb } from "./sportsDbApiClient";
 import type { SportsDbResult } from "./interfaces/sportsDbTypes";
 import { SportsDbQueryPact, type SportsDbQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const SDB_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class SportsDBRetriever extends Dog<SportsDbResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(SportsDBRetriever.name);
+        return "\uD83C\uDFC6";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

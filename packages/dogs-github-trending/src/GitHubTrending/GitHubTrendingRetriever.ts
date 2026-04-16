@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getTrending } from "./gitHubTrendingApiClient";
 import type { GitHubTrendingResult } from "./interfaces/gitHubTrendingTypes";
 import { GitHubTrendingQueryPact, type GitHubTrendingQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the GitHubTrendingRetriever — a spectral hound that sniffs out
@@ -35,7 +34,7 @@ export class GitHubTrendingRetriever extends Dog<GitHubTrendingResult> implement
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(GitHubTrendingRetriever.name);
+        return "\uD83D\uDC19";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

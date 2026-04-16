@@ -17,7 +17,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getSpecies } from "./biodiversityApiClient";
 import type { BiodiversityResult } from "./interfaces/biodiversityTypes";
 import { BiodiversityQueryPact, type BiodiversityQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the SpeciesRetriever — a spectral hound that sniffs out
@@ -41,7 +40,7 @@ export class SpeciesRetriever extends Dog<BiodiversityResult> implements ICachea
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(SpeciesRetriever.name);
+        return "\uD83E\uDD8E";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

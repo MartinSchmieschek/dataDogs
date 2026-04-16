@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryDeckOfCards } from "./deckOfCardsApiClient";
 import type { DeckOfCardsResult } from "./interfaces/deckOfCardsTypes";
 import { DeckOfCardsQueryPact, type DeckOfCardsQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class DeckOfCardsRetriever extends Dog<DeckOfCardsResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class DeckOfCardsRetriever extends Dog<DeckOfCardsResult> implements ICac
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(DeckOfCardsRetriever.name);
+        return "\uD83C\uDCCF";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

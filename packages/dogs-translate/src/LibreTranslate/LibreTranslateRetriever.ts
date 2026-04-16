@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { translateText } from "./libreTranslateApiClient";
 import type { LibreTranslateResult } from "./interfaces/libreTranslateTypes";
 import { LibreTranslateQueryPact, type LibreTranslateQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const LT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class LibreTranslateRetriever extends Dog<LibreTranslateResult> implement
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(LibreTranslateRetriever.name);
+        return "\uD83D\uDDE3\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

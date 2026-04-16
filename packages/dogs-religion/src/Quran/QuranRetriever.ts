@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryQuran } from "./quranApiClient";
 import type { QuranResult } from "./interfaces/quranTypes";
 import { QuranQueryPact, type QuranQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const QURAN_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class QuranRetriever extends Dog<QuranResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(QuranRetriever.name);
+        return "\u262A\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

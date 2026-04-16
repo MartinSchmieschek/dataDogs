@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryMusicBrainz } from "./musicBrainzApiClient";
 import type { MusicBrainzResult } from "./interfaces/musicBrainzTypes";
 import { MusicBrainzQueryPact, type MusicBrainzQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const MB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class MusicBrainzRetriever extends Dog<MusicBrainzResult> implements ICac
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(MusicBrainzRetriever.name);
+        return "\uD83C\uDFB5";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

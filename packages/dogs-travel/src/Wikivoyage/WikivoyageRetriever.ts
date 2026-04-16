@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getWikivoyageSnippet } from "./wikivoyageApiClient";
 import type { WikivoyageResult } from "./interfaces/wikivoyageTypes";
 import { WikivoyageQueryPact, type WikivoyageQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const WV_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class WikivoyageRetriever extends Dog<WikivoyageResult> implements ICache
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WikivoyageRetriever.name);
+        return "\uD83E\uDDF3";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getRandomQuote } from "./quoteApiClient";
 import type { QuoteResult } from "./interfaces/quoteTypes";
 import { QuoteQueryPact, type QuoteQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class QuoteRetriever extends Dog<QuoteResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class QuoteRetriever extends Dog<QuoteResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(QuoteRetriever.name);
+        return "\uD83D\uDCAC";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

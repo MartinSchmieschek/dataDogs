@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, 
 import { getAirQuality } from "./airQualityApiClient";
 import type { AirQualityResult } from "./interfaces/airQualityTypes";
 import { AirQualityQueryPact, type AirQualityQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the AirQualityRetriever — a spectral hound that sniffs out
@@ -29,7 +28,7 @@ export class AirQualityRetriever extends Dog<AirQualityResult> implements ICache
 
     get name(): string { return AirQualityRetriever.name; }
     get description(): string { return 'Fetches current air quality index and pollutant levels from Open-Meteo.'; }
-    get icon(): string | undefined { return getBaseDogIcon(AirQualityRetriever.name); }
+    get icon(): string | undefined { return "\uD83C\uDF2B\uFE0F"; }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [AirQualityQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
 

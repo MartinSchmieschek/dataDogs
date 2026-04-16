@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryCoinGecko } from "./coinGeckoApiClient";
 import type { CoinGeckoResult } from "./interfaces/coinGeckoTypes";
 import { CoinGeckoQueryPact, type CoinGeckoQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 /** Preise variieren sekuendlich — aber CoinGecko rate-limited hart; 60s Cache ist ein Kompromiss. */
 const CG_CACHE_TTL_MS = 60 * 1000;
@@ -23,7 +22,7 @@ export class CoinGeckoRetriever extends Dog<CoinGeckoResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(CoinGeckoRetriever.name);
+        return "\uD83E\uDD8E";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

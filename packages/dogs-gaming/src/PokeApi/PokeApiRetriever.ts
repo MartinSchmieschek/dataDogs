@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryPokeApi } from "./pokeApiClient";
 import type { PokeApiResult } from "./interfaces/pokeTypes";
 import { PokeApiQueryPact, type PokeApiQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const POKE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class PokeApiRetriever extends Dog<PokeApiResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(PokeApiRetriever.name);
+        return "\uD83C\uDFAE";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

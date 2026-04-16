@@ -2,18 +2,7 @@
  * OSM forest / landuse / natural area polygons → GeoJSON (full geometry).
  */
 
-import {
-    Dog,
-    IHuntingDog,
-    IHuntingSeason,
-    getBaseDogIcon,
-    type ICacheHandler,
-    type ICacheable,
-    type IAreaCache,
-    type IAreaCacheable,
-    geoBucketKey,
-    GEO_CACHE_TTL_OSM_MS,
-} from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { OsmForestGeometryPact, type OsmForestGeometryQueryInput } from "./osmGeometryPacts";
 import { parseOsmLanduseList, parseOsmNaturalList, OsmLanduseValue, OsmNaturalValue } from "./osmGeometryEnums";
 import {
@@ -55,7 +44,7 @@ export class OsmForestPolygonsRetriever
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmForestPolygonsRetriever.name);
+        return undefined;
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

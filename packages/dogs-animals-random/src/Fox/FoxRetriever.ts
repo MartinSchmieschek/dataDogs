@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getRandomFox } from "./foxApiClient";
 import type { FoxResult } from "./interfaces/foxTypes";
 import { FoxQueryPact } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class FoxRetriever extends Dog<FoxResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class FoxRetriever extends Dog<FoxResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(FoxRetriever.name);
+        return "\uD83E\uDD8A";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

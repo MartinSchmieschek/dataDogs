@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryTvMaze } from "./tvMazeApiClient";
 import type { TvMazeResult } from "./interfaces/tvMazeTypes";
 import { TvMazeQueryPact, type TvMazeQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const TVMAZE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class TvMazeRetriever extends Dog<TvMazeResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(TvMazeRetriever.name);
+        return "\uD83D\uDCFA";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

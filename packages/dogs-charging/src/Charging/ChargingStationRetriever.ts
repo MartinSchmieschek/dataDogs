@@ -1,5 +1,4 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { getBaseDogIcon } from "@datadogs/core";
 import { ChargingQueryPact, type ChargingQuery } from "./pacts";
 
 const DEFAULT_RADIUS_KM = 5;
@@ -73,7 +72,7 @@ export class ChargingStationRetriever extends Dog<ChargingResult> implements ICa
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(ChargingStationRetriever.name);
+        return "\u26A1";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

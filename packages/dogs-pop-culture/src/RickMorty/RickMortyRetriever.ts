@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { PopCultureQueryPact, type PopCultureQuery } from "../shared/pacts";
 import type { PopCultureResult } from "../shared/types";
 import { popCultureFetch } from "../shared/popCultureApiClient";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const RM_BASE = "https://rickandmortyapi.com/api";
 const RM_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,7 +23,7 @@ export class RickMortyRetriever extends Dog<PopCultureResult> implements ICachea
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(RickMortyRetriever.name);
+        return "\uD83D\uDEF8";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

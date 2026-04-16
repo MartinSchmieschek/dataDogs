@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { PopCultureQueryPact, type PopCultureQuery } from "../shared/pacts";
 import type { PopCultureResult } from "../shared/types";
 import { popCultureFetch } from "../shared/popCultureApiClient";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const GHIBLI_BASE = "https://ghibliapi.vercel.app";
 const GHIBLI_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,7 +23,7 @@ export class GhibliRetriever extends Dog<PopCultureResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(GhibliRetriever.name);
+        return "\uD83C\uDFAC";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

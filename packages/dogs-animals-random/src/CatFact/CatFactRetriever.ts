@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getCatFact } from "./catFactApiClient";
 import type { CatFactResult } from "./interfaces/catFactTypes";
 import { CatFactQueryPact, type CatFactQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class CatFactRetriever extends Dog<CatFactResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class CatFactRetriever extends Dog<CatFactResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(CatFactRetriever.name);
+        return "\uD83D\uDC31";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

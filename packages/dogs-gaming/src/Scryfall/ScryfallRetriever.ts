@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryScryfall } from "./scryfallApiClient";
 import type { ScryfallResult } from "./interfaces/scryfallTypes";
 import { ScryfallQueryPact, type ScryfallQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const SCRYFALL_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class ScryfallRetriever extends Dog<ScryfallResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(ScryfallRetriever.name);
+        return "\uD83C\uDFB4";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

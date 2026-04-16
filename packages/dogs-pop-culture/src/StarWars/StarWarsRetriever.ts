@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { PopCultureQueryPact, type PopCultureQuery } from "../shared/pacts";
 import type { PopCultureResult } from "../shared/types";
 import { popCultureFetch } from "../shared/popCultureApiClient";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const SW_BASE = "https://swapi.dev/api";
 const SW_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -24,7 +23,7 @@ export class StarWarsRetriever extends Dog<PopCultureResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(StarWarsRetriever.name);
+        return "\u2B50";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

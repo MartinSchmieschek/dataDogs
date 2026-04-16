@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryPicsum } from "./picsumApiClient";
 import type { PicsumResult } from "./interfaces/picsumTypes";
 import { PicsumQueryPact, type PicsumQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const PICSUM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class PicsumRetriever extends Dog<PicsumResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(PicsumRetriever.name);
+        return "\uD83D\uDDBC\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -13,7 +13,6 @@
  */
 
 import { Dog, IHuntingSeason } from "@datadogs/core";
-import { getBaseDogIcon } from '@datadogs/core';
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
 
 /**
@@ -46,7 +45,7 @@ export class CountryFlagBlackLab extends Dog<string>{
 
     /** The icon -- a sigil pulled from the deep, corporeal laws unwritten as suns retreat */
     get icon(): string | undefined {
-        return getBaseDogIcon(CountryFlagBlackLab.name);
+        return "\uD83C\uDF0D";
     }
 
     /**

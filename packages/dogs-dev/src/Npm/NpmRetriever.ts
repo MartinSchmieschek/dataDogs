@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryNpm } from "./npmApiClient";
 import type { NpmResult } from "./interfaces/npmTypes";
 import { NpmQueryPact, type NpmQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const NPM_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class NpmRetriever extends Dog<NpmResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(NpmRetriever.name);
+        return "\uD83E\uDDF1";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

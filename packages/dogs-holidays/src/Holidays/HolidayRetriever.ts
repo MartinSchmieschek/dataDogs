@@ -1,5 +1,4 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { getBaseDogIcon } from "@datadogs/core";
 import { HolidayQueryPact, type HolidayQuery } from "./pacts";
 
 const NAGER_BASE = "https://date.nager.at/api/v3/publicholidays";
@@ -52,7 +51,7 @@ export class HolidayRetriever extends Dog<HolidayResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(HolidayRetriever.name);
+        return "\uD83C\uDF89";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
