@@ -98,6 +98,20 @@ const BASE_DOG_ICONS: Record<string, string> = {
     CocktailRetriever: '\uD83C\uDF79',
     MealRetriever: '\uD83C\uDF7D\uFE0F',
     WaybackRetriever: '\u23F3',
+    DogCeoRetriever: '\uD83D\uDC15',
+    PicsumRetriever: '\uD83D\uDDBC\uFE0F',
+    NasaApodRetriever: '\uD83C\uDF0C',
+    AgifyRetriever: '\uD83D\uDC76',
+    NationalizeRetriever: '\uD83C\uDFF3\uFE0F',
+    GenderizeRetriever: '\u26A7\uFE0F',
+    PokeApiRetriever: '\uD83C\uDFAE',
+    DeckOfCardsRetriever: '\uD83C\uDCCF',
+    ScryfallRetriever: '\uD83C\uDFB4',
+    LibreTranslateRetriever: '\uD83D\uDDE3\uFE0F',
+    TvMazeRetriever: '\uD83D\uDCFA',
+    HackerNewsRetriever: '\uD83D\uDD36',
+    LemmyRetriever: '\uD83C\uDF31',
+    CoinGeckoRetriever: '\uD83E\uDD8E',
 };
 
 /** Look up a hound's sigil by its class name -- returns undefined if the hound be unmarked */
