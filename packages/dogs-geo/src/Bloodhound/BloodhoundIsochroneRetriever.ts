@@ -106,10 +106,10 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
 
             const features: IsochroneFeatureResult[] = response.features.map(feature => ({
                 coordinates: feature.geometry.coordinates[0].map(
-                    coord => [coord[1], coord[0]] as [number, number]
+                    coord => ({ lat: coord[1], lng: coord[0] })
                 ),
                 value: feature.properties.value,
-                center: [feature.properties.center[1], feature.properties.center[0]] as [number, number]
+                center: { lat: feature.properties.center[1], lng: feature.properties.center[0] }
             }));
 
             return { features, raw: response };

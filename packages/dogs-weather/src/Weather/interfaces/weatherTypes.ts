@@ -52,8 +52,8 @@ export interface WeatherResult {
     hourly: HourlyForecast[];
     /** Standort-Infos */
     location: {
-        latitude: number;
-        longitude: number;
+        lat: number;
+        lng: number;
         elevation: number;
         timezone: string;
     };

@@ -57,8 +57,8 @@ function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; l
  */
 function filterElementsByRadius(elements: OsmLandmarkElement[], lat: number, lng: number, radiusM: number): OsmLandmarkElement[] {
     return elements.filter(el => {
-        if (el.lat == null || el.lon == null) return true;
-        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lon }) <= radiusM;
+        if (el.lat == null || el.lng == null) return true;
+        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lng }) <= radiusM;
     });
 }
 

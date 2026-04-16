@@ -70,8 +70,8 @@ export interface AirQualityResult {
     hourly: HourlyAirQuality[];
     /** Standort */
     location: {
-        latitude: number;
-        longitude: number;
+        lat: number;
+        lng: number;
         timezone: string;
     };
 }

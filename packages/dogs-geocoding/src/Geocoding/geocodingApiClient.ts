@@ -33,8 +33,8 @@ function parseAddress(addr: any): GeoAddress {
 
 function parseLocation(item: any): GeoLocation {
     return {
-        latitude: parseFloat(item.lat),
-        longitude: parseFloat(item.lon),
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon),
         displayName: item.display_name ?? "",
         address: parseAddress(item.address),
         osmType: item.osm_type ?? null,

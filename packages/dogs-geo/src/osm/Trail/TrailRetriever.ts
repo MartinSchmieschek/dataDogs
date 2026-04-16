@@ -4,7 +4,7 @@ import { type OverpassRawElement } from "../base/overpassMirrorChain";
 import { TrailQueryPact, type TrailQuery } from "./pacts";
 
 export type TrailType = "hiking" | "bicycle" | "both";
-export type LatLon = { lat: number; lon: number };
+export type TrailPoint = { lat: number; lng: number };
 
 export interface TrailElement {
     id: number;
@@ -14,9 +14,9 @@ export interface TrailElement {
     distance?: string;
     surface?: string;
     /** Flat list: concatenation of all segments (for legacy consumers). */
-    coordinates: LatLon[];
+    coordinates: TrailPoint[];
     /** Structured polylines: one entry per way (relations yield one per member). */
-    segments: LatLon[][];
+    segments: TrailPoint[][];
     tags: Record<string, string>;
 }
 
@@ -30,12 +30,12 @@ export interface TrailResult {
     radiusM: number;
     trailType: TrailType;
     trails: TrailElement[];
-    toPolylines: (element: TrailElement) => LatLon[][];
+    toPolylines: (element: TrailElement) => TrailPoint[][];
     resolveAll: () => Array<{
         id: number;
         name?: string;
         trailType: "hiking" | "bicycle";
-        segments: LatLon[][];
+        segments: TrailPoint[][];
     }>;
     toGeoJSON: () => {
         type: "FeatureCollection";
@@ -65,8 +65,8 @@ function parseTrailType(raw?: string): TrailType {
     return "both";
 }
 
-function makeToPolylines(): (element: TrailElement) => LatLon[][] {
-    return (element: TrailElement): LatLon[][] => {
+function makeToPolylines(): (element: TrailElement) => TrailPoint[][] {
+    return (element: TrailElement): TrailPoint[][] => {
         if (!element) return [];
         if (Array.isArray(element.segments) && element.segments.length > 0) {
             return element.segments.filter((seg) => Array.isArray(seg) && seg.length >= 2);
@@ -98,11 +98,11 @@ function attachTrailHelpers(raw: Omit<TrailResult, "toPolylines" | "resolveAll" 
                 geometry: isMulti
                     ? {
                           type: "MultiLineString" as const,
-                          coordinates: polylines.map((seg) => seg.map((p) => [p.lon, p.lat])),
+                          coordinates: polylines.map((seg) => seg.map((p) => [p.lng, p.lat])),
                       }
                     : {
                           type: "LineString" as const,
-                          coordinates: (polylines[0] ?? []).map((p) => [p.lon, p.lat]),
+                          coordinates: (polylines[0] ?? []).map((p) => [p.lng, p.lat]),
                       },
                 properties: {
                     id: t.id,
@@ -179,17 +179,21 @@ export class TrailRetriever extends OsmFeatureRetriever<TrailResult, typeof Trai
             if (seen.has(dedupKey)) continue;
             seen.add(dedupKey);
 
-            const segments: LatLon[][] = [];
+            const segments: TrailPoint[][] = [];
             if (el.type === "way" && Array.isArray(el.geometry)) {
-                if (el.geometry.length >= 2) segments.push(el.geometry);
+                if (el.geometry.length >= 2) {
+                    segments.push(el.geometry.map(p => ({ lat: p.lat, lng: p.lon })));
+                }
             } else if (el.type === "relation" && Array.isArray(el.members)) {
                 for (const member of el.members) {
                     if (member.type !== "way" || !Array.isArray(member.geometry)) continue;
-                    if (member.geometry.length >= 2) segments.push(member.geometry);
+                    if (member.geometry.length >= 2) {
+                        segments.push(member.geometry.map(p => ({ lat: p.lat, lng: p.lon })));
+                    }
                 }
             }
 
-            const coordinates: LatLon[] = ([] as LatLon[]).concat(...segments);
+            const coordinates: TrailPoint[] = ([] as TrailPoint[]).concat(...segments);
 
             trails.push({
                 id: el.id,

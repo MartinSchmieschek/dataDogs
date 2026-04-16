@@ -3,31 +3,22 @@
  *  BLOODHOUND ROUTE RETRIEVER — chartin' a course through the void
  * =========================================================================
  *
- *  Arr, matey! This be the vessel that charts a route between two
- *  cursed coordinates across the deep. In luminous space blackened
- *  stars gaze, accuse, deny — yet still we sail, segment by segment,
- *  step by eldritch step.
- *
- *  Carrion hordes trill their profane accord with eldritch plans,
- *  and so this retriever breaks the route into segments of madness,
- *  each one a waypoint deeper into the abyss.
- *
- *  To cosmic forms from tangent planes, we end as we began.
+ *  Geo-Pakt: Inputs als Objekt (start/end/+waypoints), Outputs als
+ *  GeoPoint mit lat/lng (niemals als [lat,lng]-Tuple).
  * =========================================================================
  */
 
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketCenter, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
+import type { GeoPoint } from "@datadogs/geo-pact";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
-import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery } from "./pacts";
+import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery, type BloodhoundPoint } from "./pacts";
 import { getBaseDogIcon } from '@datadogs/core';
 
 /**
- * Arr, the BloodhoundRouteRetriever — a spectral hound that charts a course
- * between two cursed coordinates through the void! Carrion hordes trill their
- * profane accord as this vessel plunders route segments from the eldritch depths
- * of OpenRouteService, each waypoint a deeper descent into the abyss.
- * In luminous space blackened stars gaze, accuse, deny — yet still we sail.
+ * Arr, the BloodhoundRouteRetriever — verlangt einen Routen-Pakt mit
+ * `start`, `end` und optionalen `waypoints` und liefert eine Route mit
+ * GeoPoint-basierten Wegpunkten.
  */
 export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -43,7 +34,6 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         this.cacheHandler = handler;
     }
 
-    /** Arr, the name whispered by the void when it speaks of this hound */
     get name(): string {
         return BloodhoundRouteRetriever.name;
     }
@@ -52,22 +42,18 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         return 'Calculates a walking/driving route between two coordinates via OpenRouteService.';
     }
 
-    /** The mark of our vessel — branded upon us by forces beyond the deep */
     get icon(): string | undefined {
         return getBaseDogIcon(BloodhoundRouteRetriever.name);
     }
 
-    /** The unholy pacts this hound be shackled to, matey */
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
         return [BloodhoundRouteQueryPact];
     }
 
-    /** No optional anchors drag this vessel down */
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
         return [];
     }
 
-    /** Carry the movement profiles into the VM so SerializedDog children can use them */
     getVmContextContributions(): Record<string, any> {
         return {
             BloodhoundProfile,
@@ -75,36 +61,36 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         };
     }
 
-    /**
-     * Arr, here we plunder the route from the abyss!
-     * Through endless faces, countless forms, a multitude unfolds —
-     * each travel step a deeper descent into cosmic madness.
-     */
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<BloodhoundRouteResult> => {
         const queryDog = season.exhausted.find(d => this.matchesParent(BloodhoundRouteQueryPact, d));
-        const query = (queryDog?.collected as BloodhoundRouteQuery | undefined) ?? ({} as BloodhoundRouteQuery);
+        const query = (queryDog?.collected as BloodhoundRouteQuery | undefined);
 
-        const startLat = parseFloat(query['startlat']);
-        const startLng = parseFloat(query['startlng']);
-        const endLat = parseFloat(query['endlat']);
-        const endLng = parseFloat(query['endlng']);
-        const profile = query['profile'] || DEFAULT_BLOODHOUND_PROFILE;
-
-        // If the coordinates be swallowed by the void, we cannot navigate the deep
-        if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
-            throw new Error('BloodhoundRouteRetriever: Missing required query params (startlat, startlng, endlat, endlng)');
+        if (!query?.start || !query?.end) {
+            throw new Error('BloodhoundRouteRetriever: Missing start or end in route pact');
         }
 
-        // Beide Endpunkte auf ein feines Grid (~50 m) snappen, damit GPS-Jitter nicht
-        // jede Anfrage als Miss behandelt. Der Key wird deterministisch aus den
-        // gebucketeten Koordinaten zusammengesetzt.
-        const start = geoBucketCenter(startLat, startLng, 100);
-        const end = geoBucketCenter(endLat, endLng, 100);
-        const key = `route:${profile}:${start.lat.toFixed(6)}:${start.lng.toFixed(6)}:${end.lat.toFixed(6)}:${end.lng.toFixed(6)}`;
+        const start = parsePoint(query.start, 'start');
+        const end = parsePoint(query.end, 'end');
+        const waypoints: GeoPoint[] = (query.waypoints ?? []).map((wp, i) => parsePoint(wp, `waypoints[${i}]`));
+        const profile = query.profile || DEFAULT_BLOODHOUND_PROFILE;
+
+        // Beide Endpunkte auf ein feines Grid (~100 m) snappen, damit GPS-Jitter nicht
+        // jede Anfrage als Miss behandelt.
+        const startBucket = geoBucketCenter(start.lat, start.lng, 100);
+        const endBucket = geoBucketCenter(end.lat, end.lng, 100);
+        const wpKey = waypoints
+            .map(wp => {
+                const b = geoBucketCenter(wp.lat, wp.lng, 100);
+                return `${b.lat.toFixed(6)},${b.lng.toFixed(6)}`;
+            })
+            .join('|');
+        const key = `route:${profile}:${startBucket.lat.toFixed(6)}:${startBucket.lng.toFixed(6)}:${endBucket.lat.toFixed(6)}:${endBucket.lng.toFixed(6)}${wpKey ? ':wp:' + wpKey : ''}`;
 
         const fetchRoute = async (): Promise<BloodhoundRouteResult> => {
-            const response = await calculateRoute(startLat, startLng, endLat, endLng, profile);
-            const coordinates = response.features[0].geometry.coordinates;
+            const points: GeoPoint[] = [start, ...waypoints, end];
+            const response = await calculateRoute(points, profile);
+            const rawCoords = response.features[0].geometry.coordinates;
+            const coordinates: GeoPoint[] = rawCoords.map(c => ({ lat: c[1], lng: c[0] }));
             const travelSteps = processRouteResponse(response);
 
             let cumulativeKm = 0;
@@ -127,4 +113,13 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         }
         return fetchRoute();
     };
+}
+
+function parsePoint(p: BloodhoundPoint, label: string): GeoPoint {
+    const lat = parseFloat(p.lat);
+    const lng = parseFloat(p.lng);
+    if (!isFinite(lat) || !isFinite(lng)) {
+        throw new Error(`BloodhoundRouteRetriever: ${label} hat ungueltige lat/lng (got: ${JSON.stringify(p)})`);
+    }
+    return { lat, lng };
 }

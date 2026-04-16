@@ -26,7 +26,7 @@ export async function seedAddressLookupKennel(nodesStore: IStore, kennelsStore: 
         parentsRequired: ['GeocodingRetriever'],
         theRun: `
 const loc = GeocodingRetriever.results[0];
-return { lat: String(loc.latitude), lng: String(loc.longitude) }
+return { lat: String(loc.lat), lng: String(loc.lng) }
 `,
     });
 
@@ -38,7 +38,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude) }
         parentsRequired: ['GeocodingRetriever'],
         theRun: `
 const loc = GeocodingRetriever.results[0];
-return { lat: String(loc.latitude), lng: String(loc.longitude) }
+return { lat: String(loc.lat), lng: String(loc.lng) }
 `,
     });
 
@@ -50,7 +50,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude) }
         parentsRequired: ['GeocodingRetriever'],
         theRun: `
 const loc = GeocodingRetriever.results[0];
-return { lat: String(loc.latitude), lng: String(loc.longitude), days: "3" }
+return { lat: String(loc.lat), lng: String(loc.lng), days: "3" }
 `,
     });
 
@@ -62,7 +62,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude), days: "3" }
         parentsRequired: ['GeocodingRetriever'],
         theRun: `
 const loc = GeocodingRetriever.results[0];
-return { lat: String(loc.latitude), lng: String(loc.longitude), distance: "500", results: "5" }
+return { lat: String(loc.lat), lng: String(loc.lng), radius: "500", results: "5" }
 `,
     });
 
@@ -74,7 +74,7 @@ return { lat: String(loc.latitude), lng: String(loc.longitude), distance: "500",
         parentsRequired: ['GeocodingRetriever'],
         theRun: `
 const loc = GeocodingRetriever.results[0];
-return { lat: String(loc.latitude), lng: String(loc.longitude), radius: "500", limit: "5", lang: "de" }
+return { lat: String(loc.lat), lng: String(loc.lng), radius: "500", limit: "5", lang: "de" }
 `,
     });
 
@@ -107,8 +107,8 @@ const wiki = WikiNearbyRetriever;
 return {
     resolvedAddress: {
         displayName: geo.displayName,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
+        lat: geo.lat,
+        lng: geo.lng,
         street: geo.address.street,
         city: geo.address.city,
         postcode: geo.address.postcode,

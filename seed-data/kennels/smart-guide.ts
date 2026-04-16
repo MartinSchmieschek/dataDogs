@@ -24,7 +24,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         displayName: 'SG: GPS → Weather',
         imitates: 'WeatherQueryProvider',
         parentsRequired: ['GeocodingRetriever'],
-        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude) }`,
+        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.lat), lng: String(loc.lng) }`,
     });
 
     const airMimic = { lineageId: randomUUID(), versionId: randomUUID() };
@@ -33,7 +33,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         displayName: 'SG: GPS → AirQuality',
         imitates: 'AirQualityQueryProvider',
         parentsRequired: ['GeocodingRetriever'],
-        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude) }`,
+        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.lat), lng: String(loc.lng) }`,
     });
 
     const sunMimic = { lineageId: randomUUID(), versionId: randomUUID() };
@@ -42,7 +42,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         displayName: 'SG: GPS → Sun',
         imitates: 'SunQueryProvider',
         parentsRequired: ['GeocodingRetriever'],
-        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude), days: "3" }`,
+        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.lat), lng: String(loc.lng), days: "3" }`,
     });
 
     const transportMimic = { lineageId: randomUUID(), versionId: randomUUID() };
@@ -51,7 +51,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         displayName: 'SG: GPS → Transport',
         imitates: 'PublicTransportQueryProvider',
         parentsRequired: ['GeocodingRetriever'],
-        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude), distance: "500", results: "5" }`,
+        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.lat), lng: String(loc.lng), radius: "500", results: "5" }`,
     });
 
     const wikiMimic = { lineageId: randomUUID(), versionId: randomUUID() };
@@ -60,7 +60,7 @@ export async function seedSmartGuideKennel(nodesStore: IStore, kennelsStore: ISt
         displayName: 'SG: GPS → Wiki',
         imitates: 'WikiNearbyQueryProvider',
         parentsRequired: ['GeocodingRetriever'],
-        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.latitude), lng: String(loc.longitude), radius: "1000", limit: "10", lang: "de" }`,
+        theRun: `const loc = GeocodingRetriever.results[0]; return { lat: String(loc.lat), lng: String(loc.lng), radius: "1000", limit: "10", lang: "de" }`,
     });
 
     // --- Wave 6: Activity Recommender (reads Weather + AirQuality + Sun) ---
@@ -225,8 +225,8 @@ const geo = GeocodingRetriever.results[0];
 return {
     resolvedAddress: {
         displayName: geo.displayName,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
+        lat: geo.lat,
+        lng: geo.lng,
         city: geo.address.city,
     },
     recommendation: ${JSON.stringify(recommenderDogId).replace(/"/g, "'")} in this ? this[${JSON.stringify(recommenderDogId).replace(/"/g, "'")}] : null,
@@ -260,8 +260,8 @@ const geo = GeocodingRetriever.results[0];
 return {
     resolvedAddress: {
         displayName: geo.displayName,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
+        lat: geo.lat,
+        lng: geo.lng,
         city: geo.address.city,
     },
     recommendation: ActivityRecommender,

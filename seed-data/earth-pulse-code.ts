@@ -16,8 +16,8 @@ var addr = loc.address || {};
 var cur = w.current || {};
 var today = s.today || {};
 var air = a.current || {};
-var lat = loc.latitude || 50.11;
-var lng = loc.longitude || 8.68;
+var lat = loc.lat || 50.11;
+var lng = loc.lng || 8.68;
 
 var spread = 0.15;
 var windPoints = [
@@ -36,11 +36,11 @@ var windResults = await Promise.all(windPoints.map(async function(p) {
 }));
 
 var topSpecies = (sp.observations || []).slice(0, 15).map(function(o) {
-  return { name: o.speciesName || o.scientificName, taxon: o.iconicTaxon, photo: o.photoUrl, lat: o.latitude, lng: o.longitude };
+  return { name: o.speciesName || o.scientificName, taxon: o.iconicTaxon, photo: o.photoUrl, lat: (o.location && o.location.lat) || 0, lng: (o.location && o.location.lng) || 0 };
 });
 
 var landmarks = (lm.elements || []).slice(0, 25).map(function(e) {
-  return { name: e.name || e.tags?.name || 'Unbenannt', lat: e.lat, lon: e.lon, type: e.tags?.tourism || e.tags?.historic || e.tags?.amenity || 'landmark', desc: e.tags?.description?.substring(0, 200) };
+  return { name: e.name || e.tags?.name || 'Unbenannt', lat: e.lat, lng: e.lng, type: e.tags?.tourism || e.tags?.historic || e.tags?.amenity || 'landmark', desc: e.tags?.description?.substring(0, 200) };
 });
 
 var trips = (transit.trips || []).map(function(t) {
@@ -147,7 +147,7 @@ var transitCards = '';
 });
 
 var speciesJS = ''; (sp.top || []).forEach(function(s) { if (s.lat && s.lng) { speciesJS += 'L.circleMarker([' + s.lat + ',' + s.lng + '],{radius:5,fillColor:"#16a34a",color:"#fff",weight:1,fillOpacity:0.8}).addTo(map).bindPopup("<b>' + (s.name||'?').replace(/'/g,'') + '</b><br>' + (s.taxon||'') + '");'; } });
-var landmarkJS = ''; (lm.top || []).slice(0, 15).forEach(function(l) { if (l.lat && l.lon) { landmarkJS += 'L.circleMarker([' + l.lat + ',' + l.lon + '],{radius:4,fillColor:"#ca8a04",color:"#fff",weight:1,fillOpacity:0.8}).addTo(map).bindPopup("<b>' + (l.name||'?').replace(/'/g,'') + '</b><br>' + (l.type||'') + '");'; } });
+var landmarkJS = ''; (lm.top || []).slice(0, 15).forEach(function(l) { if (l.lat && l.lng) { landmarkJS += 'L.circleMarker([' + l.lat + ',' + l.lng + '],{radius:4,fillColor:"#ca8a04",color:"#fff",weight:1,fillOpacity:0.8}).addTo(map).bindPopup("<b>' + (l.name||'?').replace(/'/g,'') + '</b><br>' + (l.type||'') + '");'; } });
 
 var speciesCards = ''; (sp.top || []).forEach(function(s) {
   speciesCards += '<div class="spc">'; if (s.photo) speciesCards += '<img src="' + s.photo + '" onerror="this.style.display=\\'none\\'" loading="lazy"/>';
