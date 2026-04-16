@@ -125,7 +125,9 @@
   --kennel-create-fab-top: 4.35rem;
   --kennel-list-pad-start: clamp(2.625rem, 11.25vw, 4.625rem);
   --kennel-list-pad-end: clamp(1.625rem, 7vw, 2.875rem);
-  --kennel-list-pad-top: clamp(1.25rem, 5.5vw, 2.375rem);
+  /* Mehr Luft vor/nach den Karten beim Scrollen (Kartenanimation + FAB/Suche) */
+  --kennel-list-pad-top: clamp(2rem, 7vw, 3.35rem);
+  --kennel-list-pad-bottom: clamp(2rem, 7vw, 3.35rem);
   flex: 1 1 auto;
   position: relative;
   display: flex;
@@ -192,7 +194,7 @@
   -webkit-overflow-scrolling: touch;
   position: relative;
   box-sizing: border-box;
-  padding-bottom: max(0.45rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(1.75rem, 0.45rem + env(safe-area-inset-bottom, 0px));
 }
 
 .kennel-float-btn {
@@ -239,7 +241,8 @@
   max-width: 760px;
   margin-left: auto;
   margin-right: auto;
-  padding: clamp(0.65rem, 2vw, 1.1rem) var(--kennel-page-pad-inline, clamp(0.65rem, 2.4vw, 1rem)) 2.25rem;
+  padding: clamp(0.65rem, 2vw, 1.1rem) var(--kennel-page-pad-inline, clamp(0.65rem, 2.4vw, 1rem))
+    clamp(2.5rem, 5vw, 3.75rem);
   width: 100%;
   box-sizing: border-box;
 }
@@ -312,10 +315,10 @@
 }
 
 .kennel-list-wrap {
-  perspective: 1200px;
   padding-left: var(--kennel-list-pad-start);
   padding-right: var(--kennel-list-pad-end);
   padding-top: var(--kennel-list-pad-top);
+  padding-bottom: var(--kennel-list-pad-bottom);
 }
 
 .kennel-list {
@@ -326,9 +329,16 @@
 
 .kennel-card-motion {
   --kennel-focus-blend: 1;
-  transform-style: preserve-3d;
+  transform-origin: center center;
   will-change: transform, opacity;
   animation: kennel-card-in 0.52s ease backwards;
+  position: relative;
+  z-index: 0;
+}
+
+/* Geschwister-Karten würden ein offenes Dropdown überdecken — ganze Karte nach vorne */
+.kennel-card-motion:has(app-kennel-action-fan.kennel-action-fan--open) {
+  z-index: 800;
 }
 
 @keyframes kennel-card-in {
@@ -595,7 +605,8 @@
   .kennel-work-area {
     --kennel-list-pad-start: max(clamp(2.5rem, 10.5vw, 4.125rem), env(safe-area-inset-left, 0px));
     --kennel-list-pad-end: max(clamp(1.875rem, 8.75vw, 2.625rem), env(safe-area-inset-right, 0px));
-    --kennel-list-pad-top: clamp(1.125rem, 5vw, 2.125rem);
+    --kennel-list-pad-top: clamp(1.75rem, 6vw, 2.85rem);
+    --kennel-list-pad-bottom: clamp(1.75rem, 6vw, 2.85rem);
     --kennel-sort-slot-w: 9rem;
     --kennel-search-row-gap: 0.5rem;
     --kennel-search-sort-gap: 0.4rem;
@@ -613,7 +624,7 @@
   .kennel-page {
     max-width: none;
     padding-top: 0.55rem;
-    padding-bottom: 1.6rem;
+    padding-bottom: clamp(2rem, 6vw, 2.85rem);
     padding-left: max(clamp(0.85rem, 5vw, 1.15rem), env(safe-area-inset-left, 0px));
     padding-right: max(clamp(0.85rem, 5vw, 1.15rem), env(safe-area-inset-right, 0px));
   }
