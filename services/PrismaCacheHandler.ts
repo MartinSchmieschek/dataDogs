@@ -4,6 +4,11 @@
  * Eigene DB (CACHE_DATABASE_URL), Schema: store/prisma-cache/schema.prisma.
  * Kein zweites natives SQL-API — nur Prisma.
  *
+ * Enthaelt zwei Caches:
+ *  - CacheEntry (key/value) fuer klassische getOrFetch-Calls mit TTL + in-flight-dedup
+ *  - GeoAreaCache (center/radius/bbox) ueber PersistentAreaCacheStrategy fuer
+ *    geographische Containment-Checks, persistiert ueber Prozess-Restarts hinweg.
+ *
  * Client-Pfad: immer relativ zum Projektroot (process.cwd()), damit dist/main.js nicht
  * nach dist/store/generated sucht — Prisma legt unter store/generated/ ab.
  */
@@ -11,7 +16,7 @@
 import path from 'path';
 import type { PrismaClient } from '../store/generated/prisma-cache-client';
 import { ICacheHandler, IAreaCache, isRuntimeLogVerbose } from '@datadogs/core';
-import { AreaCacheStrategy } from './AreaCacheStrategy';
+import { PersistentAreaCacheStrategy } from './PersistentAreaCacheStrategy';
 
 function createPrismaCacheClient(dbUrl: string): PrismaClient {
     const mod = require(path.join(process.cwd(), 'store/generated/prisma-cache-client')) as typeof import('../store/generated/prisma-cache-client');
@@ -24,10 +29,11 @@ export class PrismaCacheHandler implements ICacheHandler {
     private prisma: PrismaClient;
     private inflight = new Map<string, Promise<unknown>>();
     private pruneTimer: ReturnType<typeof setInterval>;
-    private areaCaches = new Map<string, AreaCacheStrategy<unknown>>();
+    private sharedAreaCache: PersistentAreaCacheStrategy<unknown>;
 
     constructor(cacheDatabaseUrl: string, pruneIntervalMs: number = 60_000) {
         this.prisma = createPrismaCacheClient(cacheDatabaseUrl);
+        this.sharedAreaCache = new PersistentAreaCacheStrategy<unknown>(this.prisma);
 
         this.pruneTimer = setInterval(() => {
             void this.prune().catch((e) => console.error('[PrismaCacheHandler] prune', e));
@@ -38,13 +44,9 @@ export class PrismaCacheHandler implements ICacheHandler {
     }
 
     getAreaCache<T>(): IAreaCache<T> {
-        const key = '__shared__';
-        let cache = this.areaCaches.get(key);
-        if (!cache) {
-            cache = new AreaCacheStrategy<unknown>();
-            this.areaCaches.set(key, cache);
-        }
-        return cache as IAreaCache<T>;
+        // Ein gemeinsamer persistenter Area-Cache fuer alle Dogs; Partitionierung
+        // passiert ueber den `discriminant` innerhalb jedes Eintrags.
+        return this.sharedAreaCache as unknown as IAreaCache<T>;
     }
 
     async get<T>(key: string): Promise<T | undefined> {
@@ -119,5 +121,6 @@ export class PrismaCacheHandler implements ICacheHandler {
         if (res.count > 0 && isRuntimeLogVerbose()) {
             console.log(`[PrismaCacheHandler] PRUNED: ${res.count} expired entries`);
         }
+        await this.sharedAreaCache.prune();
     }
 }

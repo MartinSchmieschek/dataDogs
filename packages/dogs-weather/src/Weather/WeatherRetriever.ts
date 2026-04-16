@@ -12,7 +12,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey, GEO_CACHE_TTL_WEATHER_MS } from "@datadogs/core";
 import { getWeather } from "./weatherApiClient";
 import type { WeatherResult } from "./interfaces/weatherTypes";
 import { WeatherQueryPact, type WeatherQuery } from "./pacts";
@@ -62,10 +62,18 @@ export class WeatherRetriever extends Dog<WeatherResult> implements ICacheable {
             throw new Error('WeatherRetriever: Missing required query params (lat, lng)');
         }
 
-        const key = `weather:${lat}:${lng}:${query['date'] ?? 'today'}:${query['time'] ?? 'now'}`;
+        // Wetter ist auf 1-km-Kacheln gebucketet — Open-Meteo liefert ohnehin
+        // nur auf diesem Grid aufgeloeste Vorhersagen, GPS-Jitter soll keine
+        // Cache-Misses ausloesen.
+        const key = geoBucketKey("weather", lat, lng, 1000, {
+            extras: {
+                date: query['date'] ?? 'today',
+                time: query['time'] ?? 'now',
+            },
+        });
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 15 * 60_000, () =>
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_WEATHER_MS, () =>
                 getWeather(lat, lng, query['time'], query['date'])
             );
         }

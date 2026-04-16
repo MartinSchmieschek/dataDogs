@@ -16,7 +16,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketCenter, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
 import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery } from "./pacts";
@@ -95,7 +95,12 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
             throw new Error('BloodhoundRouteRetriever: Missing required query params (startlat, startlng, endlat, endlng)');
         }
 
-        const key = `route:${profile}:${startLat}:${startLng}:${endLat}:${endLng}`;
+        // Beide Endpunkte auf ein feines Grid (~50 m) snappen, damit GPS-Jitter nicht
+        // jede Anfrage als Miss behandelt. Der Key wird deterministisch aus den
+        // gebucketeten Koordinaten zusammengesetzt.
+        const start = geoBucketCenter(startLat, startLng, 100);
+        const end = geoBucketCenter(endLat, endLng, 100);
+        const key = `route:${profile}:${start.lat.toFixed(6)}:${start.lng.toFixed(6)}:${end.lat.toFixed(6)}:${end.lng.toFixed(6)}`;
 
         const fetchRoute = async (): Promise<BloodhoundRouteResult> => {
             const response = await calculateRoute(startLat, startLng, endLat, endLng, profile);
@@ -118,7 +123,7 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 24 * 60 * 60_000, fetchRoute);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchRoute);
         }
         return fetchRoute();
     };

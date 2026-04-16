@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { NearbyTracksPact, type OsmTracksQueryInput } from "./pacts";
 import {
     clampTracksRadiusM,
@@ -88,7 +88,7 @@ export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheab
         const discriminant = `tracks:${[...facets].sort().join(",")}`;
 
         if (this.areaCache) {
-            const covering = this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
+            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
             if (covering) {
                 const filtered = filterElementsByRadius(covering.data.elements, lat, lng, radiusM);
                 return { center: { lat, lng }, radiusM, preset: facets, elements: filtered };
@@ -101,21 +101,21 @@ export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheab
             const result = await fetchNearbyTracks(lat, lng, radiusM, facets);
 
             if (this.areaCache) {
-                this.areaCache.store({
+                await this.areaCache.store({
                     center: { lat, lng },
                     radiusM,
                     data: result,
                     cacheKey: key,
                     cachedAt: Date.now(),
                     discriminant,
-                });
+                }, GEO_CACHE_TTL_OSM_MS);
             }
 
             return result;
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 6 * 60 * 60_000, fetchTracks);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchTracks);
         }
         return fetchTracks();
     };

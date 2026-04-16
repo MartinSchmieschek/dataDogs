@@ -16,7 +16,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { BloodhoundIsochronePact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
@@ -95,7 +95,11 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
             throw new Error('BloodhoundIsochroneRetriever: Missing required params (lat, lng, range)');
         }
 
-        const key = `isochrone:${profile}:${lat}:${lng}:${range}`;
+        // Der Isochrone-Radius haengt von range ab; wir bucketen den Startpunkt
+        // auf einem 100 m-Grid, sodass GPS-Jitter das Cache-Hit nicht zerschlaegt.
+        const key = geoBucketKey("isochrone", lat, lng, 100, {
+            extras: { profile, range: String(range) },
+        });
 
         const fetchIsochrone = async (): Promise<BloodhoundIsochroneResult> => {
             const response = await calculateIsochrone(lat, lng, profile, range);
@@ -112,7 +116,7 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 24 * 60 * 60_000, fetchIsochrone);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchIsochrone);
         }
         return fetchIsochrone();
     };
