@@ -30,6 +30,7 @@
     "baseUrl": ".",
     "paths": {
       "@datadogs/core": ["packages/core/src/index.ts"],
+      "@datadogs/swaggrid": ["packages/swaggrid/src/index.ts"],
       "@datadogs/dogs-demo": ["packages/dogs-demo/src/index.ts"],
       "@datadogs/dogs-geo": ["packages/dogs-geo/src/index.ts"],
       "@datadogs/dogs-warframe": ["packages/dogs-warframe/src/index.ts"],

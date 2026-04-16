@@ -1,6 +1,6 @@
 {
   "name": "dataDogs",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Data Hunt — dogs hunt data: Kennels, Waves, Serialized TypeScript in the void. Express, Angular, Prisma.",
   "main": "main.ts",
   "workspaces": [
@@ -16,6 +16,7 @@
   "scripts": {
     "postinstall": "cross-env NODE_ENV=development node -r ./scripts/load-env.cjs ./scripts/postinstall-run.cjs",
     "build:core": "cd packages/core && npx tsc",
+    "build:swaggrid": "cd packages/swaggrid && npx tsc",
     "build:dogs-demo": "cd packages/dogs-demo && npx tsc",
     "build:dogs-geo": "cd packages/dogs-geo && npx tsc",
     "build:dogs-warframe": "cd packages/dogs-warframe && npx tsc",
@@ -47,7 +48,7 @@
     "build:dogs-open-library": "cd packages/dogs-open-library && npx tsc",
     "build:dogs-github-trending": "cd packages/dogs-github-trending && npx tsc",
     "build:dogs": "npm run build:dogs-demo && npm run build:dogs-geo && npm run build:dogs-warframe && npm run build:dogs-hue && npm run build:dogs-talking && npm run build:dogs-public-transport && npm run build:dogs-weather && npm run build:dogs-air-quality && npm run build:dogs-geocoding && npm run build:dogs-wikipedia && npm run build:dogs-sun && npm run build:dogs-biodiversity && npm run build:dogs-birds && npm run build:dogs-phenology && npm run build:dogs-webcams && npm run build:dogs-regional-news && npm run build:dogs-transit-trips && npm run build:dogs-astronomy && npm run build:dogs-water && npm run build:dogs-historical-weather && npm run build:dogs-charging && npm run build:dogs-currency && npm run build:dogs-holidays && npm run build:dogs-wiki-search && npm run build:dogs-season && npm run build:dogs-ip-geo && npm run build:dogs-random-fact && npm run build:dogs-space && npm run build:dogs-open-library && npm run build:dogs-github-trending",
-    "build:packages": "npm run build:core && npm run build:dogs",
+    "build:packages": "npm run build:core && npm run build:swaggrid && npm run build:dogs",
     "build": "cross-env NODE_ENV=development node -r ./scripts/load-env.cjs ./scripts/run-build.cjs",
     "build:prod": "cross-env NODE_ENV=production node -r ./scripts/load-env.cjs ./scripts/run-build.cjs",
     "prisma:sync": "cross-env NODE_ENV=development node -r ./scripts/load-env.cjs ./scripts/run-prisma-sync.cjs",
@@ -75,6 +76,7 @@
   "private": true,
   "dependencies": {
     "@datadogs/core": "file:packages/core",
+    "@datadogs/swaggrid": "file:packages/swaggrid",
     "@datadogs/dogs-air-quality": "file:packages/dogs-air-quality",
     "@datadogs/dogs-astronomy": "file:packages/dogs-astronomy",
     "@datadogs/dogs-biodiversity": "file:packages/dogs-biodiversity",

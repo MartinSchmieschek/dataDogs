@@ -91,7 +91,7 @@ function resolveInstanceId(instance: any): string {
         : instance.name;
 }
 
-/** Gleicht Lead-Suche mit SwaggerGenerator / API: erster dogIds-Eintrag, base:-Prefix optional. */
+/** Gleicht Lead-Suche mit @datadogs/swaggrid (Herald) / API: erster dogIds-Eintrag, base:-Prefix optional. */
 function findLeadNodeEntry(waves: Waves, kennelConfig: IKennelConfig): NodeEntry | null {
     const leadId = kennelConfig.dogIds?.[0];
     if (!leadId) return null;
