@@ -61,7 +61,7 @@ export class PublicTransportRetriever extends Dog<PublicTransportNearbyResult> {
 
         const lat = parseFloat(query['lat']);
         const lng = parseFloat(query['lng']);
-        const distance = parseInt(query['distance'] ?? '1000', 10);
+        const radius = parseInt(query['radius'] ?? '1000', 10);
         const results = parseInt(query['results'] ?? '8', 10);
 
         if (isNaN(lat) || isNaN(lng)) {
@@ -69,7 +69,7 @@ export class PublicTransportRetriever extends Dog<PublicTransportNearbyResult> {
         }
 
         // Summon nearby stations from the transit abyss
-        const stations = await fetchNearbyStations(lat, lng, distance, results);
+        const stations = await fetchNearbyStations(lat, lng, radius, results);
 
         // For each station, dredge the departure board from the void
         const stationDepartures: TransitStationDepartures[] = await Promise.all(

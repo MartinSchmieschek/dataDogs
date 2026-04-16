@@ -77,8 +77,8 @@ export async function getSunData(
         today: allDays[0],
         forecast: allDays,
         location: {
-            latitude: data.latitude,
-            longitude: data.longitude,
+            lat: data.latitude,
+            lng: data.longitude,
             timezone: data.timezone,
         },
     };

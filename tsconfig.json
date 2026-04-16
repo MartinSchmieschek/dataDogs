@@ -60,7 +60,23 @@
       "@datadogs/dogs-random-fact": ["packages/dogs-random-fact/src/index.ts"],
       "@datadogs/dogs-space": ["packages/dogs-space/src/index.ts"],
       "@datadogs/dogs-open-library": ["packages/dogs-open-library/src/index.ts"],
-      "@datadogs/dogs-github-trending": ["packages/dogs-github-trending/src/index.ts"]
+      "@datadogs/dogs-github-trending": ["packages/dogs-github-trending/src/index.ts"],
+      "@datadogs/geo-pact": ["packages/geo-pact/src/index.ts"],
+      "@datadogs/dogs-storage": ["packages/dogs-storage/src/index.ts"],
+      "@datadogs/dogs-humor": ["packages/dogs-humor/src/index.ts"],
+      "@datadogs/dogs-animals-random": ["packages/dogs-animals-random/src/index.ts"],
+      "@datadogs/dogs-dictionary": ["packages/dogs-dictionary/src/index.ts"],
+      "@datadogs/dogs-knowledge": ["packages/dogs-knowledge/src/index.ts"],
+      "@datadogs/dogs-pop-culture": ["packages/dogs-pop-culture/src/index.ts"],
+      "@datadogs/dogs-music": ["packages/dogs-music/src/index.ts"],
+      "@datadogs/dogs-sports": ["packages/dogs-sports/src/index.ts"],
+      "@datadogs/dogs-dev": ["packages/dogs-dev/src/index.ts"],
+      "@datadogs/dogs-travel": ["packages/dogs-travel/src/index.ts"],
+      "@datadogs/dogs-quiz": ["packages/dogs-quiz/src/index.ts"],
+      "@datadogs/dogs-religion": ["packages/dogs-religion/src/index.ts"],
+      "@datadogs/dogs-health": ["packages/dogs-health/src/index.ts"],
+      "@datadogs/dogs-cuisine": ["packages/dogs-cuisine/src/index.ts"],
+      "@datadogs/dogs-web-archive": ["packages/dogs-web-archive/src/index.ts"]
     },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

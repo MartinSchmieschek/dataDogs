@@ -511,7 +511,7 @@ html += "if(!segs.length)continue;";
 html += "var group=L.featureGroup();";
 html += "for(var s=0;s<segs.length;s++){";
 html += "var seg=segs[s];if(!seg||seg.length<2)continue;";
-html += "var ll=seg.map(function(c){return[c.lat,c.lon];});";
+html += "var ll=seg.map(function(c){return[c.lat,c.lng];});";
 html += "L.polyline(ll,{color:col,weight:3,opacity:0.8}).addTo(group);";
 html += "}";
 html += "if(!group.getLayers().length)continue;";

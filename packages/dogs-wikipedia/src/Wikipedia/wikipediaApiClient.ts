@@ -58,8 +58,8 @@ export async function getWikiNearby(
         return {
             pageId: geo.pageid,
             title: geo.title,
-            latitude: geo.lat,
-            longitude: geo.lon,
+            lat: geo.lat,
+            lng: geo.lon,
             distance: geo.dist,
             extract: page.extract ?? "",
             thumbnailUrl: page.thumbnail?.source ?? null,
