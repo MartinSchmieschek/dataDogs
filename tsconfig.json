@@ -76,7 +76,14 @@
       "@datadogs/dogs-religion": ["packages/dogs-religion/src/index.ts"],
       "@datadogs/dogs-health": ["packages/dogs-health/src/index.ts"],
       "@datadogs/dogs-cuisine": ["packages/dogs-cuisine/src/index.ts"],
-      "@datadogs/dogs-web-archive": ["packages/dogs-web-archive/src/index.ts"]
+      "@datadogs/dogs-web-archive": ["packages/dogs-web-archive/src/index.ts"],
+      "@datadogs/dogs-images": ["packages/dogs-images/src/index.ts"],
+      "@datadogs/dogs-name-insights": ["packages/dogs-name-insights/src/index.ts"],
+      "@datadogs/dogs-gaming": ["packages/dogs-gaming/src/index.ts"],
+      "@datadogs/dogs-translate": ["packages/dogs-translate/src/index.ts"],
+      "@datadogs/dogs-tv": ["packages/dogs-tv/src/index.ts"],
+      "@datadogs/dogs-social": ["packages/dogs-social/src/index.ts"],
+      "@datadogs/dogs-crypto": ["packages/dogs-crypto/src/index.ts"]
     },
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

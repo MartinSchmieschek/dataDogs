@@ -3,6 +3,7 @@
  * Ruft die low-level API-Clients direkt auf — keine Kennel-Infrastruktur noetig.
  * Run: npx ts-node -r tsconfig-paths/register scripts/test-new-dogs.ts
  */
+export {};
 
 type TestResult = { name: string; ok: boolean; summary?: string; error?: string };
 
