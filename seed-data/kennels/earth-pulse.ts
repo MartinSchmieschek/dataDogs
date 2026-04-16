@@ -9,7 +9,7 @@ export async function seedEarthPulseKennel(nodesStore: IStore, kennelsStore: ISt
     const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
-    const gpsTheRun = `var g = GeocodingRetriever; var loc = (g.results || [])[0] || {}; return { lat: String(loc.latitude), lng: String(loc.longitude) }`;
+    const gpsTheRun = `var g = GeocodingRetriever; var loc = (g.results || [])[0] || {}; return { lat: String(loc.lat), lng: String(loc.lng) }`;
 
     // --- Wave 2: Geocoding Mimic ---
     const geoMimic = { lineageId: randomUUID(), versionId: randomUUID() };
@@ -51,7 +51,7 @@ export async function seedEarthPulseKennel(nodesStore: IStore, kennelsStore: ISt
     await saveMimic(nodesStore, { ...landmarkMimic, displayName: 'EP: GPS → Landmarks', imitates: 'NearbyLandmarksQueryProvider', parentsRequired: ['GeocodingRetriever'], theRun: gpsTheRun });
 
     const transitMimic = { lineageId: randomUUID(), versionId: randomUUID() };
-    await saveMimic(nodesStore, { ...transitMimic, displayName: 'EP: GPS → Transit', imitates: 'TransitTripQueryProvider', parentsRequired: ['GeocodingRetriever'], theRun: `var g = GeocodingRetriever; var loc = (g.results || [])[0] || {}; return { lat: String(loc.latitude), lng: String(loc.longitude), distance: "2000" }` });
+    await saveMimic(nodesStore, { ...transitMimic, displayName: 'EP: GPS → Transit', imitates: 'TransitTripQueryProvider', parentsRequired: ['GeocodingRetriever'], theRun: `var g = GeocodingRetriever; var loc = (g.results || [])[0] || {}; return { lat: String(loc.lat), lng: String(loc.lng), radius: "2000" }` });
 
     // --- Wave 6: PulsData (combines all retriever yields) ---
     const pulsDataVersionId = randomUUID();

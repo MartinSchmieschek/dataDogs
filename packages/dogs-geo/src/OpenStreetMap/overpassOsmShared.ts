@@ -53,7 +53,7 @@ export interface OsmGeoElement {
     type: OsmGeoElementType;
     id: number;
     lat: number;
-    lon: number;
+    lng: number;
     name?: string;
     tags: Record<string, string>;
 }
@@ -76,15 +76,15 @@ export function mapOverpassElement(el: OverpassElement): OsmGeoElement | null {
         return null;
     }
     let lat: number | undefined;
-    let lon: number | undefined;
+    let lng: number | undefined;
     if (el.lat != null && el.lon != null) {
         lat = el.lat;
-        lon = el.lon;
+        lng = el.lon;
     } else if (el.center) {
         lat = el.center.lat;
-        lon = el.center.lon;
+        lng = el.center.lon;
     }
-    if (lat == null || lon == null || Number.isNaN(lat) || Number.isNaN(lon)) {
+    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
         return null;
     }
     const tags = el.tags ?? {};
@@ -93,7 +93,7 @@ export function mapOverpassElement(el: OverpassElement): OsmGeoElement | null {
         type: el.type as OsmGeoElementType,
         id: el.id,
         lat,
-        lon,
+        lng,
         ...(name ? { name } : {}),
         tags,
     };

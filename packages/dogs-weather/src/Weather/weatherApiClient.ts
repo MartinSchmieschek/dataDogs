@@ -170,8 +170,8 @@ export async function getWeather(
         current,
         hourly,
         location: {
-            latitude: data.latitude,
-            longitude: data.longitude,
+            lat: data.latitude,
+            lng: data.longitude,
             elevation: data.elevation,
             timezone: data.timezone,
         },

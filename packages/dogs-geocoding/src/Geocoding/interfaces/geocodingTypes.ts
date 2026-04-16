@@ -25,9 +25,9 @@ export interface GeoAddress {
 /** Ein einzelnes Geocoding-Ergebnis */
 export interface GeoLocation {
     /** Breitengrad */
-    latitude: number;
+    lat: number;
     /** Laengengrad */
-    longitude: number;
+    lng: number;
     /** Vollstaendiger Anzeigename */
     displayName: string;
     /** Strukturierte Adresse */

@@ -103,8 +103,8 @@ export async function fetchNearbyStations(
                 id,
                 name,
                 distance: dist,
-                latitude: stopLat,
-                longitude: stopLng,
+                lat: stopLat,
+                lng: stopLng,
                 modes: existing ? [...new Set([...existing.modes, ...transitModes])] : transitModes,
             });
         } else {

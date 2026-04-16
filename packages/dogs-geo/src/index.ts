@@ -7,20 +7,18 @@
  *  no name. This here barrel file be the anchor of our vessel, bindin'
  *  together the cursed modules that dare chart routes across the deep.
  *
- *  Through endless faces, countless forms, a multitude unfolds — and
- *  every export be another tentacle reachin' from the eldritch void
- *  into the luminous space of blackened stars.
- *
- *  Sail careful, crew. Corporeal laws are unwritten here.
+ *  Alle Geo-Hunde leben jetzt in einem Paket. OSM-POI-Dogs teilen sich
+ *  die `OsmFeatureRetriever`-Basis unter `./osm/base`, die den kompletten
+ *  Cache-/Fetch-/Area-Cache-Tanz uebernimmt.
  * =========================================================================
  */
 
-// Arr, the Bloodhound modules — route and isochrone plunder from the deep
+// Bloodhound — ORS Routing & Isochrones
 export * from './Bloodhound/BloodhoundRouteRetriever';
 export * from './Bloodhound/BloodhoundIsochroneRetriever';
 export * from './Bloodhound/pacts';
 
-// The OpenStreetMap horrors — landmarks, tracks, vegetation dredged from the roiling realm
+// OpenStreetMap geometric retrievers (Landmarks, Tracks, Vegetation, FastRoads, …)
 export * from './OpenStreetMap/overpassOsmShared';
 export * from './OpenStreetMap/OsmLandmarksRetriever';
 export * from './OpenStreetMap/OsmTracksRetriever';
@@ -31,3 +29,28 @@ export * from './OpenStreetMap/overpassLandmarks';
 export * from './OpenStreetMap/overpassTracks';
 export * from './OpenStreetMap/overpassVegetation';
 export * from './OpenStreetMap/overpassFastRoads';
+
+// Shared OSM feature base (for future retrievers)
+export { OsmFeatureRetriever } from './osm/base/OsmFeatureRetriever';
+export type { OsmQueryBase, OsmBaseResult } from './osm/base/OsmFeatureRetriever';
+export {
+    fetchOverpassElementsWithFallback,
+    getOverpassUrlChain,
+    overpassSettingsHeader,
+    overpassElementRepresentativePoint,
+    type OverpassRawElement,
+} from './osm/base/overpassMirrorChain';
+
+// Migrated OSM POI retrievers (formerly standalone packages)
+export * from './osm/DrinkingWater/DrinkingWaterRetriever';
+export * from './osm/DrinkingWater/pacts';
+export * from './osm/Food/OpenFoodRetriever';
+export * from './osm/Food/pacts';
+export * from './osm/Noise/NoiseRetriever';
+export * from './osm/Noise/pacts';
+export * from './osm/Playground/PlaygroundRetriever';
+export * from './osm/Playground/pacts';
+export * from './osm/Parking/ParkingRetriever';
+export * from './osm/Parking/pacts';
+export * from './osm/Trail/TrailRetriever';
+export * from './osm/Trail/pacts';

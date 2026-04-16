@@ -13,9 +13,9 @@ export interface TransitStation {
     /** Entfernung in Metern vom Suchpunkt */
     distance: number;
     /** Breitengrad */
-    latitude: number;
+    lat: number;
     /** Laengengrad */
-    longitude: number;
+    lng: number;
     /** Verfuegbare Verkehrsmittel (z.B. ["BUS", "TRAM", "SUBURBAN"]) */
     modes: string[];
 }

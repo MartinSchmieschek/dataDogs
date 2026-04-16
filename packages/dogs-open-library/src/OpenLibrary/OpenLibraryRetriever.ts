@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { searchOpenLibrary } from "./openLibraryApiClient";
 import type { OpenLibraryResult } from "./interfaces/openLibraryTypes";
 import { OpenLibraryQueryPact, type OpenLibraryQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the OpenLibraryRetriever — a spectral hound that scours
@@ -35,7 +34,7 @@ export class OpenLibraryRetriever extends Dog<OpenLibraryResult> implements ICac
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OpenLibraryRetriever.name);
+        return "\uD83D\uDCDA";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

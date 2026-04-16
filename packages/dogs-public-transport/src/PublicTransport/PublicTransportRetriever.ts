@@ -17,7 +17,6 @@ import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { fetchNearbyStations, fetchDepartures } from "./publicTransportApiClient";
 import type { PublicTransportNearbyResult, TransitStationDepartures } from "./interfaces/publicTransportTypes";
 import { PublicTransportQueryPact, type PublicTransportQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the PublicTransportRetriever — a spectral hound that sniffs out
@@ -37,7 +36,7 @@ export class PublicTransportRetriever extends Dog<PublicTransportNearbyResult> {
 
     /** The mark of our vessel — the transit sigil */
     get icon(): string | undefined {
-        return getBaseDogIcon(PublicTransportRetriever.name);
+        return "\uD83D\uDE8C";
     }
 
     /** The unholy pacts this hound be shackled to — GPS coordinates from the mortal plane */
@@ -61,7 +60,7 @@ export class PublicTransportRetriever extends Dog<PublicTransportNearbyResult> {
 
         const lat = parseFloat(query['lat']);
         const lng = parseFloat(query['lng']);
-        const distance = parseInt(query['distance'] ?? '1000', 10);
+        const radius = parseInt(query['radius'] ?? '1000', 10);
         const results = parseInt(query['results'] ?? '8', 10);
 
         if (isNaN(lat) || isNaN(lng)) {
@@ -69,7 +68,7 @@ export class PublicTransportRetriever extends Dog<PublicTransportNearbyResult> {
         }
 
         // Summon nearby stations from the transit abyss
-        const stations = await fetchNearbyStations(lat, lng, distance, results);
+        const stations = await fetchNearbyStations(lat, lng, radius, results);
 
         // For each station, dredge the departure board from the void
         const stationDepartures: TransitStationDepartures[] = await Promise.all(

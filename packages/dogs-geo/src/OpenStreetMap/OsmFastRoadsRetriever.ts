@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { NearbyFastRoadsPact, type OsmFastRoadsQueryInput } from "./pacts";
 import {
     clampFastRoadsRadiusM,
@@ -11,7 +11,6 @@ import {
     type OsmFastRoadsResult,
 } from "./overpassFastRoads";
 import type { OsmGeoElement } from "./overpassOsmShared";
-import { getBaseDogIcon } from "@datadogs/core";
 
 function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
     const R = 6_371_000;
@@ -26,8 +25,8 @@ function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; l
 
 function filterElementsByRadius(elements: OsmGeoElement[], lat: number, lng: number, radiusM: number): OsmGeoElement[] {
     return elements.filter((el) => {
-        if (el.lat == null || el.lon == null) return true;
-        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lon }) <= radiusM;
+        if (el.lat == null || el.lng == null) return true;
+        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lng }) <= radiusM;
     });
 }
 
@@ -52,7 +51,7 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmFastRoadsRetriever.name);
+        return "\uD83D\uDEE3\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
@@ -88,7 +87,7 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
         const discriminant = `fastRoads:${[...facets].sort().join(",")}`;
 
         if (this.areaCache) {
-            const covering = this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
+            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
             if (covering) {
                 const filtered = filterElementsByRadius(covering.data.elements, lat, lng, radiusM);
                 return { center: { lat, lng }, radiusM, preset: facets, elements: filtered };
@@ -101,21 +100,21 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
             const result = await fetchNearbyFastRoads(lat, lng, radiusM, facets);
 
             if (this.areaCache) {
-                this.areaCache.store({
+                await this.areaCache.store({
                     center: { lat, lng },
                     radiusM,
                     data: result,
                     cacheKey: key,
                     cachedAt: Date.now(),
                     discriminant,
-                });
+                }, GEO_CACHE_TTL_OSM_MS);
             }
 
             return result;
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 6 * 60 * 60_000, fetchRoads);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchRoads);
         }
         return fetchRoads();
     };

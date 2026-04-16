@@ -14,7 +14,6 @@
  */
 
 import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the shape of the data plundered from the recipe abyss, matey.
@@ -107,7 +106,7 @@ export class RandomRecipesRetriever extends Dog<MockData>{
 
     /** The icon -- a sigil to mark this hound, lest the crew forget which beast they summoned */
     get icon(): string | undefined {
-        return getBaseDogIcon(RandomRecipesRetriever.name);
+        return "\uD83C\uDF73";
     }
 
 }

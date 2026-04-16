@@ -18,7 +18,6 @@ import { ArticleLayout } from "./renderer/fragments/ArticleLayout";
 import { GalleryLayout } from "./renderer/fragments/GalleryLayout";
 import type { ILayoutInput } from "./renderer/layouts/ILayoutInput";
 import type { LayoutBase } from "./renderer/layouts/LayoutBase";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /** Arr, the TalkingDog — a vessel that speaks the void's will into rendered form. */
 export class TalkingDog extends Dog<string> {
@@ -48,7 +47,7 @@ export class TalkingDog extends Dog<string> {
 
     /** The sigil branded upon the hull — its heralds are the stars it fells. */
     get icon(): string | undefined {
-        return getBaseDogIcon(TalkingDog.name);
+        return "\uD83D\uDCAC";
     }
 
     /**

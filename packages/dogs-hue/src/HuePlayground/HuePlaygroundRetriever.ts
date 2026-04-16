@@ -10,7 +10,6 @@
 import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { HueBridgeQueryPact, type HueBridgeQueryInput } from "./pacts";
 import { fetchHueBridgeSnapshot } from "./hueSnapshot";
-import { getBaseDogIcon } from "@datadogs/core";
 import { HuePlaygroundDirector } from "./HuePlaygroundDirector";
 
 /**
@@ -31,7 +30,7 @@ export class HuePlaygroundRetriever extends Dog<HuePlaygroundDirector> {
 
     /** @returns The icon sigil of this retriever, plundered from the base dog glyph manifest. */
     get icon(): string | undefined {
-        return getBaseDogIcon(HuePlaygroundRetriever.name);
+        return "\uD83D\uDCA1";
     }
 
     /** @returns The required pacts — the HueBridgeQueryPact, without which the crew drifts anchorless into the deep. */

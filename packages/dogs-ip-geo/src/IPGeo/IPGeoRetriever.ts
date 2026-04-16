@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getIPGeoData } from "./ipGeoApiClient";
 import type { IPGeoResult } from "./interfaces/ipGeoTypes";
 import { IPGeoQueryPact, type IPGeoQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the IPGeoRetriever — a spectral hound that sniffs out
@@ -36,7 +35,7 @@ export class IPGeoRetriever extends Dog<IPGeoResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(IPGeoRetriever.name);
+        return "\uD83C\uDF10";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

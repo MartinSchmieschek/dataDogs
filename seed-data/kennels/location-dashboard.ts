@@ -31,7 +31,7 @@ export async function seedLocationDashboardKennel(nodesStore: IStore, kennelsSto
             lineageId: randomUUID(), versionId: randomUUID(),
             displayName: 'Dashboard Transport Mapper',
             imitates: 'PublicTransportQueryProvider',
-            theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, distance: "500", results: "5" }`,
+            theRun: `return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, radius: "500", results: "5" }`,
         },
         {
             lineageId: randomUUID(), versionId: randomUUID(),

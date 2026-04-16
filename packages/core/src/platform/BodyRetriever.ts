@@ -13,7 +13,6 @@
 import { Dog } from '../core/entities/abstractHuntingDog';
 import { IHuntingDog } from '../core/entities/IHuntingDog';
 import { IHuntingSeason } from '../core/entities/IHuntingSeason';
-import { getBaseDogIcon } from './baseDogIcons';
 
 /**
  * Arr, the BodyRetriever -- the cargo-bearer of the kennel, hauling body data
@@ -53,7 +52,7 @@ export class BodyRetriever extends Dog<any> {
 
     /** The cargo-bearer's sigil -- fetched from the central icon registry */
     get icon(): string | undefined {
-        return getBaseDogIcon(BodyRetriever.name);
+        return "\uD83D\uDCE6";
     }
 
     /** Yield the cargo -- whatever was stowed, returned from the hold unchanged */

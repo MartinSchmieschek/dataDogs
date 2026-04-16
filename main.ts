@@ -31,6 +31,18 @@ import {
     NearbyTracksPact,
     NearbyVegetationPact,
     NearbyFastRoadsPact,
+    DrinkingWaterRetriever,
+    DrinkingWaterQueryPact,
+    OpenFoodRetriever,
+    OpenFoodQueryPact,
+    NoiseRetriever,
+    NoiseQueryPact,
+    PlaygroundRetriever,
+    PlaygroundQueryPact,
+    ParkingRetriever,
+    ParkingQueryPact,
+    TrailRetriever,
+    TrailQueryPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
 import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
@@ -45,16 +57,10 @@ import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology
 import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
 import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
 import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
-import { TrailRetriever, TrailQueryPact } from '@datadogs/dogs-trails';
 import { AstronomyRetriever, AstronomyQueryPact } from '@datadogs/dogs-astronomy';
 import { WaterRetriever, WaterQueryPact } from '@datadogs/dogs-water';
 import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@datadogs/dogs-historical-weather';
 import { ChargingStationRetriever, ChargingQueryPact } from '@datadogs/dogs-charging';
-import { NoiseRetriever, NoiseQueryPact } from '@datadogs/dogs-noise';
-import { ParkingRetriever, ParkingQueryPact } from '@datadogs/dogs-parking';
-import { PlaygroundRetriever, PlaygroundQueryPact } from '@datadogs/dogs-playground';
-import { DrinkingWaterRetriever, DrinkingWaterQueryPact } from '@datadogs/dogs-drinking-water';
-import { OpenFoodRetriever, OpenFoodQueryPact } from '@datadogs/dogs-food';
 import { CurrencyRetriever, CurrencyQueryPact } from '@datadogs/dogs-currency';
 import { HolidayRetriever, HolidayQueryPact } from '@datadogs/dogs-holidays';
 import { WikiSearchRetriever, WikiSearchQueryPact } from '@datadogs/dogs-wiki-search';
@@ -64,9 +70,113 @@ import { RandomFactRetriever, RandomFactQueryPact } from '@datadogs/dogs-random-
 import { SpaceRetriever, SpaceQueryPact } from '@datadogs/dogs-space';
 import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@datadogs/dogs-open-library';
 import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@datadogs/dogs-github-trending';
-import { ISerializedDogConfig, SerializedDog, type ICacheHandler } from '@datadogs/core';
+import { GeoPointPact } from '@datadogs/geo-pact';
+import {
+    JokeRetriever, JokeQueryPact,
+    DadJokeRetriever, DadJokeQueryPact,
+    ChuckNorrisRetriever, ChuckNorrisQueryPact,
+} from '@datadogs/dogs-humor';
+import {
+    CatFactRetriever, CatFactQueryPact,
+    FoxRetriever, FoxQueryPact,
+    DuckRetriever, DuckQueryPact,
+} from '@datadogs/dogs-animals-random';
+import {
+    DictionaryRetriever,
+    DatamuseRetriever, DatamuseQueryPact,
+    WordQueryPact,
+} from '@datadogs/dogs-dictionary';
+import {
+    QuoteRetriever, QuoteQueryPact,
+    GutenbergRetriever, GutenbergQueryPact,
+    WikidataRetriever, WikidataQueryPact,
+} from '@datadogs/dogs-knowledge';
+import {
+    StarWarsRetriever, RickMortyRetriever, HarryPotterRetriever, GhibliRetriever,
+    PopCultureQueryPact,
+} from '@datadogs/dogs-pop-culture';
+import {
+    MusicBrainzRetriever, MusicBrainzQueryPact,
+    LyricsRetriever, LyricsQueryPact,
+    RadioBrowserRetriever, RadioBrowserQueryPact,
+} from '@datadogs/dogs-music';
+import {
+    F1Retriever, F1QueryPact,
+    SportsDBRetriever, SportsDbQueryPact,
+    ChessRetriever, ChessQueryPact,
+} from '@datadogs/dogs-sports';
+import {
+    NpmRetriever, NpmQueryPact,
+    StackExchangeRetriever, StackExchangeQueryPact,
+    GitHubPublicRetriever, GitHubPublicQueryPact,
+} from '@datadogs/dogs-dev';
+import {
+    AirportRetriever, AirportQueryPact,
+    GeoNamesRetriever,
+    WikivoyageRetriever, WikivoyageQueryPact,
+} from '@datadogs/dogs-travel';
+import {
+    TriviaRetriever, TriviaQueryPact,
+    BoredRetriever, BoredQueryPact,
+    RandomUserRetriever, RandomUserQueryPact,
+} from '@datadogs/dogs-quiz';
+import {
+    BibleRetriever, BibleQueryPact,
+    QuranRetriever, QuranQueryPact,
+} from '@datadogs/dogs-religion';
+import {
+    DiseaseRetriever, DiseaseQueryPact,
+    OpenFdaRetriever, OpenFdaQueryPact,
+} from '@datadogs/dogs-health';
+import {
+    CocktailRetriever, CocktailQueryPact,
+    MealRetriever, MealQueryPact,
+} from '@datadogs/dogs-cuisine';
+import {
+    WaybackRetriever, WaybackQueryPact,
+} from '@datadogs/dogs-web-archive';
+import {
+    DogCeoRetriever, DogCeoQueryPact,
+    PicsumRetriever, PicsumQueryPact,
+    NasaApodRetriever, NasaApodQueryPact,
+} from '@datadogs/dogs-images';
+import {
+    AgifyRetriever,
+    NationalizeRetriever,
+    GenderizeRetriever,
+    NameQueryPact,
+} from '@datadogs/dogs-name-insights';
+import {
+    PokeApiRetriever, PokeApiQueryPact,
+    DeckOfCardsRetriever, DeckOfCardsQueryPact,
+    ScryfallRetriever, ScryfallQueryPact,
+} from '@datadogs/dogs-gaming';
+import {
+    LibreTranslateRetriever, LibreTranslateQueryPact,
+} from '@datadogs/dogs-translate';
+import {
+    TvMazeRetriever, TvMazeQueryPact,
+} from '@datadogs/dogs-tv';
+import {
+    HackerNewsRetriever, HackerNewsQueryPact,
+    LemmyRetriever, LemmyQueryPact,
+} from '@datadogs/dogs-social';
+import {
+    CoinGeckoRetriever, CoinGeckoQueryPact,
+} from '@datadogs/dogs-crypto';
+import {
+    ISerializedDogConfig,
+    SerializedDog,
+    type ICacheHandler,
+    WebSocketChannelRetriever,
+    ChannelLiveSnippetRetriever,
+    JsonStorageRetriever,
+} from '@datadogs/core';
+import http from 'http';
+import { ChannelHub } from './services/ChannelHub';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
+import { JsonStorageService } from './services/JsonStorageService';
 import express from "express";
 import path from 'path';
 import fs from 'fs';
@@ -88,6 +198,7 @@ import { PrismaCacheHandler } from './services/PrismaCacheHandler';
 const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
     assertRequiredDbEnv: () => void;
     resolveCacheDatabaseUrl: () => string;
+    resolveJsonStorageDatabaseUrl: () => string;
 };
 
 /** Angular-Produktionsbuild (Application-Builder → …/browser), nur wenn index.html existiert. */
@@ -131,6 +242,21 @@ async function start() {
 
     // Plant the first bones in the earth — the seeds from which our pack shall grow.
     await runSeeds(nodesStore, kennelsStore);
+
+    // Fachliche JSON-Ablage: eigene SQLite (JSON_STORAGE_DATABASE_URL), bewusst getrennt
+    // von Nodes/Kennels (DATABASE_URL) und Run-Cache (CACHE_DATABASE_URL).
+    const jsonStorageService = new JsonStorageService(dbEnv.resolveJsonStorageDatabaseUrl());
+    JsonStorageRetriever.initService(jsonStorageService);
+
+    // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
+    const channelHub = new ChannelHub({
+        heartbeatSec: Number(process.env.WS_HEARTBEAT_SEC) || undefined,
+        emptyTtlSec: Number(process.env.WS_EMPTY_TTL_SEC) || undefined,
+        maxMessageBytes: Number(process.env.WS_MAX_MESSAGE_BYTES) || undefined,
+        maxPeersPerChannel: Number(process.env.WS_MAX_PEERS_PER_CHANNEL) || undefined,
+        path: process.env.WS_PATH || undefined,
+    });
+    WebSocketChannelRetriever.initService(channelHub);
 
     // Arr, the full crew of base hounds — each born of corporeal law, each ready to hunt.
     // To cosmic madness laws submit, though stalwart minds entreat.
@@ -184,6 +310,60 @@ async function start() {
         SpaceRetriever,
         OpenLibraryRetriever,
         GitHubTrendingRetriever,
+        JsonStorageRetriever,
+        WebSocketChannelRetriever,
+        ChannelLiveSnippetRetriever,
+        JokeRetriever,
+        DadJokeRetriever,
+        ChuckNorrisRetriever,
+        CatFactRetriever,
+        FoxRetriever,
+        DuckRetriever,
+        DictionaryRetriever,
+        DatamuseRetriever,
+        QuoteRetriever,
+        GutenbergRetriever,
+        WikidataRetriever,
+        StarWarsRetriever,
+        RickMortyRetriever,
+        HarryPotterRetriever,
+        GhibliRetriever,
+        MusicBrainzRetriever,
+        LyricsRetriever,
+        RadioBrowserRetriever,
+        F1Retriever,
+        SportsDBRetriever,
+        ChessRetriever,
+        NpmRetriever,
+        StackExchangeRetriever,
+        GitHubPublicRetriever,
+        AirportRetriever,
+        GeoNamesRetriever,
+        WikivoyageRetriever,
+        TriviaRetriever,
+        BoredRetriever,
+        RandomUserRetriever,
+        BibleRetriever,
+        QuranRetriever,
+        DiseaseRetriever,
+        OpenFdaRetriever,
+        CocktailRetriever,
+        MealRetriever,
+        WaybackRetriever,
+        DogCeoRetriever,
+        PicsumRetriever,
+        NasaApodRetriever,
+        AgifyRetriever,
+        NationalizeRetriever,
+        GenderizeRetriever,
+        PokeApiRetriever,
+        DeckOfCardsRetriever,
+        ScryfallRetriever,
+        LibreTranslateRetriever,
+        TvMazeRetriever,
+        HackerNewsRetriever,
+        LemmyRetriever,
+        CoinGeckoRetriever,
     ];
 
     // Breathe life into each hound — those who lack their credentials perish in the constructor.
@@ -204,7 +384,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact, GeoPointPact, JokeQueryPact, DadJokeQueryPact, ChuckNorrisQueryPact, CatFactQueryPact, FoxQueryPact, DuckQueryPact, WordQueryPact, DatamuseQueryPact, QuoteQueryPact, GutenbergQueryPact, WikidataQueryPact, PopCultureQueryPact, MusicBrainzQueryPact, LyricsQueryPact, RadioBrowserQueryPact, F1QueryPact, SportsDbQueryPact, ChessQueryPact, NpmQueryPact, StackExchangeQueryPact, GitHubPublicQueryPact, AirportQueryPact, WikivoyageQueryPact, TriviaQueryPact, BoredQueryPact, RandomUserQueryPact, BibleQueryPact, QuranQueryPact, DiseaseQueryPact, OpenFdaQueryPact, CocktailQueryPact, MealQueryPact, WaybackQueryPact, DogCeoQueryPact, PicsumQueryPact, NasaApodQueryPact, NameQueryPact, PokeApiQueryPact, DeckOfCardsQueryPact, ScryfallQueryPact, LibreTranslateQueryPact, TvMazeQueryPact, HackerNewsQueryPact, LemmyQueryPact, CoinGeckoQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
@@ -350,9 +530,13 @@ async function start() {
         });
     }
 
+    // Eigener http.Server, damit der ChannelHub seinen WebSocketServer per Upgrade-Handler anhaengen kann.
+    const httpServer = http.createServer(app);
+    await channelHub.attach(httpServer);
+
     console.log('App started.');
     // Render u. a.: öffentlich erreichbar nur bei Bind an 0.0.0.0; PORT kommt von der Plattform.
-    app.listen(port, '0.0.0.0', () => {
+    httpServer.listen(port, '0.0.0.0', () => {
         const base = `http://localhost:${port}`;
         if (!serveBuiltAngular) {
             console.log(`API ${base} — Dev-UI-Redirect: ${base}/ → ${devUiOrigin}/`);

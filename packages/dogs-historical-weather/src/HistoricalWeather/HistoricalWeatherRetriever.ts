@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getHistoricalWeather } from "./historicalWeatherApiClient";
 import type { HistoricalWeatherResult } from "./interfaces/historicalWeatherTypes";
 import { HistoricalWeatherQueryPact, type HistoricalWeatherQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the HistoricalWeatherRetriever — a spectral hound that digs
@@ -36,7 +35,7 @@ export class HistoricalWeatherRetriever extends Dog<HistoricalWeatherResult> imp
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(HistoricalWeatherRetriever.name);
+        return "\uD83D\uDCC5";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

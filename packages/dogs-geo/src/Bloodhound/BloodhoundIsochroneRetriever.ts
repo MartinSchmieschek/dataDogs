@@ -16,11 +16,10 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { BloodhoundIsochronePact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the BloodhoundIsochroneRetriever — a cursed hound that charts the reach
@@ -54,7 +53,7 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
 
     /** The sigil of our vessel, glimpsed in luminous space of blackened stars */
     get icon(): string | undefined {
-        return getBaseDogIcon(BloodhoundIsochroneRetriever.name);
+        return "\u23F1\uFE0F";
     }
 
     /** The pacts we be bound to — eldritch accords no crew member can escape */
@@ -95,24 +94,28 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
             throw new Error('BloodhoundIsochroneRetriever: Missing required params (lat, lng, range)');
         }
 
-        const key = `isochrone:${profile}:${lat}:${lng}:${range}`;
+        // Der Isochrone-Radius haengt von range ab; wir bucketen den Startpunkt
+        // auf einem 100 m-Grid, sodass GPS-Jitter das Cache-Hit nicht zerschlaegt.
+        const key = geoBucketKey("isochrone", lat, lng, 100, {
+            extras: { profile, range: String(range) },
+        });
 
         const fetchIsochrone = async (): Promise<BloodhoundIsochroneResult> => {
             const response = await calculateIsochrone(lat, lng, profile, range);
 
             const features: IsochroneFeatureResult[] = response.features.map(feature => ({
                 coordinates: feature.geometry.coordinates[0].map(
-                    coord => [coord[1], coord[0]] as [number, number]
+                    coord => ({ lat: coord[1], lng: coord[0] })
                 ),
                 value: feature.properties.value,
-                center: [feature.properties.center[1], feature.properties.center[0]] as [number, number]
+                center: { lat: feature.properties.center[1], lng: feature.properties.center[0] }
             }));
 
             return { features, raw: response };
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 24 * 60 * 60_000, fetchIsochrone);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchIsochrone);
         }
         return fetchIsochrone();
     };

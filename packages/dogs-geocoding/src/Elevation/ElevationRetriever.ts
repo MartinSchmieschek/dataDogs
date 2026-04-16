@@ -1,5 +1,4 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { getBaseDogIcon } from "@datadogs/core";
 import { ElevationQueryPact, type ElevationQuery, type ElevationResult, type ElevationPoint } from "./pacts";
 
 export type { ElevationResult, ElevationPoint };
@@ -20,7 +19,7 @@ export class ElevationRetriever extends Dog<ElevationResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(ElevationRetriever.name);
+        return "\u26F0\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

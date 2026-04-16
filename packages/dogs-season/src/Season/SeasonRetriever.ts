@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { calculateSeason } from "./seasonCalculator";
 import type { SeasonResult } from "./interfaces/seasonTypes";
 import { SeasonQueryPact, type SeasonQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the SeasonRetriever — a spectral hound that divines the
@@ -36,7 +35,7 @@ export class SeasonRetriever extends Dog<SeasonResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(SeasonRetriever.name);
+        return "\uD83C\uDF43";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
