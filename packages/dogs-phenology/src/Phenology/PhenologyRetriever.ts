@@ -17,7 +17,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getPhenologicalPhase } from "./phenologyData";
 import type { PhenologyResult } from "./interfaces/phenologyTypes";
 import { PhenologyQueryPact, type PhenologyQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the PhenologyRetriever — a spectral hound that reads the
@@ -41,7 +40,7 @@ export class PhenologyRetriever extends Dog<PhenologyResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(PhenologyRetriever.name);
+        return "\uD83C\uDF38";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

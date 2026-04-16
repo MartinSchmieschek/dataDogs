@@ -17,7 +17,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getRegionalNews } from "./newsApiClient";
 import type { RegionalNewsResult } from "./interfaces/newsTypes";
 import { RegionalNewsQueryPact, type RegionalNewsQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the RegionalNewsRetriever — a spectral hound that sniffs out
@@ -41,7 +40,7 @@ export class RegionalNewsRetriever extends Dog<RegionalNewsResult> implements IC
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(RegionalNewsRetriever.name);
+        return "\uD83D\uDCF0";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

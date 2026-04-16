@@ -22,7 +22,7 @@ export interface PublicTransportQuery {
     /** Laengengrad — the longitude from which transit vehicles are summoned */
     lng: string;
     /** Suchradius in Metern (default: 1000) — how far the hound dares venture from the anchor */
-    distance?: string;
+    radius?: string;
     /** Max. Anzahl Ergebnisse (default: 8) — how many stations the void shall reveal */
     results?: string;
 }

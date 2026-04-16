@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getRandomFact } from "./randomFactApiClient";
 import type { RandomFactResult } from "./interfaces/randomFactTypes";
 import { RandomFactQueryPact, type RandomFactQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the RandomFactRetriever — a spectral hound that dredges
@@ -36,7 +35,7 @@ export class RandomFactRetriever extends Dog<RandomFactResult> implements ICache
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(RandomFactRetriever.name);
+        return "\uD83E\uDD14";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

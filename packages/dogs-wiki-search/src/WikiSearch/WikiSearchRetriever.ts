@@ -1,5 +1,4 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { getBaseDogIcon } from "@datadogs/core";
 import { WikiSearchQueryPact, type WikiSearchQuery } from "./pacts";
 
 export interface WikiSearchResult {
@@ -56,7 +55,7 @@ export class WikiSearchRetriever extends Dog<WikiSearchResult> implements ICache
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WikiSearchRetriever.name);
+        return "\uD83D\uDD0E";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

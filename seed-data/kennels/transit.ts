@@ -23,7 +23,7 @@ export async function seedPublicTransportKennel(nodesStore: IStore, kennelsStore
 return {
     lat: QueryRetriever.lat,
     lng: QueryRetriever.lng,
-    distance: QueryRetriever.distance || "1000",
+    radius: QueryRetriever.distance || QueryRetriever.radius || "1000",
     results: QueryRetriever.results || "8"
 }
 `,
@@ -87,7 +87,7 @@ export async function seedTransitScoutKennel(nodesStore: IStore, kennelsStore: I
 return {
     lat: QueryRetriever.lat,
     lng: QueryRetriever.lng,
-    distance: QueryRetriever.distance || "1000",
+    radius: QueryRetriever.distance || QueryRetriever.radius || "1000",
     stations: QueryRetriever.stations || "5",
     line: QueryRetriever.line || undefined,
     limit: QueryRetriever.results || QueryRetriever.limit || "10"
@@ -181,7 +181,7 @@ export async function seedTransitScoutJsonKennel(nodesStore: IStore, kennelsStor
 return {
     lat: QueryRetriever.lat,
     lng: QueryRetriever.lng,
-    distance: QueryRetriever.distance || "3000",
+    radius: QueryRetriever.distance || QueryRetriever.radius || "3000",
     stations: QueryRetriever.stations || "5",
     line: QueryRetriever.line || undefined,
     limit: QueryRetriever.results || QueryRetriever.limit || "50"

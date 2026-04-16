@@ -17,7 +17,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { fetchNearbyWebcams } from "./webcamApiClient";
 import type { WebcamResult } from "./interfaces/webcamTypes";
 import { WebcamQueryPact, type WebcamQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the WebcamRetriever — a spectral hound that sniffs out
@@ -48,7 +47,7 @@ export class WebcamRetriever extends Dog<WebcamResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WebcamRetriever.name);
+        return "\uD83D\uDCF7";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

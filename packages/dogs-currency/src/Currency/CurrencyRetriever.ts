@@ -1,5 +1,4 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { getBaseDogIcon } from "@datadogs/core";
 import { CurrencyQueryPact, type CurrencyQuery } from "./pacts";
 
 const FRANKFURTER_BASE = "https://api.frankfurter.app";
@@ -33,7 +32,7 @@ export class CurrencyRetriever extends Dog<CurrencyResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(CurrencyRetriever.name);
+        return "\uD83D\uDCB1";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

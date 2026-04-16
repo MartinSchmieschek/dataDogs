@@ -14,7 +14,6 @@
 
 import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { RandomRecipesRetriever } from "./RandomRecipesRetriever";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the DishFlagBlackLab -- a tattered hound that hoists the banner of
@@ -46,7 +45,7 @@ export class DishFlagBlackLab extends Dog<string>{
 
     /** The icon -- a cursed glyph, for in luminous space blackened stars gaze upon us */
     get icon(): string | undefined {
-        return getBaseDogIcon(DishFlagBlackLab.name);
+        return "\uD83C\uDF7D\uFE0F";
     }
 
     /**

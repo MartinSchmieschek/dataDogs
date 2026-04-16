@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getWaterConditions } from "./waterApiClient";
 import type { WaterResult } from "./interfaces/waterTypes";
 import { WaterQueryPact, type WaterQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the WaterRetriever — a spectral hound that sniffs out
@@ -36,7 +35,7 @@ export class WaterRetriever extends Dog<WaterResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WaterRetriever.name);
+        return "\uD83C\uDF0A";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getSpace } from "./spaceApiClient";
 import type { SpaceResult } from "./interfaces/spaceTypes";
 import { SpaceQueryPact, type SpaceQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the SpaceRetriever — a spectral hound that tracks the ISS
@@ -35,7 +34,7 @@ export class SpaceRetriever extends Dog<SpaceResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(SpaceRetriever.name);
+        return "\uD83D\uDE80";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

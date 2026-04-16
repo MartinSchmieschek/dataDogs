@@ -30,8 +30,8 @@ export interface SunResult {
     forecast: SunDay[];
     /** Standort */
     location: {
-        latitude: number;
-        longitude: number;
+        lat: number;
+        lng: number;
         timezone: string;
     };
 }

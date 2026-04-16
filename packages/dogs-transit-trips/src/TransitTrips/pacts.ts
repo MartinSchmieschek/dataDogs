@@ -18,7 +18,7 @@ export interface TransitTripQuery {
     /** Laengengrad */
     lng: string;
     /** Suchradius in Metern fuer Stationen (default: 1000) */
-    distance?: string;
+    radius?: string;
     /** Max. Anzahl Stationen die abgefragt werden (default: 5) */
     stations?: string;
     /** Optionaler Linien-Filter (z.B. "U4", "S1", "Bus 36") */

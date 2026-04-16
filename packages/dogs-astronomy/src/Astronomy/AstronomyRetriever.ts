@@ -1,5 +1,4 @@
 import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
-import { getBaseDogIcon } from "@datadogs/core";
 import { AstronomyQueryPact, type AstronomyQuery } from "./pacts";
 
 export interface AstronomyMoon {
@@ -54,7 +53,7 @@ export class AstronomyRetriever extends Dog<AstronomyResult> implements ICacheab
 
     get name(): string { return AstronomyRetriever.name; }
     get description(): string { return "Moon phase, sunrise/sunset, UV index and daylight data for given GPS coordinates."; }
-    get icon(): string | undefined { return getBaseDogIcon(AstronomyRetriever.name); }
+    get icon(): string | undefined { return "\uD83C\uDF19"; }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [AstronomyQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
 

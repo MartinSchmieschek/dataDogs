@@ -2,17 +2,7 @@
  * OSM forest / landuse / natural area polygons → GeoJSON (full geometry).
  */
 
-import {
-    Dog,
-    IHuntingDog,
-    IHuntingSeason,
-    getBaseDogIcon,
-    type ICacheHandler,
-    type ICacheable,
-    type IAreaCache,
-    type IAreaCacheable,
-    geoBucketKey,
-} from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { OsmForestGeometryPact, type OsmForestGeometryQueryInput } from "./osmGeometryPacts";
 import { parseOsmLanduseList, parseOsmNaturalList, OsmLanduseValue, OsmNaturalValue } from "./osmGeometryEnums";
 import {
@@ -54,7 +44,7 @@ export class OsmForestPolygonsRetriever
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmForestPolygonsRetriever.name);
+        return undefined;
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
@@ -89,7 +79,7 @@ export class OsmForestPolygonsRetriever
         const key = geoBucketKey("forestPolygons", lat, lng, radiusM, { extras: { f: facetKey } });
 
         if (this.areaCache) {
-            const covering = this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
+            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
             if (covering) return covering.data;
         }
 
@@ -109,21 +99,21 @@ export class OsmForestPolygonsRetriever
             };
 
             if (this.areaCache) {
-                this.areaCache.store({
+                await this.areaCache.store({
                     center: { lat, lng },
                     radiusM,
                     data: result,
                     cacheKey: key,
                     cachedAt: Date.now(),
                     discriminant,
-                });
+                }, GEO_CACHE_TTL_OSM_MS);
             }
 
             return result;
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 6 * 60 * 60_000, fetchPolygons);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchPolygons);
         }
         return fetchPolygons();
     };

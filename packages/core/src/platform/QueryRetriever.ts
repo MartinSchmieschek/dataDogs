@@ -13,7 +13,6 @@
 import { Dog } from '../core/entities/abstractHuntingDog';
 import { IHuntingDog } from '../core/entities/IHuntingDog';
 import { IHuntingSeason } from '../core/entities/IHuntingSeason';
-import { getBaseDogIcon } from './baseDogIcons';
 
 /**
  * Arr, the QueryRetriever -- the map-reader of the kennel, carrying query parameters
@@ -57,7 +56,7 @@ export class QueryRetriever extends Dog<Record<string, string>> {
 
     /** The map-reader's sigil -- fetched from the central icon registry */
     get icon(): string | undefined {
-        return getBaseDogIcon(QueryRetriever.name);
+        return "\uD83D\uDD0D";
     }
 
     /** Yield the query data -- the map's coordinates, plundered and ready */

@@ -112,8 +112,8 @@ export async function getAirQuality(lat: number, lng: number): Promise<AirQualit
         pollen,
         hourly,
         location: {
-            latitude: data.latitude,
-            longitude: data.longitude,
+            lat: data.latitude,
+            lng: data.longitude,
             timezone: data.timezone,
         },
     };

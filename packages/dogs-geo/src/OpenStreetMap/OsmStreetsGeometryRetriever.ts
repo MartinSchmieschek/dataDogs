@@ -2,17 +2,7 @@
  * OSM highway ways → GeoJSON line geometries.
  */
 
-import {
-    Dog,
-    IHuntingDog,
-    IHuntingSeason,
-    getBaseDogIcon,
-    type ICacheHandler,
-    type ICacheable,
-    type IAreaCache,
-    type IAreaCacheable,
-    geoBucketKey,
-} from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { OsmStreetsGeometryPact, type OsmStreetsGeometryQueryInput } from "./osmGeometryPacts";
 import { parseOsmHighwayList, type OsmHighwayValue } from "./osmGeometryEnums";
 import {
@@ -53,7 +43,7 @@ export class OsmStreetsGeometryRetriever
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmStreetsGeometryRetriever.name);
+        return undefined;
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
@@ -84,7 +74,7 @@ export class OsmStreetsGeometryRetriever
         const key = geoBucketKey("streetsGeometry", lat, lng, radiusM, { extras: { hw: facetKey } });
 
         if (this.areaCache) {
-            const covering = this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
+            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
             if (covering) return covering.data;
         }
 
@@ -103,21 +93,21 @@ export class OsmStreetsGeometryRetriever
             };
 
             if (this.areaCache) {
-                this.areaCache.store({
+                await this.areaCache.store({
                     center: { lat, lng },
                     radiusM,
                     data: result,
                     cacheKey: key,
                     cachedAt: Date.now(),
                     discriminant,
-                });
+                }, GEO_CACHE_TTL_OSM_MS);
             }
 
             return result;
         };
 
         if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, 6 * 60 * 60_000, fetchStreets);
+            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchStreets);
         }
         return fetchStreets();
     };

@@ -11,9 +11,9 @@ export interface WikiArticle {
     /** Artikeltitel */
     title: string;
     /** Breitengrad */
-    latitude: number;
+    lat: number;
     /** Laengengrad */
-    longitude: number;
+    lng: number;
     /** Entfernung in Metern vom Suchpunkt */
     distance: number;
     /** Einleitungstext (erste 2 Saetze) */
