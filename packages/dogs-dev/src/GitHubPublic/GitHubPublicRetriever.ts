@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryGitHubPublic } from "./gitHubPublicApiClient";
 import type { GitHubPublicResult } from "./interfaces/gitHubPublicTypes";
 import { GitHubPublicQueryPact, type GitHubPublicQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const GH_CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class GitHubPublicRetriever extends Dog<GitHubPublicResult> implements IC
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(GitHubPublicRetriever.name);
+        return "\uD83D\uDEE0\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

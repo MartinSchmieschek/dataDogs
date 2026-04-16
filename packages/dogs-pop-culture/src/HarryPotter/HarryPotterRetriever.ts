@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { PopCultureQueryPact, type PopCultureQuery } from "../shared/pacts";
 import type { PopCultureResult } from "../shared/types";
 import { popCultureFetch } from "../shared/popCultureApiClient";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const HP_BASE = "https://hp-api.onrender.com/api";
 const HP_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -27,7 +26,7 @@ export class HarryPotterRetriever extends Dog<PopCultureResult> implements ICach
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(HarryPotterRetriever.name);
+        return "\uD83E\uDE84";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

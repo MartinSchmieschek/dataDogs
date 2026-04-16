@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getTrivia } from "./triviaApiClient";
 import type { TriviaResult } from "./interfaces/triviaTypes";
 import { TriviaQueryPact, type TriviaQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class TriviaRetriever extends Dog<TriviaResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class TriviaRetriever extends Dog<TriviaResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(TriviaRetriever.name);
+        return "\uD83C\uDFAF";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

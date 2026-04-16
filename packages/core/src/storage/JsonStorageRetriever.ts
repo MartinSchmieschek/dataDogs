@@ -17,7 +17,9 @@
  * ============================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, getBaseDogIcon } from "@datadogs/core";
+import { Dog } from "../core/entities/abstractHuntingDog";
+import { IHuntingDog } from "../core/entities/IHuntingDog";
+import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import type { IJsonStorage } from "./IJsonStorage";
 
 export interface JsonStorageSnapshot {
@@ -50,8 +52,8 @@ export class JsonStorageRetriever extends Dog<JsonStorageSnapshot> {
         return "Eigene SQLite-Ablage fuer JSON-Werte. Liefert jsonStore.get/set/delete/list als VM-Globals an SerializedDog-Children.";
     }
 
-    get icon(): string | undefined {
-        return getBaseDogIcon(JsonStorageRetriever.name);
+    get icon(): string {
+        return "\uD83D\uDCBE";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

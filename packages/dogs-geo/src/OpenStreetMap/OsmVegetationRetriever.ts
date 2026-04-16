@@ -11,7 +11,6 @@ import {
     type OsmVegetationResult,
 } from "./overpassVegetation";
 import type { OsmGeoElement } from "./overpassOsmShared";
-import { getBaseDogIcon } from "@datadogs/core";
 
 function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
     const R = 6_371_000;
@@ -52,7 +51,7 @@ export class OsmVegetationRetriever extends Dog<OsmVegetationResult> implements 
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmVegetationRetriever.name);
+        return "\uD83C\uDF33";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

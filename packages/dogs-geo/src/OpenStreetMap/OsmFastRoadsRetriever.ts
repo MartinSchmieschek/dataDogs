@@ -11,7 +11,6 @@ import {
     type OsmFastRoadsResult,
 } from "./overpassFastRoads";
 import type { OsmGeoElement } from "./overpassOsmShared";
-import { getBaseDogIcon } from "@datadogs/core";
 
 function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
     const R = 6_371_000;
@@ -52,7 +51,7 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmFastRoadsRetriever.name);
+        return "\uD83D\uDEE3\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

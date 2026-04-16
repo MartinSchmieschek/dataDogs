@@ -13,7 +13,6 @@ import type { GeoPoint } from "@datadogs/geo-pact";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
 import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery, type BloodhoundPoint } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the BloodhoundRouteRetriever — verlangt einen Routen-Pakt mit
@@ -43,7 +42,7 @@ export class BloodhoundRouteRetriever extends Dog<BloodhoundRouteResult> impleme
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(BloodhoundRouteRetriever.name);
+        return "\uD83D\uDDFA\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

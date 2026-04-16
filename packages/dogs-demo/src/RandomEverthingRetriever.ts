@@ -13,7 +13,6 @@
  */
 
 import { Dog, IHuntingSeason } from "@datadogs/core";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the RandomEveryThingRetriever -- a mad vessel that sails every cursed
@@ -96,7 +95,7 @@ export class RandomEveryThingRetriever extends Dog<any> {
 
     /** The icon -- its heralds are the stars it fells, the sky and Earth aflame */
     get icon(): string | undefined {
-        return getBaseDogIcon(RandomEveryThingRetriever.name);
+        return "\uD83C\uDFB2";
     }
 
 }

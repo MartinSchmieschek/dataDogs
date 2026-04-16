@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getDictionaryEntry } from "./dictionaryApiClient";
 import type { DictionaryResult } from "./interfaces/dictionaryTypes";
 import { WordQueryPact, type WordQuery } from "../shared/pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const DICTIONARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class DictionaryRetriever extends Dog<DictionaryResult> implements ICache
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(DictionaryRetriever.name);
+        return "\uD83D\uDCD6";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryHackerNews } from "./hackerNewsApiClient";
 import type { HackerNewsResult } from "./interfaces/hackerNewsTypes";
 import { HackerNewsQueryPact, type HackerNewsQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const HN_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class HackerNewsRetriever extends Dog<HackerNewsResult> implements ICache
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(HackerNewsRetriever.name);
+        return "\uD83D\uDD36";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

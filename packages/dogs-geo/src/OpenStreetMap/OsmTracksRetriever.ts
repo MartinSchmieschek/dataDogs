@@ -11,7 +11,6 @@ import {
     type OsmTracksResult,
 } from "./overpassTracks";
 import type { OsmGeoElement } from "./overpassOsmShared";
-import { getBaseDogIcon } from "@datadogs/core";
 
 function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
     const R = 6_371_000;
@@ -52,7 +51,7 @@ export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmTracksRetriever.name);
+        return "\uD83E\uDD7E";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

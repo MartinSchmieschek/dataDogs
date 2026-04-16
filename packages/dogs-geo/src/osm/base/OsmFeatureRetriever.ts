@@ -24,18 +24,7 @@
  * Beide TTLs sind identisch (ttlMs).
  */
 
-import {
-    Dog,
-    IHuntingDog,
-    IHuntingSeason,
-    type ICacheHandler,
-    type ICacheable,
-    type IAreaCache,
-    type IAreaCacheable,
-    geoBucketKey,
-    GEO_CACHE_TTL_OSM_MS,
-    getBaseDogIcon,
-} from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import {
     fetchOverpassElementsWithFallback,
     overpassSettingsHeader,
@@ -150,7 +139,7 @@ export abstract class OsmFeatureRetriever<
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(this.name);
+        return undefined;
     }
 
     /** Subklasse liefert die Query-Pact-Klasse. */

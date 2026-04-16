@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getF1 } from "./f1ApiClient";
 import type { F1Result } from "./interfaces/f1Types";
 import { F1QueryPact, type F1Query } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const F1_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class F1Retriever extends Dog<F1Result> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(F1Retriever.name);
+        return "\uD83C\uDFCE\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

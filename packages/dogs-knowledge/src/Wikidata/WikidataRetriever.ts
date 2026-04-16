@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryWikidata } from "./wikidataApiClient";
 import type { WikidataResult } from "./interfaces/wikidataTypes";
 import { WikidataQueryPact, type WikidataQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const WIKIDATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class WikidataRetriever extends Dog<WikidataResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(WikidataRetriever.name);
+        return "\uD83E\uDDE0";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

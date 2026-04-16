@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getGenderize } from "./genderizeApiClient";
 import type { GenderizeResult } from "./interfaces/genderizeTypes";
 import { NameQueryPact, type NameQuery } from "../shared/pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const GENDERIZE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class GenderizeRetriever extends Dog<GenderizeResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(GenderizeRetriever.name);
+        return "\u26A7\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

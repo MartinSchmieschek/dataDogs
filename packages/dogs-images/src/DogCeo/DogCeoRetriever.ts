@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getDogImages } from "./dogCeoApiClient";
 import type { DogCeoResult } from "./interfaces/dogCeoTypes";
 import { DogCeoQueryPact, type DogCeoQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class DogCeoRetriever extends Dog<DogCeoResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class DogCeoRetriever extends Dog<DogCeoResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(DogCeoRetriever.name);
+        return "\uD83D\uDC15";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getRandomUsers } from "./randomUserApiClient";
 import type { RandomUserResult } from "./interfaces/randomUserTypes";
 import { RandomUserQueryPact, type RandomUserQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class RandomUserRetriever extends Dog<RandomUserResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class RandomUserRetriever extends Dog<RandomUserResult> implements ICache
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(RandomUserRetriever.name);
+        return "\uD83D\uDC64";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

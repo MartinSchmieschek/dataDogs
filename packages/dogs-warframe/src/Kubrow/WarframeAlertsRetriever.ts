@@ -5,7 +5,7 @@
  * It fetches the accursed JSON, and from it spawns a Kubrow -- our faithful hound
  * amidst the cosmic madness. To cosmic madness laws submit, though stalwart minds entreat.
  */
-import { FetchBaseDog, getBaseDogIcon } from '@datadogs/core';
+import { FetchBaseDog } from '@datadogs/core';
 import type { IWarframeWorldState } from "./interfaces/warframeWorldState";
 import { Kubrow } from "./Kubrow";
 import { IHuntingSeason } from "@datadogs/core";
@@ -37,7 +37,7 @@ export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
      * @returns The icon string, or undefined if no sigil be found in the deep, arr
      */
     get icon(): string | undefined {
-        return getBaseDogIcon(WarframeAlertsRetriever.name);
+        return "\uD83C\uDFAE";
     }
 
     /**

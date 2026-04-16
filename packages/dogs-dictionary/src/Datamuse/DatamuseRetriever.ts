@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getDatamuseWords } from "./datamuseApiClient";
 import type { DatamuseResult } from "./interfaces/datamuseTypes";
 import { DatamuseQueryPact, type DatamuseQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const DATAMUSE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class DatamuseRetriever extends Dog<DatamuseResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(DatamuseRetriever.name);
+        return "\uD83D\uDD24";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

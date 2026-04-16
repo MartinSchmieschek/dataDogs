@@ -17,7 +17,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getBirds } from "./birdApiClient";
 import type { BirdResult } from "./interfaces/birdTypes";
 import { BirdQueryPact, type BirdQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the BirdRetriever — a spectral hound that sniffs out
@@ -48,7 +47,7 @@ export class BirdRetriever extends Dog<BirdResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(BirdRetriever.name);
+        return "\uD83E\uDD86";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

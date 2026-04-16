@@ -13,7 +13,6 @@ import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { getWikiNearby } from "./wikipediaApiClient";
 import type { WikiNearbyResult } from "./interfaces/wikipediaTypes";
 import { WikiNearbyQueryPact, type WikiNearbyQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the WikiNearbyRetriever — a spectral hound that sniffs out
@@ -23,7 +22,7 @@ import { getBaseDogIcon } from '@datadogs/core';
 export class WikiNearbyRetriever extends Dog<WikiNearbyResult> {
     get name(): string { return WikiNearbyRetriever.name; }
     get description(): string { return 'Finds nearby Wikipedia articles for given GPS coordinates.'; }
-    get icon(): string | undefined { return getBaseDogIcon(WikiNearbyRetriever.name); }
+    get icon(): string | undefined { return "\uD83D\uDCDA"; }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [WikiNearbyQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
 

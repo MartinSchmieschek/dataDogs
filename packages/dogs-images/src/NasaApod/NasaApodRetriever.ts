@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getNasaApod } from "./nasaApodApiClient";
 import type { NasaApodResult } from "./interfaces/nasaApodTypes";
 import { NasaApodQueryPact, type NasaApodQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const APOD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class NasaApodRetriever extends Dog<NasaApodResult> implements ICacheable
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(NasaApodRetriever.name);
+        return "\uD83C\uDF0C";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryChess } from "./chessApiClient";
 import type { ChessResult } from "./interfaces/chessTypes";
 import { ChessQueryPact, type ChessQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const CHESS_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class ChessRetriever extends Dog<ChessResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(ChessRetriever.name);
+        return "\u265F\uFE0F";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

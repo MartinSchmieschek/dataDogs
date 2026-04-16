@@ -50,4 +50,12 @@ export { GEO_CACHE_TTL_OSM_MS, GEO_CACHE_TTL_WEATHER_MS, GEO_CACHE_TTL_AIR_QUALI
 export { QueryRetriever } from './platform/QueryRetriever';
 export { BodyRetriever } from './platform/BodyRetriever';
 export { FetchBaseDog } from './platform/FetchBaseDog';
-export { getBaseDogIcon } from './platform/baseDogIcons';
+
+// Lobby-Hunde — eine Channel-Id oeffnet eine Lobby; Teilnehmer teilen ein eigenes shared-Objekt
+export { WebSocketChannelRetriever } from './socket/WebSocketChannelRetriever';
+export { ChannelLiveSnippetRetriever, type LobbyLeadYield } from './socket/ChannelLiveSnippetRetriever';
+export type { ChannelPeer, ChannelState, IChannelHub } from './socket/IChannelHub';
+
+// JSON-Ablage — eigene SQLite-Truhe, jsonStore.get/set/delete/list als VM-Globals
+export { JsonStorageRetriever, type JsonStorageSnapshot } from './storage/JsonStorageRetriever';
+export type { IJsonStorage } from './storage/IJsonStorage';

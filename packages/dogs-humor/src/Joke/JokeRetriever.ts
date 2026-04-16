@@ -12,7 +12,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getJoke } from "./jokeApiClient";
 import type { JokeResult } from "./interfaces/jokeTypes";
 import { JokeQueryPact, type JokeQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class JokeRetriever extends Dog<JokeResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -30,7 +29,7 @@ export class JokeRetriever extends Dog<JokeResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(JokeRetriever.name);
+        return "\uD83D\uDE02";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

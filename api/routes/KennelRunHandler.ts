@@ -15,6 +15,22 @@ import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { isHtmlResultString, isMarkdownResultString } from '../../services/leadResultStringFormat';
+
+/** Lead-Yield mit { snapshot, live } — Lobby-Konvention fuer den Socket-Dog. */
+function isLobbyLeadShape(v: any): boolean {
+    return !!v && typeof v === 'object' && typeof v.live === 'string' && typeof v.snapshot === 'object' && v.snapshot !== null;
+}
+
+function clientWantsJson(req: any): boolean {
+    if (!req) return false;
+    const q = req.query || {};
+    if (q.format === 'json' || q.data === '1' || q.data === 'true') return true;
+    const accept = String(req.headers?.accept || '').toLowerCase();
+    if (!accept) return false;
+    if (accept.includes('text/html')) return false;
+    if (accept.includes('application/json')) return true;
+    return false;
+}
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 
 /** The provisions required to arm the KennelRunHandler. */
@@ -295,7 +311,19 @@ export class KennelRunHandler {
         return null;
     }
 
-    private sendResult(res: any, result: any) {
+    private sendResult(res: any, result: any, req?: any) {
+        // Lobby-Shape { snapshot, live }: Browser bekommt das HTML, API-Clients den Snapshot.
+        if (isLobbyLeadShape(result)) {
+            const wantsJson = clientWantsJson(req);
+            if (wantsJson) {
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.status(200).json((result as any).snapshot);
+                return;
+            }
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.status(200).send((result as any).live);
+            return;
+        }
         if (typeof result === 'string' && isHtmlResultString(result)) {
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.status(200).send(result);
@@ -368,7 +396,7 @@ export class KennelRunHandler {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
                 return;
             }
-            this.sendResult(res, firstDog.result);
+            this.sendResult(res, firstDog.result, req);
         } catch (err) {
             console.error('[KennelRunHandler.handleExecute]', err);
             res.status(500).json({ error: String(err) });
@@ -409,7 +437,7 @@ export class KennelRunHandler {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
                 return;
             }
-            this.sendResult(res, firstDog.result);
+            this.sendResult(res, firstDog.result, req);
         } catch (err) {
             console.error(err);
             res.status(500).json({ error: String(err) });
@@ -446,7 +474,7 @@ export class KennelRunHandler {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
                 return;
             }
-            this.sendResult(res, firstDog.result);
+            this.sendResult(res, firstDog.result, req);
         } catch (err) {
             console.error(err);
             res.status(500).json({ error: String(err) });

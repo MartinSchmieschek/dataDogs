@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryRadioBrowser } from "./radioBrowserApiClient";
 import type { RadioBrowserResult } from "./interfaces/radioBrowserTypes";
 import { RadioBrowserQueryPact, type RadioBrowserQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const RADIO_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class RadioBrowserRetriever extends Dog<RadioBrowserResult> implements IC
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(RadioBrowserRetriever.name);
+        return "\uD83D\uDCFB";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

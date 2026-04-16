@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getRandomDuck } from "./duckApiClient";
 import type { DuckResult } from "./interfaces/duckTypes";
 import { DuckQueryPact } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class DuckRetriever extends Dog<DuckResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class DuckRetriever extends Dog<DuckResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(DuckRetriever.name);
+        return "\uD83E\uDD86";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

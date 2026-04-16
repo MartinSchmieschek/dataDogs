@@ -20,7 +20,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, 
 import { BloodhoundIsochronePact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundIsochroneInput } from "./pacts";
 import { calculateIsochrone } from "./routeCalculator";
 import type { BloodhoundIsochroneResult, IsochroneFeatureResult } from "./interfaces/bloodhoundTypes";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the BloodhoundIsochroneRetriever — a cursed hound that charts the reach
@@ -54,7 +53,7 @@ export class BloodhoundIsochroneRetriever extends Dog<BloodhoundIsochroneResult>
 
     /** The sigil of our vessel, glimpsed in luminous space of blackened stars */
     get icon(): string | undefined {
-        return getBaseDogIcon(BloodhoundIsochroneRetriever.name);
+        return "\u23F1\uFE0F";
     }
 
     /** The pacts we be bound to — eldritch accords no crew member can escape */

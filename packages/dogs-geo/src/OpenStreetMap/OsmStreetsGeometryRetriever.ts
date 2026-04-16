@@ -2,18 +2,7 @@
  * OSM highway ways → GeoJSON line geometries.
  */
 
-import {
-    Dog,
-    IHuntingDog,
-    IHuntingSeason,
-    getBaseDogIcon,
-    type ICacheHandler,
-    type ICacheable,
-    type IAreaCache,
-    type IAreaCacheable,
-    geoBucketKey,
-    GEO_CACHE_TTL_OSM_MS,
-} from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
 import { OsmStreetsGeometryPact, type OsmStreetsGeometryQueryInput } from "./osmGeometryPacts";
 import { parseOsmHighwayList, type OsmHighwayValue } from "./osmGeometryEnums";
 import {
@@ -54,7 +43,7 @@ export class OsmStreetsGeometryRetriever
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OsmStreetsGeometryRetriever.name);
+        return undefined;
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

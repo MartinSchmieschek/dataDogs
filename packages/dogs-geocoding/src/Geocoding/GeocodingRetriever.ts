@@ -15,7 +15,6 @@ import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { forwardGeocode, reverseGeocode } from "./geocodingApiClient";
 import type { GeocodingResult } from "./interfaces/geocodingTypes";
 import { GeocodingQueryPact, type GeocodingQuery } from "./pacts";
-import { getBaseDogIcon } from '@datadogs/core';
 
 /**
  * Arr, the GeocodingRetriever — a spectral hound that translates
@@ -26,7 +25,7 @@ import { getBaseDogIcon } from '@datadogs/core';
 export class GeocodingRetriever extends Dog<GeocodingResult> {
     get name(): string { return GeocodingRetriever.name; }
     get description(): string { return 'Converts addresses to GPS coordinates (forward) or GPS coordinates to addresses (reverse) via Nominatim/OpenStreetMap.'; }
-    get icon(): string | undefined { return getBaseDogIcon(GeocodingRetriever.name); }
+    get icon(): string | undefined { return "\uD83D\uDCCD"; }
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return [GeocodingQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
 

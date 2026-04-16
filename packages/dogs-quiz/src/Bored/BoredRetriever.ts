@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getBoredActivity } from "./boredApiClient";
 import type { BoredResult } from "./interfaces/boredTypes";
 import { BoredQueryPact, type BoredQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 export class BoredRetriever extends Dog<BoredResult> implements ICacheable {
     private cacheHandler?: ICacheHandler;
@@ -20,7 +19,7 @@ export class BoredRetriever extends Dog<BoredResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(BoredRetriever.name);
+        return "\uD83E\uDD71";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

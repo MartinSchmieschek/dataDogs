@@ -11,7 +11,6 @@
  */
 import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { HueBridgeQueryPact, type HueBridgeQueryInput } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 /**
  * Arr, this be the EnvRetriever — a vessel that plunders Bridge coordinates
@@ -40,7 +39,7 @@ export class HueBridgeEnvRetriever extends HueBridgeQueryPact {
 
     /** @returns The icon sigil of this retriever, drawn from the abyss of base dog glyphs. */
     get icon(): string | undefined {
-        return getBaseDogIcon(HueBridgeEnvRetriever.name);
+        return "\uD83D\uDD10";
     }
 
     /** @returns The carrion hordes of required dependencies — none, fer this vessel sails alone through the void. */

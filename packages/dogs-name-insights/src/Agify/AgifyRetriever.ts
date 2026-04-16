@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { getAgify } from "./agifyApiClient";
 import type { AgifyResult } from "./interfaces/agifyTypes";
 import { NameQueryPact, type NameQuery } from "../shared/pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const AGIFY_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class AgifyRetriever extends Dog<AgifyResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(AgifyRetriever.name);
+        return "\uD83D\uDC76";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

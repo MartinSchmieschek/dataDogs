@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryDisease } from "./diseaseApiClient";
 import type { DiseaseResult } from "./interfaces/diseaseTypes";
 import { DiseaseQueryPact, type DiseaseQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const DISEASE_CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class DiseaseRetriever extends Dog<DiseaseResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(DiseaseRetriever.name);
+        return "\uD83E\uDDA0";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

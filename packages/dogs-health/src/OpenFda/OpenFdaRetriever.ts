@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { queryOpenFda } from "./openFdaApiClient";
 import type { OpenFdaResult } from "./interfaces/openFdaTypes";
 import { OpenFdaQueryPact, type OpenFdaQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const FDA_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class OpenFdaRetriever extends Dog<OpenFdaResult> implements ICacheable {
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(OpenFdaRetriever.name);
+        return "\uD83D\uDC8A";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {

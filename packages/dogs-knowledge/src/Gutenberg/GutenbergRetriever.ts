@@ -2,7 +2,6 @@ import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable }
 import { searchGutenberg } from "./gutenbergApiClient";
 import type { GutenbergResult } from "./interfaces/gutenbergTypes";
 import { GutenbergQueryPact, type GutenbergQuery } from "./pacts";
-import { getBaseDogIcon } from "@datadogs/core";
 
 const GUTENBERG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +21,7 @@ export class GutenbergRetriever extends Dog<GutenbergResult> implements ICacheab
     }
 
     get icon(): string | undefined {
-        return getBaseDogIcon(GutenbergRetriever.name);
+        return "\uD83D\uDCDA";
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
