@@ -42,8 +42,9 @@ export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 // The cache pacts -- memory across voyages, dedup of in-flight hunts, area-based geo caching
 export { ICacheHandler } from './cache/ICacheHandler';
 export { ICacheable, isCacheable } from './cache/ICacheable';
-export { IAreaCache, IAreaCacheable, isAreaCacheable, CachedArea } from './cache/IAreaCache';
+export { IAreaCache, IAreaCacheable, isAreaCacheable, CachedArea, GeoBBox } from './cache/IAreaCache';
 export { geoBucketKey, geoBucketCenter, defaultGeoBucketM, type GeoBucketOptions } from './cache/geoBucket';
+export { GEO_CACHE_TTL_OSM_MS, GEO_CACHE_TTL_WEATHER_MS, GEO_CACHE_TTL_AIR_QUALITY_MS } from './cache/geoCacheTtl';
 
 // The map-reader, the cargo-bearer, the far-sailing dog, and the sigils they wear
 export { QueryRetriever } from './platform/QueryRetriever';

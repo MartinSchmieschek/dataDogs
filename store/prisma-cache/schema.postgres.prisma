@@ -15,3 +15,23 @@ model CacheEntry {
   value     String
   expiresAt BigInt
 }
+
+// Persistenter Geo-Area-Cache (siehe schema.prisma fuer Details).
+model GeoAreaCache {
+  id           String @id @default(cuid())
+  discriminant String
+  centerLat    Float
+  centerLng    Float
+  radiusM      Float
+  bboxMinLat   Float
+  bboxMinLng   Float
+  bboxMaxLat   Float
+  bboxMaxLng   Float
+  cacheKey     String
+  payload      String
+  cachedAt     BigInt
+  expiresAt    BigInt
+
+  @@index([discriminant, expiresAt])
+  @@index([discriminant, bboxMinLat, bboxMaxLat, bboxMinLng, bboxMaxLng])
+}

@@ -31,6 +31,18 @@ import {
     NearbyTracksPact,
     NearbyVegetationPact,
     NearbyFastRoadsPact,
+    DrinkingWaterRetriever,
+    DrinkingWaterQueryPact,
+    OpenFoodRetriever,
+    OpenFoodQueryPact,
+    NoiseRetriever,
+    NoiseQueryPact,
+    PlaygroundRetriever,
+    PlaygroundQueryPact,
+    ParkingRetriever,
+    ParkingQueryPact,
+    TrailRetriever,
+    TrailQueryPact,
 } from '@datadogs/dogs-geo';
 import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
 import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
@@ -45,16 +57,10 @@ import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology
 import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
 import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
 import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
-import { TrailRetriever, TrailQueryPact } from '@datadogs/dogs-trails';
 import { AstronomyRetriever, AstronomyQueryPact } from '@datadogs/dogs-astronomy';
 import { WaterRetriever, WaterQueryPact } from '@datadogs/dogs-water';
 import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@datadogs/dogs-historical-weather';
 import { ChargingStationRetriever, ChargingQueryPact } from '@datadogs/dogs-charging';
-import { NoiseRetriever, NoiseQueryPact } from '@datadogs/dogs-noise';
-import { ParkingRetriever, ParkingQueryPact } from '@datadogs/dogs-parking';
-import { PlaygroundRetriever, PlaygroundQueryPact } from '@datadogs/dogs-playground';
-import { DrinkingWaterRetriever, DrinkingWaterQueryPact } from '@datadogs/dogs-drinking-water';
-import { OpenFoodRetriever, OpenFoodQueryPact } from '@datadogs/dogs-food';
 import { CurrencyRetriever, CurrencyQueryPact } from '@datadogs/dogs-currency';
 import { HolidayRetriever, HolidayQueryPact } from '@datadogs/dogs-holidays';
 import { WikiSearchRetriever, WikiSearchQueryPact } from '@datadogs/dogs-wiki-search';
