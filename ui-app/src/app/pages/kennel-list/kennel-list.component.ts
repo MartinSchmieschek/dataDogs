@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, inject, input, signal, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
@@ -7,12 +7,10 @@ import { KennelFormComponent, KennelFormData } from '../../components/kennel-for
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
-import {
-  KennelActionFanComponent,
-  type KennelFanAction,
-} from '../../components/kennel-action-fan/kennel-action-fan.component';
+import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { isHtmlResultString } from '../../utils/lead-result-string-format';
+import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
 
 @Component({
   selector: 'app-kennel-list',
@@ -22,6 +20,7 @@ import { isHtmlResultString } from '../../utils/lead-result-string-format';
     KennelFormComponent,
     LoadingIndicatorComponent,
     VoidMythicBackdropComponent,
+    KennelCardMotionDirective,
     KennelActionFanComponent,
   ],
   templateUrl: './kennel-list.component.html',
@@ -32,6 +31,15 @@ export class KennelListComponent implements OnInit {
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
 
+  /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
+  showExecutePath = input(true);
+
+  /**
+   * Zusätzlich eine gespiegelte Pfad-Zeile: Segmentreihenfolge umgekehrt (z. B. /execute/ref/kennels/api/…).
+   * Nur Optik / Lesbarkeit; der tatsächliche Endpoint bleibt unverändert.
+   */
+  mirrorExecutePath = input(false);
+
   kennels = signal<IKennelConfig[]>([]);
   loading = signal(false);
   showCreateForm = signal(false);
@@ -40,6 +48,12 @@ export class KennelListComponent implements OnInit {
   searchQuery = signal('');
   sortKey = signal<'name' | 'id' | 'updated'>('name');
   sortDir = signal<'asc' | 'desc'>('asc');
+
+  /** Sort-Buttons neben der Suche ausblenden, solange gefiltert wird (nichtleerer Suchtext). */
+  hideSortBesideSearch = computed(() => this.searchQuery().trim().length > 0);
+
+  /** Erhöhen bei Sortwechsel → @for-Track ändert sich, Karten-Animationen laufen erneut. */
+  listOrderEpoch = signal(0);
 
   filteredKennels = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
@@ -83,15 +97,28 @@ export class KennelListComponent implements OnInit {
     this.errorVideoPopup.openPopup(this.error());
   }
 
-  onSortKeyChange(ev: Event): void {
-    const v = (ev.target as HTMLSelectElement).value;
-    if (v === 'name' || v === 'id' || v === 'updated') {
-      this.sortKey.set(v);
+  /** Sortierfeld per Klick durchschalten: Name → ID → Zuletzt geändert. */
+  cycleSortKey(): void {
+    const order: Array<'name' | 'id' | 'updated'> = ['name', 'id', 'updated'];
+    const i = order.indexOf(this.sortKey());
+    this.sortKey.set(order[(i + 1) % order.length]);
+    this.listOrderEpoch.update((n) => n + 1);
+  }
+
+  sortKeyLabel(): string {
+    switch (this.sortKey()) {
+      case 'id':
+        return 'ID';
+      case 'updated':
+        return 'Geändert';
+      default:
+        return 'Name';
     }
   }
 
   toggleSortDir(): void {
     this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
+    this.listOrderEpoch.update((n) => n + 1);
   }
 
   loadKennels() {
@@ -115,13 +142,37 @@ export class KennelListComponent implements OnInit {
     return e || '🐕';
   }
 
-  hasEmojiStored(k: IKennelConfig): boolean {
-    return !!k.emoji?.trim();
-  }
-
   /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */
   kennelRef(kennel: IKennelConfig): string {
     return kennel.lineageId || kennel.id;
+  }
+
+  /** Relativer Execute-Pfad zur Anzeige (wie Endpoint-Zeile in der React-Referenz). */
+  executePathForDisplay(kennel: IKennelConfig): string {
+    const ref = this.kennelRef(kennel);
+    let path = `/api/kennels/${ref}/execute`;
+    if (kennel.defaultQuery) {
+      const params = new URLSearchParams();
+      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+      });
+      const qs = params.toString();
+      if (qs) path += '?' + qs;
+    }
+    return path;
+  }
+
+  /**
+   * Derselbe Pfad mit umgekehrter Segmentreihenfolge (Pfad „gespiegelt“).
+   * Query-String bleibt angehängt.
+   */
+  executePathMirroredSegments(kennel: IKennelConfig): string {
+    const full = this.executePathForDisplay(kennel);
+    const q = full.includes('?') ? full.slice(full.indexOf('?')) : '';
+    const pathOnly = q ? full.slice(0, full.indexOf('?')) : full;
+    const segments = pathOnly.split('/').filter((s) => s.length > 0);
+    const reversed = '/' + segments.slice().reverse().join('/');
+    return reversed + q;
   }
 
   onExecute(kennel: IKennelConfig): void {
@@ -136,6 +187,19 @@ export class KennelListComponent implements OnInit {
     const ref = this.kennelRef(kennel);
     if (action === 'edit') {
       void this.router.navigate(['/kennel', ref, 'edit']);
+      return;
+    }
+    if (action === 'share') {
+      const url = new URL(`/kennel/${encodeURIComponent(ref)}`, window.location.origin).href;
+      const title = kennel.name || ref;
+      const payload = { title, text: `${title} – DataDogs`, url };
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        void navigator.share(payload).catch(() => {
+          void navigator.clipboard?.writeText(url);
+        });
+      } else {
+        void navigator.clipboard?.writeText(url).catch(() => {});
+      }
       return;
     }
     if (action === 'swagger') {
