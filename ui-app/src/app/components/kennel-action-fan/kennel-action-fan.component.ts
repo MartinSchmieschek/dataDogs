@@ -6,6 +6,7 @@ import {
   HostListener,
   Input,
   Output,
+  ViewChild,
   inject,
 } from '@angular/core';
 
@@ -30,8 +31,9 @@ interface KennelMenuItem {
   standalone: true,
   template: `
     <div class="kennel-actions-row" (pointerdown)="$event.stopPropagation()">
-      <div class="kennel-more-wrap" [class.kennel-more-wrap--open]="moreOpen">
+      <div class="kennel-more-wrap">
         <button
+          #trigger
           type="button"
           class="kennel-row-btn kennel-more-btn"
           [class.is-open]="moreOpen"
@@ -43,25 +45,30 @@ interface KennelMenuItem {
           <span class="kennel-row-icon" aria-hidden="true">✎</span>
         </button>
 
-        @if (moreOpen) {
-          <div class="kennel-more-menu" role="menu">
-            @for (item of menuItems; track item.id) {
-              @if (item.danger) {
-                <div class="kennel-more-sep" aria-hidden="true"></div>
-              }
-              <button
-                type="button"
-                role="menuitem"
-                class="kennel-more-item"
-                [class.kennel-more-item--danger]="item.danger"
-                [class.kennel-more-item--mobile-only]="item.mobileOnly"
-                (click)="menuAction(item.id, $event)">
-                <span class="kennel-more-icon" aria-hidden="true">{{ item.icon }}</span>
-                <span class="kennel-more-label">{{ item.label }}</span>
-              </button>
+        <div
+          #menuEl
+          class="kennel-more-menu"
+          role="menu"
+          popover="manual"
+          [style.top.px]="menuTop"
+          [style.left.px]="menuLeft"
+          [style.right.px]="menuRight">
+          @for (item of menuItems; track item.id) {
+            @if (item.danger) {
+              <div class="kennel-more-sep" aria-hidden="true"></div>
             }
-          </div>
-        }
+            <button
+              type="button"
+              role="menuitem"
+              class="kennel-more-item"
+              [class.kennel-more-item--danger]="item.danger"
+              [class.kennel-more-item--mobile-only]="item.mobileOnly"
+              (click)="menuAction(item.id, $event)">
+              <span class="kennel-more-icon" aria-hidden="true">{{ item.icon }}</span>
+              <span class="kennel-more-label">{{ item.label }}</span>
+            </button>
+          }
+        </div>
       </div>
     </div>
   `,
@@ -110,36 +117,29 @@ interface KennelMenuItem {
 
     .kennel-more-wrap {
       position: relative;
-      z-index: 0;
     }
 
-    .kennel-more-wrap--open {
-      z-index: 480;
-    }
     .kennel-more-menu {
-      /* Immer LTR: Icon links, Label rechts — unabhängig von Seiten-RTL / Bidi */
+      /* Native Popover API: geöffnetes Menü liegt im Top-Layer des Browsers — außerhalb
+         jeglicher Stacking Contexts, Transforms und Overflows der Kennel-Karten. */
       direction: ltr;
       unicode-bidi: isolate;
-      position: absolute;
-      left: 0;
-      right: auto;
-      top: calc(100% + 6px);
-      z-index: 500;
+      position: fixed;
+      inset: auto;
+      margin: 0;
       min-width: 11.5rem;
-      display: flex;
-      flex-direction: column;
       padding: 0.3rem;
       border: 1px solid rgba(140, 160, 190, 0.35);
       border-radius: 8px;
       background: linear-gradient(170deg, rgba(28, 36, 50, 1) 0%, rgba(16, 20, 30, 1) 100%);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
-      animation: kennel-more-in 0.12s ease-out;
-      isolation: isolate;
+      color: rgba(220, 228, 240, 0.96);
+      overflow: visible;
     }
-
-    :host(.kennel-action-fan--menu-end) .kennel-more-menu {
-      left: auto;
-      right: 0;
+    .kennel-more-menu:popover-open {
+      display: flex;
+      flex-direction: column;
+      animation: kennel-more-in 0.12s ease-out;
     }
     @keyframes kennel-more-in {
       from { opacity: 0; transform: translateY(-4px); }
@@ -233,16 +233,19 @@ export class KennelActionFanComponent {
 
   @Output() action = new EventEmitter<KennelFanAction>();
 
+  @ViewChild('trigger') triggerRef?: ElementRef<HTMLButtonElement>;
+  @ViewChild('menuEl') menuRef?: ElementRef<HTMLElement>;
+
   moreOpen = false;
+
+  /** Fixed-position-Koordinaten — aus der Trigger-Button-Rect beim Öffnen berechnet. */
+  menuTop = 0;
+  menuLeft: number | null = 0;
+  menuRight: number | null = null;
 
   @HostBinding('class.kennel-action-fan--open')
   get fanMenuOpen(): boolean {
     return this.moreOpen;
-  }
-
-  @HostBinding('class.kennel-action-fan--menu-end')
-  get menuEndHost(): boolean {
-    return this.alignMenuToEnd;
   }
 
   readonly menuItems: KennelMenuItem[] = [
@@ -254,28 +257,93 @@ export class KennelActionFanComponent {
     { id: 'delete', label: 'Löschen', icon: '🗑', danger: true },
   ];
 
+  private scrollCloser = () => { if (this.moreOpen) this.moreOpen = false; this.detachScrollCloser(); };
+  private scrollCloserAttached = false;
+
+  private attachScrollCloser(): void {
+    if (this.scrollCloserAttached) return;
+    // Capture = true, damit auch interne Scroller (z. B. `.kennel-scroll`) das Menü schließen
+    document.addEventListener('scroll', this.scrollCloser, true);
+    this.scrollCloserAttached = true;
+  }
+
+  private detachScrollCloser(): void {
+    if (!this.scrollCloserAttached) return;
+    document.removeEventListener('scroll', this.scrollCloser, true);
+    this.scrollCloserAttached = false;
+  }
+
+  private showMenu(): void {
+    this.updateMenuPosition();
+    this.moreOpen = true;
+    const menu = this.menuRef?.nativeElement as (HTMLElement & { showPopover?: () => void }) | undefined;
+    if (menu) {
+      // Inline-Styles direkt setzen, damit das Popover beim Anzeigen sofort an der richtigen
+      // Stelle steht (Angular-CD würde erst nach showPopover() syncen → sichtbarer Sprung).
+      menu.style.top = this.menuTop + 'px';
+      menu.style.left = this.menuLeft === null ? 'auto' : this.menuLeft + 'px';
+      menu.style.right = this.menuRight === null ? 'auto' : this.menuRight + 'px';
+      if (menu.showPopover) {
+        try { menu.showPopover(); } catch { /* already open */ }
+      }
+    }
+    this.attachScrollCloser();
+  }
+
+  private hideMenu(): void {
+    this.moreOpen = false;
+    const menu = this.menuRef?.nativeElement as (HTMLElement & { hidePopover?: () => void }) | undefined;
+    if (menu?.hidePopover) {
+      try { menu.hidePopover(); } catch { /* already closed */ }
+    }
+    this.detachScrollCloser();
+  }
+
   toggleMore(ev: Event): void {
     ev.stopPropagation();
     ev.preventDefault();
-    this.moreOpen = !this.moreOpen;
+    if (this.moreOpen) this.hideMenu();
+    else this.showMenu();
   }
 
   menuAction(id: KennelFanAction, ev: Event): void {
     ev.stopPropagation();
     ev.preventDefault();
-    this.moreOpen = false;
+    this.hideMenu();
     this.action.emit(id);
+  }
+
+  private updateMenuPosition(): void {
+    const btn = this.triggerRef?.nativeElement;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    this.menuTop = r.bottom + 6;
+    if (this.alignMenuToEnd) {
+      this.menuLeft = null;
+      this.menuRight = Math.max(0, window.innerWidth - r.right);
+    } else {
+      this.menuLeft = r.left;
+      this.menuRight = null;
+    }
   }
 
   @HostListener('document:mousedown', ['$event'])
   onDocMousedown(ev: MouseEvent): void {
     if (!this.moreOpen) return;
     if (this.host.nativeElement.contains(ev.target as Node)) return;
-    this.moreOpen = false;
+    // Klick im Popover-Menü (im Top-Layer, nicht im Host): auch als „innen" werten
+    const menuEl = this.menuRef?.nativeElement;
+    if (menuEl && menuEl.contains(ev.target as Node)) return;
+    this.hideMenu();
+  }
+
+  @HostListener('window:resize')
+  onResize(): void {
+    if (this.moreOpen) this.hideMenu();
   }
 
   @HostListener('document:keydown.escape')
   onEsc(): void {
-    if (this.moreOpen) this.moreOpen = false;
+    if (this.moreOpen) this.hideMenu();
   }
 }
