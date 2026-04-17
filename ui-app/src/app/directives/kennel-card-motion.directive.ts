@@ -75,7 +75,7 @@ function verticalCenterDistance(el: HTMLElement, root: HTMLElement | null): numb
 }
 
 /**
- * 3D-Kartenbewegung: Bogen mit Linksbias, damit unten rechts optisch Luft bleibt
+ * Scroll-gekoppelte Kartenbewegung (2D): Bogen mit Linksbias, damit unten rechts optisch Luft bleibt
  * (oben links = feste Leiste mit Buttons).
  */
 @Directive({
@@ -106,10 +106,12 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
         if (this.focusBlend < 0.001) this.focusBlend = 0;
         if (this.focusBlend > 0.999) this.focusBlend = 1;
         this.renderer.setStyle(host, '--kennel-focus-blend', this.focusBlend.toFixed(4));
-        this.renderer.setStyle(host, 'z-index', this.focusBlend > 0.45 ? '2' : '1');
         /*
          * Bogen: von leicht unten-links (Eintritt) über Mitte nach oben-rechts (Austritt),
          * mit negativem X-Bias in der Mitte → Masse nicht in die untere rechte Ecke.
+         *
+         * Nur 2D (translate + rotate(Z) + scale): rotateX/rotateY + perspective erzeugen
+         * in mehreren Engines eine Verschiebung zwischen sichtbarer Fläche und Klick-Hitbox.
          */
         const xPct = piecewise(p, [0, 0.5, 1], [-14, -6, 10]);
         const yPct = piecewise(p, [0, 0.5, 1], [10, 0, -12]);
@@ -120,11 +122,12 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
         const centerScale = 1 - 0.18 * offCenter * offCenter;
         const scale = pathScale * centerScale;
         const opacity = piecewise(p, [0, 0.12, 0.88, 1], [0.45, 1, 1, 0.45]);
+        /** Leichte 2D-Drehung statt 3D-Kippung (vermeidet Hit-Test-Drift). */
+        const twistDeg = rotateY * 0.38 + rotateX * 0.22;
 
         const transform = [
-          `translate3d(${xPct}%, ${yPct}%, 0)`,
-          `rotateX(${rotateX}deg)`,
-          `rotateY(${rotateY}deg)`,
+          `translate(${xPct}%, ${yPct}%)`,
+          `rotate(${twistDeg}deg)`,
           `scale(${scale})`,
         ].join(' ');
 
