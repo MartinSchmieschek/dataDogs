@@ -464,7 +464,7 @@ async function start() {
         next();
     });
 
-    app.use(express.json());
+    app.use(express.json({ limit: '5mb' }));
 
     // Static assets (Swagger UI hero, etc.) — served from /static/*
     const publicDir = resolvePublicDir();
@@ -513,7 +513,7 @@ async function start() {
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
-    const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore);
+    const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
     kennelSwaggerHandler.registerRoutes(app);
     kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);
