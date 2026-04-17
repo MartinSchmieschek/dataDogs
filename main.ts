@@ -464,7 +464,7 @@ async function start() {
         next();
     });
 
-    app.use(express.json());
+    app.use(express.json({ limit: '5mb' }));
 
     // Static assets (Swagger UI hero, etc.) — served from /static/*
     const publicDir = resolvePublicDir();
