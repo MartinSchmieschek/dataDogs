@@ -9,7 +9,6 @@ import { ErrorVideoPopupService } from '../../services/error-video-popup.service
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
-import { isHtmlResultString } from '../../utils/lead-result-string-format';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
 
 @Component({
@@ -176,11 +175,7 @@ export class KennelListComponent implements OnInit {
   }
 
   onExecute(kennel: IKennelConfig): void {
-    if (this.hasBody(kennel)) {
-      this.executeWithBody(kennel);
-    } else {
-      window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
-    }
+    window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
   }
 
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
@@ -289,52 +284,4 @@ export class KennelListComponent implements OnInit {
     return apiAbsoluteUrl(path);
   }
 
-  hasBody(kennel: IKennelConfig): boolean {
-    return kennel.defaultBody !== null && kennel.defaultBody !== undefined;
-  }
-
-  executeWithBody(kennel: IKennelConfig) {
-    const newWindow = window.open('about:blank', '_blank');
-    if (!newWindow) return;
-
-    const ref = this.kennelRef(kennel);
-    let url = `/api/kennels/${ref}/execute`;
-    if (kennel.defaultQuery) {
-      const params = new URLSearchParams();
-      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const qs = params.toString();
-      if (qs) url += '?' + qs;
-    }
-
-    this.kennelService.execute(ref, kennel.defaultBody, kennel.defaultQuery).subscribe({
-      next: (result) => {
-        if (typeof result === 'string') {
-          if (isHtmlResultString(result)) {
-            newWindow.document.write(result);
-          } else {
-            const esc = result
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;');
-            newWindow.document.write(
-              '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Result</title></head><body>' +
-                '<pre style="white-space:pre-wrap;font-family:system-ui,Segoe UI,monospace;margin:1rem;">' +
-                esc +
-                '</pre></body></html>'
-            );
-          }
-          newWindow.document.close();
-        } else {
-          newWindow.document.write('<pre>' + JSON.stringify(result, null, 2) + '</pre>');
-          newWindow.document.close();
-        }
-      },
-      error: () => {
-        newWindow.close();
-      }
-    });
-  }
 }
