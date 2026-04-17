@@ -25,3 +25,43 @@ model Dog {
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }
+
+// ---------------------------------------------------------------------------
+// Postgres-Single-DB-Mode: alle Tabellen liegen in derselben physischen DB.
+// Cache- und JSON-Storage-Schemas (store/prisma-cache, store/prisma-json-storage)
+// erzeugen eigene typisierte Clients, werden aber NICHT mehr gepusht
+// (siehe scripts/run-prisma-sync.cjs). Das hier ist die einzige Wahrheit
+// fuer die DB-Struktur in Postgres-Mode. Definitionen muessen 1:1 mit den
+// jeweiligen Cache-/JSON-Schemas uebereinstimmen.
+// ---------------------------------------------------------------------------
+
+model CacheEntry {
+  key       String @id
+  value     String
+  expiresAt BigInt
+}
+
+model GeoAreaCache {
+  id           String @id @default(cuid())
+  discriminant String
+  centerLat    Float
+  centerLng    Float
+  radiusM      Float
+  bboxMinLat   Float
+  bboxMinLng   Float
+  bboxMaxLat   Float
+  bboxMaxLng   Float
+  cacheKey     String
+  payload      String
+  cachedAt     BigInt
+  expiresAt    BigInt
+
+  @@index([discriminant, expiresAt])
+  @@index([discriminant, bboxMinLat, bboxMaxLat, bboxMinLng, bboxMaxLng])
+}
+
+model JsonEntry {
+  key       String @id
+  value     String
+  updatedAt BigInt
+}

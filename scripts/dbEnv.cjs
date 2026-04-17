@@ -1,15 +1,25 @@
 'use strict';
 
 /**
- * Zentrale Prüfung und Auflösung der DB-URLs.
- * Nachrichten absichtlich ausführlich — bei Fehler sieht der Entwickler, was in .env fehlt.
+ * Zentrale Pruefung und Aufloesung der DB-URLs.
+ *
+ * Dev (SQLite, Default): drei separate Files (DATABASE_URL, CACHE_DATABASE_URL,
+ * JSON_STORAGE_DATABASE_URL) — jede Connection hat ihre eigene Datei.
+ *
+ * Postgres (integration/production): nur DATABASE_URL ist Pflicht. Cache- und
+ * JSON-Storage-URL werden, falls nicht explizit gesetzt, einfach auf
+ * DATABASE_URL gespiegelt — alle Tabellen liegen in derselben physischen DB
+ * (Schema `public`). Damit sich die `db push`-Laeufe nicht gegenseitig
+ * Tabellen wegdroppen, definiert das Haupt-Schema (store/prisma/schema.postgres.prisma)
+ * ALLE Tabellen, und nur dieses wird gepusht (siehe scripts/run-prisma-sync.cjs).
+ * Cache- und JSON-Storage-Schemas werden nur fuer den Client-Typgenerator genutzt.
  */
 
 function assertRequiredDbEnv() {
     const store = (process.env.DATABASE_URL || '').trim();
-    const cacheUrl = (process.env.CACHE_DATABASE_URL || '').trim();
+    const explicitCacheUrl = (process.env.CACHE_DATABASE_URL || '').trim();
     const cachePath = (process.env.CACHE_DB_PATH || '').trim();
-    const jsonStorageUrl = (process.env.JSON_STORAGE_DATABASE_URL || '').trim();
+    const explicitJsonStorageUrl = (process.env.JSON_STORAGE_DATABASE_URL || '').trim();
     const jsonStoragePath = (process.env.JSON_STORAGE_DB_PATH || '').trim();
 
     const blocks = [];
@@ -22,15 +32,18 @@ function assertRequiredDbEnv() {
             '    DATABASE_URL="file:./dev.db"',
             '',
             '  Integration/Production (PostgreSQL, Schema: store/prisma/schema.postgres.prisma):',
-            '    DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/DATENBANKNAME?sslmode=require"',
-            '    Optional Default-Schema: …?sslmode=require&schema=store (wenn dieselbe DB wie Cache/JSON genutzt wird).',
+            '    DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/DATENBANK?sslmode=require"',
+            '    Cache + JSON-Storage benutzen automatisch dieselbe DATABASE_URL,',
+            '    wenn ihre eigenen URLs nicht gesetzt sind. Alle Tabellen liegen in `public`.',
             '',
-            '  Sonderzeichen im Passwort: in der URL URL-encoden (z. B. @ → %40).',
+            '  Sonderzeichen im Passwort: in der URL URL-encoden (z. B. @ -> %40).',
             '  Siehe auch: .env.example',
         );
     }
 
-    if (!cacheUrl && !cachePath) {
+    const storeIsPostgres = isPostgresUrl(store);
+
+    if (!explicitCacheUrl && !cachePath && !storeIsPostgres) {
         blocks.push(
             '[ENV] Cache-DB: Weder CACHE_DATABASE_URL noch CACHE_DB_PATH ist gesetzt.',
             '',
@@ -38,24 +51,16 @@ function assertRequiredDbEnv() {
             '    CACHE_DATABASE_URL="file:./cache.db"',
             '  oder: CACHE_DB_PATH="store/prisma-cache/cache.db"',
             '',
-            '  Integration/Production (PostgreSQL, Schema: store/prisma-cache/schema.postgres.prisma):',
-            '    CACHE_DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/CACHE_DATENBANK?sslmode=require"',
-            '    Teilst du eine physische DB mit Store/JSON-Storage: …&schema=anderes_schema setzen (siehe .env.integration.example).',
-            '',
         );
     }
 
-    if (!jsonStorageUrl && !jsonStoragePath) {
+    if (!explicitJsonStorageUrl && !jsonStoragePath && !storeIsPostgres) {
         blocks.push(
             '[ENV] JSON-Storage-DB: Weder JSON_STORAGE_DATABASE_URL noch JSON_STORAGE_DB_PATH ist gesetzt.',
             '',
             '  Lokale Entwicklung (SQLite, Schema: store/prisma-json-storage/schema.prisma):',
             '    JSON_STORAGE_DATABASE_URL="file:./json-storage.db"',
             '  oder: JSON_STORAGE_DB_PATH="store/prisma-json-storage/json-storage.db"',
-            '',
-            '  Integration/Production (PostgreSQL, Schema: store/prisma-json-storage/schema.postgres.prisma):',
-            '    JSON_STORAGE_DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/JSON_STORAGE_DB?sslmode=require"',
-            '    Teilst du eine physische DB mit Store/Cache: …&schema=anderes_schema setzen (siehe .env.integration.example).',
             '',
         );
     }
@@ -66,31 +71,49 @@ function assertRequiredDbEnv() {
         throw err;
     }
 
-    assertNoPostgresSchemaConflict({
+    /**
+     * Postgres-Mode: alle drei Clients teilen sich DATABASE_URL, falls die
+     * spezifischen URLs nicht gesetzt sind. Wir spiegeln die Werte in
+     * process.env, damit Prisma-Clients zur Laufzeit dieselbe DB sehen
+     * wie die Push-Skripte.
+     */
+    if (storeIsPostgres) {
+        if (!explicitCacheUrl && !cachePath) {
+            process.env.CACHE_DATABASE_URL = store;
+        }
+        if (!explicitJsonStorageUrl && !jsonStoragePath) {
+            process.env.JSON_STORAGE_DATABASE_URL = store;
+        }
+    }
+
+    /**
+     * Konflikt-Check: nur zwischen URLs, die der Nutzer EXPLIZIT gesetzt hat.
+     * Wenn jemand bewusst zwei eigene Postgres-URLs eintraegt, die auf denselben
+     * (host, db, schema)-Namespace zeigen, ist das ein Konfigurationsfehler —
+     * `prisma db push --accept-data-loss` wuerde sich gegenseitig Tabellen wegnehmen.
+     * Auto-gespiegelte URLs (siehe oben) sind hier kein Konflikt: das Push-Skript
+     * pusht in Postgres-Mode nur das Haupt-Schema; Cache/JSON werden nur
+     * generiert (kein db push).
+     */
+    assertNoExplicitPostgresSchemaConflict({
         DATABASE_URL: store,
-        CACHE_DATABASE_URL: cacheUrl,
-        JSON_STORAGE_DATABASE_URL: jsonStorageUrl,
+        CACHE_DATABASE_URL: explicitCacheUrl,
+        JSON_STORAGE_DATABASE_URL: explicitJsonStorageUrl,
     });
 }
 
-/**
- * Verhindert, dass mehrere Prisma-Connections auf denselben Postgres-Namespace zeigen.
- *
- * Hintergrund: `prisma db push` (Cache/JSON-Storage laufen mit --accept-data-loss) sieht
- * jedes Schema als Single Source of Truth fuer sein Postgres-Schema. Teilen sich zwei
- * Connections (host, port, db, schema), droppt jeder Push die Tabellen des anderen.
- *
- * Regel: zwei Postgres-URLs duerfen auf dieselbe DB zeigen, aber NICHT auf denselben
- * ?schema=-Namespace (Default `public`). Sonst hart abbrechen — besser jetzt
- * als nach verlorenen Tabellen.
- */
-function assertNoPostgresSchemaConflict(urls) {
+function isPostgresUrl(raw) {
+    return typeof raw === 'string' && /^postgres(ql)?:\/\//i.test(raw);
+}
+
+function assertNoExplicitPostgresSchemaConflict(urls) {
     const parsed = [];
     for (const [name, raw] of Object.entries(urls)) {
         if (!raw) continue;
         const info = parsePostgresUrl(raw);
         if (info) parsed.push({ name, ...info });
     }
+    if (parsed.length < 2) return;
 
     for (let i = 0; i < parsed.length; i++) {
         for (let j = i + 1; j < parsed.length; j++) {
@@ -101,18 +124,16 @@ function assertNoPostgresSchemaConflict(urls) {
             const err = new Error(
                 [
                     '',
-                    `[ENV] ${a.name} und ${b.name} zeigen auf denselben Postgres-Namespace:`,
+                    `[ENV] ${a.name} und ${b.name} sind beide explizit gesetzt und zeigen auf denselben Postgres-Namespace:`,
                     `  host=${a.host}  port=${a.port}  db=${a.db}  schema=${a.schema}`,
                     '',
-                    '  Das ist bei Prisma toedlich: jeder `db push` (Cache/JSON-Storage mit',
-                    '  --accept-data-loss) droppt die Tabellen des jeweils anderen Clients.',
+                    '  Wenn du absichtlich EINE DB fuer alles nutzt, setz nur DATABASE_URL und',
+                    '  loesche CACHE_DATABASE_URL / JSON_STORAGE_DATABASE_URL — dbEnv.cjs spiegelt',
+                    '  sie automatisch und das Sync-Skript pusht in Postgres-Mode nur das',
+                    '  Haupt-Schema (store/prisma/schema.postgres.prisma), das alle Tabellen kennt.',
                     '',
-                    '  Loesung: unterschiedliche Postgres-Schemas pro Connection via ?schema=...',
-                    '  Beispiel (Cache + JSON-Storage auf derselben DB):',
-                    `    CACHE_DATABASE_URL="postgresql://…/sharedDb?sslmode=require&schema=cache"`,
-                    `    JSON_STORAGE_DATABASE_URL="postgresql://…/sharedDb?sslmode=require&schema=json_storage"`,
-                    '',
-                    '  Prisma legt das Schema beim Push automatisch an, wenn es fehlt.',
+                    '  Wenn du tatsaechlich getrennte Namespaces willst, gib unterschiedliche',
+                    '  ?schema=…-Werte an (z. B. ?schema=cache, ?schema=json_storage).',
                 ].join('\n'),
             );
             err.name = 'DbEnvError';
@@ -122,7 +143,7 @@ function assertNoPostgresSchemaConflict(urls) {
 }
 
 function parsePostgresUrl(raw) {
-    if (!/^postgres(ql)?:\/\//i.test(raw)) return null;
+    if (!isPostgresUrl(raw)) return null;
     try {
         const u = new URL(raw);
         const host = u.hostname.toLowerCase();
@@ -136,7 +157,9 @@ function parsePostgresUrl(raw) {
 }
 
 /**
- * Setzt aus CACHE_DATABASE_URL oder CACHE_DB_PATH die finale URL für Prisma (Cache-Schema).
+ * Liefert die Cache-DB-URL fuer Prisma. Postgres: nutzt CACHE_DATABASE_URL
+ * (wurde von assertRequiredDbEnv ggf. auf DATABASE_URL gespiegelt). SQLite-Dev:
+ * faellt auf CACHE_DB_PATH zurueck.
  */
 function resolveCacheDatabaseUrl() {
     const cacheUrl = (process.env.CACHE_DATABASE_URL || '').trim();
@@ -150,8 +173,8 @@ function resolveCacheDatabaseUrl() {
 }
 
 /**
- * Setzt aus JSON_STORAGE_DATABASE_URL oder JSON_STORAGE_DB_PATH die finale URL
- * fuer Prisma (JSON-Storage-Schema).
+ * Liefert die JSON-Storage-DB-URL fuer Prisma. Verhalten analog zu
+ * resolveCacheDatabaseUrl.
  */
 function resolveJsonStorageDatabaseUrl() {
     const jsonStorageUrl = (process.env.JSON_STORAGE_DATABASE_URL || '').trim();

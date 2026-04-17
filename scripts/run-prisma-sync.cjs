@@ -42,7 +42,25 @@ const forceResetIntegration =
     process.env.PRISMA_SYNC_FORCE_RESET === '1' && process.env.NODE_ENV === 'integration';
 const storePushExtra = forceResetIntegration ? ' --force-reset' : '';
 
-execSync(
-    `npx prisma generate --schema ${storeSchemaFile} && node scripts/prisma-cache.cjs generate${cacheSuffix} && node scripts/prisma-json-storage.cjs generate${cacheSuffix} && npx prisma db push --schema ${storeSchemaFile} --accept-data-loss${storePushExtra} && node scripts/prisma-cache.cjs push${cacheSuffix} && node scripts/prisma-json-storage.cjs push${cacheSuffix}`,
-    { stdio: 'inherit', env: process.env, shell: true },
-);
+/**
+ * Push-Strategie:
+ *   - Dev (SQLite): drei separate Files → jedes Schema pusht in seine eigene DB.
+ *   - Postgres (integration/production): EINE physische DB. Das Haupt-Schema
+ *     definiert alle Tabellen (Dog, CacheEntry, GeoAreaCache, JsonEntry) und ist
+ *     der einzige Push. Cache/JSON werden nur generiert (Client-Typen), nicht
+ *     gepusht — sonst wuerde --accept-data-loss die jeweils anderen Tabellen droppen.
+ */
+const cmds = [
+    `npx prisma generate --schema ${storeSchemaFile}`,
+    `node scripts/prisma-cache.cjs generate${cacheSuffix}`,
+    `node scripts/prisma-json-storage.cjs generate${cacheSuffix}`,
+    `npx prisma db push --schema ${storeSchemaFile} --accept-data-loss${storePushExtra}`,
+];
+if (!usePostgres) {
+    cmds.push(`node scripts/prisma-cache.cjs push${cacheSuffix}`);
+    cmds.push(`node scripts/prisma-json-storage.cjs push${cacheSuffix}`);
+} else {
+    console.log('[prisma-sync] Postgres-Mode: Cache/JSON-Storage db push uebersprungen — Tabellen liegen im Haupt-Schema.');
+}
+
+execSync(cmds.join(' && '), { stdio: 'inherit', env: process.env, shell: true });
