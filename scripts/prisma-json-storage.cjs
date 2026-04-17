@@ -14,9 +14,13 @@ const schema = usePostgres
     ? 'store/prisma-json-storage/schema.postgres.prisma'
     : 'store/prisma-json-storage/schema.prisma';
 
+const forceResetIntegration =
+    process.env.PRISMA_SYNC_FORCE_RESET === '1' && process.env.NODE_ENV === 'integration';
+const pushResetFlag = forceResetIntegration ? ' --force-reset' : '';
+
 const cmd =
     process.argv[2] === 'push'
-        ? `db push --schema ${schema} --accept-data-loss`
+        ? `db push --schema ${schema} --accept-data-loss${pushResetFlag}`
         : `generate --schema ${schema}`;
 execSync(`npx prisma ${cmd}`, {
     stdio: 'inherit',
