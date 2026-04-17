@@ -292,6 +292,39 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     /**
+     * Wave-readiness check, instance-aware.
+     *
+     * The base implementation iterates `this.required` (a class list) and asks "is any
+     * exhausted dog of this class present?". That works fer BaseDogs, where each class
+     * appears once in the kennel. But every SerializedDog instance shares the same
+     * `SerializedDog` constructor — so the de-duplicated `required` list collapses
+     * multiple distinct SerializedDog parents into a single class entry. The base
+     * check then returns `true` as soon as the FIRST SerializedDog parent finishes,
+     * even if other declared SerializedDog parents (perhaps with their own deep
+     * dependencies) are still in flight. Result: this dog runs too early, missing
+     * globals, scheduled in the wrong wave.
+     *
+     * Here we walk `parentsRequired` directly and check each declared parent ID
+     * against the exhausted crew, matching by storageId/lineageId fer SerializedDogs
+     * and by class name fer BaseDogs. Every sworn parent must have returned from the
+     * deep before this spirit may rise.
+     */
+    protected areRequiredParentsReady(season: IHuntingSeason): boolean {
+        const parentsRequired = this.config.parentsRequired || [];
+        if (parentsRequired.length === 0) return true;
+
+        return parentsRequired.every((parentId: string) => {
+            return season.exhausted.some(dog => {
+                if (dog instanceof SerializedDog) {
+                    const sDog = dog as SerializedDog<unknown>;
+                    return sDog.storageId === parentId || sDog.lineageId === parentId;
+                }
+                return dog.name === parentId;
+            });
+        });
+    }
+
+    /**
      * Override matchesParent fer instance-specific matching by storageId/name.
      * The base isReady logic calls this method -- and fer SerializedDog,
      * we match by specific instance identity, not just class lineage.
