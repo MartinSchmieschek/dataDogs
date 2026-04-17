@@ -64,6 +64,74 @@ function assertRequiredDbEnv() {
         err.name = 'DbEnvError';
         throw err;
     }
+
+    assertNoPostgresSchemaConflict({
+        DATABASE_URL: store,
+        CACHE_DATABASE_URL: cacheUrl,
+        JSON_STORAGE_DATABASE_URL: jsonStorageUrl,
+    });
+}
+
+/**
+ * Verhindert, dass mehrere Prisma-Connections auf denselben Postgres-Namespace zeigen.
+ *
+ * Hintergrund: `prisma db push` (Cache/JSON-Storage laufen mit --accept-data-loss) sieht
+ * jedes Schema als Single Source of Truth fuer sein Postgres-Schema. Teilen sich zwei
+ * Connections (host, port, db, schema), droppt jeder Push die Tabellen des anderen.
+ *
+ * Regel: zwei Postgres-URLs duerfen auf dieselbe DB zeigen, aber NICHT auf denselben
+ * ?schema=-Namespace (Default `public`). Sonst hart abbrechen — besser jetzt
+ * als nach verlorenen Tabellen.
+ */
+function assertNoPostgresSchemaConflict(urls) {
+    const parsed = [];
+    for (const [name, raw] of Object.entries(urls)) {
+        if (!raw) continue;
+        const info = parsePostgresUrl(raw);
+        if (info) parsed.push({ name, ...info });
+    }
+
+    for (let i = 0; i < parsed.length; i++) {
+        for (let j = i + 1; j < parsed.length; j++) {
+            const a = parsed[i];
+            const b = parsed[j];
+            if (a.host !== b.host || a.port !== b.port || a.db !== b.db) continue;
+            if (a.schema !== b.schema) continue;
+            const err = new Error(
+                [
+                    '',
+                    `[ENV] ${a.name} und ${b.name} zeigen auf denselben Postgres-Namespace:`,
+                    `  host=${a.host}  port=${a.port}  db=${a.db}  schema=${a.schema}`,
+                    '',
+                    '  Das ist bei Prisma toedlich: jeder `db push` (Cache/JSON-Storage mit',
+                    '  --accept-data-loss) droppt die Tabellen des jeweils anderen Clients.',
+                    '',
+                    '  Loesung: unterschiedliche Postgres-Schemas pro Connection via ?schema=...',
+                    '  Beispiel (Cache + JSON-Storage auf derselben DB):',
+                    `    CACHE_DATABASE_URL="postgresql://…/sharedDb?sslmode=require&schema=cache"`,
+                    `    JSON_STORAGE_DATABASE_URL="postgresql://…/sharedDb?sslmode=require&schema=json_storage"`,
+                    '',
+                    '  Prisma legt das Schema beim Push automatisch an, wenn es fehlt.',
+                ].join('\n'),
+            );
+            err.name = 'DbEnvError';
+            throw err;
+        }
+    }
+}
+
+function parsePostgresUrl(raw) {
+    if (!/^postgres(ql)?:\/\//i.test(raw)) return null;
+    try {
+        const u = new URL(raw);
+        const host = u.hostname.toLowerCase();
+        const port = u.port || '5432';
+        const db = (u.pathname || '').replace(/^\//, '').toLowerCase();
+        const schema = (u.searchParams.get('schema') || 'public').toLowerCase();
+        return { host, port, db, schema };
+    } catch {
+        return null;
+    }
 }
 
 /**

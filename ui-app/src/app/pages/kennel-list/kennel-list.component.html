@@ -115,7 +115,7 @@
                           class="kennel-rail-btn kennel-rail-btn--primary"
                           (click)="onExecute(kennel)"
                           [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
-                          [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
+                          [title]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
                           <span aria-hidden="true">▶</span>
                         </button>
                       </div>
