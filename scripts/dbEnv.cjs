@@ -23,6 +23,7 @@ function assertRequiredDbEnv() {
             '',
             '  Integration/Production (PostgreSQL, Schema: store/prisma/schema.postgres.prisma):',
             '    DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/DATENBANKNAME?sslmode=require"',
+            '    Optional Default-Schema: …?sslmode=require&schema=store (wenn dieselbe DB wie Cache/JSON genutzt wird).',
             '',
             '  Sonderzeichen im Passwort: in der URL URL-encoden (z. B. @ → %40).',
             '  Siehe auch: .env.example',
@@ -39,8 +40,8 @@ function assertRequiredDbEnv() {
             '',
             '  Integration/Production (PostgreSQL, Schema: store/prisma-cache/schema.postgres.prisma):',
             '    CACHE_DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/CACHE_DATENBANK?sslmode=require"',
+            '    Teilst du eine physische DB mit Store/JSON-Storage: …&schema=anderes_schema setzen (siehe .env.integration.example).',
             '',
-            '  Optional dieselbe PostgreSQL-Instanz wie DATABASE_URL (Tabellen Dog / CacheEntry getrennt).',
         );
     }
 
@@ -54,8 +55,8 @@ function assertRequiredDbEnv() {
             '',
             '  Integration/Production (PostgreSQL, Schema: store/prisma-json-storage/schema.postgres.prisma):',
             '    JSON_STORAGE_DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/JSON_STORAGE_DB?sslmode=require"',
+            '    Teilst du eine physische DB mit Store/Cache: …&schema=anderes_schema setzen (siehe .env.integration.example).',
             '',
-            '  Optional dieselbe PostgreSQL-Instanz wie DATABASE_URL (Tabelle JsonEntry getrennt).',
         );
     }
 

@@ -76,6 +76,7 @@
     "prisma:sync": "cross-env NODE_ENV=development node -r ./scripts/load-env.cjs ./scripts/run-prisma-sync.cjs",
     "prisma:sync:prod": "cross-env NODE_ENV=production node -r ./scripts/load-env.cjs ./scripts/run-prisma-sync.cjs",
     "prisma:sync:integration": "cross-env NODE_ENV=integration node -r ./scripts/load-env.cjs ./scripts/run-prisma-sync.cjs",
+    "prisma:sync:integration:reset": "cross-env NODE_ENV=integration PRISMA_SYNC_FORCE_RESET=1 node -r ./scripts/load-env.cjs ./scripts/run-prisma-sync.cjs",
     "prisma:generate:env": "node -r ./scripts/load-env.cjs ./scripts/prisma-generate-matching-env.cjs",
     "dev": "npm run prisma:sync && node scripts/inject-ui-api-base.cjs && concurrently -n backend,ui -c blue,green \"cross-env NODE_ENV=development node -r ./scripts/load-env.cjs -r ts-node/register -r tsconfig-paths/register main.ts\" \"npm run ui\"",
     "start": "cross-env NODE_ENV=development node -r ./scripts/load-env.cjs -r ts-node/register -r tsconfig-paths/register main.ts",
