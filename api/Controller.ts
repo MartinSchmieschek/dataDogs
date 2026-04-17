@@ -79,32 +79,40 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             // The new incarnation's GUID — unique across all realms.
             const saveId = this.enableVersioning ? generateVersionId() : input.id;
 
-            // Seek the ancestor in the deep — the entity from which this incarnation descends.
-            let existing: T | null = null;
-            let existingType: string = this.entityType;
+            // Seek the ancestor in the deep — load the Store-Row and unshackle its inner cfg
+            // from serializedDogConfig. We merge against the INNER cfg only, never against the
+            // outer Store envelope; otherwise `serializedDogConfig` would nest into itself on every save.
             const existingRaw = await this.store.load(input.id);
+            let existingInner: Record<string, any> | null = null;
+            let existingLineageId: string | undefined;
+            let existingDisplayName: string | undefined;
+            let existingType: string = this.entityType;
+
             if (existingRaw) {
-                existing = this.parseEntity(existingRaw);
-                // Resolve the ancestor's type: check the parsed config for imitates → MimicDog type.
-                const cfg = typeof existingRaw === 'string' ? JSON.parse(existingRaw) : existingRaw;
-                const innerCfg = cfg.serializedDogConfig
-                    ? (typeof cfg.serializedDogConfig === 'string' ? JSON.parse(cfg.serializedDogConfig) : cfg.serializedDogConfig)
-                    : cfg;
-                if (innerCfg.imitates) {
-                    existingType = 'MimicDog';
+                const row = typeof existingRaw === 'string' ? JSON.parse(existingRaw) : existingRaw;
+                const innerRaw = (row as any).serializedDogConfig;
+                if (innerRaw !== undefined && innerRaw !== null) {
+                    existingInner = typeof innerRaw === 'string' ? JSON.parse(innerRaw) : innerRaw;
+                } else {
+                    // Legacy rows without serializedDogConfig — treat the row itself as the cfg.
+                    existingInner = row;
                 }
+                existingLineageId = (row as any).lineageId || existingInner?.lineageId;
+                existingDisplayName = (row as any).displayName || existingInner?.displayName;
+                if (existingInner?.imitates) existingType = 'MimicDog';
             }
 
             // Inherit the lineage mark from the ancestor, or forge a new one fer an orphan.
-            const lineageId = input.lineageId || (existing as any)?.lineageId || generateLineageId();
+            const lineageId = input.lineageId || existingLineageId || generateLineageId();
             const parentId = this.enableVersioning ? input.id : null; // The ancestor from which this incarnation was born
-            const displayName = input.displayName || (existing as any)?.displayName || input.id;
+            const displayName = input.displayName || existingDisplayName || input.id;
 
-            // Merge the old with the new — the entity carries its history forward.
-            // In luminous space, blackened stars: we layer the new light upon the old dark.
-            const entity: T = {
-                ...(existing || {}),
-                ...input,
+            // Merge inner cfg → input. Strip transient envelope fields so they don't leak into cfg.
+            const { id: _oldId, ...inputCfgFields } = (input as any);
+            const { id: _prevId, serializedDogConfig: _stripNested, ...priorCfg } = (existingInner || {}) as any;
+            const nextCfg = {
+                ...priorCfg,
+                ...inputCfgFields,
                 id: saveId,
                 lineageId,
                 parentId,
@@ -112,34 +120,33 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             } as T;
 
             // If nothing has changed, spare the deep — no phantom incarnations shall be born.
-            if (existing && this.enableVersioning && !this.hasContentChanged(existing, entity)) {
+            if (existingInner && this.enableVersioning && !this.hasContentChanged(existingInner as T, nextCfg)) {
                 return {
                     ok: true,
-                    id: input.id,
-                    data: existing,
+                    id: (existingInner as any).id || input.id,
+                    data: existingInner as T,
                 };
             }
 
             // Resolve the final type: the new incarnation's imitates field takes precedence over the ancestor's.
-            const mergedImitates = (entity as any).imitates
-                || ((entity as any).serializedDogConfig && typeof (entity as any).serializedDogConfig === 'object' && (entity as any).serializedDogConfig.imitates);
-            const resolvedType = mergedImitates ? 'MimicDog' : (existingType || this.entityType);
+            const resolvedType = (nextCfg as any).imitates ? 'MimicDog' : existingType;
 
-            // Seal the merged entity in the store — inherit the ancestor's type brand if it differs.
+            // Seal the merged entity in the store — only the cfg lives in serializedDogConfig,
+            // never the Store envelope itself.
             await this.store.save({
                 id: saveId,
                 type: resolvedType,
                 lineageId,
                 parentId,
                 displayName,
-                serializedDogConfig: JSON.stringify(entity),
+                serializedDogConfig: JSON.stringify(nextCfg),
                 createdAt: new Date(),
             });
 
             return {
                 ok: true,
                 id: saveId,
-                data: entity
+                data: nextCfg
             };
         } catch (error) {
             return { ok: false, error: String(error) };

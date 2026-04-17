@@ -3,7 +3,6 @@
 import {
     SerializedDog,
     MimicDog,
-    type IMimicDogConfig,
     kennelDisplayNameBlockedReason,
     kennelLineageIdBlockedReason,
 } from '@datadogs/core';
@@ -14,12 +13,21 @@ import { KennelRunHandler } from './KennelRunHandler';
 
 /**
  * Handles kennel export and import — the rites of passage across systems.
+ *
+ * Rules:
+ *  - Export: keep `base:` refs as-is (runtime-provided), transitively collect
+ *    every reachable SerializedDog/MimicDog via parentsRequired/parentsOptional,
+ *    no history. Only the current stand travels.
+ *  - Import: validate every `base:` ref against the local baseDogsMap (fail if
+ *    missing), mint fresh lineage+version GUIDs for each serialized dog,
+ *    remap parent refs accordingly. No history restore — a single fresh version.
  */
 export class KennelBundleHandler {
     constructor(
         private runHandler: KennelRunHandler,
         private kennelsController: KennelController,
         private nodesStore: IStore,
+        private baseDogsMap: Map<string, new () => any>,
     ) {}
 
     registerRoutes(app: any): void {
@@ -27,10 +35,26 @@ export class KennelBundleHandler {
         app.post('/api/kennels/import', (req: any, res: any) => this.handleImport(req, res));
     }
 
+    private parseDogConfig(row: any): any {
+        const raw = row?.serializedDogConfig;
+        if (!raw) return {};
+        if (typeof raw === 'string') {
+            try { return JSON.parse(raw); } catch { return {}; }
+        }
+        return raw;
+    }
+
+    private collectRefs(cfg: any): string[] {
+        const out: string[] = [];
+        if (Array.isArray(cfg?.parentsRequired)) out.push(...cfg.parentsRequired);
+        if (Array.isArray(cfg?.parentsOptional)) out.push(...cfg.parentsOptional);
+        return out;
+    }
+
     /**
      * GET /api/kennels/:id/export
-     * Exports a kennel and all its serialized dogs as a portable bundle.
-     * IDs are preserved as-is — remapping happens on import, not here.
+     * Walks the kennel's serialized dogs transitively, collects every reachable
+     * SerializedDog/MimicDog. `base:` refs travel as plain references.
      */
     private async handleExport(req: any, res: any): Promise<void> {
         try {
@@ -40,39 +64,44 @@ export class KennelBundleHandler {
                 return;
             }
 
-            const dogs: any[] = [];
+            const seedIds = (config.dogIds ?? []).filter(id => !id.startsWith('base:'));
+            const visited = new Set<string>();
+            const collectedRows: any[] = [];
+            const queue: string[] = [...seedIds];
 
-            // Collect all non-base dog references from the kennel.
-            const serializedIds = (config.dogIds ?? []).filter(id => !id.startsWith('base:'));
+            while (queue.length > 0) {
+                const batch = queue.splice(0, queue.length).filter(id => !visited.has(id));
+                if (batch.length === 0) continue;
+                batch.forEach(id => visited.add(id));
 
-            if (serializedIds.length > 0) {
                 const [serialized, mimics] = await Promise.all([
-                    this.nodesStore.findLatestVersionsByType(SerializedDog.name, serializedIds),
-                    this.nodesStore.findLatestVersionsByType(MimicDog.name, serializedIds),
+                    this.nodesStore.findLatestVersionsByType(SerializedDog.name, batch),
+                    this.nodesStore.findLatestVersionsByType(MimicDog.name, batch),
                 ]);
 
                 for (const row of [...serialized, ...mimics]) {
-                    const cfg = typeof row.serializedDogConfig === 'string'
-                        ? JSON.parse(row.serializedDogConfig)
-                        : row.serializedDogConfig;
-                    dogs.push({
-                        lineageId: (row as any).lineageId || cfg.lineageId,
-                        versionId: row.id,
-                        displayName: (row as any).displayName || cfg.displayName,
-                        type: cfg.imitates ? 'MimicDog' : 'SerializedDog',
-                        config: cfg,
-                    });
+                    const cfg = this.parseDogConfig(row);
+                    collectedRows.push({ row, cfg });
+                    for (const ref of this.collectRefs(cfg)) {
+                        if (typeof ref !== 'string') continue;
+                        if (ref.startsWith('base:')) continue;
+                        if (!visited.has(ref)) queue.push(ref);
+                    }
                 }
             }
 
-            // Load kennel version history.
-            const kennelLineageId = (config as any).lineageId || req.params.id;
-            const kennelVersions = await this.kennelsController.getVersions(kennelLineageId);
+            const dogs = collectedRows.map(({ row, cfg }) => ({
+                lineageId: row.lineageId || cfg.lineageId,
+                versionId: row.id,
+                displayName: row.displayName || cfg.displayName,
+                type: cfg.imitates ? 'MimicDog' : 'SerializedDog',
+                config: cfg,
+            }));
 
             const bundle = {
-                bundleVersion: 1,
+                bundleVersion: 2,
                 kennel: {
-                    kennelId: kennelLineageId,
+                    kennelId: (config as any).lineageId || req.params.id,
                     name: config.name,
                     description: config.description,
                     emoji: config.emoji,
@@ -80,12 +109,6 @@ export class KennelBundleHandler {
                     defaultQuery: config.defaultQuery,
                     defaultBody: config.defaultBody,
                 },
-                kennelVersions: kennelVersions.map(v => ({
-                    id: v.id,
-                    parentId: v.parentId,
-                    createdAt: v.createdAt,
-                    config: v.config,
-                })),
                 dogs,
             };
 
@@ -98,8 +121,10 @@ export class KennelBundleHandler {
 
     /**
      * POST /api/kennels/import
-     * Imports a kennel bundle — all IDs are regenerated, references remapped.
-     * If kennelId already exists, a copy is created with a suffixed ID and name.
+     * Bundle rules:
+     *  - `base:` refs must resolve against baseDogsMap, else 400.
+     *  - SerializedDogs get fresh lineage+version GUIDs; parent refs are remapped.
+     *  - Kennel is created as a single fresh version — no history restore.
      */
     private async handleImport(req: any, res: any): Promise<void> {
         try {
@@ -109,7 +134,32 @@ export class KennelBundleHandler {
                 return;
             }
 
-            // Resolve kennel ID — if it already exists, find a free one.
+            // 1. Collect every base: ref the bundle relies on — from dog parents
+            //    and from the kennel's own dogIds — and verify they all exist locally.
+            const baseRefs = new Set<string>();
+            const addBase = (ref: unknown) => {
+                if (typeof ref === 'string' && ref.startsWith('base:')) baseRefs.add(ref);
+            };
+            for (const dog of bundle.dogs) {
+                const cfg = dog?.config || {};
+                (cfg.parentsRequired || []).forEach(addBase);
+                (cfg.parentsOptional || []).forEach(addBase);
+            }
+            (bundle.kennel.dogIds || []).forEach(addBase);
+
+            const missingBase: string[] = [];
+            for (const ref of baseRefs) {
+                const name = ref.substring('base:'.length);
+                if (!this.baseDogsMap.has(name)) missingBase.push(ref);
+            }
+            if (missingBase.length > 0) {
+                res.status(400).json({
+                    error: `Import fehlgeschlagen: Base-Dogs fehlen im Zielsystem: ${missingBase.join(', ')}`,
+                });
+                return;
+            }
+
+            // 2. Resolve kennel ID — if it already exists, find a free copy name.
             let kennelId = bundle.kennel.kennelId;
             let kennelName = bundle.kennel.name || kennelId;
             const originalId = kennelId;
@@ -133,7 +183,7 @@ export class KennelBundleHandler {
                 return;
             }
 
-            // Build ID mapping: old lineageId/versionId → new lineageId.
+            // 3. Build ID mapping for serialized/mimic dogs: old lineageId + old versionId → new lineageId.
             const idMap = new Map<string, string>();
             for (const dog of bundle.dogs) {
                 const newLineageId = generateLineageId();
@@ -141,14 +191,18 @@ export class KennelBundleHandler {
                 if (dog.versionId) idMap.set(dog.versionId, newLineageId);
             }
 
-            const remap = (ref: string): string => idMap.get(ref) ?? ref;
+            const remap = (ref: string): string => {
+                if (typeof ref !== 'string') return ref;
+                if (ref.startsWith('base:')) return ref; // base refs travel untouched
+                return idMap.get(ref) ?? ref;
+            };
 
-            // Create all dogs with new IDs.
+            // 4. Persist every dog with fresh GUIDs and remapped parent refs.
             for (const dog of bundle.dogs) {
-                const newLineageId = idMap.get(dog.lineageId) || generateLineageId();
+                const newLineageId = idMap.get(dog.lineageId) || idMap.get(dog.versionId) || generateLineageId();
                 const newVersionId = generateVersionId();
 
-                const cfg = { ...dog.config };
+                const cfg = { ...(dog.config || {}) };
                 cfg.id = newVersionId;
                 cfg.lineageId = newLineageId;
                 cfg.parentId = null;
@@ -174,70 +228,25 @@ export class KennelBundleHandler {
                 });
             }
 
-            // Remap kennel dogIds.
-            const remapDogIds = (ids: string[]) => (ids ?? []).map(remap);
+            // 5. Create the kennel as a single fresh version — no history restore.
+            const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
+            const createResult = await this.kennelsController.create({
+                id: kennelId,
+                name: kennelName,
+                description: bundle.kennel.description,
+                emoji: bundle.kennel.emoji,
+                dogIds: remappedDogIds,
+            });
+            if (!createResult.ok) {
+                res.status(500).json({ error: createResult.error });
+                return;
+            }
 
-            // Restore kennel versions if present, otherwise create a single version.
-            const versions = Array.isArray(bundle.kennelVersions) && bundle.kennelVersions.length > 0
-                ? bundle.kennelVersions
-                : null;
-
-            if (versions) {
-                // Sort oldest first so parentId chain is preserved.
-                const sorted = [...versions].sort((a: any, b: any) => {
-                    const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                    const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                    return aT - bT;
-                });
-
-                const versionIdMap = new Map<string, string>();
-                for (const v of sorted) {
-                    versionIdMap.set(v.id, generateVersionId());
-                }
-
-                for (let vi = 0; vi < sorted.length; vi++) {
-                    const v = sorted[vi];
-                    const isLast = vi === sorted.length - 1;
-                    const newVersionId = versionIdMap.get(v.id)!;
-                    const oldParentId = v.parentId;
-                    const newParentId = oldParentId ? (versionIdMap.get(oldParentId) ?? null) : null;
-                    const vCfg = v.config || bundle.kennel;
-
-                    await this.nodesStore.save({
-                        id: newVersionId,
-                        type: 'KennelConfig',
-                        lineageId: kennelId,
-                        parentId: newParentId,
-                        name: isLast ? kennelName : vCfg.name,
-                        description: vCfg.description,
-                        emoji: vCfg.emoji,
-                        dogIds: remapDogIds(vCfg.dogIds),
-                        defaultQuery: vCfg.defaultQuery ? JSON.stringify(vCfg.defaultQuery) : undefined,
-                        defaultBody: vCfg.defaultBody ? JSON.stringify(vCfg.defaultBody) : undefined,
-                        createdAt: v.createdAt ? new Date(v.createdAt).toISOString() : new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                    });
-                }
-            } else {
-                const createResult = await this.kennelsController.create({
-                    id: kennelId,
-                    name: kennelName,
-                    description: bundle.kennel.description,
-                    emoji: bundle.kennel.emoji,
-                    dogIds: remapDogIds(bundle.kennel.dogIds),
-                });
-
-                if (!createResult.ok) {
-                    res.status(500).json({ error: createResult.error });
-                    return;
-                }
-
-                if (bundle.kennel.defaultQuery || bundle.kennel.defaultBody) {
-                    await this.kennelsController.heal(kennelId, {
-                        defaultQuery: bundle.kennel.defaultQuery,
-                        defaultBody: bundle.kennel.defaultBody,
-                    } as any);
-                }
+            if (bundle.kennel.defaultQuery || bundle.kennel.defaultBody) {
+                await this.kennelsController.heal(kennelId, {
+                    defaultQuery: bundle.kennel.defaultQuery,
+                    defaultBody: bundle.kennel.defaultBody,
+                } as any);
             }
 
             res.json({
