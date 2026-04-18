@@ -72,6 +72,27 @@ function assertRequiredDbEnv() {
     }
 
     /**
+     * Integration: immer echte Postgres-URLs — Store, Cache und JSON-Storage
+     * (JsonStorageRetriever) nutzen dieselbe DB nach Spiegelung. SQLite aus
+     * `.env` allein reicht nicht; `.env.integration` muss postgresql://… setzen.
+     */
+    if ((process.env.NODE_ENV || '').trim() === 'integration' && !storeIsPostgres) {
+        const err = new Error(
+            [
+                '',
+                '[ENV] NODE_ENV=integration erfordert PostgreSQL als DATABASE_URL (postgresql://…).',
+                '  SQLite (file:./dev.db) aus der Basis-.env ist fuer Integration unzulaessig.',
+                '',
+                '  In `.env.integration` eine Postgres-URL setzen (siehe `.env.integration.example`).',
+                '  Cache und JSON-Storage werden auf dieselbe URL gespiegelt — alle Tabellen',
+                '  entstehen mit `npm run prisma:sync:integration`.',
+            ].join('\n'),
+        );
+        err.name = 'DbEnvError';
+        throw err;
+    }
+
+    /**
      * Postgres-Mode: alle drei Clients teilen sich DATABASE_URL, falls die
      * spezifischen URLs nicht gesetzt sind. Wir spiegeln die Werte in
      * process.env, damit Prisma-Clients zur Laufzeit dieselbe DB sehen
@@ -84,6 +105,18 @@ function assertRequiredDbEnv() {
         if (!explicitJsonStorageUrl && !jsonStoragePath) {
             process.env.JSON_STORAGE_DATABASE_URL = store;
         }
+    }
+
+    /**
+     * Integration: Basis-.env enthaelt oft noch SQLite-URLs (file:./cache.db).
+     * Die wuerden sonst die Postgres-Spiegelung verhindern — Cache/JSON muessten
+     * dieselbe DB wie DATABASE_URL nutzen (ein db push, siehe run-prisma-sync.cjs).
+     */
+    if ((process.env.NODE_ENV || '').trim() === 'integration' && storeIsPostgres) {
+        process.env.CACHE_DATABASE_URL = store;
+        process.env.JSON_STORAGE_DATABASE_URL = store;
+        delete process.env.CACHE_DB_PATH;
+        delete process.env.JSON_STORAGE_DB_PATH;
     }
 
     /**
@@ -119,6 +152,9 @@ function assertNoExplicitPostgresSchemaConflict(urls) {
         for (let j = i + 1; j < parsed.length; j++) {
             const a = parsed[i];
             const b = parsed[j];
+            const rawA = (urls[a.name] || '').trim();
+            const rawB = (urls[b.name] || '').trim();
+            if (rawA && rawA === rawB) continue;
             if (a.host !== b.host || a.port !== b.port || a.db !== b.db) continue;
             if (a.schema !== b.schema) continue;
             const err = new Error(
