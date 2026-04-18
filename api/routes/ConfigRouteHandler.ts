@@ -18,7 +18,7 @@ export class ControllerRegistry {
      */
     register<T extends IEntity = IEntity>(subpath: string, controller: AbstractController<T>): void {
         this.controllers.set(subpath, controller as AbstractController<any>);
-        console.log(`[ControllerRegistry] Controller für Subpath '${subpath}' registriert`);
+        console.log(`[ControllerRegistry] Controller registered for subpath '${subpath}'`);
     }
 
     /**
@@ -108,7 +108,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
 
@@ -137,7 +137,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
 
@@ -164,7 +164,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
 
@@ -206,7 +206,7 @@ export class ConfigRouteHandler {
             // Legacy: /save is bound to the nodes captain only.
             const controller = this.registry.get('nodes');
             if (!controller) {
-                res.status(404).json({ error: 'Node-Controller nicht gefunden' });
+                res.status(404).json({ error: 'Node controller not found' });
                 return;
             }
 
@@ -259,7 +259,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
 
@@ -286,7 +286,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
 
@@ -314,7 +314,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
             if (!displayName || typeof displayName !== 'string') {
@@ -342,7 +342,7 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller für Subpath '${subpath}' nicht gefunden` });
+                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
                 return;
             }
 
