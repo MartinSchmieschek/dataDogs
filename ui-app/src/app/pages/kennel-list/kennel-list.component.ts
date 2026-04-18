@@ -1,6 +1,13 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, input, signal, OnInit } from '@angular/core';
+import { Component, HostListener, computed, inject, input, signal, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
+import {
+  kennelImportNeedsUserChoice,
+  isKennelIdTakenInList,
+  isKennelNameTakenInList,
+  suggestKennelImportTarget,
+  type KennelIdNameListEntry,
+} from '../../utils/kennel-import-target';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
@@ -43,6 +50,13 @@ export class KennelListComponent implements OnInit {
   loading = signal(false);
   showCreateForm = signal(false);
   error = signal<string | null>(null);
+  successMessage = signal<string | null>(null);
+
+  importDialogOpen = signal(false);
+  importDialogBundle = signal<Record<string, unknown> | null>(null);
+  importDialogKennelId = signal('');
+  importDialogName = signal('');
+  importDialogHint = signal('');
 
   searchQuery = signal('');
   sortKey = signal<'name' | 'id' | 'updated'>('name');
@@ -94,6 +108,14 @@ export class KennelListComponent implements OnInit {
 
   onComfortVideoClick(): void {
     this.errorVideoPopup.openPopup(this.error());
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && this.importDialogOpen()) {
+      e.preventDefault();
+      this.closeImportDialog();
+    }
   }
 
   /** Sortierfeld per Klick durchschalten: Name → ID → Zuletzt geändert. */
@@ -225,24 +247,124 @@ export class KennelListComponent implements OnInit {
   }
 
   importFromClipboard() {
-    navigator.clipboard.readText().then(text => {
-      try {
-        const bundle = JSON.parse(text);
-        this.kennelService.importBundle(bundle).subscribe({
-          next: (res) => {
-            if (res.ok) {
-              this.loadKennels();
-            } else {
-              this.error.set(res.error ?? 'Import fehlgeschlagen');
+    this.successMessage.set(null);
+    this.error.set(null);
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        let bundle: Record<string, unknown>;
+        try {
+          bundle = JSON.parse(text) as Record<string, unknown>;
+        } catch {
+          this.error.set('Clipboard enthält kein gültiges JSON');
+          return;
+        }
+        const kennel = bundle['kennel'] as { kennelId?: string; name?: string } | undefined;
+        if (!kennel || !Array.isArray(bundle['dogs'])) {
+          this.error.set('Ungültiges Kennel-Bundle: kennel und dogs[] nötig');
+          return;
+        }
+        if (!kennel.kennelId || typeof kennel.kennelId !== 'string' || !kennel.kennelId.trim()) {
+          this.error.set('Ungültiges Kennel-Bundle: kennel.kennelId fehlt');
+          return;
+        }
+        this.kennelService.getAll().subscribe({
+          next: (r) => {
+            if (r.data) {
+              this.kennels.set(r.data);
             }
+            const list = (r.data ?? this.kennels()).map(
+              (k) =>
+                ({
+                  lineageId: k.lineageId,
+                  id: k.id,
+                  name: k.name,
+                }) as KennelIdNameListEntry
+            );
+            this.proceedWithBundleCheck(bundle, list);
           },
           error: (err) => this.error.set(err.error?.error ?? err.message),
         });
-      } catch {
-        this.error.set('Clipboard enthält kein gültiges JSON');
-      }
-    }).catch(() => {
-      this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
+      })
+      .catch(() => {
+        this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
+      });
+  }
+
+  private setImportDialogConflictHint(
+    bundle: { kennel: { kennelId: string; name?: string } },
+    existing: KennelIdNameListEntry[]
+  ): void {
+    const kid = (bundle.kennel.kennelId || '').trim();
+    const nm = (bundle.kennel.name && bundle.kennel.name.trim()) || kid;
+    const idTaken = isKennelIdTakenInList(kid, existing);
+    const nameTaken = isKennelNameTakenInList(nm, existing);
+    const parts: string[] = [];
+    if (idTaken) {
+      parts.push('Diese Kennel-ID ist im System schon belegt.');
+    }
+    if (nameTaken) {
+      parts.push('Dieser Anzeigename ist schon an einen anderen Kennel vergeben.');
+    }
+    this.importDialogHint.set(
+      parts.length > 0
+        ? parts.join(' ') + ' Bitte anpassen oder die Vorschläge übernehmen.'
+        : 'Vorschlag — bei Bedarf ändern und importieren.'
+    );
+  }
+
+  private proceedWithBundleCheck(
+    bundle: Record<string, unknown>,
+    existing: KennelIdNameListEntry[]
+  ): void {
+    const b = bundle as { kennel: { kennelId: string; name?: string } };
+    const s = suggestKennelImportTarget(b, existing);
+    if (kennelImportNeedsUserChoice(b, existing)) {
+      this.importDialogBundle.set(bundle);
+      this.importDialogKennelId.set(s.kennelId);
+      this.importDialogName.set(s.name);
+      this.setImportDialogConflictHint(b, existing);
+      this.importDialogOpen.set(true);
+      return;
+    }
+    this.executeImport(bundle, { kennelId: s.kennelId, name: s.name });
+  }
+
+  closeImportDialog(): void {
+    this.importDialogOpen.set(false);
+    this.importDialogBundle.set(null);
+    this.importDialogHint.set('');
+  }
+
+  confirmImportDialog(): void {
+    const bundle = this.importDialogBundle();
+    if (!bundle) return;
+    const kennelId = this.importDialogKennelId().trim();
+    const name = this.importDialogName().trim() || kennelId;
+    this.closeImportDialog();
+    this.executeImport(bundle, { kennelId, name });
+  }
+
+  private executeImport(
+    bundle: Record<string, unknown>,
+    target: { kennelId: string; name: string }
+  ): void {
+    this.error.set(null);
+    this.successMessage.set(null);
+    this.kennelService.importBundle(bundle, target).subscribe({
+      next: (res) => {
+        if (res.ok) {
+          const displayName = res.name ?? target.name;
+          this.loadKennels();
+          this.searchQuery.set(displayName);
+          this.successMessage.set(
+            `Import erfolgreich. Kennel „${displayName}“ (ID: ${res.kennelId ?? target.kennelId}) ist angelegt.`
+          );
+        } else {
+          this.error.set(res.error ?? 'Import fehlgeschlagen');
+        }
+      },
+      error: (err) => this.error.set(err.error?.error ?? err.message),
     });
   }
 

@@ -23,6 +23,14 @@ export {
     kennelLineageIdBlockedReason,
     kennelDisplayNameBlockedReason,
 } from './kennelReservedNames';
+export {
+    suggestKennelImportTarget,
+    kennelImportNeedsUserChoice,
+    isKennelIdTakenInList,
+    isKennelNameTakenInList,
+    kennelListRef,
+    type KennelIdNameListEntry,
+} from './kennelImportTarget';
 export { SeasonRunner } from './harverster';
 
 // Spirits trapped in code, running in sandboxed voids
