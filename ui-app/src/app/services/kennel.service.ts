@@ -12,6 +12,15 @@ export interface ApiResponse<T = any> {
   id?: string;
 }
 
+export interface KennelImportResponse {
+  ok: boolean;
+  kennelId?: string;
+  name?: string;
+  idMap?: Record<string, string>;
+  data?: any;
+  error?: string;
+}
+
 export interface RunResponse {
   ok: boolean;
   waves: Waves;
@@ -76,8 +85,14 @@ export class KennelService {
     return this.http.get(`${this.baseUrl}/${encodeURIComponent(id)}/export`);
   }
 
-  importBundle(bundle: any): Observable<ApiResponse> {
-    return this.http.post<ApiResponse>(`${this.baseUrl}/import`, bundle);
+  importBundle(
+    bundle: any,
+    importTarget?: { kennelId: string; name: string }
+  ): Observable<KennelImportResponse> {
+    const body = importTarget
+      ? { ...bundle, importTarget }
+      : bundle;
+    return this.http.post<KennelImportResponse>(`${this.baseUrl}/import`, body);
   }
 
   /**

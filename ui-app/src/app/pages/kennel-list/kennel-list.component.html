@@ -76,6 +76,12 @@
               </button>
             </div>
 
+            @if (successMessage()) {
+              <div class="kennel-flash-success" role="status">
+                {{ successMessage() }}
+              </div>
+            }
+
             @if (showCreateForm()) {
               <app-kennel-form
                 (submitted)="onCreateKennel($event)"
@@ -175,4 +181,45 @@
       </div>
     </div>
   </div>
+
+  @if (importDialogOpen()) {
+    <div class="kennel-import-layer" aria-hidden="false">
+      <div class="kennel-import-backdrop" (click)="closeImportDialog()"></div>
+      <div
+        class="kennel-import-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="kennel-import-title"
+        (click)="$event.stopPropagation()">
+        <h2 id="kennel-import-title" class="kennel-import-title">Kennel-Import anpassen</h2>
+        <p class="kennel-import-hint">{{ importDialogHint() }}</p>
+        <div class="kennel-import-field">
+          <label for="kennel-import-id" class="kennel-import-label">Kennel-ID (Endpunkt)</label>
+          <input
+            id="kennel-import-id"
+            class="kennel-import-input"
+            type="text"
+            [value]="importDialogKennelId()"
+            (input)="importDialogKennelId.set($any($event.target).value)"
+            autocomplete="off" />
+        </div>
+        <div class="kennel-import-field">
+          <label for="kennel-import-name" class="kennel-import-label">Anzeigename</label>
+          <input
+            id="kennel-import-name"
+            class="kennel-import-input"
+            type="text"
+            [value]="importDialogName()"
+            (input)="importDialogName.set($any($event.target).value)"
+            autocomplete="off" />
+        </div>
+        <div class="kennel-import-actions">
+          <button type="button" class="kennel-btn kennel-btn--ghost" (click)="closeImportDialog()">
+            Abbrechen
+          </button>
+          <button type="button" class="kennel-btn" (click)="confirmImportDialog()">Importieren</button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

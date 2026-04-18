@@ -314,6 +314,96 @@
   font-size: 0.875rem;
 }
 
+.kennel-flash-success {
+  color: #8eb88e;
+  padding: 0.65rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 180, 120, 0.4);
+  background: rgba(24, 40, 28, 0.4);
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.kennel-import-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.kennel-import-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 12, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.kennel-import-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 24rem;
+  padding: 1.25rem 1.35rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 16, 24, 0.94);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.kennel-import-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.kennel-import-hint {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: rgba(220, 220, 230, 0.8);
+  margin: 0 0 1rem;
+}
+
+.kennel-import-field {
+  margin-bottom: 0.85rem;
+}
+
+.kennel-import-label {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(200, 200, 220, 0.65);
+  margin-bottom: 0.3rem;
+}
+
+.kennel-import-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.kennel-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
 .kennel-list-wrap {
   padding-left: var(--kennel-list-pad-start);
   padding-right: var(--kennel-list-pad-end);
