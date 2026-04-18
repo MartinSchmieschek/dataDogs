@@ -1,7 +1,7 @@
 // Ahoy, ye who peer into this abyss — 'tis the beating black heart of the ship.
 // From brooding gulfs are we beheld by that which bears no name,
 // yet we set sail regardless, for the data must be plundered.
-// Umgebung: `node -r ./scripts/load-env.cjs …` (siehe package.json start / start:prod / dev).
+// Env: `node -r ./scripts/load-env.cjs …` (see package.json: start / start:prod / dev).
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {

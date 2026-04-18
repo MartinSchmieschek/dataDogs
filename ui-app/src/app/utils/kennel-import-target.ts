@@ -1,6 +1,6 @@
 /**
- * Muss baugleich zu `packages/core/src/kennelImportTarget.ts` bleiben
- * (UI-Import, damit Vite den Browser-Bundle nicht über @datadogs/core/… Subpaths auflöst).
+ * Must stay in sync with `packages/core/src/kennelImportTarget.ts`
+ * (UI import so Vite does not resolve @datadogs/core/… subpaths in the browser bundle).
  */
 
 export type KennelIdNameListEntry = {
@@ -33,8 +33,8 @@ export function isKennelNameTakenInList(
 }
 
 /**
- * Liefert den ersten freien (id, name)-Vorschlag, analog zur Server-Import-Logik.
- * `bundle.kennel` muss kennelId und optionales name tragen; wie in Export.
+ * Returns the first free (id, name) suggestion, aligned with the server import logic.
+ * `bundle.kennel` must carry kennelId and optional name, as in export.
  */
 export function suggestKennelImportTarget(
   bundle: { kennel: { kennelId: string; name?: string } },
@@ -42,26 +42,26 @@ export function suggestKennelImportTarget(
 ): { kennelId: string; name: string; initial: { kennelId: string; name: string } } {
   const originalId = (bundle.kennel.kennelId || '').trim();
   if (!originalId) {
-    throw new Error('Bundle: kennel.kennelId fehlt');
+    throw new Error('Bundle: kennel.kennelId is required');
   }
   const baseName0 = (bundle.kennel.name && bundle.kennel.name.trim()) || originalId;
 
   const initial = { kennelId: originalId, name: baseName0 };
 
-  // Phase 1: Kennel-IDs, die kollidieren — im Lockstep ID + Paar-Name, wie bisher
+  // Phase 1: colliding kennel ids — keep id + display name in lockstep
   let kennelId = originalId;
   let kennelName = baseName0;
   let copyIndex = 0;
   while (isKennelIdTakenInList(kennelId, existing)) {
     copyIndex++;
     kennelId = `${originalId}-copy${copyIndex > 1 ? '-' + copyIndex : ''}`;
-    kennelName = `${baseName0} (Kopie${copyIndex > 1 ? ' ' + copyIndex : ''})`;
+    kennelName = `${baseName0} (Copy${copyIndex > 1 ? ' ' + copyIndex : ''})`;
   }
 
-  // Phase 2: Anzeigename, der (noch) von einem bestehenden Kennel belegt ist
+  // Phase 2: display name still taken by an existing kennel
   for (let t = 0; t < 500; t++) {
     const candidate =
-      t === 0 ? baseName0 : t === 1 ? `${baseName0} (Kopie)` : `${baseName0} (Kopie ${t})`;
+      t === 0 ? baseName0 : t === 1 ? `${baseName0} (Copy)` : `${baseName0} (Copy ${t})`;
     if (!isKennelNameTakenInList(candidate, existing)) {
       kennelName = candidate;
       break;
@@ -74,7 +74,7 @@ export function suggestKennelImportTarget(
   return { kennelId, name: kennelName, initial };
 }
 
-/** Erforderlich, wenn zuerst derselbe (Id|Name) im System schon belegt ist. */
+/** True if the id or name must be chosen because the same (id|name) is already in use. */
 export function kennelImportNeedsUserChoice(
   bundle: { kennel: { kennelId: string; name?: string } },
   existing: KennelIdNameListEntry[]

@@ -96,8 +96,8 @@ export class KennelService {
   }
 
   /**
-   * Lead-Yield: JSON-Objekt oder String (HTML / Markdown / sonstiger Text).
-   * Content-Type steuert die Auswertung (application/json vs. text/*).
+   * Lead yield: JSON object or string (HTML / Markdown / other text).
+   * The Content-Type response header selects parsing (application/json vs. text/*).
    */
   execute(id: string, body?: any, query?: Record<string, string>): Observable<string | unknown> {
     let params = new HttpParams();

@@ -64,7 +64,7 @@ export class KennelBundleHandler {
         try {
             const config = await this.runHandler.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
-                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
 
@@ -158,12 +158,12 @@ export class KennelBundleHandler {
             }
             if (missingBase.length > 0) {
                 res.status(400).json({
-                    error: `Import fehlgeschlagen: Base-Dogs fehlen im Zielsystem: ${missingBase.join(', ')}`,
+                    error: `Import failed: Base dogs missing on this server: ${missingBase.join(', ')}`,
                 });
                 return;
             }
 
-            // 2. Zielkennel-Id + Anzeigename: explizit (importTarget) oder Vorschlag aus dem Bundle.
+            // 2. Target kennel id + display name: explicit importTarget or bundle-based suggestion.
             const listRes = await this.kennelsController.list();
             const kennelRows: KennelIdNameListEntry[] =
                 listRes.ok && listRes.data
@@ -203,13 +203,13 @@ export class KennelBundleHandler {
             if (isKennelIdTakenInList(kennelId, kennelRows)) {
                 res
                     .status(400)
-                    .json({ error: `Kennel-ID ist bereits belegt: ${kennelId}. Bitte im Importdialog einen freien Namen wählen.` });
+                    .json({ error: `Kennel id is already in use: ${kennelId}. Choose a free id in the import dialog.` });
                 return;
             }
             if (isKennelNameTakenInList(kennelName, kennelRows)) {
                 res
                     .status(400)
-                    .json({ error: `Kennel-Name ist bereits belegt: ${kennelName}. Bitte im Importdialog anpassen.` });
+                    .json({ error: `Kennel name is already in use: ${kennelName}. Change it in the import dialog.` });
                 return;
             }
 

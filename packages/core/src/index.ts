@@ -59,11 +59,11 @@ export { QueryRetriever } from './platform/QueryRetriever';
 export { BodyRetriever } from './platform/BodyRetriever';
 export { FetchBaseDog } from './platform/FetchBaseDog';
 
-// Lobby-Hunde — eine Channel-Id oeffnet eine Lobby; Teilnehmer teilen ein eigenes shared-Objekt
+// WebSocket lobbies: one channel id opens a room; peers share a dedicated shared object
 export { WebSocketChannelRetriever } from './socket/WebSocketChannelRetriever';
 export { ChannelLiveSnippetRetriever, type LobbyLeadYield } from './socket/ChannelLiveSnippetRetriever';
 export type { ChannelPeer, ChannelState, IChannelHub } from './socket/IChannelHub';
 
-// JSON-Ablage — eigene SQLite-Truhe, jsonStore.get/set/delete/list als VM-Globals
+// Per-lobby JSON store — own SQLite; jsonStore get/set/delete/list as VM globals
 export { JsonStorageRetriever, type JsonStorageSnapshot } from './storage/JsonStorageRetriever';
 export type { IJsonStorage } from './storage/IJsonStorage';

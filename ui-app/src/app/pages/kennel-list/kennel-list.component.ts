@@ -37,12 +37,12 @@ export class KennelListComponent implements OnInit {
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
 
-  /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
+  /** Show the execute path line on each card (default: on). */
   showExecutePath = input(true);
 
   /**
-   * Zusätzlich eine gespiegelte Pfad-Zeile: Segmentreihenfolge umgekehrt (z. B. /execute/ref/kennels/api/…).
-   * Nur Optik / Lesbarkeit; der tatsächliche Endpoint bleibt unverändert.
+   * Also show a mirrored path line: path segments reversed (e.g. /execute/ref/kennels/api/…).
+   * Display only; the real endpoint is unchanged.
    */
   mirrorExecutePath = input(false);
 
@@ -62,10 +62,10 @@ export class KennelListComponent implements OnInit {
   sortKey = signal<'name' | 'id' | 'updated'>('name');
   sortDir = signal<'asc' | 'desc'>('asc');
 
-  /** Sort-Buttons neben der Suche ausblenden, solange gefiltert wird (nichtleerer Suchtext). */
+  /** Hide sort controls beside search while a filter is active (non-empty search). */
   hideSortBesideSearch = computed(() => this.searchQuery().trim().length > 0);
 
-  /** Erhöhen bei Sortwechsel → @for-Track ändert sich, Karten-Animationen laufen erneut. */
+  /** Bumped on sort change so @for track changes and card motion replays. */
   listOrderEpoch = signal(0);
 
   filteredKennels = computed(() => {
@@ -86,7 +86,7 @@ export class KennelListComponent implements OnInit {
       if (key === 'name') {
         const na = (a.name || this.kennelRef(a)).toLowerCase();
         const nb = (b.name || this.kennelRef(b)).toLowerCase();
-        cmp = na.localeCompare(nb, 'de');
+        cmp = na.localeCompare(nb, 'en');
       } else if (key === 'id') {
         cmp = this.kennelRef(a).localeCompare(this.kennelRef(b), undefined, {
           numeric: true,
@@ -118,7 +118,7 @@ export class KennelListComponent implements OnInit {
     }
   }
 
-  /** Sortierfeld per Klick durchschalten: Name → ID → Zuletzt geändert. */
+  /** Cycle sort field on click: Name → ID → Updated. */
   cycleSortKey(): void {
     const order: Array<'name' | 'id' | 'updated'> = ['name', 'id', 'updated'];
     const i = order.indexOf(this.sortKey());
@@ -131,7 +131,7 @@ export class KennelListComponent implements OnInit {
       case 'id':
         return 'ID';
       case 'updated':
-        return 'Geändert';
+        return 'Updated';
       default:
         return 'Name';
     }
@@ -157,7 +157,7 @@ export class KennelListComponent implements OnInit {
     });
   }
 
-  /** Anzeige-Emoji; ohne DB-Wert: 🐕 (nur UI, nicht gespeichert). */
+  /** List emoji; when missing in DB: 🐕 (UI only, not persisted). */
   kennelEmojiForList(k: IKennelConfig): string {
     const e = k.emoji?.trim();
     return e || '🐕';
@@ -168,7 +168,7 @@ export class KennelListComponent implements OnInit {
     return kennel.lineageId || kennel.id;
   }
 
-  /** Relativer Execute-Pfad zur Anzeige (wie Endpoint-Zeile in der React-Referenz). */
+  /** Relative execute path for display (same idea as the reference endpoint line). */
   executePathForDisplay(kennel: IKennelConfig): string {
     const ref = this.kennelRef(kennel);
     let path = `/api/kennels/${ref}/execute`;
@@ -184,8 +184,8 @@ export class KennelListComponent implements OnInit {
   }
 
   /**
-   * Derselbe Pfad mit umgekehrter Segmentreihenfolge (Pfad „gespiegelt“).
-   * Query-String bleibt angehängt.
+   * Same path with segment order reversed (“mirrored”).
+   * Query string is kept as a suffix.
    */
   executePathMirroredSegments(kennel: IKennelConfig): string {
     const full = this.executePathForDisplay(kennel);
@@ -232,13 +232,13 @@ export class KennelListComponent implements OnInit {
       return;
     }
     if (action === 'delete') {
-      if (!confirm(`Kennel "${kennel.name || ref}" wirklich löschen? Alle Versionen werden entfernt.`)) return;
+      if (!confirm(`Delete kennel "${kennel.name || ref}"? All versions will be removed.`)) return;
       this.kennelService.delete(ref).subscribe({
         next: (res) => {
           if (res.ok) {
             this.loadKennels();
           } else {
-            this.error.set(res.error ?? 'Löschen fehlgeschlagen');
+            this.error.set(res.error ?? 'Delete failed');
           }
         },
         error: (err) => this.error.set(err.error?.error ?? err.message),
@@ -256,16 +256,16 @@ export class KennelListComponent implements OnInit {
         try {
           bundle = JSON.parse(text) as Record<string, unknown>;
         } catch {
-          this.error.set('Clipboard enthält kein gültiges JSON');
+          this.error.set('Clipboard does not contain valid JSON');
           return;
         }
         const kennel = bundle['kennel'] as { kennelId?: string; name?: string } | undefined;
         if (!kennel || !Array.isArray(bundle['dogs'])) {
-          this.error.set('Ungültiges Kennel-Bundle: kennel und dogs[] nötig');
+          this.error.set('Invalid kennel bundle: kennel and dogs[] are required');
           return;
         }
         if (!kennel.kennelId || typeof kennel.kennelId !== 'string' || !kennel.kennelId.trim()) {
-          this.error.set('Ungültiges Kennel-Bundle: kennel.kennelId fehlt');
+          this.error.set('Invalid kennel bundle: kennel.kennelId is required');
           return;
         }
         this.kennelService.getAll().subscribe({
@@ -287,7 +287,7 @@ export class KennelListComponent implements OnInit {
         });
       })
       .catch(() => {
-        this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
+        this.error.set('No clipboard access — grant permission in the browser');
       });
   }
 
@@ -301,15 +301,15 @@ export class KennelListComponent implements OnInit {
     const nameTaken = isKennelNameTakenInList(nm, existing);
     const parts: string[] = [];
     if (idTaken) {
-      parts.push('Diese Kennel-ID ist im System schon belegt.');
+      parts.push('This kennel id is already in use.');
     }
     if (nameTaken) {
-      parts.push('Dieser Anzeigename ist schon an einen anderen Kennel vergeben.');
+      parts.push('This display name is already taken by another kennel.');
     }
     this.importDialogHint.set(
       parts.length > 0
-        ? parts.join(' ') + ' Bitte anpassen oder die Vorschläge übernehmen.'
-        : 'Vorschlag — bei Bedarf ändern und importieren.'
+        ? parts.join(' ') + ' Adjust the fields or accept the suggestions below.'
+        : 'Suggestion — edit if needed, then import.'
     );
   }
 
@@ -358,10 +358,10 @@ export class KennelListComponent implements OnInit {
           this.loadKennels();
           this.searchQuery.set(displayName);
           this.successMessage.set(
-            `Import erfolgreich. Kennel „${displayName}“ (ID: ${res.kennelId ?? target.kennelId}) ist angelegt.`
+            `Import succeeded. Kennel "${displayName}" (id: ${res.kennelId ?? target.kennelId}) was created.`
           );
         } else {
-          this.error.set(res.error ?? 'Import fehlgeschlagen');
+          this.error.set(res.error ?? 'Import failed');
         }
       },
       error: (err) => this.error.set(err.error?.error ?? err.message),
@@ -391,7 +391,7 @@ export class KennelListComponent implements OnInit {
     });
   }
 
-  /** Neuer Tab → direkt Express (:3000), nicht Angular-Dev-Server. */
+  /** New tab → hit Express (:3000) directly, not the Angular dev server. */
   getExecuteUrl(kennel: IKennelConfig): string {
     const ref = this.kennelRef(kennel);
     let path = `/api/kennels/${ref}/execute`;

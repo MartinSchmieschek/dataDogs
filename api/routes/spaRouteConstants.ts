@@ -1,7 +1,7 @@
 /**
  * Abstimmung Express ↔ Angular (SPA):
  * - `/:kennelId` (öffentlicher Kennel) matcht nur ein Pfadsegment; reservierte Slugs → next().
- * - Blockliste der Kennel-IDs: `KENNEL_RESERVED_SLUGS` in @datadogs/core.
+ * - Blocked kennel id list: `KENNEL_RESERVED_SLUGS` in @datadogs/core.
  *
  * SPA-Fallback (index.html) darf keine Backend-Pfade überschreiben (Präfixe unten).
  */
