@@ -21,11 +21,87 @@
 const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 120;
 const MIN_OVERPASS_FETCH_TIMEOUT_MS = 10_000;
 
+// Rate-Limit pro Overpass-Endpoint. Overpass-Policy: max ~2 parallele Requests,
+// minimaler Abstand zwischen Requests, damit kein 429 kassiert wird.
+const OVERPASS_MAX_CONCURRENT_PER_ENDPOINT = 2;
+const OVERPASS_MIN_GAP_MS = 500;
+const OVERPASS_BACKOFF_INITIAL_MS = 2_000;
+const OVERPASS_BACKOFF_MAX_MS = 60_000;
+
+interface EndpointState {
+    running: number;
+    queue: Array<() => void>;
+    lastStartAt: number;
+    backoffUntil: number;
+    consecutiveFailures: number;
+}
+
+const endpointStates = new Map<string, EndpointState>();
+
+function stateFor(url: string): EndpointState {
+    let s = endpointStates.get(url);
+    if (!s) {
+        s = {
+            running: 0,
+            queue: [],
+            lastStartAt: 0,
+            backoffUntil: 0,
+            consecutiveFailures: 0,
+        };
+        endpointStates.set(url, s);
+    }
+    return s;
+}
+
+async function acquireSlot(url: string): Promise<void> {
+    const s = stateFor(url);
+    while (true) {
+        const now = Date.now();
+        const waitForBackoff = s.backoffUntil - now;
+        const waitForGap = s.lastStartAt + OVERPASS_MIN_GAP_MS - now;
+        const wait = Math.max(waitForBackoff, waitForGap, 0);
+        const hasSlot = s.running < OVERPASS_MAX_CONCURRENT_PER_ENDPOINT;
+        if (hasSlot && wait === 0) {
+            s.running++;
+            s.lastStartAt = Date.now();
+            return;
+        }
+        if (!hasSlot) {
+            await new Promise<void>((resolve) => s.queue.push(resolve));
+            continue;
+        }
+        // Slot frei, aber Gap/Backoff noch aktiv.
+        await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+}
+
+function releaseSlot(url: string, outcome: 'ok' | 'transient' | 'permanent'): void {
+    const s = stateFor(url);
+    s.running = Math.max(0, s.running - 1);
+    if (outcome === 'ok') {
+        s.consecutiveFailures = 0;
+        s.backoffUntil = 0;
+    } else if (outcome === 'transient') {
+        s.consecutiveFailures++;
+        const backoff = Math.min(
+            OVERPASS_BACKOFF_INITIAL_MS * 2 ** (s.consecutiveFailures - 1),
+            OVERPASS_BACKOFF_MAX_MS,
+        );
+        s.backoffUntil = Date.now() + backoff;
+    }
+    // permanent: keinen Backoff setzen — der Fehler ist client-side.
+    const next = s.queue.shift();
+    if (next) next();
+}
+
+// Nur Mirrors mit globalem Datensatz. osm.ch ist entfernt — er hat nur Schweizer
+// Daten und liefert fuer alle anderen Regionen stillschweigend 0 elements, ohne
+// Fehler-Signal. Das bricht Caching-Entscheidungen, da ein "negatives" Resultat
+// persistiert wird. Besser komplett weglassen.
 const FALLBACK_OVERPASS_URLS = [
-    "https://overpass.osm.ch/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
 ];
 
 function parseEnvPositiveInt(name: string, fallback: number): number {
@@ -168,12 +244,17 @@ export async function fetchOverpassElementsWithFallback(
 
     for (let i = 0; i < urls.length; i++) {
         const url = urls[i]!;
+        await acquireSlot(url);
         try {
-            return await fetchOverpassOnce(url, overpassQuery, fetchTimeoutMs, userAgentLabel);
+            const res = await fetchOverpassOnce(url, overpassQuery, fetchTimeoutMs, userAgentLabel);
+            releaseSlot(url, 'ok');
+            return res;
         } catch (err: any) {
+            const transient = isRetryableOverpassError(err);
+            releaseSlot(url, transient ? 'transient' : 'permanent');
             const label = `${url}: ${err?.message ?? err}`;
             errors.push(label);
-            if (!isRetryableOverpassError(err) || i === urls.length - 1) {
+            if (!transient || i === urls.length - 1) {
                 if (errors.length === 1) throw err;
                 throw new Error(
                     `${userAgentLabel}: all Overpass mirrors failed — ${errors.join(" | ")}`

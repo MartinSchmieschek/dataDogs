@@ -1,43 +1,41 @@
 /**
  * OSM forest / landuse / natural area polygons → GeoJSON (full geometry).
+ * Tile-basiertes Caching: pro Tile + Facet eine eigene Coverage-Zeile.
+ * Facets kodieren Key:Value (z.B. "landuse:forest", "natural:wood").
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
+import { type IHuntingSeason } from "@datadogs/core";
+import osmtogeojson from "osmtogeojson";
+import type { FeatureCollection, GeometryObject } from "geojson";
+import { OsmFeatureRetriever, type OsmQueryBase } from "../osm/base/OsmFeatureRetriever";
+import type { OverpassRawElement } from "../osm/base/overpassMirrorChain";
 import { OsmForestGeometryPact, type OsmForestGeometryQueryInput } from "./osmGeometryPacts";
-import { parseOsmLanduseList, parseOsmNaturalList, OsmLanduseValue, OsmNaturalValue } from "./osmGeometryEnums";
+import { parseOsmLanduseList, parseOsmNaturalList } from "./osmGeometryEnums";
 import {
-    buildForestAreaOverpassQuery,
     circleToBoundingBox,
     clampGeometryRadiusM,
-    fetchOverpassGeometry,
-    overpassJsonToGeoJson,
     type BoundingBox,
 } from "./overpassGeometryCore";
-import type { FeatureCollection, GeometryObject } from "geojson";
 
 export interface OsmForestPolygonsResult {
     center: { lat: number; lng: number };
     radiusM: number;
     bbox: BoundingBox;
-    landuse: OsmLanduseValue[];
-    natural: OsmNaturalValue[];
+    landuse: string[];
+    natural: string[];
     geojson: FeatureCollection<GeometryObject>;
 }
 
-export class OsmForestPolygonsRetriever
-    extends Dog<OsmForestPolygonsResult>
-    implements ICacheable, IAreaCacheable<OsmForestPolygonsResult>
-{
-    private cacheHandler?: ICacheHandler;
-    private areaCache?: IAreaCache<OsmForestPolygonsResult>;
+function facetFor(key: "landuse" | "natural", value: string): string {
+    return `${key}:${value}`;
+}
 
-    setCacheHandler(handler: ICacheHandler): void {
-        this.cacheHandler = handler;
-    }
-
-    setAreaCache(cache: IAreaCache<OsmForestPolygonsResult>): void {
-        this.areaCache = cache;
-    }
+export class OsmForestPolygonsRetriever extends OsmFeatureRetriever<OsmForestPolygonsResult, typeof OsmForestGeometryPact> {
+    protected readonly layer = "forestPolygons";
+    protected readonly defaultRadiusM = 500;
+    protected readonly maxRadiusM = 5000;
+    protected readonly queryPactClass = OsmForestGeometryPact;
+    protected readonly outStatement = "out geom;";
 
     get name(): string {
         return OsmForestPolygonsRetriever.name;
@@ -47,74 +45,77 @@ export class OsmForestPolygonsRetriever
         return undefined;
     }
 
-    get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [OsmForestGeometryPact];
-    }
-
-    get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
-    }
-
-    protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmForestPolygonsResult> => {
+    protected parseQuery(season: IHuntingSeason): OsmQueryBase {
         const queryDog = season.exhausted.find((d) => this.matchesParent(OsmForestGeometryPact, d));
-        const query =
-            (queryDog?.collected as OsmForestGeometryQueryInput | undefined) ??
-            ({} as OsmForestGeometryQueryInput);
-
+        const query = (queryDog?.collected as OsmForestGeometryQueryInput | undefined) ?? ({} as OsmForestGeometryQueryInput);
         const lat = parseFloat(query.lat);
         const lng = parseFloat(query.lng);
         const radiusM = clampGeometryRadiusM(parseFloat(query.radius ?? ""));
         const landuse = parseOsmLanduseList(query.landuse);
         const natural = parseOsmNaturalList(query.natural);
 
-        if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            throw new Error("OsmForestPolygonsRetriever: Missing required query params (lat, lng)");
+        const facets: string[] = [];
+        for (const v of landuse) facets.push(facetFor("landuse", v));
+        for (const v of natural) facets.push(facetFor("natural", v));
+
+        return { lat, lng, radiusM, facets };
+    }
+
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
+        const lines: string[] = [];
+        for (const f of facets) {
+            const colon = f.indexOf(":");
+            if (colon < 0) continue;
+            const k = f.slice(0, colon);
+            const v = f.slice(colon + 1);
+            if (!v) continue;
+            lines.push(`  way["${k}"="${v}"]${bboxClause};`);
+            lines.push(`  relation["${k}"="${v}"]${bboxClause};`);
+        }
+        return lines.join("\n");
+    }
+
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const tags = el.tags ?? {};
+        const matches: string[] = [];
+        for (const f of fetchedFacets) {
+            const colon = f.indexOf(":");
+            if (colon < 0) continue;
+            const k = f.slice(0, colon);
+            const v = f.slice(colon + 1);
+            if (tags[k] === v) matches.push(f);
+        }
+        return matches;
+    }
+
+    protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): OsmForestPolygonsResult {
+        const bbox = circleToBoundingBox(q.lat, q.lng, q.radiusM);
+        const landuse = new Set<string>();
+        const natural = new Set<string>();
+        for (const f of q.facets ?? []) {
+            const colon = f.indexOf(":");
+            if (colon < 0) continue;
+            const k = f.slice(0, colon);
+            const v = f.slice(colon + 1);
+            if (k === "landuse") landuse.add(v);
+            else if (k === "natural") natural.add(v);
         }
 
-        const facetKey = [
-            `lu=${[...landuse].sort().join(",")}`,
-            `nat=${[...natural].sort().join(",")}`,
-        ].join("|");
-        const discriminant = `forestPolygons:${facetKey}`;
-        const key = geoBucketKey("forestPolygons", lat, lng, radiusM, { extras: { f: facetKey } });
+        // osmtogeojson erwartet {elements: [...]} — unsere Raw-Elements haben
+        // bereits die korrekte Struktur (wir haben out geom verwendet).
+        const geojson = osmtogeojson({ elements: elements as any }) as FeatureCollection<GeometryObject>;
 
-        if (this.areaCache) {
-            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
-            if (covering) return covering.data;
-        }
-
-        const fetchPolygons = async (): Promise<OsmForestPolygonsResult> => {
-            const bbox = circleToBoundingBox(lat, lng, radiusM);
-            const overpassQuery = buildForestAreaOverpassQuery(bbox, landuse, natural, 180);
-            const osmJson = await fetchOverpassGeometry(overpassQuery, 300000);
-            const geojson = overpassJsonToGeoJson(osmJson);
-
-            const result: OsmForestPolygonsResult = {
-                center: { lat, lng },
-                radiusM,
-                bbox,
-                landuse,
-                natural,
-                geojson,
-            };
-
-            if (this.areaCache) {
-                await this.areaCache.store({
-                    center: { lat, lng },
-                    radiusM,
-                    data: result,
-                    cacheKey: key,
-                    cachedAt: Date.now(),
-                    discriminant,
-                }, GEO_CACHE_TTL_OSM_MS);
-            }
-
-            return result;
+        return {
+            center: { lat: q.lat, lng: q.lng },
+            radiusM: q.radiusM,
+            bbox,
+            landuse: Array.from(landuse),
+            natural: Array.from(natural),
+            geojson,
         };
-
-        if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchPolygons);
-        }
-        return fetchPolygons();
-    };
+    }
 }
