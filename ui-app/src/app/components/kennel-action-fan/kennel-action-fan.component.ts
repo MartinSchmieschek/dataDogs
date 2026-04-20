@@ -9,7 +9,7 @@ import {
   inject,
 } from '@angular/core';
 
-export type KennelFanAction = 'edit' | 'share' | 'waves' | 'swagger' | 'swaggerJson' | 'delete';
+export type KennelFanAction = 'edit' | 'share' | 'copy' | 'waves' | 'swagger' | 'swaggerJson' | 'delete';
 
 interface KennelMenuItem {
   id: KennelFanAction;
@@ -248,6 +248,7 @@ export class KennelActionFanComponent {
   readonly menuItems: KennelMenuItem[] = [
     { id: 'edit', label: 'Bearbeiten', icon: '✎' },
     { id: 'share', label: 'Teilen', icon: '↗', mobileOnly: true },
+    { id: 'copy', label: 'Kopieren', icon: '⎘' },
     { id: 'waves', label: 'Waves', icon: '≋' },
     { id: 'swagger', label: 'Swagger UI', icon: '📖' },
     { id: 'swaggerJson', label: 'OpenAPI JSON', icon: '📄' },

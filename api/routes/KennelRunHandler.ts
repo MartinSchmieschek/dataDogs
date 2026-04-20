@@ -85,10 +85,6 @@ export class KennelRunHandler {
     /** Run a kennel and return waves. */
     public async runKennel(config: IKennelConfig, query?: Record<string, string>, body?: any): Promise<Waves> {
 
-        const areaCache = this.deps.cacheHandler
-            ? this.deps.cacheHandler.getAreaCache()
-            : undefined;
-
         const mimicAdopter = await this.createMimicAdopter(config);
 
         const kennelRun = new KennelRun(
@@ -99,7 +95,6 @@ export class KennelRunHandler {
             body,
             [],
             this.deps.cacheHandler,
-            areaCache,
             mimicAdopter
         );
         const season = await kennelRun.run();

@@ -147,10 +147,10 @@ export class KennelListComponent implements OnInit {
     return kennel.lineageId || kennel.id;
   }
 
-  /** Relativer Execute-Pfad zur Anzeige (wie Endpoint-Zeile in der React-Referenz). */
+  /** Relativer Execute-Pfad zur Anzeige — immer der öffentliche `/:kennelId`-Endpunkt. */
   executePathForDisplay(kennel: IKennelConfig): string {
     const ref = this.kennelRef(kennel);
-    let path = `/api/kennels/${ref}/execute`;
+    let path = `/${ref}`;
     if (kennel.defaultQuery) {
       const params = new URLSearchParams();
       Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
@@ -202,6 +202,10 @@ export class KennelListComponent implements OnInit {
       }
       return;
     }
+    if (action === 'copy') {
+      this.copyKennelBundle(kennel);
+      return;
+    }
     if (action === 'swagger') {
       window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
       return;
@@ -227,6 +231,34 @@ export class KennelListComponent implements OnInit {
         error: (err) => this.error.set(err.error?.error ?? err.message),
       });
     }
+  }
+
+  /** Kennel-Bundle (Config + Dogs) als JSON in die Zwischenablage kopieren. */
+  copyKennelBundle(kennel: IKennelConfig) {
+    const ref = this.kennelRef(kennel);
+    this.kennelService.exportBundle(ref).subscribe({
+      next: (bundle: any) => {
+        const json = JSON.stringify(bundle, null, 2);
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(json).catch(() => {
+            this.downloadJsonFallback(json, ref);
+          });
+        } else {
+          this.downloadJsonFallback(json, ref);
+        }
+      },
+      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Export fehlgeschlagen'),
+    });
+  }
+
+  private downloadJsonFallback(json: string, ref: string) {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${ref}.kennel.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   importFromClipboard() {
@@ -274,10 +306,13 @@ export class KennelListComponent implements OnInit {
     });
   }
 
-  /** Neuer Tab → direkt Express (:3000), nicht Angular-Dev-Server. */
+  /**
+   * Neuer Tab → öffentlicher Kennel-Endpoint `/:kennelId` auf Express.
+   * Kennel-Ausführung geht ausschließlich über diese Route, nicht über `/api/kennels/.../run|execute`.
+   */
   getExecuteUrl(kennel: IKennelConfig): string {
     const ref = this.kennelRef(kennel);
-    let path = `/api/kennels/${ref}/execute`;
+    let path = `/${ref}`;
     if (kennel.defaultQuery) {
       const params = new URLSearchParams();
       Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
@@ -298,15 +333,6 @@ export class KennelListComponent implements OnInit {
     if (!newWindow) return;
 
     const ref = this.kennelRef(kennel);
-    let url = `/api/kennels/${ref}/execute`;
-    if (kennel.defaultQuery) {
-      const params = new URLSearchParams();
-      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const qs = params.toString();
-      if (qs) url += '?' + qs;
-    }
 
     this.kennelService.execute(ref, kennel.defaultBody, kennel.defaultQuery).subscribe({
       next: (result) => {

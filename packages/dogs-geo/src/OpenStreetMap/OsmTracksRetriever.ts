@@ -1,46 +1,35 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
+import { type IHuntingSeason } from "@datadogs/core";
+import { OsmFeatureRetriever, type OsmQueryBase, DEFAULT_FACET } from "../osm/base/OsmFeatureRetriever";
+import type { OverpassRawElement } from "../osm/base/overpassMirrorChain";
 import { NearbyTracksPact, type OsmTracksQueryInput } from "./pacts";
 import {
     clampTracksRadiusM,
-    fetchNearbyTracks,
     parseTracksFacets,
     TracksOverpassFacet,
     DEFAULT_TRACKS_FACETS,
     DEFAULT_TRACKS_RADIUS_M,
     MAX_TRACKS_RADIUS_M,
+    ALL_TRACKS_OVERPASS_FACETS,
     type OsmTracksResult,
 } from "./overpassTracks";
-import type { OsmGeoElement } from "./overpassOsmShared";
+import { mapOverpassElement, OsmGeoElementType, type OsmGeoElement } from "./overpassOsmShared";
 
-function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-    const R = 6_371_000;
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const h = sinDLat * sinDLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinDLng * sinDLng;
-    return 2 * R * Math.asin(Math.sqrt(h));
-}
+/** highway-Values pro Track-Facet — 1:1 Mapping. */
+const HIGHWAY_BY_FACET: Record<string, string> = {
+    [TracksOverpassFacet.Path]: "path",
+    [TracksOverpassFacet.Footway]: "footway",
+    [TracksOverpassFacet.Cycleway]: "cycleway",
+    [TracksOverpassFacet.Bridleway]: "bridleway",
+    [TracksOverpassFacet.Track]: "track",
+    [TracksOverpassFacet.Steps]: "steps",
+};
 
-function filterElementsByRadius(elements: OsmGeoElement[], lat: number, lng: number, radiusM: number): OsmGeoElement[] {
-    return elements.filter((el) => {
-        if (el.lat == null || el.lng == null) return true;
-        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lng }) <= radiusM;
-    });
-}
-
-export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheable, IAreaCacheable<OsmTracksResult> {
-    private cacheHandler?: ICacheHandler;
-    private areaCache?: IAreaCache<OsmTracksResult>;
-
-    setCacheHandler(handler: ICacheHandler): void {
-        this.cacheHandler = handler;
-    }
-
-    setAreaCache(cache: IAreaCache<OsmTracksResult>): void {
-        this.areaCache = cache;
-    }
+export class OsmTracksRetriever extends OsmFeatureRetriever<OsmTracksResult, typeof NearbyTracksPact> {
+    protected readonly layer = "tracks";
+    protected readonly defaultRadiusM = DEFAULT_TRACKS_RADIUS_M;
+    protected readonly maxRadiusM = MAX_TRACKS_RADIUS_M;
+    protected readonly queryPactClass = NearbyTracksPact;
+    protected readonly outStatement = "out center;";
 
     get name(): string {
         return OsmTracksRetriever.name;
@@ -54,24 +43,17 @@ export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheab
         return "\uD83E\uDD7E";
     }
 
-    get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [NearbyTracksPact];
-    }
-
-    get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
-    }
-
     getVmContextContributions(): Record<string, any> {
         return {
             TracksOverpassFacet,
             DEFAULT_TRACKS_FACETS,
             DEFAULT_TRACKS_RADIUS_M,
             MAX_TRACKS_RADIUS_M,
+            ALL_TRACKS_OVERPASS_FACETS,
         };
     }
 
-    protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmTracksResult> => {
+    protected parseQuery(season: IHuntingSeason): OsmQueryBase {
         const queryDog = season.exhausted.find((d) => this.matchesParent(NearbyTracksPact, d));
         const query = (queryDog?.collected as OsmTracksQueryInput | undefined) ?? ({} as OsmTracksQueryInput);
 
@@ -80,42 +62,57 @@ export class OsmTracksRetriever extends Dog<OsmTracksResult> implements ICacheab
         const radiusM = clampTracksRadiusM(parseFloat(query.radius ?? ""));
         const facets = parseTracksFacets(query.preset);
 
-        if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            throw new Error("OsmTracksRetriever: Missing required query params (lat, lng)");
+        return { lat, lng, radiusM, facets };
+    }
+
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng}`;
+        const lines: string[] = [];
+        for (const f of facets) {
+            const hw = HIGHWAY_BY_FACET[f];
+            if (!hw) continue;
+            lines.push(`  way["highway"="${hw}"](${bboxClause});`);
         }
+        return lines.join("\n");
+    }
 
-        const discriminant = `tracks:${[...facets].sort().join(",")}`;
-
-        if (this.areaCache) {
-            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
-            if (covering) {
-                const filtered = filterElementsByRadius(covering.data.elements, lat, lng, radiusM);
-                return { center: { lat, lng }, radiusM, preset: facets, elements: filtered };
-            }
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const hw = el.tags?.["highway"];
+        if (!hw) return [];
+        const match: string[] = [];
+        for (const f of fetchedFacets) {
+            if (HIGHWAY_BY_FACET[f] === hw) match.push(f);
         }
+        return match;
+    }
 
-        const key = geoBucketKey("tracks", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
-
-        const fetchTracks = async (): Promise<OsmTracksResult> => {
-            const result = await fetchNearbyTracks(lat, lng, radiusM, facets);
-
-            if (this.areaCache) {
-                await this.areaCache.store({
-                    center: { lat, lng },
-                    radiusM,
-                    data: result,
-                    cacheKey: key,
-                    cachedAt: Date.now(),
-                    discriminant,
-                }, GEO_CACHE_TTL_OSM_MS);
-            }
-
-            return result;
+    protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): OsmTracksResult {
+        const preset = (q.facets ?? [DEFAULT_FACET]) as TracksOverpassFacet[];
+        const seen = new Set<string>();
+        const mapped: OsmGeoElement[] = [];
+        for (const raw of elements) {
+            const m = mapOverpassElement({
+                type: raw.type,
+                id: raw.id,
+                lat: raw.lat,
+                lon: raw.lon,
+                center: raw.center,
+                tags: raw.tags,
+            });
+            if (!m) continue;
+            const key = `${m.type}/${m.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            mapped.push(m);
+        }
+        return {
+            center: { lat: q.lat, lng: q.lng },
+            radiusM: q.radiusM,
+            preset,
+            elements: mapped,
         };
-
-        if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchTracks);
-        }
-        return fetchTracks();
-    };
+    }
 }

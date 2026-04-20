@@ -39,12 +39,34 @@ export { createPact, type CreatePactFromSourceOptions } from './dogs/createPact'
 // Through endless faces, countless forms -- the shapeshifter
 export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 
-// The cache pacts -- memory across voyages, dedup of in-flight hunts, area-based geo caching
+// The cache pacts -- memory across voyages, dedup of in-flight hunts, tile-based geo caching
 export { ICacheHandler } from './cache/ICacheHandler';
 export { ICacheable, isCacheable } from './cache/ICacheable';
-export { IAreaCache, IAreaCacheable, isAreaCacheable, CachedArea, GeoBBox } from './cache/IAreaCache';
 export { geoBucketKey, geoBucketCenter, defaultGeoBucketM, type GeoBucketOptions } from './cache/geoBucket';
 export { GEO_CACHE_TTL_OSM_MS, GEO_CACHE_TTL_WEATHER_MS, GEO_CACHE_TTL_AIR_QUALITY_MS } from './cache/geoCacheTtl';
+export {
+    pickZoomForRadius,
+    lonLatToTile,
+    tileBBox,
+    circleBBox,
+    tilesIntersectingBBox,
+    tilesTouching,
+    tileKeyString,
+    bboxIntersects,
+    bboxIntersectsCircle,
+    haversineDistanceM,
+    featureInRadius,
+    isTileCacheable,
+    type TileBBox,
+    type TileKey,
+    type GeomFeatureLike,
+    type ITileFeatureCache,
+    type ITileCacheable,
+    type StoredGeoFeature,
+    type TileCoverageResult,
+    type FeatureUpsert,
+    type TileFetchResult,
+} from './cache/tiling';
 
 // The map-reader, the cargo-bearer, the far-sailing dog, and the sigils they wear
 export { QueryRetriever } from './platform/QueryRetriever';
