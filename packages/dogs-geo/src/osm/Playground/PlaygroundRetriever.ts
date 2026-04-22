@@ -80,17 +80,27 @@ export class PlaygroundRetriever extends OsmFeatureRetriever<PlaygroundResult, t
             lat: parseFloat(query.lat),
             lng: parseFloat(query.lng),
             radiusM: this.clampRadius(parseFloat(query.radius ?? "")),
+            facets: [...LEISURE_VALUES],
         };
     }
 
-    protected buildOverpassBody(q: OsmQueryBase): string {
-        const { lat, lng, radiusM } = q;
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
         const lines: string[] = [];
-        for (const value of LEISURE_VALUES) {
-            lines.push(`  node["leisure"="${value}"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["leisure"="${value}"](around:${radiusM},${lat},${lng});`);
+        for (const value of facets) {
+            lines.push(`  node["leisure"="${value}"]${bboxClause};`);
+            lines.push(`  way["leisure"="${value}"]${bboxClause};`);
         }
         return lines.join("\n");
+    }
+
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const leisure = el.tags?.["leisure"];
+        if (!leisure) return [];
+        return fetchedFacets.filter((f) => f === leisure);
     }
 
     protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): PlaygroundResult {

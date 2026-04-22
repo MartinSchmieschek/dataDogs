@@ -9,9 +9,13 @@
  * The getOrFetch method be the dark heart of this pact:
  * it deduplicates in-flight requests so no two hounds
  * chase the same quarry at once.
+ *
+ * Fuer geografische Flaechendaten bitte den Tile-Feature-Cache verwenden
+ * (siehe ITileFeatureCache) — der klassische Key-Value-Cache hier bleibt
+ * fuer Punkt-Daten (Wetter, Air-Quality, GeoNames, Isochrone).
  */
 
-import { IAreaCache } from './IAreaCache';
+import type { ITileFeatureCache } from './tiling/ITileFeatureCache';
 
 export interface ICacheHandler {
     /** Retrieve a cached value, or undefined if not present or expired. */
@@ -28,6 +32,9 @@ export interface ICacheHandler {
      * 1. Cache-Hit --> return immediately
      * 2. In-flight request with same key --> share its Promise (dedup!)
      * 3. No cache --> execute factory(), cache result, share Promise
+     *
+     * Errors werden kurz negativ gecached (siehe Implementierung), damit
+     * Provider nicht ueberrannt werden wenn sie gerade 429/504 liefern.
      */
     getOrFetch<T>(key: string, ttlMs: number, factory: () => Promise<T>): Promise<T>;
 
@@ -40,6 +47,6 @@ export interface ICacheHandler {
     /** Purge all expired entries. */
     prune(): Promise<void>;
 
-    /** Get or create a shared area cache for geo-based deduplication. */
-    getAreaCache<T>(): IAreaCache<T>;
+    /** Shared tile-basierter Geo-Feature-Cache — atomarer Feature-Pool. */
+    getTileFeatureCache(): ITileFeatureCache;
 }

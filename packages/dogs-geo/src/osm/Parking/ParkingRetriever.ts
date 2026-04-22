@@ -39,6 +39,15 @@ function classifyParkingType(tags: Record<string, string>): ParkingSpotType {
     return "car";
 }
 
+const FACET_TAGS: Record<string, { key: string; value: string }> = {
+    car: { key: "amenity", value: "parking" },
+    bicycle: { key: "amenity", value: "bicycle_parking" },
+    motorcycle: { key: "amenity", value: "motorcycle_parking" },
+    park_ride: { key: "park_ride", value: "yes" },
+};
+
+const ALL_FACETS = Object.keys(FACET_TAGS);
+
 export class ParkingRetriever extends OsmFeatureRetriever<ParkingResult, typeof ParkingQueryPact> {
     protected readonly layer = "parking";
     protected readonly defaultRadiusM = 500;
@@ -60,18 +69,36 @@ export class ParkingRetriever extends OsmFeatureRetriever<ParkingResult, typeof 
             lat: parseFloat(query.lat),
             lng: parseFloat(query.lng),
             radiusM: this.clampRadius(parseFloat(query.radius ?? "")),
+            facets: ALL_FACETS,
         };
     }
 
-    protected buildOverpassBody(q: OsmQueryBase): string {
-        const { lat, lng, radiusM } = q;
-        return [
-            `  node["amenity"="parking"](around:${radiusM},${lat},${lng});`,
-            `  node["amenity"="bicycle_parking"](around:${radiusM},${lat},${lng});`,
-            `  node["park_ride"="yes"](around:${radiusM},${lat},${lng});`,
-            `  node["amenity"="motorcycle_parking"](around:${radiusM},${lat},${lng});`,
-            `  way["amenity"="parking"](around:${radiusM},${lat},${lng});`,
-        ].join("\n");
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
+        const lines: string[] = [];
+        for (const f of facets) {
+            const c = FACET_TAGS[f];
+            if (!c) continue;
+            lines.push(`  node["${c.key}"="${c.value}"]${bboxClause};`);
+            if (f === "car") {
+                lines.push(`  way["${c.key}"="${c.value}"]${bboxClause};`);
+            }
+        }
+        return lines.join("\n");
+    }
+
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const tags = el.tags ?? {};
+        const matches: string[] = [];
+        for (const f of fetchedFacets) {
+            const c = FACET_TAGS[f];
+            if (!c) continue;
+            if (tags[c.key] === c.value) matches.push(f);
+        }
+        return matches;
     }
 
     protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): ParkingResult {

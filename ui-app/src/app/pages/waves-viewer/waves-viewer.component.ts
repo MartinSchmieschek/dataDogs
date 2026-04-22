@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit, computed } from '@angular/core';
+import { Component, inject, signal, OnInit, computed, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { KennelService } from '../../services/kennel.service';
@@ -38,6 +39,7 @@ export class WavesViewerComponent implements OnInit {
   readonly graphCanvasScale = 0.5;
 
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
   private kennelService = inject(KennelService);
   private dogService = inject(DogService);
   private errorVideoPopup = inject(ErrorVideoPopupService);
@@ -117,7 +119,7 @@ export class WavesViewerComponent implements OnInit {
    * nicht `/api/kennels/.../run`. Query-Parameter aus dem Panel werden angehängt.
    */
   get kennelRunBrowserUrl(): string {
-    const base = apiAbsoluteUrl(`/${this.kennelId}`);
+    const base = apiAbsoluteUrl(`/${encodeURIComponent(this.kennelId)}`);
     const q = this.buildQueryRecord();
     const keys = Object.keys(q).filter((k) => k.trim());
     const params = new URLSearchParams();
@@ -129,10 +131,22 @@ export class WavesViewerComponent implements OnInit {
   }
 
   ngOnInit() {
-    this.kennelId = this.route.snapshot.params['id'];
-    this.loadWaves();
-    this.loadAvailableDogs();
-    this.loadKennelVersions();
+    // Route-Reuse: bei Wechsel /kennel/A → /kennel/B bleibt dieselbe Component-Instanz —
+    // snapshot.params wäre sonst stale und PUT/GET würden den falschen Kennel treffen.
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((pm) => {
+      const id = pm.get('id');
+      if (!id) return;
+      this.kennelId = id;
+      this.selectedDog.set(null);
+      this.panelInitialSection.set(null);
+      this.activeKennelVersionId.set(null);
+      this.selectedKennelVersionId.set(null);
+      this.paramsDirty.set(false);
+      this.error.set(null);
+      this.loadWaves();
+      this.loadAvailableDogs();
+      this.loadKennelVersions();
+    });
   }
 
   onComfortVideoClick(): void {
@@ -220,7 +234,19 @@ export class WavesViewerComponent implements OnInit {
     this.paramsDirty.set(true);
   }
 
-  onQueryParamChange() {
+  /**
+   * Query-Zeilen immutabel ins Signal schreiben — `[(ngModel)]` auf Objekten innerhalb
+   * eines Signal-Arrays mutiert nur in-place; Signal/CD und Speichern können dadurch auseinanderlaufen.
+   */
+  setQueryParamAt(index: number, field: 'key' | 'value', value: string) {
+    const cur = this.queryParams();
+    if (index < 0 || index >= cur.length) return;
+    const next = cur.map((p, i) =>
+      i === index
+        ? { key: field === 'key' ? value : p.key, value: field === 'value' ? value : p.value }
+        : p
+    );
+    this.queryParams.set(next);
     this.paramsDirty.set(true);
   }
 
@@ -230,6 +256,14 @@ export class WavesViewerComponent implements OnInit {
 
   saveParams() {
     this.paramsSaving.set(true);
+    // Ausstehende Add-Zeile mitzählen (viele tragen Key/Value ein und speichern ohne "+").
+    if (this.newQueryKey.trim()) {
+      this.queryParams.set([...this.queryParams(), { key: this.newQueryKey, value: this.newQueryValue }]);
+      this.newQueryKey = '';
+      this.newQueryValue = '';
+      this.paramsDirty.set(true);
+    }
+
     const defaultQuery: Record<string, string> = {};
     this.queryParams().forEach(p => {
       if (p.key.trim()) defaultQuery[p.key] = p.value;
@@ -245,18 +279,30 @@ export class WavesViewerComponent implements OnInit {
       return;
     }
 
+    // Full-Config senden: alle bekannten Felder des aktuellen Kennels mitschicken,
+    // damit der Merge im Backend keine Felder aus einem (möglicherweise zurückfallenden)
+    // existing-Load verliert.
+    const current = this.kennelConfig();
     this.kennelService.update(this.kennelId, {
+      name: current?.name,
+      description: current?.description,
+      emoji: current?.emoji,
+      dogIds: current?.dogIds ?? [],
       defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
       defaultBody,
     }).subscribe({
-      next: () => {
+      next: (res) => {
         this.paramsSaving.set(false);
+        if (!res.ok) {
+          this.error.set(res.error ?? 'Speichern der Query/Body-Defaults fehlgeschlagen');
+          return;
+        }
         this.paramsDirty.set(false);
         this.loadWaves();
       },
       error: (err) => {
         this.paramsSaving.set(false);
-        this.error.set(err.message);
+        this.error.set(err.error?.error ?? err.message);
       }
     });
   }
@@ -350,9 +396,11 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
-  onDogMovedToFirst(lineageId: string) {
+  onDogMovedToFirst(_emitId: string) {
+    const dog = this.selectedDog();
+    if (!dog) return;
     this.reorderKennelDogIds(ids => {
-      const idx = findKennelDogIndex(ids, lineageId);
+      const idx = findKennelDogIndex(ids, dog.id, dog.lineageId);
       if (idx <= 0) return ids;
       const copy = [...ids];
       const [entry] = copy.splice(idx, 1);

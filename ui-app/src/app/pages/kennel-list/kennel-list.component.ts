@@ -1,22 +1,58 @@
 import { DatePipe } from '@angular/common';
-import { Component, HostListener, computed, inject, input, signal, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
 import {
-  kennelImportNeedsUserChoice,
-  isKennelIdTakenInList,
-  isKennelNameTakenInList,
-  suggestKennelImportTarget,
-  type KennelIdNameListEntry,
-} from '../../utils/kennel-import-target';
+  afterNextRender,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  OnDestroy,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { Router } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
+import { BackdropDriveService } from '../../services/backdrop-drive.service';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
+import { KennelScenicParallaxBackdropComponent } from '../../components/kennel-scenic-parallax-backdrop/kennel-scenic-parallax-backdrop.component';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
+
+const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v1';
+
+type KennelListSortKey = 'name' | 'id' | 'updated';
+type KennelListSortDir = 'asc' | 'desc';
+
+function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: KennelListSortDir } {
+  const fallback: { sortKey: KennelListSortKey; sortDir: KennelListSortDir } = {
+    sortKey: 'name',
+    sortDir: 'asc',
+  };
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(KENNEL_LIST_SORT_STORAGE_KEY);
+    if (!raw) return fallback;
+    const o = JSON.parse(raw) as { sortKey?: unknown; sortDir?: unknown };
+    const keys: KennelListSortKey[] = ['name', 'id', 'updated'];
+    const dirs: KennelListSortDir[] = ['asc', 'desc'];
+    const sortKey = o.sortKey;
+    const sortDir = o.sortDir;
+    if (typeof sortKey !== 'string' || !keys.includes(sortKey as KennelListSortKey)) return fallback;
+    if (typeof sortDir !== 'string' || !dirs.includes(sortDir as KennelListSortDir)) return fallback;
+    return { sortKey: sortKey as KennelListSortKey, sortDir: sortDir as KennelListSortDir };
+  } catch {
+    return fallback;
+  }
+}
+
+const initialKennelListSort = readPersistedKennelListSort();
 
 @Component({
   selector: 'app-kennel-list',
@@ -26,23 +62,74 @@ import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.d
     KennelFormComponent,
     LoadingIndicatorComponent,
     VoidMythicBackdropComponent,
+    KennelScenicParallaxBackdropComponent,
     KennelCardMotionDirective,
     KennelActionFanComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
 })
-export class KennelListComponent implements OnInit {
+export class KennelListComponent implements OnInit, OnDestroy {
   private kennelService = inject(KennelService);
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
+  private backdropDrive = inject(BackdropDriveService);
 
-  /** Show the execute path line on each card (default: on). */
+  /** iOS: Hinweis ausgeblendet ohne Erlaubnis. */
+  compassPromptDismissed = signal(false);
+
+  showCompassPrompt = computed(
+    () =>
+      this.backdropDrive.iosOrientationRequiresUserGesture() &&
+      !this.backdropDrive.deviceOrientationUnlocked() &&
+      !this.compassPromptDismissed()
+  );
+
+  private kennelScrollRef = viewChild<ElementRef<HTMLElement>>('kennelScroll');
+
+  constructor() {
+    effect(() => {
+      const sortKey = this.sortKey();
+      const sortDir = this.sortDir();
+      if (typeof localStorage === 'undefined') return;
+      try {
+        localStorage.setItem(
+          KENNEL_LIST_SORT_STORAGE_KEY,
+          JSON.stringify({ sortKey, sortDir })
+        );
+      } catch {
+        /* private mode / quota */
+      }
+    });
+
+    afterNextRender(() => {
+      const host = this.kennelScrollRef()?.nativeElement;
+      if (!host) return;
+      this.backdropDrive.bindScrollElement(host, { scrollRangePx: 560 });
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.backdropDrive.detachScrollElement();
+  }
+
+  async onCompassAllow(): Promise<void> {
+    const ok = await this.backdropDrive.requestDeviceOrientationPermission();
+    if (!ok) {
+      this.compassPromptDismissed.set(true);
+    }
+  }
+
+  onCompassDismiss(): void {
+    this.compassPromptDismissed.set(true);
+  }
+
+  /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
   showExecutePath = input(true);
 
   /**
-   * Also show a mirrored path line: path segments reversed (e.g. /execute/ref/kennels/api/…).
-   * Display only; the real endpoint is unchanged.
+   * Zusätzlich eine gespiegelte Pfad-Zeile: URL-Pfadsegmente in umgekehrter Reihenfolge.
+   * Nur Optik / Lesbarkeit; der tatsächliche Endpoint bleibt unverändert.
    */
   mirrorExecutePath = input(false);
 
@@ -50,22 +137,15 @@ export class KennelListComponent implements OnInit {
   loading = signal(false);
   showCreateForm = signal(false);
   error = signal<string | null>(null);
-  successMessage = signal<string | null>(null);
-
-  importDialogOpen = signal(false);
-  importDialogBundle = signal<Record<string, unknown> | null>(null);
-  importDialogKennelId = signal('');
-  importDialogName = signal('');
-  importDialogHint = signal('');
 
   searchQuery = signal('');
-  sortKey = signal<'name' | 'id' | 'updated'>('name');
-  sortDir = signal<'asc' | 'desc'>('asc');
+  sortKey = signal<KennelListSortKey>(initialKennelListSort.sortKey);
+  sortDir = signal<KennelListSortDir>(initialKennelListSort.sortDir);
 
-  /** Hide sort controls beside search while a filter is active (non-empty search). */
+  /** Sort-Buttons neben der Suche ausblenden, solange gefiltert wird (nichtleerer Suchtext). */
   hideSortBesideSearch = computed(() => this.searchQuery().trim().length > 0);
 
-  /** Bumped on sort change so @for track changes and card motion replays. */
+  /** Erhöhen bei Sortwechsel → @for-Track ändert sich, Karten-Animationen laufen erneut. */
   listOrderEpoch = signal(0);
 
   filteredKennels = computed(() => {
@@ -86,7 +166,7 @@ export class KennelListComponent implements OnInit {
       if (key === 'name') {
         const na = (a.name || this.kennelRef(a)).toLowerCase();
         const nb = (b.name || this.kennelRef(b)).toLowerCase();
-        cmp = na.localeCompare(nb, 'en');
+        cmp = na.localeCompare(nb, 'de');
       } else if (key === 'id') {
         cmp = this.kennelRef(a).localeCompare(this.kennelRef(b), undefined, {
           numeric: true,
@@ -110,15 +190,7 @@ export class KennelListComponent implements OnInit {
     this.errorVideoPopup.openPopup(this.error());
   }
 
-  @HostListener('document:keydown', ['$event'])
-  onKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && this.importDialogOpen()) {
-      e.preventDefault();
-      this.closeImportDialog();
-    }
-  }
-
-  /** Cycle sort field on click: Name → ID → Updated. */
+  /** Sortierfeld per Klick durchschalten: Name → ID → Zuletzt geändert. */
   cycleSortKey(): void {
     const order: Array<'name' | 'id' | 'updated'> = ['name', 'id', 'updated'];
     const i = order.indexOf(this.sortKey());
@@ -131,7 +203,7 @@ export class KennelListComponent implements OnInit {
       case 'id':
         return 'ID';
       case 'updated':
-        return 'Updated';
+        return 'Geändert';
       default:
         return 'Name';
     }
@@ -149,6 +221,8 @@ export class KennelListComponent implements OnInit {
       next: (res) => {
         this.kennels.set(res.data ?? []);
         this.loading.set(false);
+        /* Track-Fragment ändern → @for neu aufbauen, Karten-Animation erneut */
+        this.listOrderEpoch.update((n) => n + 1);
       },
       error: (err) => {
         this.error.set(err.message);
@@ -157,7 +231,7 @@ export class KennelListComponent implements OnInit {
     });
   }
 
-  /** List emoji; when missing in DB: 🐕 (UI only, not persisted). */
+  /** Anzeige-Emoji; ohne DB-Wert: 🐕 (nur UI, nicht gespeichert). */
   kennelEmojiForList(k: IKennelConfig): string {
     const e = k.emoji?.trim();
     return e || '🐕';
@@ -168,24 +242,30 @@ export class KennelListComponent implements OnInit {
     return kennel.lineageId || kennel.id;
   }
 
-  /** Relative execute path for display (same idea as the reference endpoint line). */
-  executePathForDisplay(kennel: IKennelConfig): string {
-    const ref = this.kennelRef(kennel);
-    let path = `/api/kennels/${ref}/execute`;
-    if (kennel.defaultQuery) {
-      const params = new URLSearchParams();
-      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const qs = params.toString();
-      if (qs) path += '?' + qs;
+  /** `/:kennelId` plus gespeicherte `defaultQuery` (für Anzeige und `window.open`). */
+  private listPublicExecutePath(kennel: IKennelConfig): string {
+    const path = `/${encodeURIComponent(this.kennelRef(kennel))}`;
+    const dq = kennel.defaultQuery;
+    if (!dq || typeof dq !== 'object') return path;
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(dq)) {
+      if (!k.trim()) continue;
+      params.set(k, v);
     }
-    return path;
+    const qs = params.toString();
+    return qs ? `${path}?${qs}` : path;
   }
 
   /**
-   * Same path with segment order reversed (“mirrored”).
-   * Query string is kept as a suffix.
+   * Angezeigter Aufruf-Pfad — gleiche Logik wie der Play-Tab (`defaultQuery` in der URL, `defaultBody` nur serverseitig).
+   */
+  executePathForDisplay(kennel: IKennelConfig): string {
+    return this.listPublicExecutePath(kennel);
+  }
+
+  /**
+   * Derselbe Pfad mit umgekehrter Segmentreihenfolge (Pfad „gespiegelt“).
+   * Query-String bleibt angehängt.
    */
   executePathMirroredSegments(kennel: IKennelConfig): string {
     const full = this.executePathForDisplay(kennel);
@@ -196,6 +276,7 @@ export class KennelListComponent implements OnInit {
     return reversed + q;
   }
 
+  /** Neuer Tab: öffentlicher GET — URL enthält gespeicherte `defaultQuery`; `defaultBody` kommt aus der Config (Server). */
   onExecute(kennel: IKennelConfig): void {
     window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
   }
@@ -219,6 +300,10 @@ export class KennelListComponent implements OnInit {
       }
       return;
     }
+    if (action === 'copy') {
+      this.copyKennelBundle(kennel);
+      return;
+    }
     if (action === 'swagger') {
       window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
       return;
@@ -232,13 +317,13 @@ export class KennelListComponent implements OnInit {
       return;
     }
     if (action === 'delete') {
-      if (!confirm(`Delete kennel "${kennel.name || ref}"? All versions will be removed.`)) return;
+      if (!confirm(`Kennel "${kennel.name || ref}" wirklich löschen? Alle Versionen werden entfernt.`)) return;
       this.kennelService.delete(ref).subscribe({
         next: (res) => {
           if (res.ok) {
             this.loadKennels();
           } else {
-            this.error.set(res.error ?? 'Delete failed');
+            this.error.set(res.error ?? 'Löschen fehlgeschlagen');
           }
         },
         error: (err) => this.error.set(err.error?.error ?? err.message),
@@ -246,125 +331,53 @@ export class KennelListComponent implements OnInit {
     }
   }
 
+  /** Kennel-Bundle (Config + Dogs) als JSON in die Zwischenablage kopieren. */
+  copyKennelBundle(kennel: IKennelConfig) {
+    const ref = this.kennelRef(kennel);
+    this.kennelService.exportBundle(ref).subscribe({
+      next: (bundle: any) => {
+        const json = JSON.stringify(bundle, null, 2);
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(json).catch(() => {
+            this.downloadJsonFallback(json, ref);
+          });
+        } else {
+          this.downloadJsonFallback(json, ref);
+        }
+      },
+      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Export fehlgeschlagen'),
+    });
+  }
+
+  private downloadJsonFallback(json: string, ref: string) {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${ref}.kennel.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   importFromClipboard() {
-    this.successMessage.set(null);
-    this.error.set(null);
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        let bundle: Record<string, unknown>;
-        try {
-          bundle = JSON.parse(text) as Record<string, unknown>;
-        } catch {
-          this.error.set('Clipboard does not contain valid JSON');
-          return;
-        }
-        const kennel = bundle['kennel'] as { kennelId?: string; name?: string } | undefined;
-        if (!kennel || !Array.isArray(bundle['dogs'])) {
-          this.error.set('Invalid kennel bundle: kennel and dogs[] are required');
-          return;
-        }
-        if (!kennel.kennelId || typeof kennel.kennelId !== 'string' || !kennel.kennelId.trim()) {
-          this.error.set('Invalid kennel bundle: kennel.kennelId is required');
-          return;
-        }
-        this.kennelService.getAll().subscribe({
-          next: (r) => {
-            if (r.data) {
-              this.kennels.set(r.data);
+    navigator.clipboard.readText().then(text => {
+      try {
+        const bundle = JSON.parse(text);
+        this.kennelService.importBundle(bundle).subscribe({
+          next: (res) => {
+            if (res.ok) {
+              this.loadKennels();
+            } else {
+              this.error.set(res.error ?? 'Import fehlgeschlagen');
             }
-            const list = (r.data ?? this.kennels()).map(
-              (k) =>
-                ({
-                  lineageId: k.lineageId,
-                  id: k.id,
-                  name: k.name,
-                }) as KennelIdNameListEntry
-            );
-            this.proceedWithBundleCheck(bundle, list);
           },
           error: (err) => this.error.set(err.error?.error ?? err.message),
         });
-      })
-      .catch(() => {
-        this.error.set('No clipboard access — grant permission in the browser');
-      });
-  }
-
-  private setImportDialogConflictHint(
-    bundle: { kennel: { kennelId: string; name?: string } },
-    existing: KennelIdNameListEntry[]
-  ): void {
-    const kid = (bundle.kennel.kennelId || '').trim();
-    const nm = (bundle.kennel.name && bundle.kennel.name.trim()) || kid;
-    const idTaken = isKennelIdTakenInList(kid, existing);
-    const nameTaken = isKennelNameTakenInList(nm, existing);
-    const parts: string[] = [];
-    if (idTaken) {
-      parts.push('This kennel id is already in use.');
-    }
-    if (nameTaken) {
-      parts.push('This display name is already taken by another kennel.');
-    }
-    this.importDialogHint.set(
-      parts.length > 0
-        ? parts.join(' ') + ' Adjust the fields or accept the suggestions below.'
-        : 'Suggestion — edit if needed, then import.'
-    );
-  }
-
-  private proceedWithBundleCheck(
-    bundle: Record<string, unknown>,
-    existing: KennelIdNameListEntry[]
-  ): void {
-    const b = bundle as { kennel: { kennelId: string; name?: string } };
-    const s = suggestKennelImportTarget(b, existing);
-    if (kennelImportNeedsUserChoice(b, existing)) {
-      this.importDialogBundle.set(bundle);
-      this.importDialogKennelId.set(s.kennelId);
-      this.importDialogName.set(s.name);
-      this.setImportDialogConflictHint(b, existing);
-      this.importDialogOpen.set(true);
-      return;
-    }
-    this.executeImport(bundle, { kennelId: s.kennelId, name: s.name });
-  }
-
-  closeImportDialog(): void {
-    this.importDialogOpen.set(false);
-    this.importDialogBundle.set(null);
-    this.importDialogHint.set('');
-  }
-
-  confirmImportDialog(): void {
-    const bundle = this.importDialogBundle();
-    if (!bundle) return;
-    const kennelId = this.importDialogKennelId().trim();
-    const name = this.importDialogName().trim() || kennelId;
-    this.closeImportDialog();
-    this.executeImport(bundle, { kennelId, name });
-  }
-
-  private executeImport(
-    bundle: Record<string, unknown>,
-    target: { kennelId: string; name: string }
-  ): void {
-    this.error.set(null);
-    this.successMessage.set(null);
-    this.kennelService.importBundle(bundle, target).subscribe({
-      next: (res) => {
-        if (res.ok) {
-          const displayName = res.name ?? target.name;
-          this.loadKennels();
-          this.searchQuery.set(displayName);
-          this.successMessage.set(
-            `Import succeeded. Kennel "${displayName}" (id: ${res.kennelId ?? target.kennelId}) was created.`
-          );
-        } else {
-          this.error.set(res.error ?? 'Import failed');
-        }
-      },
-      error: (err) => this.error.set(err.error?.error ?? err.message),
+      } catch {
+        this.error.set('Clipboard enthält kein gültiges JSON');
+      }
+    }).catch(() => {
+      this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
     });
   }
 
@@ -391,19 +404,8 @@ export class KennelListComponent implements OnInit {
     });
   }
 
-  /** New tab → hit Express (:3000) directly, not the Angular dev server. */
+  /** Absoluter Tab-URL zum öffentlichen Kennel-GET (inkl. `defaultQuery` aus der Liste). */
   getExecuteUrl(kennel: IKennelConfig): string {
-    const ref = this.kennelRef(kennel);
-    let path = `/api/kennels/${ref}/execute`;
-    if (kennel.defaultQuery) {
-      const params = new URLSearchParams();
-      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const qs = params.toString();
-      if (qs) path += '?' + qs;
-    }
-    return apiAbsoluteUrl(path);
+    return apiAbsoluteUrl(this.listPublicExecutePath(kennel));
   }
-
 }

@@ -1,8 +1,10 @@
 /**
- * Ein Knoten im Stratum — das Wesentliche ist `essence` (das Lauf-Ergebnis).
+ * Ein ausgeführter Knoten (Hund) in einer Welle — `essence` ist sein Lauf-Ergebnis.
  */
 export type Rune = {
     id: string;
+    /** SerializedDog: oft Kennel-`dogIds[0]` ist lineage, `id` in den Waves ist storageId */
+    lineageId?: string;
     name: string;
     essence: unknown;
     /** z. B. Icon */
@@ -19,7 +21,7 @@ export type SwaggridCast = {
     rift: string;
     title?: string;
     scroll?: string;
-    /** ID des Heralds in den Strata (gleiche Matching-Logik wie zuvor: base:-Prefix, Versionssuffix) */
+    /** Lead-Knoten: Instanz-ID oder Lineage-ID (wie in `dogIds[0]`); Abgleich inkl. `base:`-Prefix und Versions-Suffix */
     heraldId: string;
     whispers?: Record<string, string>;
     offering?: unknown;

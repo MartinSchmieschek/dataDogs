@@ -190,10 +190,10 @@ In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are r
 **Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@datadogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400.
 
 **Caching** -- Two-tier memory so dogs don't repeat themselves:
-- **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication. Two requests for the same key share one Promise instead of firing twice.
-- **Area cache** (`AreaCacheStrategy`) -- Geographic awareness for location-based dogs. Uses Haversine distance to detect when a new query falls inside an already-cached territory. If a 5 km radius around point A is cached and you ask for 3 km around a nearby point B that sits inside A's circle, the cached result is returned without refetching. Larger areas swallow smaller ones on eviction.
+- **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication plus negative-caching for 429/504 to break provider retry storms.
+- **Tile feature cache** (`PrismaTileFeatureCache`) -- Atomarer Geo-Feature-Store auf Slippy-Map-Tiles (Multi-Zoom). Features werden per OSM-ID dedupliziert; Coverage ist pro (dog-type, zoom, tile, facet) getrennt. Fehlende Tiles × Facets werden gezielt nachgeladen, bestehende aus der DB bedient. Polygone über Tile-Grenzen werden im Volltext zurückgegeben.
 
-Dogs opt in by implementing `ICacheable` (simple KV) or `IAreaCacheable` (geo-aware). The cache is injected at runtime -- dogs that don't implement the interface are unaffected. *Khra* -- what was fetched once defies time.
+Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aware tile feature cache). The cache is injected at runtime -- dogs that don't implement the interface are unaffected. *Khra* -- what was fetched once defies time.
 
 **Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data-flow traceability across the pack.
 

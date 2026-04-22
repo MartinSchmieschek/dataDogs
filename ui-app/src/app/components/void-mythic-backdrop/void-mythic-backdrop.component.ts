@@ -1,19 +1,22 @@
+import { NgStyle } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
 import { REQUIEM_LOADING_QUOTES } from '../../data/requiem-loading';
+import { BackdropDriveService } from '../../services/backdrop-drive.service';
 import { LastVoidTongueService } from '../../services/last-void-tongue.service';
 import { VoidRequiemGlyphWatermarkComponent } from '../void-requiem-glyph-watermark/void-requiem-glyph-watermark.component';
 
 /**
  * Kosmischer Hintergrund + Requiem-Glyphe (Watermark), ohne Text.
+ * Leichte Bewegung über {@link BackdropDriveService} (scroll01, compass01, tilt01).
  */
 @Component({
   selector: 'app-void-mythic-backdrop',
   standalone: true,
-  imports: [VoidRequiemGlyphWatermarkComponent],
+  imports: [VoidRequiemGlyphWatermarkComponent, NgStyle],
   template: `
     <div class="vmb" aria-hidden="true">
-      <div class="vmb-layer vmb-layer--abyss"></div>
-      <div class="vmb-layer vmb-layer--nebula"></div>
+      <div class="vmb-layer vmb-layer--abyss" [ngStyle]="abyssStyle()"></div>
+      <div class="vmb-layer vmb-layer--nebula" [ngStyle]="nebulaStyle()"></div>
       <app-void-requiem-glyph-watermark [iconSrc]="glyphUrl()" />
     </div>
   `,
@@ -55,10 +58,35 @@ import { VoidRequiemGlyphWatermarkComponent } from '../void-requiem-glyph-waterm
 })
 export class VoidMythicBackdropComponent {
   readonly lastVoid = inject(LastVoidTongueService);
+  private readonly drive = inject(BackdropDriveService);
 
   private readonly fallbackIconSrc = REQUIEM_LOADING_QUOTES[0].iconSrc;
 
   readonly glyphUrl = computed(
     () => this.lastVoid.snapshot()?.iconSrc ?? this.fallbackIconSrc
   );
+
+  readonly abyssStyle = computed(() => {
+    const s = this.drive.scroll01();
+    const pan =
+      (this.drive.compass01() - 0.5) * 0.42 +
+      (this.drive.tilt01() - 0.5) * 0.28 +
+      (this.drive.screenAngle01() - 0.5) * 0.22;
+    return {
+      transform: `translate3d(${pan * 8}px, ${-s * 8}px, 0) scale(1.16)`,
+      transformOrigin: '50% 55%',
+    };
+  });
+
+  readonly nebulaStyle = computed(() => {
+    const s = this.drive.scroll01();
+    const pan =
+      (this.drive.compass01() - 0.5) * 0.42 +
+      (this.drive.tilt01() - 0.5) * 0.28 +
+      (this.drive.screenAngle01() - 0.5) * 0.22;
+    return {
+      transform: `translate3d(${pan * 14}px, ${-s * 14}px, 0) scale(1.22)`,
+      transformOrigin: '48% 42%',
+    };
+  });
 }

@@ -35,10 +35,12 @@ function findHerald(heraldId: string, strata: Rune[][]): Rune | null {
 
     for (const stratum of strata) {
         for (const rune of stratum) {
+            const lineage = rune.lineageId;
             if (
                 rune.id === searchId ||
                 rune.id === heraldId ||
-                rune.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '')
+                rune.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '') ||
+                (lineage != null && (lineage === heraldId || lineage === searchId))
             ) {
                 return rune;
             }
@@ -66,16 +68,37 @@ function buildResponseContent(herald: Rune | null): Record<string, unknown> {
     };
 }
 
-function buildGlyphsSummary(strata: Rune[][]): string[] {
+/** Kurzbeschreibung des Knotentyps für Menschen, nicht interne Klassennamen. */
+function knotenartLabel(bound?: boolean): string {
+    return bound ? 'Hund mit eigenem Code (aus der Bibliothek)' : 'Eingebauter Basis-Hund';
+}
+
+/** Liste: welche Knoten in welcher Ausführungswelle liefen (letzter Probelauf). */
+function buildWellenUebersicht(strata: Rune[][]): string[] {
     const lines: string[] = [];
     strata.forEach((stratum, si) => {
-        for (const glyph of stratum) {
-            const icon = glyph.sigil || '';
-            const type = glyph.bound ? 'SerializedDog' : 'BaseDog';
-            lines.push(`- Stratum ${si + 1}: ${icon} **${glyph.name}** (${type})`);
+        for (const knoten of stratum) {
+            const icon = knoten.sigil ? `${knoten.sigil} ` : '';
+            lines.push(
+                `- **Welle ${si + 1}:** ${icon}**${knoten.name}** — ${knotenartLabel(knoten.bound)}`,
+            );
         }
     });
     return lines;
+}
+
+function buildLeadKnotenBlock(herald: Rune): string {
+    const zeilen = [
+        '**Lead-Knoten** (sein Ergebnis ist die HTTP-Antwort dieses Endpunkts):',
+        `- Anzeigename: **${herald.name}**`,
+        `- Instanz-ID: \`${herald.id}\``,
+    ];
+    if (herald.lineageId) {
+        zeilen.push(
+            `- Lineage-ID: \`${herald.lineageId}\` (fester Verweis auf dieselbe Hundes-Linie, unabhängig von der Version)`,
+        );
+    }
+    return zeilen.join('\n');
 }
 
 function buildQueryParams(whispers?: Record<string, string>): unknown[] {
@@ -98,8 +121,8 @@ function safeSchemaName(name: string): string {
 }
 
 /**
- * Wirft eine OpenAPI-3.0.3-Spezifikation aus einem Cast — ein Endpunkt pro Rift,
- * Response-Schema aus der Essenz des Heralds.
+ * Baut eine OpenAPI-3.0.3-Spezifikation aus einem Cast: ein öffentlicher Pfad pro Kennel,
+ * Response-Schema aus dem zuletzt beobachteten Lead-Ergebnis.
  */
 export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
     const { rift, title, scroll, heraldId, whispers, offering, strata } = input;
@@ -109,17 +132,23 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
     const responseSchema =
         herald?.essence != null
             ? inferEssence(herald.essence)
-            : { description: 'No result available' };
+            : { description: 'Kein Ausführungsergebnis für den Lead-Knoten verfügbar' };
 
-    const glyphsSummary = buildGlyphsSummary(strata);
-    const description = [
-        scroll || `API am Rift „${riftTitle}“`,
-        '',
-        '**Glyphs in den Strata:**',
-        ...glyphsSummary,
-        '',
-        herald ? `**Herald:** ${herald.name} (${herald.id})` : '',
-    ].join('\n');
+    const wellenZeilen = buildWellenUebersicht(strata);
+    const einleitung =
+        scroll ||
+        `Öffentlicher Kennel-Endpunkt unter \`/${rift}\` („${riftTitle}“). Diese Doku stammt von einem Probelauf mit den aktuellen Standard-Query-Parametern und dem Standard-Body.`;
+    const wellenBlock =
+        wellenZeilen.length > 0
+            ? [
+                  '**Ausführungsübersicht** (Wellen nacheinander; innerhalb einer Welle können Knoten parallel laufen — wie beim letzten Lauf erfasst):',
+                  ...wellenZeilen,
+              ].join('\n')
+            : '';
+    const bloecke = [einleitung, wellenBlock, herald ? buildLeadKnotenBlock(herald) : ''].filter(
+        (b) => b.length > 0,
+    );
+    const description = bloecke.join('\n\n');
 
     const queryParams = buildQueryParams(whispers);
     const meaningfulBody = hasMeaningfulOffering(offering);
@@ -127,7 +156,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
     const schemas: Record<string, unknown> = {
         Response: {
             ...responseSchema,
-            description: `Essenz des Heralds „${herald?.name || '?'}“`,
+            description: `JSON-Antwort: Rückgabewert des Lead-Knotens „${herald?.name || '(unbekannt)'}“`,
             ...(herald?.essence != null ? { example: herald.essence } : {}),
         },
     };
@@ -135,7 +164,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
     if (meaningfulBody) {
         schemas.RequestBody = {
             ...inferEssence(offering),
-            description: 'Request-Body (wird an BodyRetriever weitergegeben)',
+            description: 'JSON-Body für den BodyRetriever (Standardwerte siehe Beispiel)',
             example: offering,
         };
     }
@@ -146,7 +175,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
                 const schemaName = safeSchemaName(glyph.name);
                 schemas[schemaName] = {
                     ...inferEssence(glyph.essence),
-                    description: `Essenz von „${glyph.name}“ (${glyph.id})`,
+                    description: `Zwischenergebnis des Knotens „${glyph.name}“ (Instanz-ID \`${glyph.id}\`)`,
                     example: glyph.essence,
                 };
             }
@@ -155,27 +184,29 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
 
     const getOp: Record<string, unknown> = {
         summary: riftTitle,
-        description: `Ruft den Rift auf und liefert die Essenz des Heralds.`,
+        description:
+            'Führt das Kennel aus (GET) und gibt das Ergebnis des Lead-Knotens zurück — das ist der erste Eintrag in `dogIds` der Kennel-Konfiguration.',
         operationId: `get_${safeId(rift)}`,
         parameters: [...queryParams],
         responses: {
             '200': {
-                description: `Herald-Essenz (${herald?.name || 'unknown'})`,
+                description: `OK — Ergebnis des Lead-Knotens (${herald?.name || 'Lead nicht ermittelbar'})`,
                 content: buildResponseContent(herald),
             },
-            '404': { description: 'Rift nicht gefunden' },
-            '500': { description: 'Ausführungsfehler' },
+            '404': { description: 'Kennel nicht gefunden' },
+            '500': { description: 'Fehler bei der Ausführung des Kennels' },
         },
     };
 
     const postOp: Record<string, unknown> = {
         summary: `${riftTitle} (POST mit Body)`,
-        description: `Ruft den Rift mit JSON-Body auf (Default dient als Schema/Beispiel).`,
+        description:
+            'Führt das Kennel mit JSON-Body aus (POST). Der Standard-Body aus der Konfiguration dient in dieser Doku als Schema und Beispiel; der BodyRetriever liefert ihn dem Pack zur Laufzeit.',
         operationId: `post_${safeId(rift)}`,
         parameters: [...queryParams],
         requestBody: {
             required: true,
-            description: 'Request-Body (BodyRetriever)',
+            description: 'JSON-Body für den BodyRetriever (Standardwerte siehe Beispiel)',
             content: {
                 'application/json': {
                     schema: { $ref: '#/components/schemas/RequestBody' },
@@ -185,11 +216,11 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
         },
         responses: {
             '200': {
-                description: `Herald-Essenz (${herald?.name || 'unknown'})`,
+                description: `OK — Ergebnis des Lead-Knotens (${herald?.name || 'Lead nicht ermittelbar'})`,
                 content: buildResponseContent(herald),
             },
-            '404': { description: 'Rift nicht gefunden' },
-            '500': { description: 'Ausführungsfehler' },
+            '404': { description: 'Kennel nicht gefunden' },
+            '500': { description: 'Fehler bei der Ausführung des Kennels' },
         },
     };
 
@@ -207,7 +238,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
             description,
             version: '0.1.0-alpha.1',
         },
-        servers: [{ url: '', description: 'Data Hunt Server' }],
+        servers: [{ url: '', description: 'dataDogs-Server (Basis-URL je nach Umgebung)' }],
         paths: {
             [`/${rift}`]: pathMethods,
         },

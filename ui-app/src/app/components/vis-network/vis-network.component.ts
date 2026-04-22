@@ -8,7 +8,7 @@ import {
 
 } from '@angular/core';
 
-import { DogEntry, ReadTrackingEntry, Waves } from '../../models/dog-entry.model';
+import { DogEntry, Waves } from '../../models/dog-entry.model';
 
 import { EdgeReadPropsOverlayComponent } from '../edge-read-props-overlay/edge-read-props-overlay.component';
 
@@ -18,11 +18,17 @@ import {
 
   buildGraphViewModel,
 
+  applyGraphRepulsionAndProjection,
+
   cubicBezierMidpoint,
+
+  GRAPH_EDGE_BORDER_PAD_PX,
 
   GRAPH_NODE_H,
 
   GRAPH_NODE_W,
+
+  type RenderEdge,
 
   type RenderNode,
 
@@ -30,23 +36,6 @@ import {
 
 import { graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
-
-
-
-export interface EdgeReadOverlayVM {
-
-  key: string;
-
-  left: number;
-
-  top: number;
-
-  /** Eingehend: „Liest von“ · Ausgehend: „Wird gelesen“ */
-  title: string;
-
-  paths: string[];
-
-}
 
 
 
@@ -112,13 +101,33 @@ export interface EdgeReadOverlayVM {
 
               <path
 
+                class="edge-path edge-path--border"
+
                 [attr.d]="e.pathD"
 
-                [attr.stroke]="e.optional ? '#0066cc' : '#cc0000'"
+                [attr.stroke]="graphEdgeStrokeBorder"
 
-                [attr.stroke-width]="e.optional ? 1.5 : 2"
+                [attr.stroke-width]="edgeOuterStrokeWidth(e)"
 
-                [attr.stroke-dasharray]="e.optional ? '7 5' : null"
+                [attr.stroke-dasharray]="e.optional ? graphEdgeDashArray : null"
+
+                stroke-linecap="round"
+
+                stroke-linejoin="round"
+
+                fill="none" />
+
+              <path
+
+                class="edge-path edge-path--main"
+
+                [attr.d]="e.pathD"
+
+                [attr.stroke]="graphEdgeStrokeMain(e)"
+
+                [attr.stroke-width]="e.strokeWidthPx"
+
+                [attr.stroke-dasharray]="e.optional ? graphEdgeDashArray : null"
 
                 stroke-linecap="round"
 
@@ -148,45 +157,37 @@ export interface EdgeReadOverlayVM {
 
               (pointerdown)="onNodePointerDown($event, n)"
 
-              (click)="onNodeClick(n.dog, $event)">
+              (click)="onNodeClick(n.dog, $event)"
 
-              <app-graph-dog-node
+              (dblclick)="onNodeDblClick(n.dog, $event)">
 
-                [dog]="n.dog"
+              <div class="graph-node-slot-inner">
 
-                [label]="n.dog.name"
+                <app-graph-dog-node
 
-                [icon]="n.dog.icon"
+                  [dog]="n.dog"
 
-                [selected]="isNodeSelected(n.id)"
+                  [label]="n.dog.name"
 
-                [hasError]="!!n.dog.error"
+                  [icon]="n.dog.icon"
 
-                [isSerialized]="!!n.dog.codeTs"
+                  [selected]="isNodeSelected(n.id)"
 
-                [isMimic]="n.dog.mimic"
+                  [hasError]="!!n.dog.error"
 
-                [isLead]="isNodeLead(n.id)"
+                  [isSerialized]="!!n.dog.codeTs"
 
-                [showSectionFan]="isNodeSelected(n.id)"
+                  [isMimic]="n.dog.mimic"
 
-                (sectionEditRequested)="onDogSectionFan($event, n.dog)" />
+                  [isLead]="isNodeLead(n.id)"
 
-            </div>
+                  [leadRunUrl]="isNodeLead(n.id) ? leadRunUrl : null"
 
-          }
+                  [leadSwaggerUrl]="isNodeLead(n.id) ? leadSwaggerUrl : null"
 
-          @for (o of edgeReadOverlays(); track o.key) {
+                  (sectionEditRequested)="onDogSectionFan($event, n.dog)" />
 
-            <div
-
-              class="edge-read-slot"
-
-              [style.left.px]="o.left"
-
-              [style.top.px]="o.top">
-
-              <app-edge-read-props-overlay [title]="o.title" [paths]="o.paths" />
+              </div>
 
             </div>
 
@@ -196,23 +197,109 @@ export interface EdgeReadOverlayVM {
 
             <div
 
-              class="edge-cut-slot"
+              class="edge-cut-cluster"
+
+              [class.edge-cut-cluster--reads-open]="edgeReadsExpandedKey() === s.key"
 
               [style.left.px]="s.left"
 
               [style.top.px]="s.top">
 
-              <button
+              <div class="edge-cut-toolbar" (pointerdown)="$event.stopPropagation()">
 
-                type="button"
+                @if (s.readFromPaths.length > 0 || s.readByPaths.length > 0) {
 
-                class="edge-cut-btn"
+                  <button
 
-                title="Zweig aus Kennel entfernen (nicht Lead-Pfad; alle Knoten dieses Teilbaums aus dogIds)"
+                    type="button"
 
-                (pointerdown)="$event.stopPropagation()"
+                    class="edge-read-toggle-btn"
 
-                (click)="onBranchCutClick(s, $event)">✂</button>
+                    [class.edge-read-toggle-btn--open]="edgeReadsExpandedKey() === s.key"
+
+                    [attr.aria-expanded]="edgeReadsExpandedKey() === s.key"
+
+                    title="Read-Tracking (Liest von / Wird gelesen)"
+
+                    aria-label="Read-Tracking: Liest von und Wird gelesen"
+
+                    (click)="toggleEdgeReadsPanel(s.key, $event)">
+
+                    <span aria-hidden="true">⌕</span>
+
+                  </button>
+
+                }
+
+                <button
+
+                  type="button"
+
+                  class="edge-cut-btn"
+
+                  title="Zweig aus Kennel entfernen (nicht Lead-Pfad; alle Knoten dieses Teilbaums aus dogIds)"
+
+                  (click)="onBranchCutClick(s, $event)">✂</button>
+
+              </div>
+
+              @if (edgeReadsExpandedKey() === s.key && (s.readFromPaths.length > 0 || s.readByPaths.length > 0)) {
+
+                <div class="edge-cut-reads-panel" (pointerdown)="$event.stopPropagation()">
+
+                  <div class="edge-cut-reads-grid">
+
+                    <div class="edge-cut-wing edge-cut-wing--left">
+
+                      @if (s.readFromPaths.length > 0) {
+
+                        <div class="edge-cut-read">
+
+                          <app-edge-read-props-overlay
+
+                            variant="edge"
+
+                            title="Liest von"
+
+                            [paths]="s.readFromPaths" />
+
+                          <span class="edge-cut-arrow" aria-hidden="true">{{ s.arrowTowardTo }}</span>
+
+                        </div>
+
+                      }
+
+                    </div>
+
+                    <div class="edge-cut-reads-spacer" aria-hidden="true"></div>
+
+                    <div class="edge-cut-wing edge-cut-wing--right">
+
+                      @if (s.readByPaths.length > 0) {
+
+                        <div class="edge-cut-read">
+
+                          <span class="edge-cut-arrow" aria-hidden="true">{{ s.arrowTowardFrom }}</span>
+
+                          <app-edge-read-props-overlay
+
+                            variant="edge"
+
+                            title="Wird gelesen"
+
+                            [paths]="s.readByPaths" />
+
+                        </div>
+
+                      }
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              }
 
             </div>
 
@@ -280,6 +367,12 @@ export interface EdgeReadOverlayVM {
 
     }
 
+    .edge-svg .edge-path--main {
+
+      pointer-events: stroke;
+
+    }
+
     .graph-node-slot {
 
       position: absolute;
@@ -298,19 +391,19 @@ export interface EdgeReadOverlayVM {
 
     .graph-node-slot.dragging { cursor: grabbing; }
 
-    .edge-read-slot {
+    .graph-node-slot-inner {
 
-      position: absolute;
+      position: relative;
 
-      z-index: 2;
+      width: 100%;
 
-      transform: translate(-50%, -50%);
+      height: 100%;
 
-      pointer-events: none;
+      overflow: visible;
 
     }
 
-    .edge-cut-slot {
+    .edge-cut-cluster {
 
       position: absolute;
 
@@ -318,7 +411,167 @@ export interface EdgeReadOverlayVM {
 
       transform: translate(-50%, -50%);
 
+      display: flex;
+
+      flex-direction: column;
+
+      align-items: center;
+
+      gap: 0.4rem;
+
+      width: auto;
+
+      max-width: min(96vw, 76rem);
+
+      pointer-events: none;
+
+    }
+
+    .edge-cut-cluster--reads-open {
+
+      max-width: min(96vw, 76rem);
+
+    }
+
+    .edge-cut-toolbar {
+
+      display: flex;
+
+      flex-direction: row;
+
+      align-items: center;
+
+      justify-content: center;
+
+      gap: 0.35rem;
+
       pointer-events: auto;
+
+    }
+
+    .edge-read-toggle-btn {
+
+      margin: 0;
+
+      padding: 1px 6px;
+
+      font-size: 13px;
+
+      line-height: 1.2;
+
+      cursor: pointer;
+
+      border-radius: 4px;
+
+      border: 1px solid rgba(100, 130, 170, 0.5);
+
+      background: rgba(18, 24, 36, 0.92);
+
+      color: rgba(180, 200, 230, 0.95);
+
+      opacity: 0.55;
+
+    }
+
+    .edge-read-toggle-btn:hover {
+
+      opacity: 1;
+
+      border-color: rgba(130, 170, 220, 0.75);
+
+    }
+
+    .edge-read-toggle-btn--open {
+
+      opacity: 1;
+
+      border-color: rgba(140, 180, 230, 0.85);
+
+      background: rgba(28, 38, 54, 0.96);
+
+    }
+
+    .edge-cut-reads-panel {
+
+      pointer-events: auto;
+
+      width: min(92vw, 70rem);
+
+      max-width: 96vw;
+
+      padding: 0.35rem 0.25rem 0.15rem;
+
+    }
+
+    .edge-cut-reads-grid {
+
+      display: grid;
+
+      grid-template-columns: minmax(0, 1fr) 0.5rem minmax(0, 1fr);
+
+      align-items: start;
+
+      column-gap: 0.35rem;
+
+    }
+
+    .edge-cut-reads-spacer {
+
+      min-width: 0;
+
+    }
+
+    .edge-cut-wing {
+
+      display: flex;
+
+      align-items: center;
+
+      min-width: 0;
+
+    }
+
+    .edge-cut-wing--left {
+
+      justify-content: flex-end;
+
+    }
+
+    .edge-cut-wing--right {
+
+      justify-content: flex-start;
+
+    }
+
+    .edge-cut-read {
+
+      display: flex;
+
+      flex-direction: row;
+
+      align-items: center;
+
+      gap: 0.35rem;
+
+      min-width: 0;
+
+      max-width: 100%;
+
+      pointer-events: auto;
+
+    }
+
+    .edge-cut-arrow {
+
+      flex-shrink: 0;
+
+      font-size: 1rem;
+
+      line-height: 1;
+
+      opacity: 0.95;
+
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75));
 
     }
 
@@ -385,6 +638,12 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
   /** Erster Eintrag in kennel.dogIds — für Lead-Stern am Knoten */
   @Input() kennelLeadDogIdsSlot: string | null = null;
 
+  /** Nur Lead-Knoten: Link „Antwort (Server)“ (öffentlicher GET /:kennelId). */
+  @Input() leadRunUrl: string | null = null;
+
+  /** Nur Lead-Knoten: Swagger-UI für dieses Kennel. */
+  @Input() leadSwaggerUrl: string | null = null;
+
   /** Zusammen mit app-graph-canvas-scale (z. B. 0.5): Pointer-Deltas mit 1/scale korrigieren. */
   @Input() canvasScale = 1;
 
@@ -393,6 +652,20 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
   readonly nodeW = GRAPH_NODE_W;
 
   readonly nodeH = GRAPH_NODE_H;
+
+  /** Sehr dunkles Blau — Außenrand (unter der Hauptlinie gezeichnet). */
+  readonly graphEdgeStrokeBorder = '#050d16';
+
+  /** Strichmuster für optionale Kanten (Rand + Füllung gleich). */
+  readonly graphEdgeDashArray = '10 7';
+
+  graphEdgeStrokeMain(e: RenderEdge): string {
+    return e.optional ? '#4d6689' : '#325176';
+  }
+
+  edgeOuterStrokeWidth(e: RenderEdge): number {
+    return e.strokeWidthPx + GRAPH_EDGE_BORDER_PAD_PX;
+  }
 
 
 
@@ -406,15 +679,29 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   private readonly selectedRef = signal<DogEntry | null>(null);
 
+  /** Einfachklick: Knoten im Graph hervorheben ohne Panel zu öffnen (siehe `onNodeDblClick`). */
+  private readonly graphFocusDogId = signal<string | null>(null);
+
+  /** Pro Kanten-Schere: Read-Tracking-Panel unter der Lupen-Schaltfläche (Template). */
+  readonly edgeReadsExpandedKey = signal<string | null>(null);
+
   private readonly flatDogsRef = signal<DogEntry[]>([]);
 
 
 
-  viewModel = computed(() =>
+  viewModel = computed(() => {
 
-    buildGraphViewModel(this.wavesRef(), this.manualPositions(), !this.draggingNodeId())
+    const base = buildGraphViewModel(this.wavesRef(), this.manualPositions(), !this.draggingNodeId(), {
+      leadAnchorTopId: this.resolveLeadGraphNodeId(),
+    });
 
-  );
+    if (!base) return null;
+
+    if (this.draggingNodeId()) return base;
+
+    return applyGraphRepulsionAndProjection(base, this.wavesRef(), this.resolveLeadGraphNodeId());
+
+  });
 
 
 
@@ -460,74 +747,9 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 
 
-  /** Pro ausgewähltem Knoten höchstens zwei Karten: links eingehend (Liest von), rechts ausgehend (Wird gelesen). */
-  edgeReadOverlays = computed((): EdgeReadOverlayVM[] => {
-
-    const sel = this.selectedRef();
-
-    const vm = this.viewModel();
-
-    if (!sel || !vm) return [];
-
-    const rn = vm.renderNodes.find((n) => n.id === sel.id);
-
-    if (!rn) return [];
-
-    /** Etwas über Knotenmitte, damit Karten/Titel nicht in den Node-Inhalt (Glyph) ragen */
-    const midY = rn.ry + GRAPH_NODE_H / 2 - 14;
-
-    /** Abstand Knotenkante → Overlay-Mitte (Karten ~240px breit; größer = weniger Überlappung mit Knoten) */
-    const inset = 158;
-
-    const out: EdgeReadOverlayVM[] = [];
-
-    const incoming = formatReadFromLines(sel.readFrom);
-
-    if (incoming.length > 0) {
-
-      out.push({
-
-        key: 'data-in',
-
-        left: rn.rx - inset,
-
-        top: midY,
-
-        title: 'Liest von',
-
-        paths: incoming,
-
-      });
-
-    }
-
-    const outgoing = formatReadByLines(sel.readBy);
-
-    if (outgoing.length > 0) {
-
-      out.push({
-
-        key: 'data-out',
-
-        left: rn.rx + GRAPH_NODE_W + inset,
-
-        top: midY,
-
-        title: 'Wird gelesen',
-
-        paths: outgoing,
-
-      });
-
-    }
-
-    return out;
-
-  });
-
-
-
-  /** Scheren-Position: Mitte der Bézier-Kante — nur bei Kanten abseits des Lead-Pfads (`onLeadDependencyPath`). */
+  /**
+   * Schere in Kantenmitte; „Liest von“ / „Wird gelesen“ nur für diese Kante (from → to), mit Pfeil Richtung Zielknoten.
+   */
   edgeCutSlots = computed(() => {
 
     const vm = this.viewModel();
@@ -536,11 +758,47 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     const map = vm.dogMap;
 
+    const rnById = new Map(vm.renderNodes.map(n => [n.id, n]));
+
     return vm.renderEdges
       .filter(e => edgeShowsBranchCutForOffLeadPath(map.get(e.fromId), map.get(e.toId)))
       .map(e => {
 
         const mid = cubicBezierMidpoint(e.rx1, e.ry1, e.rx2, e.ry2);
+
+        const fromDog = map.get(e.fromId);
+
+        const toDog = map.get(e.toId);
+
+        const fromRn = rnById.get(e.fromId);
+
+        const toRn = rnById.get(e.toId);
+
+        let arrowTowardTo = '⬇️';
+
+        let arrowTowardFrom = '⬆️';
+
+        if (fromRn && toRn) {
+
+          const c1x = fromRn.rx + GRAPH_NODE_W / 2;
+
+          const c1y = fromRn.ry + GRAPH_NODE_H / 2;
+
+          const c2x = toRn.rx + GRAPH_NODE_W / 2;
+
+          const c2y = toRn.ry + GRAPH_NODE_H / 2;
+
+          arrowTowardTo = flowArrowEmoji(mid.x, mid.y, c2x, c2y);
+
+          arrowTowardFrom = flowArrowEmoji(mid.x, mid.y, c1x, c1y);
+
+        }
+
+        const readFromPaths =
+          fromDog && toDog ? readFromLinesAlongEdge(fromDog, toDog) : [];
+
+        const readByPaths =
+          fromDog && toDog ? readByLinesAlongEdge(fromDog, toDog) : [];
 
         return {
 
@@ -553,6 +811,14 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
           fromId: e.fromId,
 
           toId: e.toId,
+
+          readFromPaths,
+
+          readByPaths,
+
+          arrowTowardTo,
+
+          arrowTowardFrom,
 
         };
 
@@ -573,6 +839,10 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
     if (changes['waves']) {
 
       this.wavesRef.set(this.waves ?? []);
+
+      this.graphFocusDogId.set(null);
+
+      this.edgeReadsExpandedKey.set(null);
 
       const baseIds = new Set(
 
@@ -645,7 +915,9 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   isNodeSelected(id: string): boolean {
 
-    return this.selectedRef()?.id === id;
+    if (this.selectedRef()?.id === id) return true;
+
+    return this.graphFocusDogId() === id;
 
   }
 
@@ -657,7 +929,26 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     if (!slot) return false;
 
-    return graphNodeIdMatchesKennelDogId(graphNodeId, slot);
+    const dog = this.viewModel()?.dogMap.get(graphNodeId);
+
+    return graphNodeIdMatchesKennelDogId(graphNodeId, slot, dog?.lineageId);
+
+  }
+
+
+
+  /** Graph-Knoten-id des Kennel-Leads (dogIds[0]) für Layout-Anker oben. */
+  private resolveLeadGraphNodeId(): string | null {
+
+    const slot = this.kennelLeadDogIdsSlot;
+
+    if (!slot) return null;
+
+    const flat = (this.wavesRef() ?? []).flat();
+
+    const d = flat.find(dog => graphNodeIdMatchesKennelDogId(dog.id, slot, dog.lineageId));
+
+    return d?.id ?? null;
 
   }
 
@@ -750,7 +1041,13 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     if (draggedId && didDrag) {
 
-      const vm = buildGraphViewModel(this.wavesRef(), this.manualPositions(), true);
+      const base = buildGraphViewModel(this.wavesRef(), this.manualPositions(), true, {
+        leadAnchorTopId: this.resolveLeadGraphNodeId(),
+      });
+
+      const vm = base
+        ? applyGraphRepulsionAndProjection(base, this.wavesRef(), this.resolveLeadGraphNodeId())
+        : null;
 
       if (vm?.worldNodes.length) {
 
@@ -780,6 +1077,28 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     }
 
+    this.graphFocusDogId.set(dog.id);
+
+  }
+
+
+
+  onNodeDblClick(dog: DogEntry, e: MouseEvent) {
+
+    e.stopPropagation();
+
+    e.preventDefault();
+
+    if (this.nodeDragSuppressedClick) {
+
+      this.nodeDragSuppressedClick = false;
+
+      return;
+
+    }
+
+    this.graphFocusDogId.set(dog.id);
+
     this.dogSelected.emit(dog);
 
   }
@@ -788,12 +1107,25 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
     this.dogSectionEdit.emit({ dog, section });
   }
 
+  toggleEdgeReadsPanel(slotKey: string, ev: MouseEvent): void {
+    ev.stopPropagation();
+    ev.preventDefault();
+    this.edgeReadsExpandedKey.update((cur) => (cur === slotKey ? null : slotKey));
+  }
+
   onBranchCutClick(
     s: { fromId: string; toId: string },
     ev: Event
   ): void {
     ev.stopPropagation();
     ev.preventDefault();
+    const ok = confirm(
+      'Diesen Zweig wirklich aus dem Kennel entfernen?\n\n' +
+        'Alle Dogs dieses Teilbaums (ab dem Kind-Knoten) werden aus dogIds gestrichen. ' +
+        'Der Lead-Pfad bleibt unverändert.'
+    );
+    if (!ok) return;
+    this.edgeReadsExpandedKey.set(null);
     this.branchCutRequested.emit({ fromId: s.fromId, toId: s.toId });
   }
 
@@ -805,9 +1137,11 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
     if (t.closest('.graph-node-slot')) return;
 
-    if (t.closest('.edge-cut-slot')) return;
+    if (t.closest('.edge-cut-cluster')) return;
 
+    this.graphFocusDogId.set(null);
 
+    this.edgeReadsExpandedKey.set(null);
 
     this.isPanning = true;
 
@@ -913,7 +1247,16 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 }
 
-function formatReadFromLines(readFrom: ReadTrackingEntry[] | undefined): string[] {
+function instanceMatchesDog(name: string, dog: DogEntry): boolean {
+
+  return dog.name === name || dog.id === name;
+
+}
+
+/** `to` liest entlang dieser Kante von `from` (readFrom auf dem Zielknoten). */
+function readFromLinesAlongEdge(from: DogEntry, to: DogEntry): string[] {
+
+  const readFrom = to.readFrom;
 
   if (!readFrom?.length) return [];
 
@@ -922,6 +1265,8 @@ function formatReadFromLines(readFrom: ReadTrackingEntry[] | undefined): string[
   const out: string[] = [];
 
   for (const r of readFrom) {
+
+    if (!instanceMatchesDog(r.sourceInstanceName, from)) continue;
 
     const line = `${r.sourceInstanceName} · ${r.propertyPath}`;
 
@@ -937,7 +1282,10 @@ function formatReadFromLines(readFrom: ReadTrackingEntry[] | undefined): string[
 
 }
 
-function formatReadByLines(readBy: ReadTrackingEntry[] | undefined): string[] {
+/** `from` wird von `to` entlang dieser Kante gelesen (readBy auf dem Quellknoten). */
+function readByLinesAlongEdge(from: DogEntry, to: DogEntry): string[] {
+
+  const readBy = from.readBy;
 
   if (!readBy?.length) return [];
 
@@ -946,6 +1294,8 @@ function formatReadByLines(readBy: ReadTrackingEntry[] | undefined): string[] {
   const out: string[] = [];
 
   for (const r of readBy) {
+
+    if (!instanceMatchesDog(r.readerInstanceName, to)) continue;
 
     const line = `${r.readerInstanceName} · ${r.propertyPath}`;
 
@@ -958,6 +1308,23 @@ function formatReadByLines(readBy: ReadTrackingEntry[] | undefined): string[] {
   }
 
   return out;
+
+}
+
+/** Pfeil von der Kantenmitte zum Zielpunkt (dominant vertikal → ⬆️/⬇️, sonst ⬅️/➡️). */
+function flowArrowEmoji(mx: number, my: number, tx: number, ty: number): string {
+
+  const dx = tx - mx;
+
+  const dy = ty - my;
+
+  const ax = Math.abs(dx);
+
+  const ay = Math.abs(dy);
+
+  if (ay >= ax) return dy >= 0 ? '⬇️' : '⬆️';
+
+  return dx >= 0 ? '➡️' : '⬅️';
 
 }
 

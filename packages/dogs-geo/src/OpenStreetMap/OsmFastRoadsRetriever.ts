@@ -1,8 +1,9 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
+import { type IHuntingSeason } from "@datadogs/core";
+import { OsmFeatureRetriever, type OsmQueryBase } from "../osm/base/OsmFeatureRetriever";
+import type { OverpassRawElement } from "../osm/base/overpassMirrorChain";
 import { NearbyFastRoadsPact, type OsmFastRoadsQueryInput } from "./pacts";
 import {
     clampFastRoadsRadiusM,
-    fetchNearbyFastRoads,
     parseFastRoadsFacets,
     FastRoadsOverpassFacet,
     DEFAULT_FAST_ROADS_FACETS,
@@ -10,37 +11,23 @@ import {
     MAX_FAST_ROADS_RADIUS_M,
     type OsmFastRoadsResult,
 } from "./overpassFastRoads";
-import type { OsmGeoElement } from "./overpassOsmShared";
+import { mapOverpassElement, type OsmGeoElement } from "./overpassOsmShared";
 
-function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-    const R = 6_371_000;
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const h = sinDLat * sinDLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinDLng * sinDLng;
-    return 2 * R * Math.asin(Math.sqrt(h));
-}
+const HIGHWAY_BY_FACET: Record<string, string> = {
+    [FastRoadsOverpassFacet.Motorway]: "motorway",
+    [FastRoadsOverpassFacet.MotorwayLink]: "motorway_link",
+    [FastRoadsOverpassFacet.Trunk]: "trunk",
+    [FastRoadsOverpassFacet.TrunkLink]: "trunk_link",
+    [FastRoadsOverpassFacet.Primary]: "primary",
+    [FastRoadsOverpassFacet.Secondary]: "secondary",
+};
 
-function filterElementsByRadius(elements: OsmGeoElement[], lat: number, lng: number, radiusM: number): OsmGeoElement[] {
-    return elements.filter((el) => {
-        if (el.lat == null || el.lng == null) return true;
-        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lng }) <= radiusM;
-    });
-}
-
-export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements ICacheable, IAreaCacheable<OsmFastRoadsResult> {
-    private cacheHandler?: ICacheHandler;
-    private areaCache?: IAreaCache<OsmFastRoadsResult>;
-
-    setCacheHandler(handler: ICacheHandler): void {
-        this.cacheHandler = handler;
-    }
-
-    setAreaCache(cache: IAreaCache<OsmFastRoadsResult>): void {
-        this.areaCache = cache;
-    }
+export class OsmFastRoadsRetriever extends OsmFeatureRetriever<OsmFastRoadsResult, typeof NearbyFastRoadsPact> {
+    protected readonly layer = "fastRoads";
+    protected readonly defaultRadiusM = DEFAULT_FAST_ROADS_RADIUS_M;
+    protected readonly maxRadiusM = MAX_FAST_ROADS_RADIUS_M;
+    protected readonly queryPactClass = NearbyFastRoadsPact;
+    protected readonly outStatement = "out center;";
 
     get name(): string {
         return OsmFastRoadsRetriever.name;
@@ -54,14 +41,6 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
         return "\uD83D\uDEE3\uFE0F";
     }
 
-    get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [NearbyFastRoadsPact];
-    }
-
-    get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
-    }
-
     getVmContextContributions(): Record<string, any> {
         return {
             FastRoadsOverpassFacet,
@@ -71,51 +50,64 @@ export class OsmFastRoadsRetriever extends Dog<OsmFastRoadsResult> implements IC
         };
     }
 
-    protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmFastRoadsResult> => {
+    protected parseQuery(season: IHuntingSeason): OsmQueryBase {
         const queryDog = season.exhausted.find((d) => this.matchesParent(NearbyFastRoadsPact, d));
         const query = (queryDog?.collected as OsmFastRoadsQueryInput | undefined) ?? ({} as OsmFastRoadsQueryInput);
-
         const lat = parseFloat(query.lat);
         const lng = parseFloat(query.lng);
         const radiusM = clampFastRoadsRadiusM(parseFloat(query.radius ?? ""));
         const facets = parseFastRoadsFacets(query.preset);
+        return { lat, lng, radiusM, facets };
+    }
 
-        if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            throw new Error("OsmFastRoadsRetriever: Missing required query params (lat, lng)");
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
+        const lines: string[] = [];
+        for (const f of facets) {
+            const hw = HIGHWAY_BY_FACET[f];
+            if (!hw) continue;
+            lines.push(`  way["highway"="${hw}"]${bboxClause};`);
         }
+        return lines.join("\n");
+    }
 
-        const discriminant = `fastRoads:${[...facets].sort().join(",")}`;
-
-        if (this.areaCache) {
-            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
-            if (covering) {
-                const filtered = filterElementsByRadius(covering.data.elements, lat, lng, radiusM);
-                return { center: { lat, lng }, radiusM, preset: facets, elements: filtered };
-            }
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const hw = el.tags?.["highway"];
+        if (!hw) return [];
+        const match: string[] = [];
+        for (const f of fetchedFacets) {
+            if (HIGHWAY_BY_FACET[f] === hw) match.push(f);
         }
+        return match;
+    }
 
-        const key = geoBucketKey("fastRoads", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
-
-        const fetchRoads = async (): Promise<OsmFastRoadsResult> => {
-            const result = await fetchNearbyFastRoads(lat, lng, radiusM, facets);
-
-            if (this.areaCache) {
-                await this.areaCache.store({
-                    center: { lat, lng },
-                    radiusM,
-                    data: result,
-                    cacheKey: key,
-                    cachedAt: Date.now(),
-                    discriminant,
-                }, GEO_CACHE_TTL_OSM_MS);
-            }
-
-            return result;
+    protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): OsmFastRoadsResult {
+        const preset = (q.facets ?? []) as FastRoadsOverpassFacet[];
+        const seen = new Set<string>();
+        const mapped: OsmGeoElement[] = [];
+        for (const raw of elements) {
+            const m = mapOverpassElement({
+                type: raw.type,
+                id: raw.id,
+                lat: raw.lat,
+                lon: raw.lon,
+                center: raw.center,
+                tags: raw.tags,
+            });
+            if (!m) continue;
+            const key = `${m.type}/${m.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            mapped.push(m);
+        }
+        return {
+            center: { lat: q.lat, lng: q.lng },
+            radiusM: q.radiusM,
+            preset,
+            elements: mapped,
         };
-
-        if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchRoads);
-        }
-        return fetchRoads();
-    };
+    }
 }
