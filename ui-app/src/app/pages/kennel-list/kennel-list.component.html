@@ -74,10 +74,6 @@
       <div #kennelScroll class="kennel-scroll">
         <div class="kennel-page">
           <main class="kennel-panel">
-            @if (loading()) {
-              <app-loading-indicator />
-            }
-
             <header class="kennel-panel-head">
               <h1 class="kennel-panel-title">Kennels</h1>
               <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
@@ -121,7 +117,7 @@
                           class="kennel-rail-btn kennel-rail-btn--primary"
                           (click)="onExecute(kennel)"
                           [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
-                          [title]="hasBody(kennel) ? 'Ausführen (POST)' : 'Ausführen (GET)'">
+                          title="Ausführen — gespeicherte Query-Parameter in der URL; Body wie in der Kennel-Config">
                           <span aria-hidden="true">▶</span>
                         </button>
                       </div>
@@ -186,6 +182,12 @@
         </main>
       </div>
       </div>
+
+      @if (loading()) {
+        <div class="kennel-list-loading-shroud" aria-live="polite">
+          <app-loading-indicator />
+        </div>
+      }
     </div>
   </div>
 

@@ -32,3 +32,4 @@ store/generated/
 .env.*.local
 .cursor/debug.log
 .cursor/skills/datadogs-kennels/SKILL.md
+store/prisma-json-storage/json-storage.db
