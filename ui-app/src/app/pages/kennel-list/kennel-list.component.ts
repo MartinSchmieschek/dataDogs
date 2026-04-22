@@ -23,7 +23,6 @@ import { KennelScenicParallaxBackdropComponent } from '../../components/kennel-s
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
-import { isHtmlResultString } from '../../utils/lead-result-string-format';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
 
 const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v1';
@@ -129,7 +128,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
   showExecutePath = input(true);
 
   /**
-   * Zusätzlich eine gespiegelte Pfad-Zeile: Segmentreihenfolge umgekehrt (z. B. /execute/ref/kennels/api/…).
+   * Zusätzlich eine gespiegelte Pfad-Zeile: URL-Pfadsegmente in umgekehrter Reihenfolge.
    * Nur Optik / Lesbarkeit; der tatsächliche Endpoint bleibt unverändert.
    */
   mirrorExecutePath = input(false);
@@ -243,19 +242,25 @@ export class KennelListComponent implements OnInit, OnDestroy {
     return kennel.lineageId || kennel.id;
   }
 
-  /** Relativer Execute-Pfad zur Anzeige — immer der öffentliche `/:kennelId`-Endpunkt. */
-  executePathForDisplay(kennel: IKennelConfig): string {
-    const ref = this.kennelRef(kennel);
-    let path = `/${ref}`;
-    if (kennel.defaultQuery) {
-      const params = new URLSearchParams();
-      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const qs = params.toString();
-      if (qs) path += '?' + qs;
+  /** `/:kennelId` plus gespeicherte `defaultQuery` (für Anzeige und `window.open`). */
+  private listPublicExecutePath(kennel: IKennelConfig): string {
+    const path = `/${encodeURIComponent(this.kennelRef(kennel))}`;
+    const dq = kennel.defaultQuery;
+    if (!dq || typeof dq !== 'object') return path;
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(dq)) {
+      if (!k.trim()) continue;
+      params.set(k, v);
     }
-    return path;
+    const qs = params.toString();
+    return qs ? `${path}?${qs}` : path;
+  }
+
+  /**
+   * Angezeigter Aufruf-Pfad — gleiche Logik wie der Play-Tab (`defaultQuery` in der URL, `defaultBody` nur serverseitig).
+   */
+  executePathForDisplay(kennel: IKennelConfig): string {
+    return this.listPublicExecutePath(kennel);
   }
 
   /**
@@ -271,12 +276,9 @@ export class KennelListComponent implements OnInit, OnDestroy {
     return reversed + q;
   }
 
+  /** Neuer Tab: öffentlicher GET — URL enthält gespeicherte `defaultQuery`; `defaultBody` kommt aus der Config (Server). */
   onExecute(kennel: IKennelConfig): void {
-    if (this.hasBody(kennel)) {
-      this.executeWithBody(kennel);
-    } else {
-      window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
-    }
+    window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
   }
 
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
@@ -402,61 +404,8 @@ export class KennelListComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * Neuer Tab → öffentlicher Kennel-Endpoint `/:kennelId` auf Express.
-   * Kennel-Ausführung geht ausschließlich über diese Route, nicht über `/api/kennels/.../run|execute`.
-   */
+  /** Absoluter Tab-URL zum öffentlichen Kennel-GET (inkl. `defaultQuery` aus der Liste). */
   getExecuteUrl(kennel: IKennelConfig): string {
-    const ref = this.kennelRef(kennel);
-    let path = `/${ref}`;
-    if (kennel.defaultQuery) {
-      const params = new URLSearchParams();
-      Object.entries(kennel.defaultQuery).forEach(([key, value]) => {
-        if (value) params.append(key, value);
-      });
-      const qs = params.toString();
-      if (qs) path += '?' + qs;
-    }
-    return apiAbsoluteUrl(path);
-  }
-
-  hasBody(kennel: IKennelConfig): boolean {
-    return kennel.defaultBody !== null && kennel.defaultBody !== undefined;
-  }
-
-  executeWithBody(kennel: IKennelConfig) {
-    const newWindow = window.open('about:blank', '_blank');
-    if (!newWindow) return;
-
-    const ref = this.kennelRef(kennel);
-
-    this.kennelService.execute(ref, kennel.defaultBody, kennel.defaultQuery).subscribe({
-      next: (result) => {
-        if (typeof result === 'string') {
-          if (isHtmlResultString(result)) {
-            newWindow.document.write(result);
-          } else {
-            const esc = result
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;');
-            newWindow.document.write(
-              '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Result</title></head><body>' +
-                '<pre style="white-space:pre-wrap;font-family:system-ui,Segoe UI,monospace;margin:1rem;">' +
-                esc +
-                '</pre></body></html>'
-            );
-          }
-          newWindow.document.close();
-        } else {
-          newWindow.document.write('<pre>' + JSON.stringify(result, null, 2) + '</pre>');
-          newWindow.document.close();
-        }
-      },
-      error: () => {
-        newWindow.close();
-      }
-    });
+    return apiAbsoluteUrl(this.listPublicExecutePath(kennel));
   }
 }

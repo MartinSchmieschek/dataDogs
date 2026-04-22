@@ -119,7 +119,7 @@ export class WavesViewerComponent implements OnInit {
    * nicht `/api/kennels/.../run`. Query-Parameter aus dem Panel werden angehängt.
    */
   get kennelRunBrowserUrl(): string {
-    const base = apiAbsoluteUrl(`/${this.kennelId}`);
+    const base = apiAbsoluteUrl(`/${encodeURIComponent(this.kennelId)}`);
     const q = this.buildQueryRecord();
     const keys = Object.keys(q).filter((k) => k.trim());
     const params = new URLSearchParams();

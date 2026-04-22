@@ -200,6 +200,14 @@
     0 0 0 1px rgba(110, 150, 200, 0.22);
 }
 
+/* Über Such-Chrome (40) und FABs (45); innerhalb nur .kennel-work-area, damit inset:0 stimmt */
+.kennel-list-loading-shroud {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  pointer-events: auto;
+}
+
 .kennel-work-area {
   --kennel-rail-inset-start: clamp(0.15rem, 1.2vw, 0.55rem);
   --kennel-sort-slot-w: 10.5rem;
