@@ -1,16 +1,59 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, input, signal, OnInit } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  OnDestroy,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
+import { BackdropDriveService } from '../../services/backdrop-drive.service';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
+import { KennelScenicParallaxBackdropComponent } from '../../components/kennel-scenic-parallax-backdrop/kennel-scenic-parallax-backdrop.component';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { isHtmlResultString } from '../../utils/lead-result-string-format';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
+
+const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v1';
+
+type KennelListSortKey = 'name' | 'id' | 'updated';
+type KennelListSortDir = 'asc' | 'desc';
+
+function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: KennelListSortDir } {
+  const fallback: { sortKey: KennelListSortKey; sortDir: KennelListSortDir } = {
+    sortKey: 'name',
+    sortDir: 'asc',
+  };
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(KENNEL_LIST_SORT_STORAGE_KEY);
+    if (!raw) return fallback;
+    const o = JSON.parse(raw) as { sortKey?: unknown; sortDir?: unknown };
+    const keys: KennelListSortKey[] = ['name', 'id', 'updated'];
+    const dirs: KennelListSortDir[] = ['asc', 'desc'];
+    const sortKey = o.sortKey;
+    const sortDir = o.sortDir;
+    if (typeof sortKey !== 'string' || !keys.includes(sortKey as KennelListSortKey)) return fallback;
+    if (typeof sortDir !== 'string' || !dirs.includes(sortDir as KennelListSortDir)) return fallback;
+    return { sortKey: sortKey as KennelListSortKey, sortDir: sortDir as KennelListSortDir };
+  } catch {
+    return fallback;
+  }
+}
+
+const initialKennelListSort = readPersistedKennelListSort();
 
 @Component({
   selector: 'app-kennel-list',
@@ -20,16 +63,67 @@ import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.d
     KennelFormComponent,
     LoadingIndicatorComponent,
     VoidMythicBackdropComponent,
+    KennelScenicParallaxBackdropComponent,
     KennelCardMotionDirective,
     KennelActionFanComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
 })
-export class KennelListComponent implements OnInit {
+export class KennelListComponent implements OnInit, OnDestroy {
   private kennelService = inject(KennelService);
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
+  private backdropDrive = inject(BackdropDriveService);
+
+  /** iOS: Hinweis ausgeblendet ohne Erlaubnis. */
+  compassPromptDismissed = signal(false);
+
+  showCompassPrompt = computed(
+    () =>
+      this.backdropDrive.iosOrientationRequiresUserGesture() &&
+      !this.backdropDrive.deviceOrientationUnlocked() &&
+      !this.compassPromptDismissed()
+  );
+
+  private kennelScrollRef = viewChild<ElementRef<HTMLElement>>('kennelScroll');
+
+  constructor() {
+    effect(() => {
+      const sortKey = this.sortKey();
+      const sortDir = this.sortDir();
+      if (typeof localStorage === 'undefined') return;
+      try {
+        localStorage.setItem(
+          KENNEL_LIST_SORT_STORAGE_KEY,
+          JSON.stringify({ sortKey, sortDir })
+        );
+      } catch {
+        /* private mode / quota */
+      }
+    });
+
+    afterNextRender(() => {
+      const host = this.kennelScrollRef()?.nativeElement;
+      if (!host) return;
+      this.backdropDrive.bindScrollElement(host, { scrollRangePx: 560 });
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.backdropDrive.detachScrollElement();
+  }
+
+  async onCompassAllow(): Promise<void> {
+    const ok = await this.backdropDrive.requestDeviceOrientationPermission();
+    if (!ok) {
+      this.compassPromptDismissed.set(true);
+    }
+  }
+
+  onCompassDismiss(): void {
+    this.compassPromptDismissed.set(true);
+  }
 
   /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
   showExecutePath = input(true);
@@ -46,8 +140,8 @@ export class KennelListComponent implements OnInit {
   error = signal<string | null>(null);
 
   searchQuery = signal('');
-  sortKey = signal<'name' | 'id' | 'updated'>('name');
-  sortDir = signal<'asc' | 'desc'>('asc');
+  sortKey = signal<KennelListSortKey>(initialKennelListSort.sortKey);
+  sortDir = signal<KennelListSortDir>(initialKennelListSort.sortDir);
 
   /** Sort-Buttons neben der Suche ausblenden, solange gefiltert wird (nichtleerer Suchtext). */
   hideSortBesideSearch = computed(() => this.searchQuery().trim().length > 0);
@@ -128,6 +222,8 @@ export class KennelListComponent implements OnInit {
       next: (res) => {
         this.kennels.set(res.data ?? []);
         this.loading.set(false);
+        /* Track-Fragment ändern → @for neu aufbauen, Karten-Animation erneut */
+        this.listOrderEpoch.update((n) => n + 1);
       },
       error: (err) => {
         this.error.set(err.message);

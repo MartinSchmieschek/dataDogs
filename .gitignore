@@ -31,3 +31,4 @@ store/generated/
 .env.integration
 .env.*.local
 .cursor/debug.log
+.cursor/skills/datadogs-kennels/SKILL.md

@@ -91,17 +91,25 @@ function resolveInstanceId(instance: any): string {
         : instance.name;
 }
 
-/** Gleicht Lead-Suche mit @datadogs/swaggrid (Herald) / API: erster dogIds-Eintrag, base:-Prefix optional. */
-function findLeadNodeEntry(waves: Waves, kennelConfig: IKennelConfig): NodeEntry | null {
+/**
+ * Lead-Knoten aus den Waves — gleiche Semantik wie @datadogs/swaggrid (Herald) / öffentliche API:
+ * erster `dogIds`-Eintrag; `base:`-Prefix optional; Versions-Suffix optional;
+ * bei SerializedDogs oft `lineageId` in der Kennel-Charter, `id` in den Waves = `storageId`.
+ */
+export function findLeadNodeEntry(waves: Waves, kennelConfig: IKennelConfig): NodeEntry | null {
     const leadId = kennelConfig.dogIds?.[0];
     if (!leadId) return null;
     const searchId = leadId.startsWith('base:') ? leadId.substring(5) : leadId;
 
     for (const wave of waves) {
         for (const node of wave) {
-            if (node.id === searchId ||
+            if (
+                node.id === searchId ||
                 node.id === leadId ||
-                node.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '')) {
+                node.id.replace(/-v\d+$/, '') === searchId.replace(/-v\d+$/, '') ||
+                (node.lineageId != null &&
+                    (node.lineageId === leadId || node.lineageId === searchId))
+            ) {
                 return node;
             }
         }

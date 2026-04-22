@@ -148,8 +148,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 updatedAt: new Date()
             };
 
+            const contentChanged = this.hasContentChanged(existing, config);
+
             // Check if content actually changed — spare the deep from phantom versions.
-            if (!this.hasContentChanged(existing, config)) {
+            if (!contentChanged) {
                 return {
                     ok: true,
                     id: (existing as any).lineageId || input.id,
@@ -282,6 +284,43 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Effective timestamp for ordering Kennel rows — createdAt plus heal bumps on updatedAt.
+     * SQLite may round DateTime to whole seconds; two saves in the same second used to make
+     * sort-by-createdAt alone pick the wrong "latest" row (defaults vanished after reload).
+     */
+    private kennelRowRankMs(row: any): number {
+        const c = row?.createdAt ? new Date(row.createdAt).getTime() : 0;
+        const u = row?.updatedAt ? new Date(row.updatedAt).getTime() : 0;
+        return Math.max(c, u);
+    }
+
+    /**
+     * Pick the newest KennelConfig store row for one lineage: prefer leaves of the parentId chain,
+     * then rank by max(createdAt, updatedAt), then id for a stable tie-break.
+     */
+    private pickLatestKennelStoreRow(rows: any[]): any {
+        if (!rows?.length) {
+            throw new Error('pickLatestKennelStoreRow: empty');
+        }
+        if (rows.length === 1) {
+            return rows[0];
+        }
+        const leaves = rows.filter((r) => !rows.some((x) => x.parentId === r.id));
+        const candidates = leaves.length > 0 ? leaves : rows;
+        return candidates.reduce((best: any, cur: any) => {
+            const bt = this.kennelRowRankMs(best);
+            const ct = this.kennelRowRankMs(cur);
+            if (ct > bt) {
+                return cur;
+            }
+            if (ct < bt) {
+                return best;
+            }
+            return String(cur.id) > String(best.id) ? cur : best;
+        });
+    }
+
+    /**
      * Resolves a kennel by version ID or lineageId.
      * First tries exact match (version GUID), then resolves as lineageId (latest version).
      */
@@ -298,16 +337,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
         // Second: treat as lineageId — find the latest version of this kennel.
         const allKennels = await this.store.findByType(this.KENNEL_TYPE);
-        const lineageRows = allKennels
-            .filter((r: any) => r.lineageId === id)
-            .sort((a: any, b: any) => {
-                const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                return bTime - aTime; // Newest first
-            });
+        const lineageRows = allKennels.filter((r: any) => r.lineageId === id);
 
         if (lineageRows.length > 0) {
-            const row = lineageRows[0];
+            const row = this.pickLatestKennelStoreRow(lineageRows);
             const parsed = this.parseEntity(row);
             if (row.id) parsed.id = row.id;
             return parsed;
@@ -338,33 +371,24 @@ export class KennelController extends AbstractController<IKennelConfig> {
         try {
             const results = await this.store.findByType(this.entityType);
 
-            // Parse all rows
-            const all = results.map((r: any) => {
-                const parsed = this.parseEntity(r);
-                if (r.id) parsed.id = r.id;
-                (parsed as any).lineageId = r.lineageId;
-                (parsed as any)._createdAt = r.createdAt;
-                return parsed;
-            });
-
-            // Deduplicate: keep only the newest per lineageId
-            const latest = new Map<string, IKennelConfig>();
-            for (const entity of all) {
-                const key = (entity as any).lineageId || entity.id;
-                const existing = latest.get(key);
-                if (!existing) {
-                    latest.set(key, entity);
-                } else {
-                    const eTime = (existing as any)._createdAt ? new Date((existing as any)._createdAt).getTime() : 0;
-                    const nTime = (entity as any)._createdAt ? new Date((entity as any)._createdAt).getTime() : 0;
-                    if (nTime > eTime) {
-                        latest.set(key, entity);
-                    }
+            // Group raw rows by lineage (stable "latest" even when createdAt ties on the same second).
+            const byLineage = new Map<string, any[]>();
+            for (const r of results as any[]) {
+                const key = r.lineageId || r.id;
+                if (!byLineage.has(key)) {
+                    byLineage.set(key, []);
                 }
+                byLineage.get(key)!.push(r);
             }
 
-            let entities = Array.from(latest.values());
-            entities.forEach(e => delete (e as any)._createdAt);
+            let entities: IKennelConfig[] = [];
+            for (const group of byLineage.values()) {
+                const row = this.pickLatestKennelStoreRow(group);
+                const parsed = this.parseEntity(row);
+                if (row.id) parsed.id = row.id;
+                (parsed as any).lineageId = row.lineageId;
+                entities.push(parsed);
+            }
 
             // Apply the filter if cast.
             if (filter) {

@@ -1,0 +1,212 @@
+<div class="scenic" aria-hidden="true">
+  <div class="scenic-layer scenic-layer--sky" [ngStyle]="layerParallax(0.02, 0.12)"></div>
+
+  <div class="scenic-layer scenic-layer--wispy" [ngStyle]="layerParallax(0.07, 0.22)">
+    <div class="scenic-overscan scenic-overscan--upper">
+      <svg class="scenic-svg scenic-svg--wispy" viewBox="-500 0 2200 440" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="scenic-wisp-a" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fff9e6" stop-opacity="0" />
+            <stop offset="35%" stop-color="#fff2cc" stop-opacity="0.42" />
+            <stop offset="65%" stop-color="#f5e6b8" stop-opacity="0.36" />
+            <stop offset="100%" stop-color="#fff9e6" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <g opacity="0.55">
+          <ellipse cx="-220" cy="62" rx="260" ry="16" fill="url(#scenic-wisp-a)" transform="rotate(-8 -220 62)" />
+          <ellipse cx="180" cy="55" rx="220" ry="14" fill="url(#scenic-wisp-a)" transform="rotate(-8 180 55)" />
+          <ellipse cx="520" cy="38" rx="280" ry="11" fill="url(#scenic-wisp-a)" transform="rotate(4 520 38)" />
+          <ellipse cx="920" cy="72" rx="200" ry="10" fill="url(#scenic-wisp-a)" transform="rotate(-5 920 72)" />
+          <ellipse cx="1320" cy="48" rx="240" ry="13" fill="url(#scenic-wisp-a)" transform="rotate(6 1320 48)" />
+          <ellipse cx="1680" cy="68" rx="220" ry="12" fill="url(#scenic-wisp-a)" transform="rotate(-4 1680 68)" />
+          <ellipse cx="680" cy="28" rx="160" ry="8" fill="#fff4d8" opacity="0.34" transform="rotate(12 680 28)" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-layer scenic-layer--puffy" [ngStyle]="layerParallax(0.14, 0.35)">
+    <div class="scenic-overscan scenic-overscan--upper scenic-overscan--puffy-drift">
+      <svg class="scenic-svg scenic-svg--puffy" viewBox="-480 0 2160 560" preserveAspectRatio="xMidYMin slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="scenic-puff-core" cx="40%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#fffef8" stop-opacity="0.97" />
+            <stop offset="55%" stop-color="#f2ead8" stop-opacity="0.72" />
+            <stop offset="100%" stop-color="#e8d8b8" stop-opacity="0" />
+          </radialGradient>
+        </defs>
+        <g>
+          <ellipse cx="-120" cy="130" rx="88" ry="48" fill="url(#scenic-puff-core)" opacity="0.85" />
+          <ellipse cx="320" cy="120" rx="95" ry="52" fill="url(#scenic-puff-core)" />
+          <ellipse cx="400" cy="108" rx="78" ry="44" fill="url(#scenic-puff-core)" />
+          <ellipse cx="260" cy="135" rx="72" ry="40" fill="url(#scenic-puff-core)" />
+          <ellipse cx="900" cy="95" rx="110" ry="58" fill="url(#scenic-puff-core)" />
+          <ellipse cx="980" cy="88" rx="85" ry="48" fill="url(#scenic-puff-core)" />
+          <ellipse cx="840" cy="115" rx="70" ry="38" fill="url(#scenic-puff-core)" />
+          <ellipse cx="1280" cy="108" rx="92" ry="50" fill="url(#scenic-puff-core)" />
+          <ellipse cx="1580" cy="125" rx="78" ry="42" fill="url(#scenic-puff-core)" />
+          <ellipse cx="620" cy="155" rx="68" ry="36" fill="url(#scenic-puff-core)" opacity="0.85" />
+          <ellipse cx="140" cy="200" rx="55" ry="30" fill="url(#scenic-puff-core)" opacity="0.7" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-layer scenic-layer--forest-far" [ngStyle]="layerParallax(0.11, 0.26)">
+    <div class="scenic-overscan scenic-overscan--forest">
+      <svg class="scenic-svg scenic-svg--forest" viewBox="0 0 1600 340" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="scenic-ff-fade" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#18140a" stop-opacity="0" />
+            <stop offset="55%" stop-color="#2a2410" stop-opacity="0.32" />
+            <stop offset="100%" stop-color="#1a1608" stop-opacity="0.68" />
+          </linearGradient>
+        </defs>
+        <rect width="1600" height="340" fill="url(#scenic-ff-fade)" />
+        <g fill="#2a3218" opacity="0.52">
+          <path d="M-40,340 L40,340 L20,210 Z" />
+          <path d="M20,340 L120,340 L70,175 Z" />
+          <path d="M90,340 L200,340 L145,195 Z" />
+          <path d="M160,340 L280,340 L220,165 Z" />
+          <path d="M240,340 L380,340 L300,185 Z" />
+          <path d="M340,340 L480,340 L400,155 Z" />
+          <path d="M440,340 L580,340 L510,175 Z" />
+          <path d="M540,340 L700,340 L620,148 Z" />
+          <path d="M660,340 L820,340 L740,168 Z" />
+          <path d="M780,340 L940,340 L860,152 Z" />
+          <path d="M900,340 L1060,340 L980,178 Z" />
+          <path d="M1020,340 L1180,340 L1100,162 Z" />
+          <path d="M1140,340 L1300,340 L1220,188 Z" />
+          <path d="M1260,340 L1420,340 L1340,170 Z" />
+          <path d="M1380,340 L1560,340 L1470,195 Z" />
+          <path d="M1500,340 L1640,340 L1580,215 Z" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-layer scenic-layer--forest-mist" [ngStyle]="layerParallax(0.15, 0.32)"></div>
+
+  <div class="scenic-layer scenic-layer--forest-mid" [ngStyle]="layerParallax(0.17, 0.38)">
+    <div class="scenic-overscan scenic-overscan--forest-mid">
+      <svg class="scenic-svg scenic-svg--forest-mid" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="scenic-fm-side" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#141008" stop-opacity="0.72" />
+            <stop offset="22%" stop-color="#141008" stop-opacity="0" />
+            <stop offset="78%" stop-color="#141008" stop-opacity="0" />
+            <stop offset="100%" stop-color="#141008" stop-opacity="0.75" />
+          </linearGradient>
+          <radialGradient id="scenic-fm-canopy" cx="50%" cy="0%" r="95%">
+            <stop offset="0%" stop-color="#1a180c" stop-opacity="0.48" />
+            <stop offset="45%" stop-color="#1a180c" stop-opacity="0.1" />
+            <stop offset="100%" stop-color="#1a180c" stop-opacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1600" height="400" fill="url(#scenic-fm-canopy)" />
+        <rect width="1600" height="400" fill="url(#scenic-fm-side)" />
+        <g fill="#182410" opacity="0.44">
+          <path d="M0,400 L0,260 L35,400 Z" />
+          <path d="M-10,400 L80,400 L45,220 Z" />
+          <path d="M1520,400 L1600,400 L1600,250 L1560,400 Z" />
+          <path d="M1480,400 L1580,400 L1535,210 Z" />
+        </g>
+        <g fill="#243818" opacity="0.3">
+          <ellipse cx="200" cy="360" rx="120" ry="28" />
+          <ellipse cx="520" cy="372" rx="90" ry="22" />
+          <ellipse cx="1180" cy="368" rx="140" ry="30" />
+          <ellipse cx="1380" cy="378" rx="100" ry="24" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-layer scenic-layer--forest-air" [ngStyle]="layerParallax(0.13, 0.28)"></div>
+
+  <div class="scenic-layer scenic-layer--hill" [ngStyle]="layerParallax(0.26, 0.55)">
+    <div class="scenic-overscan scenic-overscan--hill">
+      <svg class="scenic-svg scenic-svg--hill" viewBox="-700 0 3000 420" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="scenic-hill-main" x1="12%" y1="0%" x2="88%" y2="100%">
+            <stop offset="0%" stop-color="#d8e868" />
+            <stop offset="38%" stop-color="#a8c838" />
+            <stop offset="100%" stop-color="#5a7020" />
+          </linearGradient>
+        </defs>
+        <path
+          fill="url(#scenic-hill-main)"
+          d="M-700,460 C-280,280 120,220 620,235 C980,248 1500,195 2300,155 L2300,460 L-700,460 Z" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-layer scenic-layer--forest-fringe" [ngStyle]="layerParallax(0.31, 0.68)">
+    <div class="scenic-overscan scenic-overscan--fringe">
+      <svg class="scenic-svg scenic-svg--fringe" viewBox="0 0 1600 220" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="scenic-fr-gr" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#0c0a04" stop-opacity="0" />
+            <stop offset="45%" stop-color="#141008" stop-opacity="0.52" />
+            <stop offset="100%" stop-color="#080604" stop-opacity="0.86" />
+          </linearGradient>
+        </defs>
+        <rect width="1600" height="220" fill="url(#scenic-fr-gr)" />
+        <g fill="#1a180c" opacity="0.66">
+          <path d="M0,220 L0,120 L25,220 Z" />
+          <path d="M15,220 L95,220 L55,95 Z" />
+          <path d="M70,220 L160,220 L115,108 Z" />
+          <path d="M1400,220 L1600,220 L1600,105 L1565,220 Z" />
+          <path d="M1480,220 L1585,220 L1535,92 Z" />
+          <path d="M1520,220 L1600,220 L1580,118 Z" />
+        </g>
+        <g stroke="#2a2410" stroke-width="2" fill="none" opacity="0.34">
+          <path d="M120,220 Q180,140 240,220" />
+          <path d="M1280,220 Q1340,130 1400,220" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-layer scenic-layer--fore" [ngStyle]="layerParallax(0.38, 0.85)">
+    <div class="scenic-overscan scenic-overscan--fore">
+      <svg class="scenic-svg scenic-svg--fore" viewBox="-700 0 3000 280" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="scenic-hill-near" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#8ab028" />
+            <stop offset="50%" stop-color="#6a9018" />
+            <stop offset="100%" stop-color="#4a6010" />
+          </linearGradient>
+        </defs>
+        <path
+          fill="url(#scenic-hill-near)"
+          d="M-700,280 C-200,188 380,168 820,198 C1180,218 1680,172 2300,158 L2300,280 L-700,280 Z" />
+        <g fill="#f0d878" opacity="0.92">
+          <circle cx="-320" cy="252" r="2.8" />
+          <circle cx="80" cy="248" r="3" />
+          <circle cx="124" cy="258" r="2.5" />
+          <circle cx="210" cy="240" r="2.8" />
+          <circle cx="340" cy="252" r="3.2" />
+          <circle cx="420" cy="238" r="2.4" />
+          <circle cx="510" cy="258" r="3" />
+          <circle cx="600" cy="245" r="2.6" />
+          <circle cx="720" cy="255" r="3.1" />
+          <circle cx="880" cy="240" r="2.5" />
+          <circle cx="980" cy="258" r="2.8" />
+          <circle cx="1080" cy="248" r="2.4" />
+          <circle cx="1140" cy="260" r="3" />
+          <circle cx="1380" cy="248" r="2.7" />
+          <circle cx="1680" cy="255" r="3" />
+          <circle cx="1980" cy="242" r="2.5" />
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="scenic-scrim"></div>
+
+  <div class="scenic-layer scenic-layer--hero" [ngStyle]="layerParallax(0.44, 0.95)">
+    <div class="scenic-hero-wrap">
+      <img class="scenic-hero-img" src="/assets/bg1.png" width="800" height="1200" alt="" decoding="async" />
+    </div>
+  </div>
+</div>
