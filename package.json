@@ -1,6 +1,6 @@
 {
   "name": "dataDogs",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Data Hunt — dogs hunt data: Kennels, Waves, Serialized TypeScript in the void. Express, Angular, Prisma.",
   "main": "main.ts",
   "workspaces": [

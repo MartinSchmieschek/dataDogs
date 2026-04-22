@@ -187,7 +187,7 @@ In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are r
 
 **Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
 
-**Kennel export & import** -- `GET /api/kennels/:id/export` bundles a Kennel with all its dogs and version history into a portable JSON artifact. `POST /api/kennels/import` re-creates it elsewhere. If the Kennel ID already exists, the system auto-suffixes (`-copy`, `-copy-2`, ...) and remaps all internal references. Copy and paste across instances.
+**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@datadogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400.
 
 **Caching** -- Two-tier memory so dogs don't repeat themselves:
 - **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication. Two requests for the same key share one Promise instead of firing twice.
@@ -380,18 +380,18 @@ Extend `Dog<YieldType>` and implement:
 | Member | Purpose |
 |---|---|
 | `get name()` | Return `MyRetriever.name` (the class name) |
-| `get icon()` | Return `getBaseDogIcon(MyRetriever.name)` |
+| `get icon()` | Return a **string** (usually one emoji) for the UI — same pattern as other `packages/dogs-*` retrievers; there is no central icon map. |
 | `get required()` | Pact/Dog classes that must run before this Dog |
 | `get optional()` | Pact/Dog classes that are used if present |
 | `yieldCollectorFactory` | Async function that does the actual work |
 
 ```typescript
-import { Dog, IHuntingDog, IHuntingSeason, getBaseDogIcon } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
 import { MyDogQueryPact, type MyDogQuery } from "./pacts";
 
 export class MyRetriever extends Dog<MyResult> {
     get name() { return MyRetriever.name; }
-    get icon() { return getBaseDogIcon(MyRetriever.name); }
+    get icon() { return "🔮"; }
     get required() { return [MyDogQueryPact]; }
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] { return []; }
 
@@ -405,12 +405,7 @@ export class MyRetriever extends Dog<MyResult> {
 
 ### 4. Register in the platform
 
-**`packages/core/src/platform/baseDogIcons.ts`** — add an icon entry:
-```typescript
-MyRetriever: '🔮',
-```
-
-**`main.ts`** — three touches:
+**`main.ts`** — two touches: register the class and any Pacts it introduces (same pattern as existing dogs at the bottom of the file):
 ```typescript
 import { MyRetriever, MyDogQueryPact } from '@datadogs/dogs-mydog';
 // add to allBaseDogClasses array:
@@ -418,6 +413,8 @@ const allBaseDogClasses = [ ..., MyRetriever ];
 // add Pact to allPacts array:
 const allPacts = [ ..., MyDogQueryPact ];
 ```
+
+*(Geo-related dogs that use shared coordinate types also wire `GeoPointPact` from `@datadogs/geo-pact` in `allPacts` if your package needs it — copy a similar dog from `dogs-geo`.)*
 
 ### 5. Wire up the build
 
@@ -506,20 +503,11 @@ services/
   CacheHandler.ts             KV cache with TTL and in-flight deduplication
   AreaCacheStrategy.ts        Geographic area cache (Haversine containment)
 packages/
-  core/                       datadogs library (Dog, Kennel, Wave engine, Pacts, Cache interfaces)
+  core/                       datadogs library (Dog, Kennel, Wave engine, Pacts, cache, WebSocket channel retrievers, JSON storage, kennel import helpers)
+  geo-pact/                   Shared GeoPoint pact for coordinate-shaped inputs
   swaggrid/                   OpenAPI generation (castGrimoire) — no domain deps
-  dogs-demo/                  Demo dogs (recipes, flags, random data)
-  dogs-biodiversity/          Species and plant GPS observations
-  dogs-birds/                 Bird sightings by GPS location
-  dogs-geo/                   Geo dogs (routes, isochrones, OSM landmarks)
-  dogs-hue/                   Philips Hue integration
-  dogs-phenology/             Phenological seasons and bloom phases
-  dogs-public-transport/      Public transport (nearby stops + departures via MOTIS)
-  dogs-regional-news/         Local news and events via RSS feeds
-  dogs-talking/               TalkingDog (HTML rendering)
-  dogs-transit-trips/         Complete bus and train journey data
-  dogs-warframe/              Warframe API integration
-  dogs-webcams/               Live webcams by GPS location
+  dogs-*/                     One npm package per BaseDog domain (many — see root package.json `build:dogs-*` scripts)
+  ...                         (demo, geo, weather, warframe, etc. — same pattern: retriever + optional pacts + `get icon()`)
 ui-app/                       Angular frontend (see ui-app/README.md)
 ```
 

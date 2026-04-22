@@ -5,6 +5,10 @@ import {
     MimicDog,
     kennelDisplayNameBlockedReason,
     kennelLineageIdBlockedReason,
+    suggestKennelImportTarget,
+    isKennelIdTakenInList,
+    isKennelNameTakenInList,
+    type KennelIdNameListEntry,
 } from '@datadogs/core';
 import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
@@ -60,7 +64,7 @@ export class KennelBundleHandler {
         try {
             const config = await this.runHandler.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
-                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
 
@@ -128,7 +132,7 @@ export class KennelBundleHandler {
      */
     private async handleImport(req: any, res: any): Promise<void> {
         try {
-            const bundle = req.body;
+            const { importTarget, ...bundle } = req.body || {};
             if (!bundle?.kennel || !Array.isArray(bundle.dogs)) {
                 res.status(400).json({ error: 'Invalid bundle: kennel and dogs[] required' });
                 return;
@@ -154,22 +158,35 @@ export class KennelBundleHandler {
             }
             if (missingBase.length > 0) {
                 res.status(400).json({
-                    error: `Import fehlgeschlagen: Base-Dogs fehlen im Zielsystem: ${missingBase.join(', ')}`,
+                    error: `Import failed: Base dogs missing on this server: ${missingBase.join(', ')}`,
                 });
                 return;
             }
 
-            // 2. Resolve kennel ID — if it already exists, find a free copy name.
-            let kennelId = bundle.kennel.kennelId;
-            let kennelName = bundle.kennel.name || kennelId;
-            const originalId = kennelId;
-            let copyIndex = 0;
-            while (true) {
-                const existing = await this.kennelsController.getById(kennelId);
-                if (!existing.ok || !existing.data) break;
-                copyIndex++;
-                kennelId = `${originalId}-copy${copyIndex > 1 ? '-' + copyIndex : ''}`;
-                kennelName = `${bundle.kennel.name || originalId} (Kopie${copyIndex > 1 ? ' ' + copyIndex : ''})`;
+            // 2. Target kennel id + display name: explicit importTarget or bundle-based suggestion.
+            const listRes = await this.kennelsController.list();
+            const kennelRows: KennelIdNameListEntry[] =
+                listRes.ok && listRes.data
+                    ? (listRes.data as any[]).map((k) => ({
+                            lineageId: (k as any).lineageId,
+                            id: (k as any).id,
+                            name: (k as any).name,
+                        }))
+                    : [];
+
+            let kennelId: string;
+            let kennelName: string;
+            if (
+                importTarget &&
+                typeof importTarget.kennelId === 'string' &&
+                typeof importTarget.name === 'string'
+            ) {
+                kennelId = importTarget.kennelId.trim();
+                kennelName = importTarget.name.trim() || kennelId;
+            } else {
+                const s = suggestKennelImportTarget(bundle, kennelRows);
+                kennelId = s.kennelId;
+                kennelName = s.name;
             }
 
             const lineageErr = kennelLineageIdBlockedReason(kennelId);
@@ -180,6 +197,19 @@ export class KennelBundleHandler {
             const displayErr = kennelDisplayNameBlockedReason(kennelName);
             if (displayErr) {
                 res.status(400).json({ error: displayErr });
+                return;
+            }
+
+            if (isKennelIdTakenInList(kennelId, kennelRows)) {
+                res
+                    .status(400)
+                    .json({ error: `Kennel id is already in use: ${kennelId}. Choose a free id in the import dialog.` });
+                return;
+            }
+            if (isKennelNameTakenInList(kennelName, kennelRows)) {
+                res
+                    .status(400)
+                    .json({ error: `Kennel name is already in use: ${kennelName}. Change it in the import dialog.` });
                 return;
             }
 
@@ -252,6 +282,7 @@ export class KennelBundleHandler {
             res.json({
                 ok: true,
                 kennelId,
+                name: kennelName,
                 idMap: Object.fromEntries(idMap),
             });
         } catch (err) {
