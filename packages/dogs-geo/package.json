@@ -23,13 +23,9 @@
   },
   "license": "MIT",
   "private": true,
-  "peerDependencies": {
-    "@datadogs/core": "0.1.0-alpha.1",
-    "@datadogs/geo-pact": "0.1.0-alpha.1"
-  },
   "dependencies": {
-    "@datadogs/core": "0.1.0-alpha.1",
-    "@datadogs/geo-pact": "0.1.0-alpha.1",
+    "@datadogs/core": "file:../core",
+    "@datadogs/geo-pact": "file:../geo-pact",
     "osmtogeojson": "^3.0.0-beta.5"
   },
   "scripts": {
