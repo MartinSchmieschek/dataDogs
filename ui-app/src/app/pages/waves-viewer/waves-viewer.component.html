@@ -15,8 +15,6 @@
         @if (paramsDirty()) { <span class="dirty-dot"></span> }
       </button>
       <button class="btn-reload" (click)="loadWaves()">⟳ Neu laden</button>
-      <a [href]="kennelRunBrowserUrl" target="_blank" rel="noopener" class="btn-run-api" title="GET /:kennelId — öffentliche Lead-Antwort (z. B. http://localhost:3000/default-kennel), Query wie im Panel">Antwort (Server)</a>
-      <a [href]="swaggerDocsUrl" target="_blank" rel="noopener" class="btn-swagger">Swagger</a>
       <a [href]="swaggerJsonUrl" target="_blank" rel="noopener" class="btn-swagger btn-swagger--json">JSON</a>
       <a [routerLink]="['/kennel', kennelId, 'edit']" class="btn-edit">Bearbeiten</a>
       <button class="btn-export" (click)="exportKennel()" title="Kennel + Dogs als JSON exportieren">Export</button>
@@ -42,11 +40,15 @@
         <div class="query-entries">
           @for (param of queryParams(); track $index; let i = $index) {
             <div class="query-entry">
-              <input class="param-input key" [(ngModel)]="param.key"
-                placeholder="Key" (ngModelChange)="onQueryParamChange()">
+              <input class="param-input key"
+                [ngModel]="param.key"
+                (ngModelChange)="setQueryParamAt(i, 'key', $event)"
+                placeholder="Key">
               <span class="param-eq">=</span>
-              <input class="param-input value" [(ngModel)]="param.value"
-                placeholder="Value" (ngModelChange)="onQueryParamChange()">
+              <input class="param-input value"
+                [ngModel]="param.value"
+                (ngModelChange)="setQueryParamAt(i, 'value', $event)"
+                placeholder="Value">
               <button class="btn-remove-param" (click)="removeQueryParam(i)">×</button>
             </div>
           }
@@ -120,6 +122,8 @@
               [selectedDog]="selectedDog()"
               [flatDogs]="flatDogList()"
               [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
+              [leadRunUrl]="kennelRunBrowserUrl"
+              [leadSwaggerUrl]="swaggerDocsUrl"
               [canvasScale]="graphCanvasScale"
               (dogSelected)="onDogSelected($event)"
               (dogSectionEdit)="onDogSectionEdit($event)"

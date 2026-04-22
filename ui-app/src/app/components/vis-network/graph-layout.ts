@@ -1,18 +1,45 @@
 import { DogEntry, Waves } from '../../models/dog-entry.model';
 
-/** Muss zu `.graph-node-slot` / GraphDogNode passen */
-export const GRAPH_NODE_W = 136;
-export const GRAPH_NODE_H = 84;
+/** Kompakter Layout-Slot (Kanten-Box); Label/Icon können im DogNode darüber hinauszeichnen. */
+export const GRAPH_NODE_W = 56;
+export const GRAPH_NODE_H = 56;
 
-/** Horizontaler Abstand zwischen Wellen-Spalten */
-const COL_GAP = 120;
-/** Vertikaler Abstand zwischen Knoten in derselben Welle */
-const ROW_GAP = 48;
+/** Sichtbarer Icon-Kreis im Slot (muss zu `.node-icon-port` passen). */
+export const GRAPH_NODE_ICON_PX = 52;
+
+/**
+ * X-Offset vom Slot-Linksrand zur Icon-Port-Mitte — muss zu `.node-hub` / Padding in GraphDogNode passen.
+ */
+export const GRAPH_EDGE_ANCHOR_OFFSET_PX = 28;
+
+export function graphEdgeAnchorX(nodeLeftX: number): number {
+  return nodeLeftX + GRAPH_EDGE_ANCHOR_OFFSET_PX;
+}
+
+/** Oberkante des vertikal zentrierten Icon-Ports (Welt-Y). */
+export function graphIconPortTopY(nodeY: number, nodeH: number = GRAPH_NODE_H): number {
+  return nodeY + (nodeH - GRAPH_NODE_ICON_PX) / 2;
+}
+
+/** Unterkante des Icon-Ports (Welt-Y). */
+export function graphIconPortBottomY(nodeY: number, nodeH: number = GRAPH_NODE_H): number {
+  return nodeY + (nodeH + GRAPH_NODE_ICON_PX) / 2;
+}
+
+/** Horizontaler Abstand zwischen Knoten in einer Wellen-Zeile (Labels/Margins am Graph-Dog-Node) */
+const COL_GAP = 124;
+/** Vertikaler Abstand zwischen Wellen-Zeilen (ältere Welle unten, jüngere oben) */
+const ROW_GAP = 80;
 /** Außenrand um den Graphen */
-const PADDING = 56;
+const PADDING = 40;
 
-const SEP_GAP = 12;
-const SEP_ITERATIONS = 20;
+const SEP_GAP = 48;
+const SEP_ITERATIONS = 32;
+
+/** Zusätzliche Abstoßung nach Überlappungs-Trennung (Mindestabstand der Slot-Mitten). */
+const REPEL_MIN_DIST_FACTOR = 0.54;
+const REPEL_ITERATIONS = 12;
+const REPEL_STRENGTH = 0.38;
 
 export interface PlacedNode {
   id: string;
@@ -31,6 +58,10 @@ export interface EdgeSegment {
   x2: number;
   y2: number;
   optional: boolean;
+  /** Eindeutige Read-Tracking-Zeilen auf dieser Kante (Liest von + Wird gelesen). */
+  readTrackingCount: number;
+  /** SVG-Stärke der sichtbaren Linie (ohne Rand) — skaliert mit {@link readTrackingCount}. */
+  strokeWidthPx: number;
 }
 
 export interface GraphLayout {
@@ -83,6 +114,54 @@ export function resolveParentRefToNodeId(parentRef: string, nodes: PlacedNode[])
   return byLineage?.id ?? cleaned;
 }
 
+function instanceMatchesDogRead(name: string, dog: DogEntry): boolean {
+  return dog.name === name || dog.id === name;
+}
+
+/**
+ * Anzahl eindeutiger Read-Tracking-Zeilen für die gerichtete Kante Parent (`from`) → Kind (`to`).
+ */
+export function countReadTrackingForEdge(from: DogEntry, to: DogEntry): number {
+  let n = 0;
+  const rf = to.readFrom;
+  if (rf?.length) {
+    const seen = new Set<string>();
+    for (const r of rf) {
+      if (!instanceMatchesDogRead(r.sourceInstanceName, from)) continue;
+      const line = `${r.sourceInstanceName} · ${r.propertyPath}`;
+      if (seen.has(line)) continue;
+      seen.add(line);
+      n++;
+    }
+  }
+  const rb = from.readBy;
+  if (rb?.length) {
+    const seen = new Set<string>();
+    for (const r of rb) {
+      if (!instanceMatchesDogRead(r.readerInstanceName, to)) continue;
+      const line = `${r.readerInstanceName} · ${r.propertyPath}`;
+      if (seen.has(line)) continue;
+      seen.add(line);
+      n++;
+    }
+  }
+  return n;
+}
+
+const EDGE_STROKE_MIN_REQUIRED = 4.5;
+const EDGE_STROKE_MIN_OPTIONAL = 4;
+const EDGE_STROKE_MAX = 18;
+
+function strokeWidthPxFromReadCount(readCount: number, optional: boolean): number {
+  const min = optional ? EDGE_STROKE_MIN_OPTIONAL : EDGE_STROKE_MIN_REQUIRED;
+  if (readCount <= 0) return min;
+  const bonus = Math.sqrt(readCount) * 2.35;
+  return Math.round(Math.min(EDGE_STROKE_MAX, min + bonus) * 10) / 10;
+}
+
+/** Zusätzliche Breite um die Linie für den dunkleren Außenrand (wird zur strokeWidthPx addiert). */
+export const GRAPH_EDGE_BORDER_PAD_PX = 3.2;
+
 /**
  * Gleich große AABB: iterativ entlang der kleineren Überlappungsachse trennen.
  */
@@ -124,25 +203,72 @@ export function separateOverlappingNodes(
 }
 
 /**
- * Kubische Bézier mit horizontalen Tangenten an beiden Enden (LR-Dependency-Graph):
- * die Linie verläuft aus dem Knoten waagrecht heraus und trifft den Zielknoten waagrecht —
- * kein senkrechter „Vorhang“/Hängen entlang der Sehne.
+ * Mindestabstand der Slot-Mitten — zusätzliche Verdrängung nach der Überlappungs-Trennung.
  */
-/** Kontrollpunkte wie in `cubicBezierPathD` — für Mittelpunkt auf der Kurve (t=0.5). */
+function repelNodeCenters(nodes: PlacedNode[], w: number, h: number): void {
+  const hw = w / 2;
+  const hh = h / 2;
+  const minDist = Math.hypot(w, h) * REPEL_MIN_DIST_FACTOR + SEP_GAP * 0.35;
+  for (let it = 0; it < REPEL_ITERATIONS; it++) {
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i];
+        const b = nodes[j];
+        const ax = a.x + hw;
+        const ay = a.y + hh;
+        const bx = b.x + hw;
+        const by = b.y + hh;
+        let dx = bx - ax;
+        let dy = by - ay;
+        const d = Math.hypot(dx, dy);
+        if (d < 1e-4 || d >= minDist) continue;
+        const push = (minDist - d) * REPEL_STRENGTH;
+        dx /= d;
+        dy /= d;
+        a.x -= dx * push;
+        a.y -= dy * push;
+        b.x += dx * push;
+        b.y += dy * push;
+      }
+    }
+  }
+}
+
+/**
+ * Kubische Bézier — dominante Richtung waagrecht oder senkrecht (TB-Graph + gleiche Zeile):
+ * Kontrollpunkte folgen der stärkeren Achse wie die sichtbare Kante.
+ */
 function cubicBezierControlPoints(
   rx1: number,
   ry1: number,
   rx2: number,
   ry2: number
 ): { cx1: number; cy1: number; cx2: number; cy2: number } {
-  const gap = Math.max(rx2 - rx1, 1);
-  const stretch = Math.min(100, gap * 0.42);
-  return {
-    cx1: rx1 + stretch,
-    cy1: ry1,
-    cx2: rx2 - stretch,
-    cy2: ry2,
-  };
+  const dx = rx2 - rx1;
+  const dy = ry2 - ry1;
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  if (adx >= ady && adx >= 1e-6) {
+    const stretch = Math.min(100, adx * 0.42);
+    const sx = Math.sign(dx) || 1;
+    return {
+      cx1: rx1 + sx * stretch,
+      cy1: ry1,
+      cx2: rx2 - sx * stretch,
+      cy2: ry2,
+    };
+  }
+  if (ady >= 1e-6) {
+    const stretch = Math.min(100, ady * 0.42);
+    const sy = Math.sign(dy) || 1;
+    return {
+      cx1: rx1,
+      cy1: ry1 + sy * stretch,
+      cx2: rx2,
+      cy2: ry2 - sy * stretch,
+    };
+  }
+  return { cx1: rx1, cy1: ry1, cx2: rx2, cy2: ry2 };
 }
 
 /**
@@ -191,7 +317,9 @@ export function cubicBezierMidpoint(
 }
 
 /**
- * Einfaches LR-Stufen-Layout aus den Wellen — rein geometrisch.
+ * Vertikales Wellen-Layout: **letzte** Welle oben (kleinstes y), erste Welle unten —
+ * passt zur typischen Ausführung (Lead oft in späterer Welle, näher am API-Ergebnis).
+ * Pro Welle: Knoten nebeneinander, zentriert auf die breiteste Zeile.
  */
 export function buildGraphLayout(waves: Waves): GraphLayout {
   const dogMap = new Map<string, DogEntry>();
@@ -207,18 +335,20 @@ export function buildGraphLayout(waves: Waves): GraphLayout {
     };
   }
 
-  const colHeights = waves.map(w => {
-    if (w.length === 0) return 0;
-    return w.length * GRAPH_NODE_H + (w.length - 1) * ROW_GAP;
+  const numWaves = waves.length;
+  const rowWidths = waves.map(wave => {
+    if (wave.length === 0) return 0;
+    return wave.length * GRAPH_NODE_W + Math.max(0, wave.length - 1) * COL_GAP;
   });
-  const maxColH = Math.max(0, ...colHeights);
+  const maxRowW = Math.max(0, ...rowWidths);
 
-  waves.forEach((wave, L) => {
-    const colH = colHeights[L];
-    const top = (maxColH - colH) / 2 + PADDING;
+  waves.forEach((wave, w) => {
+    const displayRow = numWaves - 1 - w;
+    const y = PADDING + displayRow * (GRAPH_NODE_H + ROW_GAP);
+    const rowW = rowWidths[w];
+    const x0 = PADDING + (maxRowW - rowW) / 2;
     wave.forEach((dog, i) => {
-      const x = PADDING + L * (GRAPH_NODE_W + COL_GAP);
-      const y = top + i * (GRAPH_NODE_H + ROW_GAP);
+      const x = x0 + i * (GRAPH_NODE_W + COL_GAP);
       pos.set(dog.id, { x, y });
       dogMap.set(dog.id, dog);
     });
@@ -231,12 +361,48 @@ export function buildGraphLayout(waves: Waves): GraphLayout {
 
   const edges = recomputeEdgeSegments(nodes, waves);
 
-  const numCols = waves.length;
-  const contentWidth =
-    PADDING * 2 + numCols * GRAPH_NODE_W + Math.max(0, numCols - 1) * COL_GAP;
-  const contentHeight = PADDING * 2 + maxColH;
+  const contentWidth = PADDING * 2 + maxRowW;
+  const contentHeight =
+    PADDING * 2 + numWaves * GRAPH_NODE_H + Math.max(0, numWaves - 1) * ROW_GAP;
 
   return { nodes, edges, dogMap, contentWidth, contentHeight };
+}
+
+/** Anschlüsse Parent → Kind je nach relativer Lage (TB, LR, schräg). */
+function edgeAttachmentPoints(
+  p: PlacedNode,
+  c: PlacedNode,
+  w: number,
+  h: number
+): { x1: number; y1: number; x2: number; y2: number } {
+  const ptcx = p.x + w / 2;
+  const ptcy = p.y + h / 2;
+  const ctox = c.x + w / 2;
+  const ctoy = c.y + h / 2;
+  const pax = graphEdgeAnchorX(p.x);
+  const cax = graphEdgeAnchorX(c.x);
+  const dx = ctox - ptcx;
+  const dy = ctoy - ptcy;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    if (ctoy < ptcy) {
+      return {
+        x1: pax,
+        y1: graphIconPortTopY(p.y, h),
+        x2: cax,
+        y2: graphIconPortBottomY(c.y, h),
+      };
+    }
+    return {
+      x1: pax,
+      y1: graphIconPortBottomY(p.y, h),
+      x2: cax,
+      y2: graphIconPortTopY(c.y, h),
+    };
+  }
+  if (ctox > ptcx) {
+    return { x1: p.x + w, y1: ptcy, x2: c.x, y2: ctoy };
+  }
+  return { x1: p.x, y1: ptcy, x2: c.x + w, y2: ctoy };
 }
 
 /**
@@ -254,10 +420,9 @@ export function recomputeEdgeSegments(nodes: PlacedNode[], waves: Waves): EdgeSe
     const pN = pos.get(fromId);
     const cN = pos.get(toId);
     if (!pN || !cN) return;
-    const x1 = pN.x + GRAPH_NODE_W;
-    const y1 = pN.y + GRAPH_NODE_H / 2;
-    const x2 = cN.x;
-    const y2 = cN.y + GRAPH_NODE_H / 2;
+    const { x1, y1, x2, y2 } = edgeAttachmentPoints(pN, cN, GRAPH_NODE_W, GRAPH_NODE_H);
+    const readTrackingCount = countReadTrackingForEdge(pN.dog, cN.dog);
+    const strokeWidthPx = strokeWidthPxFromReadCount(readTrackingCount, optional);
     edges.push({
       key: `${ek}-${optional ? 'opt' : 'req'}`,
       fromId,
@@ -267,6 +432,8 @@ export function recomputeEdgeSegments(nodes: PlacedNode[], waves: Waves): EdgeSe
       x2,
       y2,
       optional,
+      readTrackingCount,
+      strokeWidthPx,
     });
   };
 
@@ -325,6 +492,44 @@ export function collectDescendantBranchNodeIds(waves: Waves, childRootId: string
   return out;
 }
 
+export interface BuildGraphViewModelOptions {
+  /** Kennel-Lead-Knoten an den oberen Rand (y = PADDING) schieben — nach manuellem Merge/Separation. */
+  leadAnchorTopId?: string | null;
+}
+
+function shiftLeadNodesToTopPadding(nodes: PlacedNode[], leadId: string | null): void {
+  if (!leadId) return;
+  const anchor = nodes.find(n => n.id === leadId);
+  if (!anchor) return;
+  const deltaY = PADDING - anchor.y;
+  for (const n of nodes) {
+    n.y += deltaY;
+  }
+}
+
+/**
+ * Nach Layout: Knoten abstossen, Lead erneut an y=PADDING, Kanten neu — wird von {@link VisNetworkComponent} aufgerufen.
+ */
+export function applyGraphRepulsionAndProjection(
+  vm: GraphViewModel,
+  waves: Waves,
+  leadAnchorTopId: string | null
+): GraphViewModel {
+  const worldNodes: PlacedNode[] = vm.worldNodes.map(n => ({ ...n }));
+  repelNodeCenters(worldNodes, GRAPH_NODE_W, GRAPH_NODE_H);
+  shiftLeadNodesToTopPadding(worldNodes, leadAnchorTopId);
+  const edges = recomputeEdgeSegments(worldNodes, waves);
+  const { renderNodes, renderEdges, contentWidth, contentHeight } = worldToRender(worldNodes, edges);
+  return {
+    worldNodes,
+    renderNodes,
+    renderEdges,
+    dogMap: vm.dogMap,
+    contentWidth,
+    contentHeight,
+  };
+}
+
 /**
  * Wendet manuelle Positionen an, berechnet Kanten und Render-Koordinaten (Bounding Box).
  * @param separate — bei false (z. B. während Drag) keine Kollisionsauflösung.
@@ -332,12 +537,13 @@ export function collectDescendantBranchNodeIds(waves: Waves, childRootId: string
 export function buildGraphViewModel(
   waves: Waves,
   manual: ReadonlyMap<string, { x: number; y: number }>,
-  separate = true
+  separate = true,
+  options?: BuildGraphViewModelOptions
 ): GraphViewModel | null {
   const base = buildGraphLayout(waves);
   if (!base.nodes.length) return null;
 
-  const worldNodes: PlacedNode[] = base.nodes.map(n => {
+  let worldNodes: PlacedNode[] = base.nodes.map(n => {
     const o = manual.get(n.id);
     return o ? { ...n, x: o.x, y: o.y } : { ...n };
   });
@@ -345,6 +551,8 @@ export function buildGraphViewModel(
   if (separate) {
     separateOverlappingNodes(worldNodes, GRAPH_NODE_W, GRAPH_NODE_H, SEP_GAP, SEP_ITERATIONS);
   }
+
+  shiftLeadNodesToTopPadding(worldNodes, options?.leadAnchorTopId ?? null);
 
   const edges = recomputeEdgeSegments(worldNodes, waves);
   const { renderNodes, renderEdges, contentWidth, contentHeight } = worldToRender(

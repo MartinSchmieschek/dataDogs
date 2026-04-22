@@ -10,7 +10,7 @@ import { GRAPH_NODE_H } from '../vis-network/graph-layout';
   selector: 'app-dog-read-props-display',
   standalone: true,
   template: `
-    <div class="read-props-glass">
+    <div class="read-props-glass" [class.read-props-glass--plain]="plain">
       <div
         #clipBox
         class="read-props-clip"
@@ -38,6 +38,9 @@ import { GRAPH_NODE_H } from '../vis-network/graph-layout';
 })
 export class DogReadPropsDisplayComponent implements OnChanges, AfterViewInit, OnDestroy {
   @Input() paths: string[] = [];
+
+  /** Kein Glas/Hintergrund — z. B. Read-Infos neben der Kanten-Schere. */
+  @Input() plain = false;
 
   @ViewChild('clipBox') clipBox?: ElementRef<HTMLDivElement>;
 

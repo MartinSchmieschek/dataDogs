@@ -1,0 +1,259 @@
+:host {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.scenic {
+  position: absolute;
+  inset: 0;
+}
+
+.scenic-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.scenic-layer--sky {
+  inset: -18% -12% -8% -12%;
+  /* Tief hinten: kräftig goldenes Grün → Richtung Horizont mehr warmes Gold */
+  background: linear-gradient(
+    185deg,
+    #4d6638 0%,
+    #5f7a42 18%,
+    #7a8f4a 38%,
+    #9a9e52 58%,
+    #c4b060 78%,
+    #e0c878 100%
+  );
+}
+
+.scenic-layer--wispy {
+  top: 0;
+  height: 56%;
+  min-height: 220px;
+}
+
+.scenic-layer--puffy {
+  top: 0;
+  height: 66%;
+  min-height: 260px;
+}
+
+.scenic-layer--forest-far {
+  bottom: 0;
+  height: 52%;
+  min-height: 240px;
+}
+
+.scenic-overscan--forest {
+  bottom: -8%;
+  left: -18%;
+  width: 136%;
+  height: 108%;
+}
+
+.scenic-svg--forest {
+  min-height: 220px;
+}
+
+/* Vorderste Ebene: PNG-Alpha, kein Layer-Hintergrund, ~50 % der früheren Größe, unten links */
+.scenic-layer--hero {
+  bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.35rem, env(safe-area-inset-left, 0px));
+  right: auto;
+  top: auto;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  background: transparent;
+  display: block;
+  z-index: 4;
+}
+
+.scenic-hero-wrap {
+  width: min(46vw, 270px);
+  max-width: 50vw;
+  max-height: min(36vh, 360px);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+.scenic-hero-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(36vh, 360px);
+  object-fit: contain;
+  object-position: left bottom;
+  background: transparent;
+  filter: drop-shadow(0 6px 18px rgba(0, 12, 8, 0.42));
+}
+
+.scenic-layer--forest-mist {
+  bottom: 0;
+  height: 68%;
+  min-height: 260px;
+  background: linear-gradient(
+    175deg,
+    rgba(48, 42, 18, 0) 0%,
+    rgba(72, 62, 22, 0.16) 35%,
+    rgba(42, 48, 16, 0.32) 68%,
+    rgba(28, 32, 10, 0.48) 100%
+  );
+  mix-blend-mode: multiply;
+}
+
+.scenic-layer--forest-mid {
+  bottom: 0;
+  height: 58%;
+  min-height: 220px;
+}
+
+.scenic-overscan--forest-mid {
+  bottom: -6%;
+  left: -20%;
+  width: 140%;
+  height: 100%;
+}
+
+.scenic-svg--forest-mid {
+  min-height: 200px;
+}
+
+.scenic-layer--forest-air {
+  inset: 0;
+  background:
+    radial-gradient(ellipse 95% 70% at 50% 16%, rgba(120, 98, 38, 0.18) 0%, transparent 52%),
+    linear-gradient(195deg, rgba(56, 52, 22, 0.1) 0%, transparent 40%, rgba(36, 40, 14, 0.16) 100%);
+  pointer-events: none;
+}
+
+.scenic-layer--forest-fringe {
+  bottom: 0;
+  height: 38%;
+  min-height: 160px;
+}
+
+.scenic-overscan--fringe {
+  bottom: -4%;
+  left: -16%;
+  width: 132%;
+  height: 100%;
+}
+
+.scenic-svg--fringe {
+  min-height: 140px;
+}
+
+.scenic-layer--hill {
+  bottom: 0;
+  height: 74%;
+  min-height: 320px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.scenic-layer--fore {
+  bottom: 0;
+  height: 46%;
+  min-height: 200px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.scenic-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.scenic-svg--hill {
+  min-height: 300px;
+  transform: scale(1.12);
+  transform-origin: 50% 100%;
+}
+
+.scenic-svg--fore {
+  min-height: 200px;
+  transform: scale(1.1);
+  transform-origin: 50% 100%;
+}
+
+.scenic-overscan {
+  position: absolute;
+  pointer-events: none;
+}
+
+.scenic-overscan--upper {
+  top: -18%;
+  left: -22%;
+  width: 144%;
+  height: 128%;
+}
+
+/* Sanfte seitliche Wolken-Wanderung (Puff-Layer); Parent behält Scroll/Kompass-Parallax */
+.scenic-overscan--puffy-drift {
+  will-change: transform;
+  animation: scenic-puffy-cloud-drift 88s ease-in-out infinite alternate;
+}
+
+@keyframes scenic-puffy-cloud-drift {
+  0% {
+    transform: translate3d(-3.2vw, 0, 0);
+  }
+  100% {
+    transform: translate3d(3.2vw, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scenic-overscan--puffy-drift {
+    animation: none;
+  }
+}
+
+.scenic-svg--wispy,
+.scenic-svg--puffy {
+  transform: scale(1.08);
+  transform-origin: 50% 0%;
+}
+
+.scenic-overscan--hill {
+  bottom: -28%;
+  left: -26%;
+  width: 152%;
+  height: 142%;
+}
+
+.scenic-overscan--fore {
+  bottom: -32%;
+  left: -28%;
+  width: 156%;
+  height: 138%;
+}
+
+.scenic-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  /* Warmes Gold-Braun, UI lesbar — ohne backdrop-blur */
+  background: linear-gradient(
+    185deg,
+    rgba(32, 28, 12, 0.32) 0%,
+    rgba(28, 24, 10, 0.18) 38%,
+    rgba(22, 20, 8, 0.34) 62%,
+    rgba(14, 12, 6, 0.48) 100%
+  );
+}
