@@ -279,7 +279,15 @@ export class WavesViewerComponent implements OnInit {
       return;
     }
 
+    // Full-Config senden: alle bekannten Felder des aktuellen Kennels mitschicken,
+    // damit der Merge im Backend keine Felder aus einem (möglicherweise zurückfallenden)
+    // existing-Load verliert.
+    const current = this.kennelConfig();
     this.kennelService.update(this.kennelId, {
+      name: current?.name,
+      description: current?.description,
+      emoji: current?.emoji,
+      dogIds: current?.dogIds ?? [],
       defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
       defaultBody,
     }).subscribe({

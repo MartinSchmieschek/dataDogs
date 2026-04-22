@@ -103,6 +103,9 @@ export class StartupTest {
 
             // Export/Import Tests
             await this.testKennelExportImport(nodesStore, kennelsStore, kennelsController);
+
+            // Tile-Feature-Cache: atomarer Geo-Store verifizieren
+            await this.testTileFeatureCache();
         } finally {
             // Cleanup: Lösche alle erstellten Test-Daten
             await this.cleanupTestData(nodesStore, kennelsStore, nodesController, kennelsController);
@@ -1459,6 +1462,192 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Tile-Feature-Cache: integrationstest gegen die live cache.db.
+     * Nutzt einen einmaligen dogType, damit keine Produktionsdaten betroffen sind.
+     * Verifiziert: store → getCovered (hit) → getCovered (miss) → Multi-Tile-Membership
+     * → invalidateDogType.
+     */
+    private async testTileFeatureCache(): Promise<void> {
+        const testName = 'TileFeatureCache: store/hit/miss/multi-tile-membership';
+        const dogType = `__startup_test_${Date.now()}`;
+        let cache: { getTileFeatureCache(): any; prune?(): Promise<void> } | null = null;
+        let tileCache: any = null;
+        try {
+            // Lazy-import damit der Test auch laeuft wenn die CACHE_DB nicht konfiguriert ist
+            // (dann scheitert hier, wir fangen den Fehler im catch weiter unten).
+            const { PrismaCacheHandler } = await import('./services/PrismaCacheHandler');
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { resolveCacheDatabaseUrl } = require('./scripts/dbEnv.cjs') as {
+                resolveCacheDatabaseUrl: () => string;
+            };
+            cache = new PrismaCacheHandler(resolveCacheDatabaseUrl(), 24 * 60 * 60 * 1000);
+            tileCache = cache!.getTileFeatureCache();
+
+            const zoom = 14;
+            const tileA = { zoom, x: 8580, y: 5737 };
+            const tileB = { zoom, x: 9999, y: 9999 }; // sicher nicht covered
+
+            // 1. Leerer Cache → alles missing.
+            {
+                const { features, missing } = await tileCache.getCoveredFeatures(
+                    dogType,
+                    [tileA],
+                    ['hiking'],
+                );
+                if (features.length !== 0) throw new Error('Expected empty feature list');
+                if (missing.length !== 1 || missing[0].facet !== 'hiking') {
+                    throw new Error(`Expected 1 missing, got ${missing.length}`);
+                }
+            }
+
+            // 2. Feature mit BBox ueber 2 Tiles store → Membership in beiden.
+            //    Wir nutzen tilesIntersectingBBox-Logik: die Feature-BBox muss zwei
+            //    nebeneinanderliegende Z14-Tiles schneiden.
+            const pointFeature = {
+                osmType: 'node' as const,
+                osmId: '1001',
+                primaryKey: 'highway',
+                primaryValue: 'footway',
+                name: 'test-point',
+                hasGeom: true,
+                lat: 47.3769,
+                lng: 8.5417,
+                bboxMinLat: 47.3769,
+                bboxMinLng: 8.5417,
+                bboxMaxLat: 47.3769,
+                bboxMaxLng: 8.5417,
+                payload: '{"type":"node","id":1001,"tags":{"highway":"footway"}}',
+                facets: ['hiking'],
+            };
+            const wayFeatureSpanningTwoTiles = {
+                osmType: 'way' as const,
+                osmId: '2002',
+                primaryKey: 'highway',
+                primaryValue: 'path',
+                name: null,
+                hasGeom: true,
+                lat: 47.3769,
+                lng: 8.5480,
+                // BBox bewusst so gewaehlt, dass sie ueber 8580→8581 x-Tile hinweggreift.
+                bboxMinLat: 47.3769,
+                bboxMinLng: 8.5400,
+                bboxMaxLat: 47.3770,
+                bboxMaxLng: 8.5600,
+                payload: '{"type":"way","id":2002,"tags":{"highway":"path"}}',
+                facets: ['hiking'],
+            };
+            const geomlessRelation = {
+                osmType: 'relation' as const,
+                osmId: '3003',
+                primaryKey: 'route',
+                primaryValue: 'hiking',
+                name: 'Geister-Route',
+                hasGeom: false,
+                lat: null,
+                lng: null,
+                bboxMinLat: null,
+                bboxMinLng: null,
+                bboxMaxLat: null,
+                bboxMaxLng: null,
+                payload: '{"type":"relation","id":3003,"tags":{"route":"hiking","name":"Geister-Route"}}',
+                facets: ['hiking'],
+            };
+
+            await tileCache.storeFetchResult(
+                dogType,
+                {
+                    tile: tileA,
+                    facets: ['hiking'],
+                    features: [pointFeature, wayFeatureSpanningTwoTiles, geomlessRelation],
+                },
+                24 * 60 * 60 * 1000,
+            );
+
+            // 3. Re-query Tile A → 3 Features, 0 missing.
+            {
+                const { features, missing } = await tileCache.getCoveredFeatures(
+                    dogType,
+                    [tileA],
+                    ['hiking'],
+                );
+                if (missing.length !== 0) {
+                    throw new Error(`Expected 0 missing after store, got ${missing.length}`);
+                }
+                if (features.length !== 3) {
+                    throw new Error(`Expected 3 features after store, got ${features.length}`);
+                }
+                const identityMatch = features.some(
+                    (f: any) =>
+                        f.primaryKey === 'route' &&
+                        f.primaryValue === 'hiking' &&
+                        f.name === 'Geister-Route' &&
+                        f.hasGeom === false,
+                );
+                if (!identityMatch) {
+                    throw new Error('Geomless feature metadata not persisted (primaryKey/value/name/hasGeom)');
+                }
+            }
+
+            // 4. Multi-Tile-Membership: das Way-Feature mit grosser BBox muss auch
+            //    auf dem rechts benachbarten Tile findbar sein.
+            const tileRight = { zoom, x: tileA.x + 1, y: tileA.y };
+            {
+                // Fresh Coverage fuer das rechte Tile eintragen (ansonsten missing).
+                await tileCache.storeFetchResult(
+                    dogType,
+                    {
+                        tile: tileRight,
+                        facets: ['hiking'],
+                        features: [], // keine neuen Features — wir pruefen nur Membership-Sicht
+                    },
+                    24 * 60 * 60 * 1000,
+                );
+                const { features, missing } = await tileCache.getCoveredFeatures(
+                    dogType,
+                    [tileRight],
+                    ['hiking'],
+                );
+                if (missing.length !== 0) {
+                    throw new Error(`Right-tile coverage not recognised (${missing.length} missing)`);
+                }
+                const wayId = features.find((f: any) => f.osmId === '2002');
+                if (!wayId) {
+                    throw new Error('Way-Feature mit BBox ueber 2 Tiles nicht im rechten Tile gefunden');
+                }
+            }
+
+            // 5. Nicht-covered Tile → alles missing.
+            {
+                const { features, missing } = await tileCache.getCoveredFeatures(
+                    dogType,
+                    [tileB],
+                    ['hiking'],
+                );
+                if (features.length !== 0) {
+                    throw new Error(`Expected empty features for uncovered tile, got ${features.length}`);
+                }
+                if (missing.length !== 1) {
+                    throw new Error(`Expected 1 missing for uncovered tile, got ${missing.length}`);
+                }
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            if (tileCache) {
+                try {
+                    await tileCache.invalidateDogType(dogType);
+                } catch { /* ignore */ }
+            }
+            if (cache && typeof (cache as any).prune === 'function') {
+                // Pruning ist nicht noetig, aber wir beenden auch keinen Interval-Timer —
+                // der ist via unref() sowieso nicht process-blocking.
+            }
         }
     }
 

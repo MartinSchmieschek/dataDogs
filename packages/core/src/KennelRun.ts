@@ -17,7 +17,7 @@ import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
 import { ICacheHandler } from './cache/ICacheHandler';
 import { isCacheable } from './cache/ICacheable';
-import { isAreaCacheable, IAreaCache } from './cache/IAreaCache';
+import { isTileCacheable } from './cache/tiling/ITileFeatureCache';
 import { isRuntimeLogVerbose } from './runtimeLog';
 
 /**
@@ -78,7 +78,6 @@ export class KennelRun {
     private bodyData?: any;
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
     private cacheHandler?: ICacheHandler;
-    private areaCache?: IAreaCache<unknown>;
 
     /**
      * Summon the captain and provision the vessel.
@@ -99,7 +98,6 @@ export class KennelRun {
         bodyData?: any,
         vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[] = [],
         cacheHandler?: ICacheHandler,
-        areaCache?: IAreaCache<unknown>,
         mimicAdopter?: MimicAdopter
     ) {
         this.baseDogClasses = baseDogClasses;
@@ -109,7 +107,6 @@ export class KennelRun {
         this.bodyData = bodyData;
         this.vmGlobalsSuppliers = vmGlobalsSuppliers;
         this.cacheHandler = cacheHandler;
-        this.areaCache = areaCache;
 
         if (configOrBaseDogs && !Array.isArray(configOrBaseDogs)) {
             // Arr, 'tis a proper charter -- anchor it to the captain
@@ -208,20 +205,15 @@ export class KennelRun {
 
         // Cache-Injection — every hound that implements ICacheable receives the cache handler
         if (this.cacheHandler) {
+            const tileFeatureCache = this.cacheHandler.getTileFeatureCache();
             kennel.forEach(dog => {
                 if (isCacheable(dog)) {
                     dog.setCacheHandler(this.cacheHandler!);
                     if (v) console.log(`[KennelRun.fillKennel] Cache-Handler injected into: ${dog.name}`);
                 }
-            });
-        }
-
-        // Area-Cache Injection — geo-hounds that track territories receive the shared area cache
-        if (this.areaCache) {
-            kennel.forEach(dog => {
-                if (isAreaCacheable(dog)) {
-                    dog.setAreaCache(this.areaCache!);
-                    if (v) console.log(`[KennelRun.fillKennel] Area-Cache injected into: ${dog.name}`);
+                if (isTileCacheable(dog)) {
+                    dog.setTileFeatureCache(tileFeatureCache);
+                    if (v) console.log(`[KennelRun.fillKennel] Tile-Feature-Cache injected into: ${dog.name}`);
                 }
             });
         }

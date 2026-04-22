@@ -16,24 +16,59 @@ model CacheEntry {
   expiresAt BigInt
 }
 
-// Persistenter Geo-Area-Cache: speichert Circles (center+radius) mit vorberechneter
-// Bounding-Box fuer schnelle Containment-Vorfilterung. Pro Discriminant (= Layer + Params)
-// eine Partition, damit Queries fuer z.B. "food:cuisine=italian" nicht mit "food" kollidieren.
-model GeoAreaCache {
-  id           String @id @default(cuid())
-  discriminant String
-  centerLat    Float
-  centerLng    Float
-  radiusM      Float
-  bboxMinLat   Float
-  bboxMinLng   Float
-  bboxMaxLat   Float
-  bboxMaxLng   Float
-  cacheKey     String
+// Tile-Feature-Cache: atomarer Geo-Feature-Store.
+// Jedes OSM-Feature genau einmal pro (dogType, osmType, osmId).
+// payload trägt das volle Overpass-Element; primaryKey/primaryValue/name
+// machen das Feature auch ohne Geometrie semantisch erkennbar.
+model GeoFeature {
+  dogType      String
+  osmType      String
+  osmId        BigInt
+  primaryKey   String?
+  primaryValue String?
+  name         String?
+  hasGeom      Boolean
+  lat          Float?
+  lng          Float?
+  bboxMinLat   Float?
+  bboxMinLng   Float?
+  bboxMaxLat   Float?
+  bboxMaxLng   Float?
   payload      String
-  cachedAt     BigInt
-  expiresAt    BigInt
+  updatedAt    BigInt
 
-  @@index([discriminant, expiresAt])
-  @@index([discriminant, bboxMinLat, bboxMaxLat, bboxMinLng, bboxMaxLng])
+  @@id([dogType, osmType, osmId])
+  @@index([dogType, primaryKey, primaryValue])
+  @@index([dogType, bboxMinLat, bboxMaxLat])
+}
+
+// Welches Feature liegt in welcher Tile auf welchem Zoom für welche Facet.
+// Ein Feature kann in N Tiles und M Facets referenziert sein (BBox-Tiles * Facet-Matches).
+model FeatureTileMembership {
+  dogType String
+  osmType String
+  osmId   BigInt
+  zoom    Int
+  tileX   Int
+  tileY   Int
+  facet   String
+
+  @@id([dogType, osmType, osmId, zoom, tileX, tileY, facet])
+  @@index([dogType, zoom, tileX, tileY, facet])
+}
+
+// Coverage-Log: diese (tile, facet) wurde abgefragt — pro Facet getrennt,
+// damit partielle Queries sinnvoll funktionieren.
+model TileCoverage {
+  dogType   String
+  zoom      Int
+  tileX     Int
+  tileY     Int
+  facet     String
+  fetchedAt BigInt
+  expiresAt BigInt
+
+  @@id([dogType, zoom, tileX, tileY, facet])
+  @@index([expiresAt])
+  @@index([dogType, zoom, tileX, tileY])
 }
