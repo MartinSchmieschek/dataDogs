@@ -63,25 +63,25 @@ export type DogDisplayVariant = 'toolbar' | 'panel' | 'compact' | 'list' | 'stac
       line-height: 1.2;
       max-width: 12rem;
     }
-    /* vis-network-ähnliche Knotenbeschriftung (weiß, 14px) */
+    /* Kompakte Graph-Knoten */
     .graphVis {
       flex-direction: column;
       align-items: center;
       justify-content: center;
       text-align: center;
-      gap: 0.2rem;
+      gap: 0.12rem;
     }
     .graphVis .glyph {
-      font-size: 1.28rem;
+      font-size: 1.1rem;
       line-height: 1;
     }
     .graphVis .label {
-      font-size: 12px;
-      font-weight: 400;
-      color: #ffffff;
+      font-size: 10.5px;
+      font-weight: 500;
+      color: #f0f2f6;
       white-space: normal;
-      line-height: 1.25;
-      max-width: 9.5rem;
+      line-height: 1.2;
+      max-width: 5.5rem;
     }
   `]
 })

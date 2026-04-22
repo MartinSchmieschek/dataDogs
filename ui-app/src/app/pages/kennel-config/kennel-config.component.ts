@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit, OnDestroy, ElementRef, ViewChild, computed } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, ElementRef, ViewChild, computed, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { KennelService } from '../../services/kennel.service';
@@ -53,6 +54,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   @ViewChild('bodyEditorContainer') bodyEditorContainer!: ElementRef;
 
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
   private router = inject(Router);
   private kennelService = inject(KennelService);
   private dogService = inject(DogService);
@@ -96,8 +98,15 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.kennelId = this.route.snapshot.params['id'];
-    this.loadData();
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((pm) => {
+      const id = pm.get('id');
+      if (!id) return;
+      this.bodyEditor?.dispose();
+      this.bodyEditor = null;
+      this.kennelId = id;
+      this.selectedKennelVersionId.set(null);
+      this.loadData();
+    });
   }
 
   ngOnDestroy() {
@@ -145,6 +154,8 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
       this.queryParams.set(
         Object.entries(cfg.defaultQuery).map(([key, value]) => ({ key, value }))
       );
+    } else {
+      this.queryParams.set([]);
     }
 
     this.initBodyEditor(cfg.defaultBody);
@@ -302,6 +313,12 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
     }
 
     const dogIds = [...this.orderedDogIds()];
+
+    if (this.newQueryKey.trim()) {
+      this.queryParams.set([...this.queryParams(), { key: this.newQueryKey, value: this.newQueryValue }]);
+      this.newQueryKey = '';
+      this.newQueryValue = '';
+    }
 
     const defaultQuery: Record<string, string> = {};
     this.queryParams().forEach(p => {

@@ -55,6 +55,15 @@ const NOISE_TAGS: Record<string, string> = {
     runway: "aeroway",
 };
 
+/** Facet-ID = tag-value (eindeutig ueber beide Tabellen). */
+const ALL_NOISE_FACETS = [...Object.keys(QUIET_TAGS), ...Object.keys(NOISE_TAGS)];
+
+function tagKeyForFacet(facet: string): string | null {
+    if (facet in QUIET_TAGS) return QUIET_TAGS[facet];
+    if (facet in NOISE_TAGS) return NOISE_TAGS[facet];
+    return null;
+}
+
 function classifyElement(
     tags: Record<string, string>
 ): { isQuiet: boolean; type: string; subtype: string } | null {
@@ -98,19 +107,34 @@ export class NoiseRetriever extends OsmFeatureRetriever<NoiseResult, typeof Nois
             lat: parseFloat(query.lat),
             lng: parseFloat(query.lng),
             radiusM: this.clampRadius(parseFloat(query.radius ?? "")),
+            facets: ALL_NOISE_FACETS,
         };
     }
 
-    protected buildOverpassBody(q: OsmQueryBase): string {
-        const { lat, lng, radiusM } = q;
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
         const lines: string[] = [];
-        const quietKeys = Object.entries(QUIET_TAGS);
-        const noiseKeys = Object.entries(NOISE_TAGS);
-        for (const [value, key] of [...quietKeys, ...noiseKeys]) {
-            lines.push(`  node["${key}"="${value}"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["${key}"="${value}"](around:${radiusM},${lat},${lng});`);
+        for (const f of facets) {
+            const k = tagKeyForFacet(f);
+            if (!k) continue;
+            lines.push(`  node["${k}"="${f}"]${bboxClause};`);
+            lines.push(`  way["${k}"="${f}"]${bboxClause};`);
         }
         return lines.join("\n");
+    }
+
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const tags = el.tags ?? {};
+        const matches: string[] = [];
+        for (const f of fetchedFacets) {
+            const k = tagKeyForFacet(f);
+            if (!k) continue;
+            if (tags[k] === f) matches.push(f);
+        }
+        return matches;
     }
 
     protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): NoiseResult {

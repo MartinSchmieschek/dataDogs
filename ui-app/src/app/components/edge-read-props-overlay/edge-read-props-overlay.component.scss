@@ -3,6 +3,18 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
+.edge-read-root--edge {
+  max-width: none;
+  width: 100%;
+  box-shadow: none;
+}
+
+.edge-read-root--edge .edge-read-label {
+  color: rgba(205, 225, 248, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  margin-inline-end: 0;
+}
+
 .edge-read-label {
   font-size: 9px;
   font-weight: bold;

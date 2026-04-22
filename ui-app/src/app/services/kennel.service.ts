@@ -4,21 +4,13 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { IKennelConfig, KennelVersionEntry } from '../models/kennel-config.model';
 import { Waves } from '../models/dog-entry.model';
+import { apiAbsoluteUrl } from '../config/api-base';
 
 export interface ApiResponse<T = any> {
   ok: boolean;
   data?: T;
   error?: string;
   id?: string;
-}
-
-export interface KennelImportResponse {
-  ok: boolean;
-  kennelId?: string;
-  name?: string;
-  idMap?: Record<string, string>;
-  data?: any;
-  error?: string;
 }
 
 export interface RunResponse {
@@ -85,19 +77,17 @@ export class KennelService {
     return this.http.get(`${this.baseUrl}/${encodeURIComponent(id)}/export`);
   }
 
-  importBundle(
-    bundle: any,
-    importTarget?: { kennelId: string; name: string }
-  ): Observable<KennelImportResponse> {
-    const body = importTarget
-      ? { ...bundle, importTarget }
-      : bundle;
-    return this.http.post<KennelImportResponse>(`${this.baseUrl}/import`, body);
+  importBundle(bundle: any): Observable<ApiResponse> {
+    return this.http.post<ApiResponse>(`${this.baseUrl}/import`, bundle);
   }
 
   /**
-   * Lead yield: JSON object or string (HTML / Markdown / other text).
-   * The Content-Type response header selects parsing (application/json vs. text/*).
+   * Lead-Yield: JSON-Objekt oder String (HTML / Markdown / sonstiger Text).
+   * Content-Type steuert die Auswertung (application/json vs. text/*).
+   *
+   * Kennel-Ausführung geht immer über den öffentlichen Endpoint `/:kennelId` auf Express —
+   * nicht über `/api/kennels/.../run|execute`. Deshalb absolute URL (apiAbsoluteUrl),
+   * damit der Request am Angular-Dev-Proxy (`/api`, `/save`) vorbei direkt ans Backend geht.
    */
   execute(id: string, body?: any, query?: Record<string, string>): Observable<string | unknown> {
     let params = new HttpParams();
@@ -107,7 +97,7 @@ export class KennelService {
       });
     }
     const hasBody = body !== undefined && body !== null;
-    const url = `${this.baseUrl}/${encodeURIComponent(id)}/execute`;
+    const url = apiAbsoluteUrl(`/${encodeURIComponent(id)}`);
     const opts = {
       params,
       observe: 'response' as const,

@@ -43,11 +43,16 @@ function scrollProgressInViewport(el: HTMLElement, root: HTMLElement | null): nu
   return clamp01((vh - rect.top) / (vh + h));
 }
 
-/** Ziel-Blend aus Abstand zur Mitte: weicher Verlauf (keine harte Schwelle → weniger Scroll-Feedback). */
+/**
+ * Ziel-Blend aus Abstand zur Mitte: weicher Verlauf (keine harte Schwelle → weniger Scroll-Feedback).
+ * Untergrenze > 0: Beschreibung/Meta bleiben lesbar, auch wenn die Karte vertikal „am Rand“ liegt.
+ */
+const KENNEL_FOCUS_BLEND_FLOOR = 0.4;
+
 function focusBlendTarget(offCenter: number): number {
   if (offCenter <= 0.2) return 1;
-  if (offCenter >= 0.52) return 0;
-  return 1 - (offCenter - 0.2) / 0.32;
+  if (offCenter >= 0.52) return KENNEL_FOCUS_BLEND_FLOOR;
+  return Math.max(KENNEL_FOCUS_BLEND_FLOOR, 1 - (offCenter - 0.2) / 0.32);
 }
 
 /** Exponentielles Glätten pro Frame (Overlay statt Zustandsklasse). */
@@ -91,6 +96,7 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
   private unsub: (() => void) | null = null;
   private scrollRoot: HTMLElement | null = null;
   private focusBlend = 1;
+  private intersectionObserver: IntersectionObserver | null = null;
 
   ngAfterViewInit(): void {
     const host = this.el.nativeElement;
@@ -121,7 +127,8 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
         /** Je weiter von der vertikalen Bildschirmmitte, desto kleiner (max. ~18 %). */
         const centerScale = 1 - 0.18 * offCenter * offCenter;
         const scale = pathScale * centerScale;
-        const opacity = piecewise(p, [0, 0.12, 0.88, 1], [0.45, 1, 1, 0.45]);
+        /* Mindest-Deckkraft höher: Text auf goldenem Hintergrund bleibt lesbar am Listenrand */
+        const opacity = piecewise(p, [0, 0.12, 0.88, 1], [0.78, 1, 1, 0.78]);
         /** Leichte 2D-Drehung statt 3D-Kippung (vermeidet Hit-Test-Drift). */
         const twistDeg = rotateY * 0.38 + rotateX * 0.22;
 
@@ -140,12 +147,40 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
         this.raf = requestAnimationFrame(tick);
       };
 
+      /** Nach Sort/Track-Wechsel ist oft erst nach einem Paint das Layout korrekt — sonst falscher Parallax bis zum Scroll. */
+      const scheduleLayoutSyncTicks = () => {
+        requestAnimationFrame(() => {
+          tick();
+          requestAnimationFrame(() => {
+            tick();
+            requestAnimationFrame(tick);
+          });
+        });
+      };
+
       tick();
+      scheduleLayoutSyncTicks();
+
+      /* Ohne Scroll: nach Sort/Reflow neue Position relativ zum Scrollport → Parallax neu berechnen */
+      this.intersectionObserver = new IntersectionObserver(
+        () => {
+          schedule();
+        },
+        {
+          root: this.scrollRoot,
+          rootMargin: '80px 0px 120px 0px',
+          threshold: [0, 0.02, 0.25, 0.5, 0.75, 1],
+        }
+      );
+      this.intersectionObserver.observe(host);
+
       const scrollTarget: EventTarget = this.scrollRoot ?? window;
       scrollTarget.addEventListener('scroll', schedule, { passive: true });
       window.addEventListener('resize', schedule, { passive: true });
 
       this.unsub = () => {
+        this.intersectionObserver?.disconnect();
+        this.intersectionObserver = null;
         scrollTarget.removeEventListener('scroll', schedule);
         window.removeEventListener('resize', schedule);
         if (this.raf) cancelAnimationFrame(this.raf);
