@@ -76,7 +76,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             };
 
             if (isRuntimeLogVerbose()) {
-                console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}`);
+                console.log(`[KennelController.create] Creating kennel config: lineageId=${lineageId}, versionId=${versionId}`);
             }
 
             await this.store.save({
@@ -129,7 +129,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             // Resolve the existing kennel — by version ID or lineageId.
             const existing = await this.resolveKennel(input.id);
             if (!existing) {
-                return { ok: false, error: `Kennel mit ID ${input.id} nicht gefunden` };
+                return { ok: false, error: `Kennel with id ${input.id} not found` };
             }
 
             // Merge new cargo with what was already in the hold.
@@ -222,7 +222,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
             const existing = await this.resolveKennel(id);
             if (!existing) {
-                return { ok: false, error: `Kennel mit ID ${id} nicht gefunden` };
+                return { ok: false, error: `Kennel with id ${id} not found` };
             }
 
             const versionId = existing.id;
@@ -260,7 +260,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             // Resolve to lineageId.
             const resolved = await this.resolveKennel(id);
             if (!resolved) {
-                return { ok: false, error: `Kennel mit ID ${id} nicht gefunden` };
+                return { ok: false, error: `Kennel with id ${id} not found` };
             }
             const lineageId = (resolved as any).lineageId || id;
 
@@ -323,7 +323,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
         try {
             const resolved = await this.resolveKennel(id);
             if (!resolved) {
-                return { ok: false, error: `Kennel mit ID ${id} nicht gefunden`, data: null };
+                return { ok: false, error: `Kennel with id ${id} not found`, data: null };
             }
             return { ok: true, data: resolved };
         } catch (error) {

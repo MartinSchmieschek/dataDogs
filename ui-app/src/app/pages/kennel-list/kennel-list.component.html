@@ -5,10 +5,10 @@
 
   <div class="kennel-shell-inner">
     <div class="kennel-work-area">
-      <!-- Schwebend: Suchblase + Sortierung (Sort ausgeblendet bei aktivem Suchfilter) -->
+      <!-- Floating search + sort (sort hidden while search filter is active) -->
       <div class="kennel-search-chrome">
         <div class="kennel-search-chrome-row">
-          <label class="kennel-sr-only" for="kennel-search-bubble">Kennels durchsuchen</label>
+          <label class="kennel-sr-only" for="kennel-search-bubble">Search kennels</label>
           <div class="kennel-search-bubble">
             <span class="kennel-search-bubble-icon" aria-hidden="true">⌕</span>
             <input
@@ -16,7 +16,7 @@
               class="kennel-search-bubble-input"
               type="search"
               autocomplete="off"
-              placeholder="Durchsuchen …"
+              placeholder="Search…"
               [value]="searchQuery()"
               (input)="searchQuery.set($any($event.target).value)" />
           </div>
@@ -24,40 +24,40 @@
             class="kennel-search-sort-cluster"
             [class.kennel-search-sort-cluster--hidden]="hideSortBesideSearch()"
             role="group"
-            aria-label="Sortierung"
+            aria-label="Sort"
             [attr.aria-hidden]="hideSortBesideSearch() ? 'true' : null"
             [attr.inert]="hideSortBesideSearch() ? '' : null">
             <button
               type="button"
               class="kennel-sort-cycle kennel-sort-cycle--beside"
               (click)="cycleSortKey()"
-              [attr.aria-label]="'Sortieren nach: ' + sortKeyLabel() + '. Klick für nächstes Kriterium.'"
-              [title]="'Sortierung: ' + sortKeyLabel()">
+              [attr.aria-label]="'Sort by: ' + sortKeyLabel() + '. Click to cycle criteria.'"
+              [title]="'Sort: ' + sortKeyLabel()">
               {{ sortKeyLabel() }}
             </button>
             <button
               type="button"
               class="kennel-float-btn kennel-float-btn--beside"
               (click)="toggleSortDir()"
-              [attr.aria-label]="sortDir() === 'asc' ? 'Sortierung: aufsteigend, zu absteigend wechseln' : 'Sortierung: absteigend, zu aufsteigend wechseln'"
-              [title]="sortDir() === 'asc' ? 'Filter: A–Z / alt → neu' : 'Filter: Z–A / neu → alt'">
+              [attr.aria-label]="sortDir() === 'asc' ? 'Sort: ascending, switch to descending' : 'Sort: descending, switch to ascending'"
+              [title]="sortDir() === 'asc' ? 'A–Z / old → new' : 'Z–A / new → old'">
               ⇅
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Nur absolut, kein Layout für die Suche; unterhalb der Kopfzeile -->
+      <!-- Fixed position; below header chrome -->
       <button
         type="button"
         class="kennel-float-btn kennel-float-btn--accent kennel-create-fab"
         (click)="showCreateForm.set(true)"
-        aria-label="Neuen Kennel hinzufügen"
-        title="Neuer Kennel">
+        aria-label="Add a new kennel"
+        title="New kennel">
         +
       </button>
 
-      <!-- Nur dieser Bereich scrollt (Animation bezieht sich darauf) -->
+      <!-- Only this region scrolls (card motion targets it) -->
       <div class="kennel-scroll">
         <div class="kennel-page">
           <main class="kennel-panel">
@@ -67,7 +67,7 @@
 
             <header class="kennel-panel-head">
               <h1 class="kennel-panel-title">Kennels</h1>
-              <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
+              <p class="kennel-panel-lead">Choose a pack or create one — search and sort the list.</p>
             </header>
 
             <div class="kennel-actions kennel-actions--header">
@@ -75,6 +75,12 @@
                 Import (Clipboard)
               </button>
             </div>
+
+            @if (successMessage()) {
+              <div class="kennel-flash-success" role="status">
+                {{ successMessage() }}
+              </div>
+            }
 
             @if (showCreateForm()) {
               <app-kennel-form
@@ -87,7 +93,7 @@
                 class="kennel-error comfort-error-trigger"
                 role="button"
                 tabindex="0"
-                title="Klick: Fernes Signal"
+                title="Click: distant signal"
                 (click)="onComfortVideoClick()"
                 (keydown.enter)="onComfortVideoClick()"
                 (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
@@ -109,13 +115,13 @@
                       <div
                         class="kennel-card-rail kennel-card-rail--start"
                         role="toolbar"
-                        [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
+                        [attr.aria-label]="'Run: ' + (kennel.name || kennelRef(kennel))">
                         <button
                           type="button"
                           class="kennel-rail-btn kennel-rail-btn--primary"
                           (click)="onExecute(kennel)"
-                          [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
-                          [title]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
+                          [attr.aria-label]="'Run: ' + (kennel.name || kennelRef(kennel))"
+                          [title]="'Run: ' + (kennel.name || kennelRef(kennel))">
                           <span aria-hidden="true">▶</span>
                         </button>
                       </div>
@@ -132,7 +138,7 @@
                             <div class="kennel-card-meta-line">
                               <code class="kennel-endpoint-chip">{{ executePathForDisplay(kennel) }}</code>
                               @if (mirrorExecutePath()) {
-                                <code class="kennel-endpoint-chip kennel-endpoint-chip--mirrored" [attr.title]="'Gespiegelte Segmentreihenfolge (nur Anzeige)'">
+                                <code class="kennel-endpoint-chip kennel-endpoint-chip--mirrored" [attr.title]="'Mirrored segment order (display only)'">
                                   {{ executePathMirroredSegments(kennel) }}
                                 </code>
                               }
@@ -143,13 +149,13 @@
                       <div
                         class="kennel-card-rail kennel-card-rail--end"
                         role="toolbar"
-                        [attr.aria-label]="'Bearbeiten und mehr: ' + (kennel.name || kennelRef(kennel))">
+                        [attr.aria-label]="'Edit and more: ' + (kennel.name || kennelRef(kennel))">
                         <div class="kennel-card-rail-fan">
                           <app-kennel-action-fan [alignMenuToEnd]="true" (action)="onFanAction(kennel, $event)" />
                         </div>
                       </div>
                       <div class="kennel-card-date-foot">
-                        <span class="kennel-sr-only">Zuletzt geändert</span>
+                        <span class="kennel-sr-only">Last updated</span>
                         @if (kennel.updatedAt || kennel.createdAt) {
                           <time [attr.datetime]="kennel.updatedAt || kennel.createdAt">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</time>
                         } @else {
@@ -162,9 +168,9 @@
               } @empty {
                 @if (!loading()) {
                   @if (kennels().length === 0) {
-                    <div class="kennel-empty">Keine Kennels vorhanden.</div>
+                    <div class="kennel-empty">No kennels yet.</div>
                   } @else {
-                    <div class="kennel-empty">Keine Treffer für diese Suche.</div>
+                    <div class="kennel-empty">No matches for this search.</div>
                   }
                 }
               }
@@ -175,4 +181,45 @@
       </div>
     </div>
   </div>
+
+  @if (importDialogOpen()) {
+    <div class="kennel-import-layer" aria-hidden="false">
+      <div class="kennel-import-backdrop" (click)="closeImportDialog()"></div>
+      <div
+        class="kennel-import-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="kennel-import-title"
+        (click)="$event.stopPropagation()">
+        <h2 id="kennel-import-title" class="kennel-import-title">Adjust kennel import</h2>
+        <p class="kennel-import-hint">{{ importDialogHint() }}</p>
+        <div class="kennel-import-field">
+          <label for="kennel-import-id" class="kennel-import-label">Kennel id (endpoint)</label>
+          <input
+            id="kennel-import-id"
+            class="kennel-import-input"
+            type="text"
+            [value]="importDialogKennelId()"
+            (input)="importDialogKennelId.set($any($event.target).value)"
+            autocomplete="off" />
+        </div>
+        <div class="kennel-import-field">
+          <label for="kennel-import-name" class="kennel-import-label">Display name</label>
+          <input
+            id="kennel-import-name"
+            class="kennel-import-input"
+            type="text"
+            [value]="importDialogName()"
+            (input)="importDialogName.set($any($event.target).value)"
+            autocomplete="off" />
+        </div>
+        <div class="kennel-import-actions">
+          <button type="button" class="kennel-btn kennel-btn--ghost" (click)="closeImportDialog()">
+            Cancel
+          </button>
+          <button type="button" class="kennel-btn" (click)="confirmImportDialog()">Import</button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

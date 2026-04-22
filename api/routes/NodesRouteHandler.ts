@@ -37,7 +37,7 @@ export class NodesRouteHandler {
     private async handleList(req: any, res: any): Promise<void> {
         try {
             const controller = this.registry.get('nodes');
-            if (!controller) { res.status(404).json({ error: 'Node-Controller nicht gefunden' }); return; }
+            if (!controller) { res.status(404).json({ error: 'Node controller not found' }); return; }
 
             const kennelId = req.query.kennelId as string | undefined;
 

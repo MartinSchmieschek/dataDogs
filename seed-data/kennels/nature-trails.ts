@@ -285,7 +285,7 @@ export async function seedElevationKennel(nodesStore: IStore, kennelsStore: ISto
     const kennelConfig: IKennelConfig = {
         id: kennelId,
         name: 'Elevation',
-        description: 'Hoehendaten: Meter ueber Normalnull per GPS (Open-Meteo)',
+        description: 'Elevation: meters above sea level from GPS (Open-Meteo)',
         emoji: '\u26F0\uFE0F',
         dogIds: [
             BASE_DOG_PREFIX + 'ElevationRetriever',
@@ -451,18 +451,18 @@ html += "</style></head><body>";
 html += "<div id='map'></div>";
 html += "<div class='panel'>";
 html += "<h1>Trail Scout</h1>";
-html += "<div class='legend'><span class='hk'>Wanderwege</span><span class='bk'>Radwege</span></div>";
+html += "<div class='legend'><span class='hk'>Hiking</span><span class='bk'>Cycling</span></div>";
 html += "<div class='stats'>";
 html += "<div class='stat'><div class='v'>" + elev + " m</div><div class='l'>Hoehe</div></div>";
 html += "<div class='stat'><div class='v'>" + summary.totalTrails + "</div><div class='l'>Wege gesamt</div></div>";
-html += "<div class='stat'><div class='v'>" + summary.hikingCount + "</div><div class='l'>Wanderwege</div></div>";
-html += "<div class='stat'><div class='v'>" + summary.cyclingCount + "</div><div class='l'>Radwege</div></div>";
+    html += "<div class='stat'><div class='v'>" + summary.hikingCount + "</div><div class='l'>Hiking trails</div></div>";
+html += "<div class='stat'><div class='v'>" + summary.cyclingCount + "</div><div class='l'>Cycling routes</div></div>";
 html += "<div class='stat'><div class='v'>" + (data.radiusM / 1000).toFixed(1) + " km</div><div class='l'>Radius</div></div>";
 html += "</div></div>";
 
 html += "<div class='tl'>";
 if (hiking.length > 0) {
-    html += "<h2>Wanderwege</h2>";
+    html += "<h2>Hiking trails</h2>";
     for (var i = 0; i < hiking.length; i++) {
         var t = hiking[i];
         var tn = t.name || "(unbenannt)";
@@ -475,7 +475,7 @@ if (hiking.length > 0) {
     }
 }
 if (cycling.length > 0) {
-    html += "<h2>Radwege</h2>";
+    html += "<h2>Cycling routes</h2>";
     for (var j = 0; j < cycling.length; j++) {
         var c = cycling[j];
         var cn = c.name || "(unbenannt)";
@@ -543,7 +543,7 @@ return html;
     const kennelConfig: IKennelConfig = {
         id: kennelId,
         name: 'Trail Scout',
-        description: 'Wander- und Radwege auf der Karte mit Hoehendaten — OSM + Open-Meteo',
+        description: 'Hiking and cycling trails on the map with elevation — OSM + Open-Meteo',
         emoji: '\uD83E\uDDB6',
         dogIds: [
             rendererDogId,

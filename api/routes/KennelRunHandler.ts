@@ -342,7 +342,7 @@ export class KennelRunHandler {
         try {
             const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
-                res.status(404).json({ ok: false, error: `Kennel ${req.params.id} nicht gefunden` });
+                res.status(404).json({ ok: false, error: `Kennel ${req.params.id} not found` });
                 return;
             }
 
@@ -374,7 +374,7 @@ export class KennelRunHandler {
         try {
             const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
-                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
 
@@ -393,7 +393,7 @@ export class KennelRunHandler {
 
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
-                res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
+                res.status(404).json({ error: `Dog ${dogIds[0]} not found in waves` });
                 return;
             }
             this.sendResult(res, firstDog.result, req);
@@ -420,7 +420,7 @@ export class KennelRunHandler {
                     next();
                     return;
                 }
-                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${kennelId} not found` });
                 return;
             }
 
@@ -434,7 +434,7 @@ export class KennelRunHandler {
             const waves = await this.runKennel(config, queryData, undefined);
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
-                res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
+                res.status(404).json({ error: `Dog ${dogIds[0]} not found in waves` });
                 return;
             }
             this.sendResult(res, firstDog.result, req);
@@ -454,7 +454,7 @@ export class KennelRunHandler {
         try {
             const config = await this.loadKennelConfig(kennelId, req.query.version);
             if (!config) {
-                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${kennelId} not found` });
                 return;
             }
 
@@ -471,7 +471,7 @@ export class KennelRunHandler {
             const waves = await this.runKennel(config, queryData, bodyData);
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
-                res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
+                res.status(404).json({ error: `Dog ${dogIds[0]} not found in waves` });
                 return;
             }
             this.sendResult(res, firstDog.result, req);
