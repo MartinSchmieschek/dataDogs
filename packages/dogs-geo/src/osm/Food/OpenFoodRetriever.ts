@@ -78,29 +78,40 @@ export class OpenFoodRetriever extends OsmFeatureRetriever<OpenFoodResult, typeo
         const queryDog = season.exhausted.find((d) => this.matchesParent(OpenFoodQueryPact, d));
         const query = (queryDog?.collected as OpenFoodQuery | undefined) ?? ({} as OpenFoodQuery);
         const cuisine = query.cuisine?.trim() || undefined;
-        const extras: Record<string, string> = {};
-        if (cuisine) extras["cuisine"] = cuisine;
+        const postFilter: Record<string, unknown> = {};
+        if (cuisine) postFilter.cuisine = cuisine;
         return {
             lat: parseFloat(query.lat),
             lng: parseFloat(query.lng),
             radiusM: this.clampRadius(parseFloat(query.radius ?? "")),
-            extras,
+            facets: [...AMENITY_TYPES],
+            postFilter,
         };
     }
 
-    protected buildOverpassBody(q: OsmQueryBase): string {
-        const { lat, lng, radiusM } = q;
-        const cuisine = q.extras?.["cuisine"];
-        const cuisineFilter = cuisine ? `["cuisine"~"${cuisine}",i]` : "";
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        // Kein cuisine-Filter in der Overpass-Query — cuisine ist Post-Filter,
+        // damit der Pool fuer ALLE cuisine-Varianten geteilt wird.
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
         const lines: string[] = [];
-        for (const amenity of AMENITY_TYPES) {
-            lines.push(`  node["amenity"="${amenity}"]${cuisineFilter}(around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["amenity"="${amenity}"]${cuisineFilter}(around:${radiusM},${lat},${lng});`);
+        for (const amenity of facets) {
+            lines.push(`  node["amenity"="${amenity}"]${bboxClause};`);
+            lines.push(`  way["amenity"="${amenity}"]${bboxClause};`);
         }
         return lines.join("\n");
     }
 
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const amenity = el.tags?.["amenity"];
+        if (!amenity) return [];
+        return fetchedFacets.filter((f) => f === amenity);
+    }
+
     protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): OpenFoodResult {
+        const cuisine = (q.postFilter?.cuisine as string | undefined)?.toLowerCase();
         const seen = new Set<string>();
         const places: FoodPlace[] = [];
 
@@ -112,6 +123,12 @@ export class OpenFoodRetriever extends OsmFeatureRetriever<OpenFoodResult, typeo
 
             const amenity = el.tags["amenity"] as FoodPlaceType | undefined;
             if (!amenity || !AMENITY_TYPES.includes(amenity)) continue;
+
+            // Post-Filter cuisine.
+            if (cuisine) {
+                const elCuisine = (el.tags["cuisine"] ?? "").toLowerCase();
+                if (!elCuisine.includes(cuisine)) continue;
+            }
 
             const point = overpassElementRepresentativePoint(el);
             if (!point) continue;

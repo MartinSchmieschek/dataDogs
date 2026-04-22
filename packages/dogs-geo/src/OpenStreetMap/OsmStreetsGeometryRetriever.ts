@@ -1,19 +1,16 @@
 /**
  * OSM highway ways → GeoJSON line geometries.
+ * Tile-basiertes Caching: pro highway-Value eine eigene Facet-Partition.
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
+import { type IHuntingSeason } from "@datadogs/core";
+import osmtogeojson from "osmtogeojson";
+import type { FeatureCollection, GeometryObject } from "geojson";
+import { OsmFeatureRetriever, type OsmQueryBase } from "../osm/base/OsmFeatureRetriever";
+import type { OverpassRawElement } from "../osm/base/overpassMirrorChain";
 import { OsmStreetsGeometryPact, type OsmStreetsGeometryQueryInput } from "./osmGeometryPacts";
 import { parseOsmHighwayList, type OsmHighwayValue } from "./osmGeometryEnums";
-import {
-    buildStreetsOverpassQuery,
-    circleToBoundingBox,
-    clampGeometryRadiusM,
-    fetchOverpassGeometry,
-    overpassJsonToGeoJson,
-    type BoundingBox,
-} from "./overpassGeometryCore";
-import type { FeatureCollection, GeometryObject } from "geojson";
+import { circleToBoundingBox, clampGeometryRadiusM, type BoundingBox } from "./overpassGeometryCore";
 
 export interface OsmStreetsGeometryResult {
     center: { lat: number; lng: number };
@@ -23,20 +20,12 @@ export interface OsmStreetsGeometryResult {
     geojson: FeatureCollection<GeometryObject>;
 }
 
-export class OsmStreetsGeometryRetriever
-    extends Dog<OsmStreetsGeometryResult>
-    implements ICacheable, IAreaCacheable<OsmStreetsGeometryResult>
-{
-    private cacheHandler?: ICacheHandler;
-    private areaCache?: IAreaCache<OsmStreetsGeometryResult>;
-
-    setCacheHandler(handler: ICacheHandler): void {
-        this.cacheHandler = handler;
-    }
-
-    setAreaCache(cache: IAreaCache<OsmStreetsGeometryResult>): void {
-        this.areaCache = cache;
-    }
+export class OsmStreetsGeometryRetriever extends OsmFeatureRetriever<OsmStreetsGeometryResult, typeof OsmStreetsGeometryPact> {
+    protected readonly layer = "streetsGeometry";
+    protected readonly defaultRadiusM = 500;
+    protected readonly maxRadiusM = 5000;
+    protected readonly queryPactClass = OsmStreetsGeometryPact;
+    protected readonly outStatement = "out geom;";
 
     get name(): string {
         return OsmStreetsGeometryRetriever.name;
@@ -46,69 +35,44 @@ export class OsmStreetsGeometryRetriever
         return undefined;
     }
 
-    get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [OsmStreetsGeometryPact];
-    }
-
-    get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
-    }
-
-    protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmStreetsGeometryResult> => {
+    protected parseQuery(season: IHuntingSeason): OsmQueryBase {
         const queryDog = season.exhausted.find((d) => this.matchesParent(OsmStreetsGeometryPact, d));
-        const query =
-            (queryDog?.collected as OsmStreetsGeometryQueryInput | undefined) ??
-            ({} as OsmStreetsGeometryQueryInput);
-
+        const query = (queryDog?.collected as OsmStreetsGeometryQueryInput | undefined) ?? ({} as OsmStreetsGeometryQueryInput);
         const lat = parseFloat(query.lat);
         const lng = parseFloat(query.lng);
         const radiusM = clampGeometryRadiusM(parseFloat(query.radius ?? ""));
         const highway = parseOsmHighwayList(query.highway, query.preset);
+        return { lat, lng, radiusM, facets: [...highway] };
+    }
 
-        if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            throw new Error("OsmStreetsGeometryRetriever: Missing required query params (lat, lng)");
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
+        const lines: string[] = [];
+        for (const hw of facets) {
+            lines.push(`  way["highway"="${hw}"]${bboxClause};`);
         }
+        return lines.join("\n");
+    }
 
-        const facetKey = [...highway].sort().join(",");
-        const discriminant = `streetsGeometry:${facetKey}`;
-        const key = geoBucketKey("streetsGeometry", lat, lng, radiusM, { extras: { hw: facetKey } });
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const hw = el.tags?.["highway"];
+        if (!hw) return [];
+        return fetchedFacets.filter((f) => f === hw);
+    }
 
-        if (this.areaCache) {
-            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
-            if (covering) return covering.data;
-        }
-
-        const fetchStreets = async (): Promise<OsmStreetsGeometryResult> => {
-            const bbox = circleToBoundingBox(lat, lng, radiusM);
-            const overpassQuery = buildStreetsOverpassQuery(bbox, highway, 120);
-            const osmJson = await fetchOverpassGeometry(overpassQuery, 240000);
-            const geojson = overpassJsonToGeoJson(osmJson);
-
-            const result: OsmStreetsGeometryResult = {
-                center: { lat, lng },
-                radiusM,
-                bbox,
-                highway,
-                geojson,
-            };
-
-            if (this.areaCache) {
-                await this.areaCache.store({
-                    center: { lat, lng },
-                    radiusM,
-                    data: result,
-                    cacheKey: key,
-                    cachedAt: Date.now(),
-                    discriminant,
-                }, GEO_CACHE_TTL_OSM_MS);
-            }
-
-            return result;
+    protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): OsmStreetsGeometryResult {
+        const bbox = circleToBoundingBox(q.lat, q.lng, q.radiusM);
+        const highway = (q.facets ?? []) as OsmHighwayValue[];
+        const geojson = osmtogeojson({ elements: elements as any }) as FeatureCollection<GeometryObject>;
+        return {
+            center: { lat: q.lat, lng: q.lng },
+            radiusM: q.radiusM,
+            bbox,
+            highway,
+            geojson,
         };
-
-        if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchStreets);
-        }
-        return fetchStreets();
-    };
+    }
 }

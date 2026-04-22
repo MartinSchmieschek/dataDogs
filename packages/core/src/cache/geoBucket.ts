@@ -4,9 +4,9 @@
  * Exact-match cache keys lose every query that differs by a single metre.
  * This helper rounds `(lat, lng, radiusM)` to a grid whose cell size scales
  * with the query radius, so neighbouring or slightly-shifted queries resolve
- * to the same cache key. Pairs naturally with `IAreaCache` — the bucket
- * catches trivially-shifted queries cheaply, the area cache catches the
- * subset-containment cases.
+ * to the same cache key. Wird aktuell nur noch von Punkt-Dogs (Weather,
+ * Air-Quality, GeoNames, Isochrone) genutzt; die Flaechen-Dogs greifen auf
+ * den Tile-Feature-Cache zurueck.
  */
 
 export interface GeoBucketOptions {

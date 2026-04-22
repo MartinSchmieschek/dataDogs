@@ -3,7 +3,33 @@ import { OsmFeatureRetriever, type OsmQueryBase } from "../base/OsmFeatureRetrie
 import { type OverpassRawElement } from "../base/overpassMirrorChain";
 import { TrailQueryPact, type TrailQuery } from "./pacts";
 
-export type TrailType = "hiking" | "bicycle" | "both";
+export type TrailType = "hiking" | "bicycle" | "both" | "walkable";
+
+/**
+ * Highways die Menschen betreten duerfen (ohne foot=no-Ausschluss).
+ * Breiter als "hiking" — umfasst auch Fussgaengerzonen, Wohnstrassen und
+ * geteilte Service-Wege.
+ */
+const WALKABLE_HIGHWAYS = new Set([
+    "footway",
+    "path",
+    "pedestrian",
+    "living_street",
+    "steps",
+    "track",
+    "residential",
+    "service",
+    "unclassified",
+    "cycleway",
+]);
+
+function isWalkable(tags: Record<string, string>): boolean {
+    if (tags["foot"] === "no") return false;
+    if (tags["access"] === "no" || tags["access"] === "private") return false;
+    if (tags["route"] === "hiking" || tags["route"] === "foot") return true;
+    const hw = tags["highway"];
+    return !!hw && WALKABLE_HIGHWAYS.has(hw);
+}
 export type TrailPoint = { lat: number; lng: number };
 
 export interface TrailElement {
@@ -60,6 +86,7 @@ function classifyTrailType(tags: Record<string, string>): "hiking" | "bicycle" {
 function parseTrailType(raw?: string): TrailType {
     if (!raw) return "both";
     const v = raw.toLowerCase();
+    if (v === "walkable" || v === "pedestrian" || v === "all_walkable") return "walkable";
     if (v === "hiking" || v === "walking" || v === "foot") return "hiking";
     if (v === "bicycle" || v === "cycling" || v === "bike") return "bicycle";
     return "both";
@@ -138,34 +165,73 @@ export class TrailRetriever extends OsmFeatureRetriever<TrailResult, typeof Trai
         const queryDog = season.exhausted.find((d) => this.matchesParent(TrailQueryPact, d));
         const query = (queryDog?.collected as TrailQuery | undefined) ?? ({} as TrailQuery);
         const trailType = parseTrailType(query.type);
+
+        // Drei Facets: hiking (enge Wander-Wege), bicycle (Radwege),
+        // walkable (alle begehbaren Wege — breiter als hiking).
+        const facets: string[] = [];
+        if (trailType === "walkable") facets.push("walkable");
+        if (trailType === "hiking" || trailType === "both") facets.push("hiking");
+        if (trailType === "bicycle" || trailType === "both") facets.push("bicycle");
+
         return {
             lat: parseFloat(query.lat),
             lng: parseFloat(query.lng),
             radiusM: this.clampRadius(parseFloat(query.radius ?? "")),
-            extras: { type: trailType },
+            facets,
+            postFilter: { trailType },
         };
     }
 
-    protected buildOverpassBody(q: OsmQueryBase): string {
-        const { lat, lng, radiusM } = q;
-        const trailType = (q.extras?.["type"] ?? "both") as TrailType;
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
         const lines: string[] = [];
 
-        if (trailType === "hiking" || trailType === "both") {
-            lines.push(`  relation["route"="hiking"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  relation["route"="foot"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["highway"="path"]["foot"!="no"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["highway"="footway"](around:${radiusM},${lat},${lng});`);
+        if (facets.includes("hiking")) {
+            lines.push(`  relation["route"="hiking"]${bboxClause};`);
+            lines.push(`  relation["route"="foot"]${bboxClause};`);
+            lines.push(`  way["highway"="path"]["foot"!="no"]${bboxClause};`);
+            lines.push(`  way["highway"="footway"]${bboxClause};`);
         }
 
-        if (trailType === "bicycle" || trailType === "both") {
-            lines.push(`  relation["route"="bicycle"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["highway"="cycleway"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["highway"="path"]["bicycle"="yes"](around:${radiusM},${lat},${lng});`);
-            lines.push(`  way["highway"="track"]["bicycle"="yes"](around:${radiusM},${lat},${lng});`);
+        if (facets.includes("bicycle")) {
+            lines.push(`  relation["route"="bicycle"]${bboxClause};`);
+            lines.push(`  way["highway"="cycleway"]${bboxClause};`);
+            lines.push(`  way["highway"="path"]["bicycle"="yes"]${bboxClause};`);
+            lines.push(`  way["highway"="track"]["bicycle"="yes"]${bboxClause};`);
+        }
+
+        if (facets.includes("walkable")) {
+            // Alles wo Menschen gehen duerfen. Breiter Scope:
+            // markierte Wanderwege + Fuss/Fahrrad-Typen + Stadt-Wege ohne foot=no.
+            lines.push(`  relation["route"="hiking"]${bboxClause};`);
+            lines.push(`  relation["route"="foot"]${bboxClause};`);
+            lines.push(`  way["highway"="footway"]${bboxClause};`);
+            lines.push(`  way["highway"="path"]["foot"!="no"]${bboxClause};`);
+            lines.push(`  way["highway"="pedestrian"]${bboxClause};`);
+            lines.push(`  way["highway"="living_street"]${bboxClause};`);
+            lines.push(`  way["highway"="steps"]${bboxClause};`);
+            lines.push(`  way["highway"="track"]["foot"!="no"]${bboxClause};`);
+            lines.push(`  way["highway"="residential"]["foot"!="no"]${bboxClause};`);
+            lines.push(`  way["highway"="service"]["foot"!="no"]${bboxClause};`);
+            lines.push(`  way["highway"="unclassified"]["foot"!="no"]${bboxClause};`);
+            lines.push(`  way["highway"="cycleway"]["foot"!="no"]${bboxClause};`);
         }
 
         return lines.join("\n");
+    }
+
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const tags = el.tags ?? {};
+        const matches: string[] = [];
+        if (fetchedFacets.includes("walkable") && isWalkable(tags)) {
+            matches.push("walkable");
+        }
+        const category = classifyTrailType(tags);
+        if (fetchedFacets.includes(category)) matches.push(category);
+        return matches;
     }
 
     protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): TrailResult {
@@ -208,9 +274,7 @@ export class TrailRetriever extends OsmFeatureRetriever<TrailResult, typeof Trai
             });
         }
 
-        const trailType = (q.extras?.["type"] ?? "both") as TrailType;
-        // Helper-Funktionen werden in postProcess angeheftet; hier liefern wir nur
-        // die JSON-serialisierbaren Felder. Leere Helfer-Stubs erfuellen das Interface.
+        const trailType = (q.postFilter?.trailType ?? "both") as TrailType;
         return attachTrailHelpers({
             center: { lat: q.lat, lng: q.lng },
             radiusM: q.radiusM,
@@ -236,12 +300,4 @@ export class TrailRetriever extends OsmFeatureRetriever<TrailResult, typeof Trai
         });
     }
 
-    /**
-     * Area-Cache-Hit: wir filtern Trails NICHT auf den kleineren Radius — der
-     * Renderer kann ohnehin clippen und das Neu-Rendern einer etwas groesseren
-     * Zone ist billiger als die Filterlogik.
-     */
-    protected filterAreaCacheHit(covering: TrailResult, _q: OsmQueryBase): TrailResult {
-        return covering;
-    }
 }

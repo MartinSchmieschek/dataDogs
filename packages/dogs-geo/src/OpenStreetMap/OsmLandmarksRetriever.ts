@@ -1,24 +1,9 @@
-/**
- * =========================================================================
- *  OSM LANDMARKS RETRIEVER — dredgin' landmarks from the cartographic abyss
- * =========================================================================
- *
- *  Arr, this vessel sails the cursed waters of OpenStreetMap, retrievin'
- *  landmarks that lurk near a given coordinate. From brooding gulfs are
- *  we beheld, by that which bears no name — and so we query the Overpass
- *  API, that eldritch oracle of geographic horror.
- *
- *  Its heralds are the stars it fells, the sky and Earth aflame.
- *  Through endless faces, countless forms, a multitude unfolds —
- *  each landmark a whisper from the deep.
- * =========================================================================
- */
-
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, type IAreaCache, type IAreaCacheable, type CachedArea, geoBucketKey, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
+import { type IHuntingSeason } from "@datadogs/core";
+import { OsmFeatureRetriever, type OsmQueryBase } from "../osm/base/OsmFeatureRetriever";
+import type { OverpassRawElement } from "../osm/base/overpassMirrorChain";
 import { NearbyLandmarksPact, type OsmLandmarksQueryInput } from "./pacts";
 import {
     clampRadiusM,
-    fetchNearbyLandmarks,
     parseLandmarkFacets,
     LandmarksOverpassFacet,
     DEFAULT_LANDMARKS_FACETS,
@@ -29,51 +14,58 @@ import {
     type OsmLandmarksResult,
     type OsmLandmarkElement,
 } from "./overpassLandmarks";
+import { mapOverpassElement } from "./overpassOsmShared";
 
 /**
- * Arr, the OsmLandmarksRetriever — a hound that dredges landmarks from the
- * cartographic abyss of OpenStreetMap! From brooding gulfs it queries the
- * Overpass API, that eldritch oracle, returnin' nodes and ways no mortal
- * cartographer was meant to catalogue. The void yields its secrets, matey,
- * through endless faces countless forms, each landmark a whisper from the deep.
+ * Facet → Tag-Bedingung. Ein Tag-Bedingungs-Array pro Facet: eine Facet matcht,
+ * wenn mindestens EIN Tag-Pair zutrifft. `value: null` → Existenz-Check des Keys.
  */
-/**
- * Haversine distance between two points in meters — used for area-cache filtering.
- */
-function haversineDistanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-    const R = 6_371_000;
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const h = sinDLat * sinDLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinDLng * sinDLng;
-    return 2 * R * Math.asin(Math.sqrt(h));
+const FACET_TAGS: Record<string, Array<{ key: string; value: string | null }>> = {
+    [LandmarksOverpassFacet.Tourism]: [{ key: "tourism", value: null }],
+    [LandmarksOverpassFacet.Historic]: [{ key: "historic", value: null }],
+    [LandmarksOverpassFacet.Museum]: [{ key: "amenity", value: "museum" }],
+    [LandmarksOverpassFacet.Peak]: [{ key: "natural", value: "peak" }],
+    [LandmarksOverpassFacet.Cemetery]: [
+        { key: "amenity", value: "grave_yard" },
+        { key: "landuse", value: "cemetery" },
+    ],
+    [LandmarksOverpassFacet.Bridge]: [{ key: "man_made", value: "bridge" }],
+    [LandmarksOverpassFacet.Waterfall]: [{ key: "waterway", value: "waterfall" }],
+    [LandmarksOverpassFacet.Spring]: [{ key: "natural", value: "spring" }],
+    [LandmarksOverpassFacet.Cave]: [{ key: "natural", value: "cave" }],
+    [LandmarksOverpassFacet.Beach]: [{ key: "natural", value: "beach" }],
+    [LandmarksOverpassFacet.Fountain]: [{ key: "amenity", value: "fountain" }],
+    [LandmarksOverpassFacet.PlaceOfWorship]: [{ key: "amenity", value: "place_of_worship" }],
+    [LandmarksOverpassFacet.Library]: [{ key: "amenity", value: "library" }],
+    [LandmarksOverpassFacet.Theatre]: [{ key: "amenity", value: "theatre" }],
+    [LandmarksOverpassFacet.Memorial]: [{ key: "historic", value: "memorial" }],
+    [LandmarksOverpassFacet.Castle]: [{ key: "historic", value: "castle" }],
+    [LandmarksOverpassFacet.Ruins]: [{ key: "historic", value: "ruins" }],
+    [LandmarksOverpassFacet.ArchaeologicalSite]: [{ key: "historic", value: "archaeological_site" }],
+    [LandmarksOverpassFacet.Battlefield]: [{ key: "historic", value: "battlefield" }],
+    [LandmarksOverpassFacet.Monument]: [{ key: "historic", value: "monument" }],
+    [LandmarksOverpassFacet.Windmill]: [{ key: "man_made", value: "windmill" }],
+    [LandmarksOverpassFacet.Lighthouse]: [{ key: "man_made", value: "lighthouse" }],
+    [LandmarksOverpassFacet.Dam]: [{ key: "waterway", value: "dam" }],
+    [LandmarksOverpassFacet.Zoo]: [{ key: "tourism", value: "zoo" }],
+    [LandmarksOverpassFacet.PicnicSite]: [{ key: "tourism", value: "picnic_site" }],
+    [LandmarksOverpassFacet.Artwork]: [{ key: "tourism", value: "artwork" }],
+    [LandmarksOverpassFacet.Viewpoint]: [{ key: "tourism", value: "viewpoint" }],
+    [LandmarksOverpassFacet.Information]: [{ key: "tourism", value: "information" }],
+    [LandmarksOverpassFacet.Military]: [{ key: "military", value: null }],
+};
+
+function tagClause(key: string, value: string | null): string {
+    return value == null ? `["${key}"]` : `["${key}"="${value}"]`;
 }
 
-/**
- * Filter landmark elements to only those within a given radius from center.
- */
-function filterElementsByRadius(elements: OsmLandmarkElement[], lat: number, lng: number, radiusM: number): OsmLandmarkElement[] {
-    return elements.filter(el => {
-        if (el.lat == null || el.lng == null) return true;
-        return haversineDistanceM({ lat, lng }, { lat: el.lat, lng: el.lng }) <= radiusM;
-    });
-}
+export class OsmLandmarksRetriever extends OsmFeatureRetriever<OsmLandmarksResult, typeof NearbyLandmarksPact> {
+    protected readonly layer = "landmarks";
+    protected readonly defaultRadiusM = DEFAULT_LANDMARK_RADIUS_M;
+    protected readonly maxRadiusM = MAX_LANDMARK_RADIUS_M;
+    protected readonly queryPactClass = NearbyLandmarksPact;
+    protected readonly outStatement = "out center;";
 
-export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements ICacheable, IAreaCacheable<OsmLandmarksResult> {
-    private cacheHandler?: ICacheHandler;
-    private areaCache?: IAreaCache<OsmLandmarksResult>;
-
-    setCacheHandler(handler: ICacheHandler): void {
-        this.cacheHandler = handler;
-    }
-
-    setAreaCache(cache: IAreaCache<OsmLandmarksResult>): void {
-        this.areaCache = cache;
-    }
-
-    /** Arr, the name by which the abyss calls this landmark-huntin' hound */
     get name(): string {
         return OsmLandmarksRetriever.name;
     }
@@ -82,22 +74,10 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
         return 'Finds nearby OSM landmarks (tourism, historic, museums, peaks, cemeteries, bridges, nature, amenities, …) via Overpass — use preset "full" or list facets.';
     }
 
-    /** The sigil branded upon our vessel by cosmic forces beyond comprehension */
     get icon(): string | undefined {
         return "\uD83C\uDFDB\uFE0F";
     }
 
-    /** The pact that binds us — an eldritch accord with the query provider, matey */
-    get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [NearbyLandmarksPact];
-    }
-
-    /** No optional horrors burden this crew */
-    get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
-    }
-
-    /** Carry the Overpass toolkit into the VM so SerializedDog children can use them */
     getVmContextContributions(): Record<string, any> {
         return {
             LandmarksOverpassFacet,
@@ -109,58 +89,70 @@ export class OsmLandmarksRetriever extends Dog<OsmLandmarksResult> implements IC
         };
     }
 
-    /**
-     * Arr, plunder the nearby landmarks from the Overpass abyss!
-     * Area-cache aware: if a larger area was already cached, filter down instead of re-fetching.
-     */
-    protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<OsmLandmarksResult> => {
+    protected parseQuery(season: IHuntingSeason): OsmQueryBase {
         const queryDog = season.exhausted.find((d) => this.matchesParent(NearbyLandmarksPact, d));
-        const query =
-            (queryDog?.collected as OsmLandmarksQueryInput | undefined) ?? ({} as OsmLandmarksQueryInput);
-
+        const query = (queryDog?.collected as OsmLandmarksQueryInput | undefined) ?? ({} as OsmLandmarksQueryInput);
         const lat = parseFloat(query.lat);
         const lng = parseFloat(query.lng);
         const radiusM = clampRadiusM(parseFloat(query.radius ?? ""));
         const facets = parseLandmarkFacets(query.preset);
+        return { lat, lng, radiusM, facets };
+    }
 
-        if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            throw new Error("OsmLandmarksRetriever: Missing required query params (lat, lng)");
-        }
-
-        const discriminant = `landmarks:${[...facets].sort().join(',')}`;
-
-        // Check area cache first — does a larger cached area already cover this query?
-        if (this.areaCache) {
-            const covering = await this.areaCache.findCovering({ lat, lng }, radiusM, discriminant);
-            if (covering) {
-                const filtered = filterElementsByRadius(covering.data.elements, lat, lng, radiusM);
-                return { center: { lat, lng }, radiusM, preset: facets, elements: filtered };
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
+        const lines: string[] = [];
+        for (const f of facets) {
+            const conditions = FACET_TAGS[f];
+            if (!conditions) continue;
+            for (const c of conditions) {
+                lines.push(`  nwr${tagClause(c.key, c.value)}${bboxClause};`);
             }
         }
+        return lines.join("\n");
+    }
 
-        const key = geoBucketKey("landmarks", lat, lng, radiusM, { extras: { facets: [...facets].sort().join(",") } });
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const tags = el.tags ?? {};
+        const matches: string[] = [];
+        for (const f of fetchedFacets) {
+            const conditions = FACET_TAGS[f];
+            if (!conditions) continue;
+            const any = conditions.some((c) =>
+                c.value == null ? tags[c.key] != null : tags[c.key] === c.value,
+            );
+            if (any) matches.push(f);
+        }
+        return matches;
+    }
 
-        const fetchLandmarks = async (): Promise<OsmLandmarksResult> => {
-            const result = await fetchNearbyLandmarks(lat, lng, radiusM, facets);
-
-            // Store in area cache for future containment checks
-            if (this.areaCache) {
-                await this.areaCache.store({
-                    center: { lat, lng },
-                    radiusM,
-                    data: result,
-                    cacheKey: key,
-                    cachedAt: Date.now(),
-                    discriminant,
-                }, GEO_CACHE_TTL_OSM_MS);
-            }
-
-            return result;
+    protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): OsmLandmarksResult {
+        const preset = (q.facets ?? []) as LandmarksOverpassFacet[];
+        const seen = new Set<string>();
+        const mapped: OsmLandmarkElement[] = [];
+        for (const raw of elements) {
+            const m = mapOverpassElement({
+                type: raw.type,
+                id: raw.id,
+                lat: raw.lat,
+                lon: raw.lon,
+                center: raw.center,
+                tags: raw.tags,
+            });
+            if (!m) continue;
+            const key = `${m.type}/${m.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            mapped.push(m);
+        }
+        return {
+            center: { lat: q.lat, lng: q.lng },
+            radiusM: q.radiusM,
+            preset,
+            elements: mapped,
         };
-
-        if (this.cacheHandler) {
-            return this.cacheHandler.getOrFetch(key, GEO_CACHE_TTL_OSM_MS, fetchLandmarks);
-        }
-        return fetchLandmarks();
-    };
+    }
 }

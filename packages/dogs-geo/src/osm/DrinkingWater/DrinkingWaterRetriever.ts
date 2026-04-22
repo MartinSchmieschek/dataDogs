@@ -32,6 +32,16 @@ export interface DrinkingWaterResult {
     };
 }
 
+/** Jede Facility-Art als eigene Facet — getrennt cachen, zusammen ausliefern. */
+const FACET_TAGS: Record<string, { key: string; value: string }> = {
+    drinking_water: { key: "amenity", value: "drinking_water" },
+    toilet: { key: "amenity", value: "toilets" },
+    water_point: { key: "amenity", value: "water_point" },
+    water_tap: { key: "man_made", value: "water_tap" },
+};
+
+const ALL_FACETS = Object.keys(FACET_TAGS);
+
 function classifyFacilityType(tags: Record<string, string>): DrinkingWaterFacilityType {
     if (tags["man_made"] === "water_tap") return "water_tap";
     const amenity = tags["amenity"] ?? "";
@@ -62,19 +72,37 @@ export class DrinkingWaterRetriever extends OsmFeatureRetriever<DrinkingWaterRes
             lat: parseFloat(query.lat),
             lng: parseFloat(query.lng),
             radiusM: this.clampRadius(parseFloat(query.radius ?? "")),
+            facets: ALL_FACETS,
         };
     }
 
-    protected buildOverpassBody(q: OsmQueryBase): string {
-        const { lat, lng, radiusM } = q;
-        return [
-            `  node["amenity"="drinking_water"](around:${radiusM},${lat},${lng});`,
-            `  node["amenity"="toilets"](around:${radiusM},${lat},${lng});`,
-            `  node["amenity"="water_point"](around:${radiusM},${lat},${lng});`,
-            `  node["man_made"="water_tap"](around:${radiusM},${lat},${lng});`,
-            `  way["amenity"="drinking_water"](around:${radiusM},${lat},${lng});`,
-            `  way["amenity"="toilets"](around:${radiusM},${lat},${lng});`,
-        ].join("\n");
+    protected buildOverpassBodyForTile(
+        bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+        facets: string[],
+    ): string {
+        const bboxClause = `(${bbox.minLat},${bbox.minLng},${bbox.maxLat},${bbox.maxLng})`;
+        const lines: string[] = [];
+        for (const f of facets) {
+            const c = FACET_TAGS[f];
+            if (!c) continue;
+            lines.push(`  node["${c.key}"="${c.value}"]${bboxClause};`);
+            // Toilets/drinking_water koennen auch als Way getaggt sein.
+            if (f === "drinking_water" || f === "toilet") {
+                lines.push(`  way["${c.key}"="${c.value}"]${bboxClause};`);
+            }
+        }
+        return lines.join("\n");
+    }
+
+    protected classifyElementFacets(el: OverpassRawElement, fetchedFacets: string[]): string[] {
+        const tags = el.tags ?? {};
+        const matches: string[] = [];
+        for (const f of fetchedFacets) {
+            const c = FACET_TAGS[f];
+            if (!c) continue;
+            if (tags[c.key] === c.value) matches.push(f);
+        }
+        return matches;
     }
 
     protected mapElements(elements: OverpassRawElement[], q: OsmQueryBase): DrinkingWaterResult {
