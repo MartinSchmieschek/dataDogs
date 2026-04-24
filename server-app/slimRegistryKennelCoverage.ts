@@ -54,6 +54,6 @@ export function assertSlimRegistryCoversKennelDbRefs(
     if (missing.length === 0) return;
     throw new Error(
         `[${envLabel}] Schlanke Base-Dog-Registry deckt Kennels in der DB nicht. Fehlend im baseDogsMap: ${missing.join(', ')}. ` +
-            'Ergänze server-registries/integrationRegistry.ts (Klassen + ggf. Pacts) oder entferne die Referenz aus dem Kennel.',
+            'Ergänze server-registries/slimDeployRegistry.ts (Klassen + ggf. Pacts) oder entferne die Referenz aus dem Kennel.',
     );
 }

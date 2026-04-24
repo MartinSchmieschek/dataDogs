@@ -71,7 +71,7 @@ async function start() {
     /** Nur lokal (development): volle Dog-Registry. Production + Integration: schlanke Registry, weniger Imports/Heap. */
     const useSlimBaseDogRegistry = nodeEnvForRegistry === 'production' || nodeEnvForRegistry === 'integration';
     const registryModule = useSlimBaseDogRegistry
-        ? await import('./server-registries/integrationRegistry')
+        ? await import('./server-registries/slimDeployRegistry')
         : await import('./server-registries/fullRegistry');
     const { allBaseDogClasses, allPacts } = registryModule;
 

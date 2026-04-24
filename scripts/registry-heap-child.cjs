@@ -15,7 +15,7 @@ const root = path.join(__dirname, '..');
 (() => {
     const regPath =
         mode === 'slim'
-            ? path.join(root, 'server-registries', 'integrationRegistry.ts')
+            ? path.join(root, 'server-registries', 'slimDeployRegistry.ts')
             : path.join(root, 'server-registries', 'fullRegistry.ts');
     // require('.ts'): ts-node/register muss via -r vor diesem Skript geladen sein.
     const { allBaseDogClasses, allPacts } = require(regPath);

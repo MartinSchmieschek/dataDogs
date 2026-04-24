@@ -1,6 +1,6 @@
 /**
- * Reduzierte Base-Dog- und Pact-Registry für NODE_ENV=production und integration.
- * Lädt nur Pakete, die Seeds + StartupTest brauchen (weniger Heap als fullRegistry).
+ * Schlanke Base-Dog- und Pact-Registry für NODE_ENV=production und integration (weniger RAM/Imports).
+ * Lädt nur Pakete, die Seeds + StartupTest + die DB-Kennel-Abdeckung brauchen.
  * Lokal unter NODE_ENV=development wird stattdessen fullRegistry geladen.
  * @see server-registries/fullRegistry.ts für die volle Liste.
  */
@@ -84,8 +84,11 @@ export const allPacts = [
     TrailQueryPact,
 ] as const;
 
-/** Registrierte Kurznamen (constructor.name) — Abgleich mit `BASE_DOG_PREFIX + '…'` in seed-data. */
-export const INTEGRATION_BASE_DOG_NAMES: readonly string[] = [
+/** Registrierte Kurznamen (constructor.name) — z. B. Abgleich mit `BASE_DOG_PREFIX + '…'` in seed-data. */
+export const SLIM_DEPLOY_BASE_DOG_NAMES: readonly string[] = [
     ...allBaseDogClasses.map((C) => C.name),
     ...allPacts.map((C) => C.name),
 ] as const;
+
+/** @deprecated Alias — nutze `SLIM_DEPLOY_BASE_DOG_NAMES`. */
+export const INTEGRATION_BASE_DOG_NAMES = SLIM_DEPLOY_BASE_DOG_NAMES;
