@@ -2,197 +2,27 @@
 // From brooding gulfs are we beheld by that which bears no name,
 // yet we set sail regardless, for the data must be plundered.
 // Env: `node -r ./scripts/load-env.cjs …` (see package.json: start / start:prod / dev).
+// Express-App und umgebungsabhängiges Frontend: `server-app/createHttpApplication.ts`.
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {
     console.error('[unhandledRejection]', reason);
 });
 
-import { QueryRetriever, BodyRetriever } from '@datadogs/core';
-import {
-    RandomRecipesRetriever,
-    RandomEveryThingRetriever,
-    CountryFlagBlackLab,
-    DishFlagBlackLab,
-    FoodPornRetriever,
-} from '@datadogs/dogs-demo';
-import { TalkingDog, LayoutInputPact } from '@datadogs/dogs-talking';
-import { WarframeAlertsRetriever } from '@datadogs/dogs-warframe';
-import {
-    BloodhoundRouteRetriever,
-    BloodhoundIsochroneRetriever,
-    OsmLandmarksRetriever,
-    OsmTracksRetriever,
-    OsmVegetationRetriever,
-    OsmFastRoadsRetriever,
-    BloodhoundRouteQueryPact,
-    BloodhoundIsochronePact,
-    NearbyLandmarksPact,
-    NearbyTracksPact,
-    NearbyVegetationPact,
-    NearbyFastRoadsPact,
-    DrinkingWaterRetriever,
-    DrinkingWaterQueryPact,
-    OpenFoodRetriever,
-    OpenFoodQueryPact,
-    NoiseRetriever,
-    NoiseQueryPact,
-    PlaygroundRetriever,
-    PlaygroundQueryPact,
-    ParkingRetriever,
-    ParkingQueryPact,
-    TrailRetriever,
-    TrailQueryPact,
-} from '@datadogs/dogs-geo';
-import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
-import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
-import { WeatherRetriever, WeatherQueryPact } from '@datadogs/dogs-weather';
-import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-quality';
-import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@datadogs/dogs-geocoding';
-import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
-import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
-import { SpeciesRetriever, BiodiversityQueryPact } from '@datadogs/dogs-biodiversity';
-import { BirdRetriever, BirdQueryPact } from '@datadogs/dogs-birds';
-import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology';
-import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
-import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
-import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
-import { AstronomyRetriever, AstronomyQueryPact } from '@datadogs/dogs-astronomy';
-import { WaterRetriever, WaterQueryPact } from '@datadogs/dogs-water';
-import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@datadogs/dogs-historical-weather';
-import { ChargingStationRetriever, ChargingQueryPact } from '@datadogs/dogs-charging';
-import { CurrencyRetriever, CurrencyQueryPact } from '@datadogs/dogs-currency';
-import { HolidayRetriever, HolidayQueryPact } from '@datadogs/dogs-holidays';
-import { WikiSearchRetriever, WikiSearchQueryPact } from '@datadogs/dogs-wiki-search';
-import { SeasonRetriever, SeasonQueryPact } from '@datadogs/dogs-season';
-import { IPGeoRetriever, IPGeoQueryPact } from '@datadogs/dogs-ip-geo';
-import { RandomFactRetriever, RandomFactQueryPact } from '@datadogs/dogs-random-fact';
-import { SpaceRetriever, SpaceQueryPact } from '@datadogs/dogs-space';
-import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@datadogs/dogs-open-library';
-import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@datadogs/dogs-github-trending';
-import { GeoPointPact } from '@datadogs/geo-pact';
-import {
-    JokeRetriever, JokeQueryPact,
-    DadJokeRetriever, DadJokeQueryPact,
-    ChuckNorrisRetriever, ChuckNorrisQueryPact,
-} from '@datadogs/dogs-humor';
-import {
-    CatFactRetriever, CatFactQueryPact,
-    FoxRetriever, FoxQueryPact,
-    DuckRetriever, DuckQueryPact,
-} from '@datadogs/dogs-animals-random';
-import {
-    DictionaryRetriever,
-    DatamuseRetriever, DatamuseQueryPact,
-    WordQueryPact,
-} from '@datadogs/dogs-dictionary';
-import {
-    QuoteRetriever, QuoteQueryPact,
-    GutenbergRetriever, GutenbergQueryPact,
-    WikidataRetriever, WikidataQueryPact,
-} from '@datadogs/dogs-knowledge';
-import {
-    StarWarsRetriever, RickMortyRetriever, HarryPotterRetriever, GhibliRetriever,
-    PopCultureQueryPact,
-} from '@datadogs/dogs-pop-culture';
-import {
-    MusicBrainzRetriever, MusicBrainzQueryPact,
-    LyricsRetriever, LyricsQueryPact,
-    RadioBrowserRetriever, RadioBrowserQueryPact,
-} from '@datadogs/dogs-music';
-import {
-    F1Retriever, F1QueryPact,
-    SportsDBRetriever, SportsDbQueryPact,
-    ChessRetriever, ChessQueryPact,
-} from '@datadogs/dogs-sports';
-import {
-    NpmRetriever, NpmQueryPact,
-    StackExchangeRetriever, StackExchangeQueryPact,
-    GitHubPublicRetriever, GitHubPublicQueryPact,
-} from '@datadogs/dogs-dev';
-import {
-    AirportRetriever, AirportQueryPact,
-    GeoNamesRetriever,
-    WikivoyageRetriever, WikivoyageQueryPact,
-} from '@datadogs/dogs-travel';
-import {
-    TriviaRetriever, TriviaQueryPact,
-    BoredRetriever, BoredQueryPact,
-    RandomUserRetriever, RandomUserQueryPact,
-} from '@datadogs/dogs-quiz';
-import {
-    BibleRetriever, BibleQueryPact,
-    QuranRetriever, QuranQueryPact,
-} from '@datadogs/dogs-religion';
-import {
-    DiseaseRetriever, DiseaseQueryPact,
-    OpenFdaRetriever, OpenFdaQueryPact,
-} from '@datadogs/dogs-health';
-import {
-    CocktailRetriever, CocktailQueryPact,
-    MealRetriever, MealQueryPact,
-} from '@datadogs/dogs-cuisine';
-import {
-    WaybackRetriever, WaybackQueryPact,
-} from '@datadogs/dogs-web-archive';
-import {
-    DogCeoRetriever, DogCeoQueryPact,
-    PicsumRetriever, PicsumQueryPact,
-    NasaApodRetriever, NasaApodQueryPact,
-} from '@datadogs/dogs-images';
-import {
-    AgifyRetriever,
-    NationalizeRetriever,
-    GenderizeRetriever,
-    NameQueryPact,
-} from '@datadogs/dogs-name-insights';
-import {
-    PokeApiRetriever, PokeApiQueryPact,
-    DeckOfCardsRetriever, DeckOfCardsQueryPact,
-    ScryfallRetriever, ScryfallQueryPact,
-} from '@datadogs/dogs-gaming';
-import {
-    LibreTranslateRetriever, LibreTranslateQueryPact,
-} from '@datadogs/dogs-translate';
-import {
-    TvMazeRetriever, TvMazeQueryPact,
-} from '@datadogs/dogs-tv';
-import {
-    HackerNewsRetriever, HackerNewsQueryPact,
-    LemmyRetriever, LemmyQueryPact,
-} from '@datadogs/dogs-social';
-import {
-    CoinGeckoRetriever, CoinGeckoQueryPact,
-} from '@datadogs/dogs-crypto';
-import {
-    ISerializedDogConfig,
-    SerializedDog,
-    type ICacheHandler,
-    WebSocketChannelRetriever,
-    ChannelLiveSnippetRetriever,
-    JsonStorageRetriever,
-} from '@datadogs/core';
+import { WebSocketChannelRetriever, JsonStorageRetriever } from '@datadogs/core';
 import http from 'http';
 import { ChannelHub } from './services/ChannelHub';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
 import { JsonStorageService } from './services/JsonStorageService';
-import express from "express";
 import path from 'path';
-import fs from 'fs';
-import { Controller } from './api/Controller';
-import { KennelController } from './api/KennelController';
-import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
-import { KennelRunHandler } from './api/routes/KennelRunHandler';
-import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
-import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
-import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
-import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
-import { SPA_FALLBACK_SKIP_PREFIXES } from './api/routes/spaRouteConstants';
-import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
-import { PrismaCacheHandler } from './services/PrismaCacheHandler';
+import { createHttpApplication } from './server-app/createHttpApplication';
+import {
+    assertSlimRegistryCoversKennelDbRefs,
+    collectBaseDogNamesFromLatestKennels,
+} from './server-app/slimRegistryKennelCoverage';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
@@ -200,27 +30,6 @@ const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
     resolveCacheDatabaseUrl: () => string;
     resolveJsonStorageDatabaseUrl: () => string;
 };
-
-/** Angular-Produktionsbuild (Application-Builder → …/browser), nur wenn index.html existiert. */
-function resolveAngularBrowserDir(): string | null {
-    const candidates = [
-        path.join(__dirname, '..', 'ui-app', 'dist', 'ui-app', 'browser'),
-        path.join(__dirname, 'ui-app', 'dist', 'ui-app', 'browser'),
-    ];
-    for (const dir of candidates) {
-        if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
-    }
-    return null;
-}
-
-/** `public/` für `/static/*` (Swagger-Info-Hintergrundbild, …). Bei `dist/main.js` liegt `__dirname` unter `dist/`. */
-function resolvePublicDir(): string | null {
-    const candidates = [path.join(__dirname, 'public'), path.join(__dirname, '..', 'public')];
-    for (const dir of candidates) {
-        if (fs.existsSync(dir)) return dir;
-    }
-    return null;
-}
 
 // Cast off the moorings — if our vessel fails to launch, we sink into the deep and trouble no man further.
 start().catch(e => {
@@ -258,113 +67,13 @@ async function start() {
     });
     WebSocketChannelRetriever.initService(channelHub);
 
-    // Arr, the full crew of base hounds — each born of corporeal law, each ready to hunt.
-    // To cosmic madness laws submit, though stalwart minds entreat.
-    const allBaseDogClasses = [
-        TalkingDog,
-        RandomRecipesRetriever,
-        CountryFlagBlackLab,
-        DishFlagBlackLab,
-        RandomEveryThingRetriever,
-        FoodPornRetriever,
-        QueryRetriever,
-        BodyRetriever,
-        WarframeAlertsRetriever,
-        BloodhoundRouteRetriever,
-        BloodhoundIsochroneRetriever,
-        OsmLandmarksRetriever,
-        OsmTracksRetriever,
-        OsmVegetationRetriever,
-        OsmFastRoadsRetriever,
-        HueBridgeEnvRetriever,
-        HuePlaygroundRetriever,
-        PublicTransportRetriever,
-        WeatherRetriever,
-        AirQualityRetriever,
-        GeocodingRetriever,
-        WikiNearbyRetriever,
-        SunRetriever,
-        SpeciesRetriever,
-        BirdRetriever,
-        PhenologyRetriever,
-        WebcamRetriever,
-        RegionalNewsRetriever,
-        TransitTripRetriever,
-        ElevationRetriever,
-        TrailRetriever,
-        AstronomyRetriever,
-        WaterRetriever,
-        HistoricalWeatherRetriever,
-        ChargingStationRetriever,
-        NoiseRetriever,
-        ParkingRetriever,
-        PlaygroundRetriever,
-        DrinkingWaterRetriever,
-        OpenFoodRetriever,
-        CurrencyRetriever,
-        HolidayRetriever,
-        WikiSearchRetriever,
-        SeasonRetriever,
-        IPGeoRetriever,
-        RandomFactRetriever,
-        SpaceRetriever,
-        OpenLibraryRetriever,
-        GitHubTrendingRetriever,
-        JsonStorageRetriever,
-        WebSocketChannelRetriever,
-        ChannelLiveSnippetRetriever,
-        JokeRetriever,
-        DadJokeRetriever,
-        ChuckNorrisRetriever,
-        CatFactRetriever,
-        FoxRetriever,
-        DuckRetriever,
-        DictionaryRetriever,
-        DatamuseRetriever,
-        QuoteRetriever,
-        GutenbergRetriever,
-        WikidataRetriever,
-        StarWarsRetriever,
-        RickMortyRetriever,
-        HarryPotterRetriever,
-        GhibliRetriever,
-        MusicBrainzRetriever,
-        LyricsRetriever,
-        RadioBrowserRetriever,
-        F1Retriever,
-        SportsDBRetriever,
-        ChessRetriever,
-        NpmRetriever,
-        StackExchangeRetriever,
-        GitHubPublicRetriever,
-        AirportRetriever,
-        GeoNamesRetriever,
-        WikivoyageRetriever,
-        TriviaRetriever,
-        BoredRetriever,
-        RandomUserRetriever,
-        BibleRetriever,
-        QuranRetriever,
-        DiseaseRetriever,
-        OpenFdaRetriever,
-        CocktailRetriever,
-        MealRetriever,
-        WaybackRetriever,
-        DogCeoRetriever,
-        PicsumRetriever,
-        NasaApodRetriever,
-        AgifyRetriever,
-        NationalizeRetriever,
-        GenderizeRetriever,
-        PokeApiRetriever,
-        DeckOfCardsRetriever,
-        ScryfallRetriever,
-        LibreTranslateRetriever,
-        TvMazeRetriever,
-        HackerNewsRetriever,
-        LemmyRetriever,
-        CoinGeckoRetriever,
-    ];
+    const nodeEnvForRegistry = process.env.NODE_ENV || 'development';
+    /** Nur lokal (development): volle Dog-Registry. Production + Integration: schlanke Registry, weniger Imports/Heap. */
+    const useSlimBaseDogRegistry = nodeEnvForRegistry === 'production' || nodeEnvForRegistry === 'integration';
+    const registryModule = useSlimBaseDogRegistry
+        ? await import('./server-registries/integrationRegistry')
+        : await import('./server-registries/fullRegistry');
+    const { allBaseDogClasses, allPacts } = registryModule;
 
     // Breathe life into each hound — those who lack their credentials perish in the constructor.
     // The survivors form the pack; the fallen are mourned in the logs.
@@ -381,154 +90,33 @@ async function start() {
         }
     }
 
-    // The Pacts — eldritch contracts sealed between dogs and the void,
-    // through which the MimicDog may wear another's form.
-    // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact, GeoPointPact, JokeQueryPact, DadJokeQueryPact, ChuckNorrisQueryPact, CatFactQueryPact, FoxQueryPact, DuckQueryPact, WordQueryPact, DatamuseQueryPact, QuoteQueryPact, GutenbergQueryPact, WikidataQueryPact, PopCultureQueryPact, MusicBrainzQueryPact, LyricsQueryPact, RadioBrowserQueryPact, F1QueryPact, SportsDbQueryPact, ChessQueryPact, NpmQueryPact, StackExchangeQueryPact, GitHubPublicQueryPact, AirportQueryPact, WikivoyageQueryPact, TriviaQueryPact, BoredQueryPact, RandomUserQueryPact, BibleQueryPact, QuranQueryPact, DiseaseQueryPact, OpenFdaQueryPact, CocktailQueryPact, MealQueryPact, WaybackQueryPact, DogCeoQueryPact, PicsumQueryPact, NasaApodQueryPact, NameQueryPact, PokeApiQueryPact, DeckOfCardsQueryPact, ScryfallQueryPact, LibreTranslateQueryPact, TvMazeQueryPact, HackerNewsQueryPact, LemmyQueryPact, CoinGeckoQueryPact];
+    // The Pacts — aus Registry-Modul (schlank unter production/integration, sonst volle Crew).
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
     });
-    TypeDefBuilder.registerPacts(allPacts);
+    TypeDefBuilder.registerPacts([...allPacts]);
 
-    const app = express();
-    const port = Number(process.env.PORT) || 3000;
+    if (useSlimBaseDogRegistry) {
+        const requiredFromDb = await collectBaseDogNamesFromLatestKennels(kennelsStore);
+        assertSlimRegistryCoversKennelDbRefs(requiredFromDb, baseDogsMap, nodeEnvForRegistry);
+    }
+
     const nodeEnv = process.env.NODE_ENV || 'development';
-    /** Gebautes Angular unter ui-app/dist/... ausliefern (nicht ng serve). Gilt für production und integration. */
-    const serveBuiltAngular = nodeEnv === 'production' || nodeEnv === 'integration';
     const devUiOrigin = (process.env.DEV_UI_ORIGIN || 'http://localhost:4300').replace(/\/$/, '');
 
-    /**
-     * Which vessels may approach our ship cross-origin without being blown out of the water?
-     * - CORS_ALLOWED_ORIGINS: comma-separated list — those who may seek our plunder.
-     * - integration / production: CORS_ORIGIN oder DEV_UI_ORIGIN gesetzt → nur diese eine Origin;
-     *   sonst Origin erlauben, wenn sie zum Request-Host passt (SPA + API unter derselben URL, z. B. Render).
-     * - development ohne Liste: localhost-Origins.
-     */
-    const isLocalDevOrigin = (origin: string): boolean => {
-        try {
-            const u = new URL(origin);
-            return (
-                (u.protocol === 'http:' || u.protocol === 'https:') &&
-                (u.hostname === 'localhost' || u.hostname === '127.0.0.1')
-            );
-        } catch {
-            return false;
-        }
-    };
-
-    /** Origin-Header passt zur öffentlichen URL dieses Requests (x-forwarded-host / Host). */
-    const originMatchesRequestHost = (req: any, origin: string): boolean => {
-        try {
-            const hostHeader = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
-            if (!hostHeader) return false;
-            return new URL(origin).host.toLowerCase() === hostHeader.toLowerCase();
-        } catch {
-            return false;
-        }
-    };
-
-    const allowedOriginForRequest = (req: any): string | undefined => {
-        const origin = req.headers.origin as string | undefined;
-        if (!origin) return undefined;
-
-        const list = process.env.CORS_ALLOWED_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean);
-        if (list?.length) {
-            return list.includes(origin) ? origin : undefined;
-        }
-
-        if (nodeEnv === 'production' || nodeEnv === 'integration') {
-            const fixedRaw = process.env.CORS_ORIGIN ?? process.env.DEV_UI_ORIGIN;
-            if (fixedRaw?.trim()) {
-                const fixed = fixedRaw.replace(/\/$/, '');
-                return origin === fixed ? origin : undefined;
-            }
-            return originMatchesRequestHost(req, origin) ? origin : undefined;
-        }
-
-        return isLocalDevOrigin(origin) ? origin : undefined;
-    };
-
-    app.use((req: any, res: any, next: any) => {
-        const allow = allowedOriginForRequest(req);
-        if (allow) {
-            res.setHeader('Access-Control-Allow-Origin', allow);
-            res.setHeader('Vary', 'Origin');
-        }
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-        if (req.method === 'OPTIONS') {
-            res.sendStatus(204);
-            return;
-        }
-        next();
+    const { app, serveBuiltAngular } = await createHttpApplication({
+        nodeEnv,
+        devUiOrigin,
+        serverRootDir: __dirname,
+        nodesStore,
+        kennelsStore,
+        allBaseDogs,
+        baseDogsMap,
+        resolveCacheDatabaseUrl: dbEnv.resolveCacheDatabaseUrl,
     });
 
-    app.use(express.json({ limit: '5mb' }));
-
-    // Static assets (Swagger UI hero, etc.) — served from /static/*
-    const publicDir = resolvePublicDir();
-    if (publicDir) {
-        app.use('/static', express.static(publicDir));
-    }
-
-    const angularBrowserDir = serveBuiltAngular ? resolveAngularBrowserDir() : null;
-    if (angularBrowserDir) {
-        app.use(express.static(angularBrowserDir, { index: 'index.html' }));
-    }
-
-    // Nur development: Root → ng serve (:4300). integration/production liefern die gebaute SPA von diesem Port.
-    if (!serveBuiltAngular) {
-        app.get('/', (_req, res) => {
-            res.redirect(302, `${devUiOrigin}/`);
-        });
-    }
-
-    // Assemble the registry — a chart of all controllers that sail under our black flag.
-    const registry = new ControllerRegistry();
-    const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
-    const kennelsController = new KennelController(kennelsStore);
-    registry.register('nodes', nodesController);
-    registry.register('kennels', kennelsController);
-
-    // Run the startup trials — our pack must prove itself before the hunt may begin.
-    // Carrion hordes trill their profane accord: if the tests fail, chaos reigns.
-    const startupTest = new StartupTest();
-    await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap);
-
-    // Summon the nodes manifest and the sacred scrolls — each handler a star in the eldritch sky.
-    const nodesRouteHandler = new NodesRouteHandler(registry, allBaseDogs);
-    nodesRouteHandler.registerRoutes(app);
-    const readmeRouteHandler = new ReadmeRouteHandler(__dirname);
-    readmeRouteHandler.registerRoutes(app);
-
-    // Raise the CRUD sails — all routes for nodes and kennels now billow in the cosmic wind.
-    const routeHandler = new ConfigRouteHandler(registry);
-    routeHandler.registerRoutes(app, '/api');
-
-    // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
-    const cacheHandler: ICacheHandler = new PrismaCacheHandler(dbEnv.resolveCacheDatabaseUrl());
-
-    // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
-    // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
-    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
-    const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
-    const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
-    kennelSwaggerHandler.registerRoutes(app);
-    kennelBundleHandler.registerRoutes(app);
-    kennelRunHandler.registerRoutes(app);
-
-    // SPA-Fallback (Angular): Express 5 — kein app.get('*', …). Keine Kollision mit /api, /static (siehe spaRouteConstants).
-    if (angularBrowserDir) {
-        app.use((req: any, res: any, next: any) => {
-            if (req.method !== 'GET') return next();
-            const p = req.path as string;
-            if (SPA_FALLBACK_SKIP_PREFIXES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`))) {
-                return next();
-            }
-            res.sendFile(path.join(angularBrowserDir, 'index.html'));
-        });
-    }
+    const port = Number(process.env.PORT) || 3000;
 
     // Eigener http.Server, damit der ChannelHub seinen WebSocketServer per Upgrade-Handler anhaengen kann.
     const httpServer = http.createServer(app);
