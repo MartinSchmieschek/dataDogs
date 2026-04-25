@@ -192,6 +192,7 @@ import { SPA_FALLBACK_SKIP_PREFIXES } from './api/routes/spaRouteConstants';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { CompilerCache } from './services/CompilerCache';
 import { PrismaCacheHandler } from './services/PrismaCacheHandler';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -389,6 +390,24 @@ async function start() {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
     });
+    // In production/integration: vorbereitete Type-Definitions laden, damit kein
+    // ts.createProgram zur Laufzeit aufgerufen wird (Heap-Schonung auf kleinen Umgebungen).
+    const envForTypeDefs = process.env.NODE_ENV;
+    if (envForTypeDefs === 'production' || envForTypeDefs === 'integration') {
+        const typeDefsPath = path.resolve(process.cwd(), 'dist', 'type-defs.json');
+        if (fs.existsSync(typeDefsPath)) {
+            try {
+                const payload = JSON.parse(fs.readFileSync(typeDefsPath, 'utf-8'));
+                CompilerCache.loadPrecomputed(payload);
+                console.log(`[CompilerCache] Loaded precomputed type-defs from ${typeDefsPath}`);
+            } catch (e) {
+                console.error('[CompilerCache] Failed to load precomputed type-defs:', e);
+            }
+        } else {
+            console.warn(`[CompilerCache] ${typeDefsPath} not found — falling back to live TS compilation (heap-heavy).`);
+        }
+    }
+
     TypeDefBuilder.registerPacts(allPacts);
 
     const app = express();
