@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { AstronomyQueryPact, type AstronomyQuery } from "./pacts";
 
 export interface AstronomyMoon {
@@ -68,7 +68,8 @@ export class AstronomyRetriever extends Dog<AstronomyResult> implements ICacheab
         }
 
         const dateStr = query.date || new Date().toISOString().split("T")[0];
-        const key = `astronomy:${lat}:${lng}:${dateStr}`;
+        // 1 km Zelle — Sonne/Mond aendern sich ueber diese Distanz nicht messbar.
+        const key = geoBucketKey("astronomy", lat, lng, 1000, { bucketM: 1000, extras: { date: dateStr } });
 
         const fetchData = async (): Promise<AstronomyResult> => {
             const ctrl = new AbortController();

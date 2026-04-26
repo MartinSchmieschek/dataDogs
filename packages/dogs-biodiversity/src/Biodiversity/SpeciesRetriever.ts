@@ -13,7 +13,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { getSpecies } from "./biodiversityApiClient";
 import type { BiodiversityResult } from "./interfaces/biodiversityTypes";
 import { BiodiversityQueryPact, type BiodiversityQuery } from "./pacts";
@@ -65,7 +65,9 @@ export class SpeciesRetriever extends Dog<BiodiversityResult> implements ICachea
             throw new Error('SpeciesRetriever: Missing required query params (lat, lng)');
         }
 
-        const key = `species:${lat}:${lng}:${radiusKm}:${taxon ?? 'all'}:${months ?? 'all'}`;
+        const key = geoBucketKey("species", lat, lng, radiusKm * 1000, {
+            extras: { taxon: taxon ?? 'all', months: months ?? 'all' },
+        });
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 30 * 60_000, () =>

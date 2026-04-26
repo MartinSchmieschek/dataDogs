@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketCenter } from "@datadogs/core";
 import { calculateSeason } from "./seasonCalculator";
 import type { SeasonResult } from "./interfaces/seasonTypes";
 import { SeasonQueryPact, type SeasonQuery } from "./pacts";
@@ -56,7 +56,9 @@ export class SeasonRetriever extends Dog<SeasonResult> implements ICacheable {
             throw new Error('SeasonRetriever: Missing required query param (lat)');
         }
 
-        const key = `season:${lat}:${query['date'] ?? 'today'}`;
+        // Saison aendert sich erst auf grossen Breitenskalen — 100 km bucket reicht.
+        const snapped = geoBucketCenter(lat, 0, 100_000, 100_000);
+        const key = `season:${snapped.lat.toFixed(4)}:${query['date'] ?? 'today'}`;
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 60 * 60_000, () =>
