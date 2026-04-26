@@ -2,6 +2,7 @@
  * Overpass: landcover / vegetation polygons and sites near a point (natural=*, landuse=forest, leisure=park, …).
  */
 
+import type { FeatureCollection, GeometryObject } from "geojson";
 import {
     clampOsmRadiusM,
     DEFAULT_OSM_RADIUS_M,
@@ -50,7 +51,10 @@ export interface OsmVegetationResult {
     center: { lat: number; lng: number };
     radiusM: number;
     preset: VegetationOverpassFacet[];
+    /** Centerpoint pro Element — fuer Liste/Marker-Renderer. */
     elements: OsmGeoElement[];
+    /** Volle Polygon-Geometrie als GeoJSON — fuer Karten-Renderer. */
+    geojson: FeatureCollection<GeometryObject>;
 }
 
 type LineGen = (r: number, lat: number, lng: number) => string;
@@ -159,5 +163,6 @@ export async function fetchNearbyVegetation(
         radiusM,
         preset: normalized,
         elements,
+        geojson: { type: "FeatureCollection", features: [] },
     };
 }
