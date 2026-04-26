@@ -64,7 +64,7 @@ export class RickMortyRetriever extends Dog<PopCultureResult> implements ICachea
             };
         };
 
-        const key = `rickandmorty:${resource}:${query.id ?? ""}:${query.search ?? ""}:${page}`;
+        const key = `rickandmorty:${resource}:${(query.id ?? "").toLowerCase().trim()}:${(query.search ?? "").toLowerCase().trim()}:${page}`;
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, RM_CACHE_TTL_MS, buildAndFetch);
         }

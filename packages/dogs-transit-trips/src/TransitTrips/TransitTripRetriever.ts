@@ -14,7 +14,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { fetchLocalTransitNetwork } from "./transitTripApiClient";
 import type { TransitTripResult } from "./interfaces/transitTripTypes";
 import { TransitTripQueryPact, type TransitTripQuery } from "./pacts";
@@ -68,7 +68,9 @@ export class TransitTripRetriever extends Dog<TransitTripResult> implements ICac
         const line = query['line'] || undefined;
         const limit = parseInt(query['limit'] ?? '10', 10);
 
-        const key = `trips:${lat}:${lng}:${radius}:${stations}:${line ?? 'all'}:${limit}`;
+        const key = geoBucketKey("trips", lat, lng, radius, {
+            extras: { stations, line: line ?? 'all', limit },
+        });
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 5 * 60_000, () =>

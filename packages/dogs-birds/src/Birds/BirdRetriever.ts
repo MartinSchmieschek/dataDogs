@@ -13,7 +13,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { getBirds } from "./birdApiClient";
 import type { BirdResult } from "./interfaces/birdTypes";
 import { BirdQueryPact, type BirdQuery } from "./pacts";
@@ -71,7 +71,9 @@ export class BirdRetriever extends Dog<BirdResult> implements ICacheable {
             throw new Error('BirdRetriever: Missing required query params (lat, lng)');
         }
 
-        const key = `birds:${lat}:${lng}:${radiusKm}:${back}`;
+        const key = geoBucketKey("birds", lat, lng, radiusKm * 1000, {
+            extras: { back },
+        });
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 15 * 60_000, () =>

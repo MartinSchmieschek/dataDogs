@@ -9,17 +9,25 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { getWikiNearby } from "./wikipediaApiClient";
 import type { WikiNearbyResult } from "./interfaces/wikipediaTypes";
 import { WikiNearbyQueryPact, type WikiNearbyQuery } from "./pacts";
+
+const WIKI_NEARBY_CACHE_TTL_MS = 24 * 60 * 60_000; // 24 h — Geo-Artikel sind stabil
 
 /**
  * Arr, the WikiNearbyRetriever — a spectral hound that sniffs out
  * Wikipedia articles near given GPS coordinates!
  * Each article comes with title, summary, thumbnail, and distance.
  */
-export class WikiNearbyRetriever extends Dog<WikiNearbyResult> {
+export class WikiNearbyRetriever extends Dog<WikiNearbyResult> implements ICacheable {
+    private cacheHandler?: ICacheHandler;
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
+
     get name(): string { return WikiNearbyRetriever.name; }
     get description(): string { return 'Finds nearby Wikipedia articles for given GPS coordinates.'; }
     get icon(): string | undefined { return "\uD83D\uDCDA"; }
@@ -40,6 +48,15 @@ export class WikiNearbyRetriever extends Dog<WikiNearbyResult> {
             throw new Error('WikiNearbyRetriever: Missing required query params (lat, lng)');
         }
 
-        return await getWikiNearby(lat, lng, radius, limit, lang);
+        const key = geoBucketKey("wiki-nearby", lat, lng, radius, {
+            extras: { lang, limit },
+        });
+
+        if (this.cacheHandler) {
+            return this.cacheHandler.getOrFetch(key, WIKI_NEARBY_CACHE_TTL_MS, () =>
+                getWikiNearby(lat, lng, radius, limit, lang)
+            );
+        }
+        return getWikiNearby(lat, lng, radius, limit, lang);
     };
 }
