@@ -239,8 +239,8 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
 
         // Dialektneutrale Bulk-Variante via Prisma high-level. Upsert-Semantik
         // bilden wir mit deleteMany + createMany ab (eine Loesch-, eine Schreib-
-        // Round-Trip pro Chunk). createMany({skipDuplicates:true}) deckt INSERT-
-        // OR-IGNORE auf SQLite und PostgreSQL gleichermassen ab.
+        // Round-Trip pro Chunk). skipDuplicates ist im SQLite-Client nicht typisiert,
+        // darum: vor jedem createMany loeschen wir die zu ersetzenden Reihen explizit.
         // Chunk-Groessen so gewaehlt, dass die Param-Anzahl unter dem klassischen
         // SQLite-Limit (999) bleibt: 60 Features × 15 Spalten = 900, 120 Memberships
         // × 7 Spalten = 840. PostgreSQL traegt locker mehr — Untergrenze regiert.
@@ -279,11 +279,27 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
                         payload: f.payload,
                         updatedAt: now,
                     })),
-                    skipDuplicates: true,
                 });
             }
 
-            // 2. Memberships: INSERT-OR-IGNORE-Semantik per skipDuplicates.
+            // 2. Memberships: vor dem Insert die alten Memberships fuer
+            //    (Feature, refreshed-Facet) loeschen. Memberships fuer Facets,
+            //    die in diesem Fetch nicht angefasst wurden, bleiben unberuehrt.
+            if (result.features.length > 0 && result.facets.length > 0) {
+                for (let i = 0; i < result.features.length; i += FEATURE_CHUNK) {
+                    const refs = result.features.slice(i, i + FEATURE_CHUNK).map((f) => ({
+                        osmType: f.osmType,
+                        osmId: BigInt(f.osmId),
+                    }));
+                    await tx.featureTileMembership.deleteMany({
+                        where: {
+                            dogType,
+                            facet: { in: result.facets },
+                            OR: refs,
+                        },
+                    });
+                }
+            }
             for (let i = 0; i < memberships.length; i += MEM_CHUNK) {
                 const chunk = memberships.slice(i, i + MEM_CHUNK);
                 if (chunk.length === 0) continue;
@@ -297,7 +313,6 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
                         tileY: m.tileY,
                         facet: m.facet,
                     })),
-                    skipDuplicates: true,
                 });
             }
 
@@ -323,7 +338,6 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
                         fetchedAt: now,
                         expiresAt,
                     })),
-                    skipDuplicates: true,
                 });
             }
         }, {
