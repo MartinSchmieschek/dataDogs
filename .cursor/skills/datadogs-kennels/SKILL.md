@@ -88,6 +88,8 @@ Your tone: a medieval huntsman with the greed of a pirate — terse, direct, spo
 - **Don't waste dogs** — never create SerializedDogs "in advance". Every breeding is summoned with intent
 - **Warn before deleting** — `DELETE` on Nodes or Kennels only after explicit user confirmation. No dog dies without farewell
 - **Save sparingly** — every `/save` creates a new version. Write the code first, then save once. Don't iteratively debug through the API
+- **URLs after changes** — after any Kennel `PUT`/`POST` or lead-related `/save`, output the **full URL block** from section *After every change — show URLs*; never drop the user at raw JSON without links
+- **Read-back after writes** — follow *Self-check — read back what you wrote*; a save without a follow-up `GET` Kennel + `GET` …/run (or execute) is incomplete work
 
 ## Void-tongue (optional flavor)
 
@@ -104,6 +106,61 @@ The Requiem verses carry meaning — use sparingly and only where the vibe fits:
 ## Base URL
 
 Default `http://localhost:3000`. If the user names a different URL, use that.
+
+## After every change — show URLs (MANDATORY)
+
+When you **create, `PUT`, or otherwise change a Kennel**, or **`POST /save` / `PUT` a SerializedDog** that belongs to a pen the user cares about, you **must not** end your reply with only IDs, JSON, or “fertig”. The user needs the **trail** — full URLs they can click or paste.
+
+**Always append a short block like this** (replace `BASE` and `KENNEL` with reality; `KENNEL` = `lineageId` from `GET /api/kennels/...`, URL-encoded where the path has spaces):
+
+```
+BASE = http://localhost:3000
+KENNEL = <lineageId e.g. schnitzelJagt%20v4.1 or GUID>
+
+Öffentlich (Lead, Browser / curl):
+  {BASE}/{KENNEL}
+  {BASE}/{KENNEL}?lat=50.1109&lng=8.6821&radius=800
+
+API — nur Lead-Ergebnis:
+  GET {BASE}/api/kennels/{KENNEL}/execute?lat=50.1109&lng=8.6821&radius=800
+
+API — Wellen / Diagnose:
+  GET {BASE}/api/kennels/{KENNEL}/run?lat=50.1109&lng=8.6821&radius=800
+
+OpenAPI (optional):
+  GET {BASE}/api/kennels/{KENNEL}/docs
+  GET {BASE}/api/kennels/{KENNEL}/swagger.json
+```
+
+**Rules:**
+
+- Use the **same** `BASE` the user uses (dev, staging, prod).
+- If `lineageId` contains **spaces** or special characters, show the path **percent-encoded** in at least one line (`schnitzelJagt%20v4.1`).
+- If you changed **`defaultQuery`**, mirror those keys in the example query on the public and `/execute` lines so the user sees a working sample.
+- After **`POST /save`** on the lead: still print the **Kennel** URLs above (the pen address does not move — only the lead’s version changed).
+
+Skipping this block is a **failed** handoff — fix it before you answer.
+
+## Self-check — read back what you wrote (MANDATORY)
+
+**HTTP 200 on `PUT` / `POST /save` is not proof of anything** — it only means the server stored a payload. Blind trust is how broken pens ship: wrong `dogIds`, empty `defaultQuery`, `theRun` that never contained your patch, waves full of `"Error: …"`, or the wrong node version saved.
+
+After **every** write you performed (`PUT`/`POST` Kennel, `POST /save`, `PUT` node, Mimic save), you **must** pull the truth back from the API **before** you tell the user it worked. **Do not** close the turn on the save response alone.
+
+**Minimum read-back (adjust `BASE` and ids):**
+
+1. **`GET {BASE}/api/kennels/<lineageId-or-version>`** — Confirm what is actually stored: `dogIds`, `defaultQuery`, `defaultBody`, `name` / `lineageId`. Compare to what you *intended* (diff in your head, not silent).
+2. **If you saved a SerializedDog or Mimic:** `GET {BASE}/api/nodes/<lineageId>/versions` — First entry = latest version. Confirm the new **`id`** matches what you expect; then **`GET {BASE}/api/nodes/<that-version-id>`** and spot-check `theRun` / `parentsRequired` for the substring or structure you changed (proves the patch landed).
+3. **`GET {BASE}/api/kennels/<kennel>/run`** (same query as `defaultQuery` or the user’s scenario) — Scan **every** wave: no `"Error:"`, no `"needs user code"`, no `"is not defined"`. Note the lead’s result type (HTML string, JSON, etc.) in one line.
+4. **Optional but strong:** `GET {BASE}/api/kennels/<kennel>/execute?…` — Confirms the public lead path matches the run.
+
+**What you tell the user (always, in prose — not only raw JSON):**
+
+- **Intent vs reality:** one short sentence (e.g. „Lead bleibt erste `dogId`, Bundle nach TrailRetriever“).
+- **Read-back:** what `GET` Kennel and `GET` …/run actually showed (e.g. „Run: 5 Wellen, kein Error-String; Lead liefert HTML ~… kB“).
+- **Then** the **URL block** from *After every change — show URLs*.
+
+If read-back **does not** match intent → you **fix** and read again. Never hand off „fertig“ on faith.
 
 ## Architecture
 
@@ -329,7 +386,7 @@ return out;
 
 ### Step 8 — Verification (MANDATORY, never skip)
 
-Every kennel MUST pass these three checks before it's considered done. No exceptions.
+Every kennel MUST pass these three checks before it's considered done. No exceptions. **These checks apply equally after *your* edits** — run Step 8 again after every `PUT`/`POST /save` that touches the pen or the lead, and combine with *Self-check — read back what you wrote* so you report facts, not hope.
 
 **8a — Verify defaultQuery:**
 ```
@@ -353,7 +410,7 @@ Check waves — EVERY wave must yield clean results:
 - No `"is not defined"` errors
 - The lead (first dogId) delivers the expected result
 
-Only when all three checks pass, present the result to the user.
+Only when all three checks pass, present the result to the user — and still include the **URL block** from *After every change — show URLs* (public `GET /{kennel}`, `/execute`, `/run`).
 
 ## Diagnosis
 
@@ -386,6 +443,29 @@ If yes, the lead code builds a control panel into the HTML:
 - Inputs read their initial values from the current URL query parameters (`window.location.search`)
 - On change: update URL parameters and `window.location.reload()` — the server then delivers fresh data
 - The panel is subtly styled, fixed position (e.g. top right), collapsible so it doesn't obscure the map
+
+## Multiplayer / WebSocket — `shared` richtig nutzen
+
+Der Channel-Hub kennt **kein** zentrales Raum-Objekt: jeder Peer hat **nur sein eigenes** `shared` (im Client meist `myShared`). Patches (`type: "patch"`) dürfen nur **dieses** Objekt aktualisieren — der Server lehnt fremde `peerId` ab.
+
+**Alle sehen dieselbe Spielleiter-Logik (z. B. Zombies / Entities auf der Karte):**
+
+- Der **Spielleiter** schreibt die autoritative Liste in **sein** `myShared`, z. B. `myShared.entities = [{ id, type: "zombie", lat, lng }, …]` und ruft `sendPatch()` auf.
+- **Jäger** lesen **nicht** aus eigenem `myShared.entities`, sondern aus dem Eintrag des Masters in der `peers`-Map: z. B. `findMaster().shared.entities` (oder nach `role === "master"` filtern). So erscheinen Marker für jeden Client, ohne dass Jäger die Liste duplizieren müssen.
+- **Persistenz:** Schwere oder synchronisationsrelevante Felder bewusst in `sessionStorage` / `persistState` aufnehmen oder weglassen — zu große `shared`-JSONs belasten jeden `peer-patch`.
+
+**Referenz (Schnitzeljagd v4.1):** Lead-HTML nutzt bereits `getEntities()` → `findMaster().shared.entities`, `renderEntities()` für Kartenmarker, `placeZombie` / `placeZombieAtCenter` für den Fuchs (Button 🧟 nach Rollenwahl als Spielleiter).
+
+## Node-IDs — Lead speichern ohne 404
+
+In `dogIds` steht beim Lead oft die **lineageId** (stabile GUID). `GET /api/nodes/<dieselbe-GUID>` liefert dann **404** — der Store sucht primär nach **Versions-`id`**.
+
+**Zuverlässiger Ablauf:**
+
+1. `GET /api/nodes/<lineageId>/versions` — Antwort sortiert, neueste Version zuerst (erstes Element).
+2. `id` dieses Elements für `GET /api/nodes/<id>` (vollen `theRun` lesen) und für `POST /save?id=<id>` verwenden.
+
+So vermeidest du „Entity nicht gefunden“ beim Bearbeiten des Hunt-Renderers oder anderer Breeds.
 
 ## Code context for breeds
 
