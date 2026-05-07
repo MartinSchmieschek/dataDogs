@@ -450,11 +450,14 @@ export class ErrorVideoPopupComponent {
   constructor() {
     const schedule = afterNextRender;
 
-    effect(() => {
-      if (!this.popup.open()) {
-        this.voidEyelidsRetired.set(false);
-      }
-    });
+    effect(
+      () => {
+        if (!this.popup.open()) {
+          this.voidEyelidsRetired.set(false);
+        }
+      },
+      { allowSignalWrites: true }
+    );
 
     effect(() => {
       const open = this.popup.open();

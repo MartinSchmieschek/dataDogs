@@ -426,7 +426,8 @@ export class KennelRunHandler {
             }
 
             const queryData = this.mergeQueryParams(config.defaultQuery, req.query);
-            const waves = await this.runKennel(config, queryData, undefined);
+            // Wie GET /api/…/run: ohne Request-Body die gespeicherte defaultBody-Konfiguration nutzen.
+            const waves = await this.runKennel(config, queryData, config.defaultBody);
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
