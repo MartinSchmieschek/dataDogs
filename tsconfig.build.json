@@ -11,7 +11,8 @@
     "StartupTest.ts",
     "api/**/*.ts",
     "store/**/*.ts",
-    "services/**/*.ts"
+    "services/**/*.ts",
+    "mcp/**/*.ts"
   ],
   "exclude": ["node_modules", "ui-app", "dist", "packages"]
 }

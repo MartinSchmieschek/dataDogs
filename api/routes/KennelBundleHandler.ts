@@ -10,6 +10,7 @@ import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 import { KennelRunHandler } from './KennelRunHandler';
+import { canRead } from '../../mcp/auth/visibility';
 
 /**
  * Handles kennel export and import — the rites of passage across systems.
@@ -60,6 +61,10 @@ export class KennelBundleHandler {
         try {
             const config = await this.runHandler.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
+                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
+            if (!canRead(config as any, req.ctx)) {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }
@@ -128,6 +133,10 @@ export class KennelBundleHandler {
      */
     private async handleImport(req: any, res: any): Promise<void> {
         try {
+            if (!req.ctx?.user && !req.ctx?.isSuperUser) {
+                res.status(401).json({ error: 'unauthorized', error_description: 'Login required to import kennels' });
+                return;
+            }
             const bundle = req.body;
             if (!bundle?.kennel || !Array.isArray(bundle.dogs)) {
                 res.status(400).json({ error: 'Invalid bundle: kennel and dogs[] required' });
@@ -229,14 +238,20 @@ export class KennelBundleHandler {
             }
 
             // 5. Create the kennel as a single fresh version — no history restore.
+            //    Imported kennels get ownerId from the importer; visibility defaults to private
+            //    (the bundle's visibility hint can override).
             const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
+            const importerId = req.ctx?.user?.id ?? null;
+            const importedVisibility = bundle.kennel.visibility === 'public' ? 'public' : 'private';
             const createResult = await this.kennelsController.create({
                 id: kennelId,
                 name: kennelName,
                 description: bundle.kennel.description,
                 emoji: bundle.kennel.emoji,
                 dogIds: remappedDogIds,
-            });
+                visibility: importedVisibility,
+                ownerId: req.ctx?.isSuperUser ? null : importerId,
+            } as any);
             if (!createResult.ok) {
                 res.status(500).json({ error: createResult.error });
                 return;

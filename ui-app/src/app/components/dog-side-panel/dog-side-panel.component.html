@@ -97,6 +97,9 @@
           (toggleRequired)="toggleParentRequired($event)"
           (toggleOptional)="toggleParentOptional($event)" />
       }
+      @if (activeSection() === 'acl' && dog.lineageId) {
+        <app-acl-panel entityType="node" [id]="dog.lineageId" />
+      }
     </div>
   </div>
 

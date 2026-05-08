@@ -68,6 +68,18 @@ export class PrismaStore implements IStore {
         : JSON.stringify(d.defaultBody);
     }
     if (d.emoji !== undefined) updateData.emoji = d.emoji;
+    if (d.visibility !== undefined) updateData.visibility = d.visibility;
+    if (d.ownerId !== undefined) updateData.ownerId = d.ownerId;
+    if (d.editors !== undefined) {
+      updateData.editors = Array.isArray(d.editors)
+        ? (d.editors.length ? d.editors.join(',') : null)
+        : d.editors;
+    }
+    if (d.viewers !== undefined) {
+      updateData.viewers = Array.isArray(d.viewers)
+        ? (d.viewers.length ? d.viewers.join(',') : null)
+        : d.viewers;
+    }
     if (d.createdAt !== undefined) updateData.createdAt = d.createdAt;
     if (d.updatedAt !== undefined) updateData.updatedAt = d.updatedAt;
 
@@ -95,6 +107,10 @@ export class PrismaStore implements IStore {
         defaultQuery: row.defaultQuery,
         defaultBody: row.defaultBody,
         emoji: row.emoji,
+        visibility: row.visibility,
+        ownerId: row.ownerId,
+        editors: row.editors,
+        viewers: row.viewers,
         lineageId: row.lineageId,
         parentId: row.parentId,
         displayName: row.displayName,
@@ -124,6 +140,10 @@ export class PrismaStore implements IStore {
           defaultQuery: r.defaultQuery,
           defaultBody: r.defaultBody,
           emoji: r.emoji,
+          visibility: r.visibility,
+          ownerId: r.ownerId,
+          editors: r.editors,
+          viewers: r.viewers,
           lineageId: r.lineageId,
           parentId: r.parentId,
           displayName: r.displayName,
@@ -250,6 +270,10 @@ export class PrismaStore implements IStore {
       defaultQuery: r.defaultQuery ?? null,
       defaultBody: r.defaultBody ?? null,
       emoji: r.emoji ?? null,
+      visibility: r.visibility ?? null,
+      ownerId: r.ownerId ?? null,
+      editors: r.editors ?? null,
+      viewers: r.viewers ?? null,
       createdAt: r.createdAt ?? null,
       updatedAt: r.updatedAt ?? null,
       serializedDogConfig: r.serializedDogConfig
@@ -292,6 +316,10 @@ export class PrismaStore implements IStore {
           defaultQuery: r.defaultQuery ?? null,
           defaultBody: r.defaultBody ?? null,
           emoji: r.emoji ?? null,
+          visibility: r.visibility ?? null,
+          ownerId: r.ownerId ?? null,
+          editors: r.editors ?? null,
+          viewers: r.viewers ?? null,
           updatedAt: r.updatedAt ?? null,
         };
       })

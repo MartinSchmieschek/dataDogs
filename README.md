@@ -39,6 +39,29 @@ The **first** entry in `dogIds` is the **lead**. When the hunt is over and the p
 
 Who runs when -- that is decided by the dependency graph. Waves, Pacts, required parents -- the graph commands the order. The lead has no authority there. The lead answers only one question: **whose catch becomes the response.** Every other dog in the Kennel exists to feed the chain that ends at the lead.
 
+### The lead is a compositor
+
+When a Kennel pulls from **two or more sources**, the lead **must be a compositor** — not a worker. Its only job is composition: take pre-processed entity yields, glue them together, return.
+
+```
+Wave 1 (Hunters):       WeatherRetriever, SunRetriever, BirdRetriever     ← raw fetch
+Wave 2 (Entity dogs):   WeatherData, SunData, BirdData                    ← per-domain normalization
+Wave 3 (Compositor):    NaturBundle  (= the lead)                         ← merge + format
+```
+
+**Rules — non-negotiable for non-trivial Kennels:**
+
+1. **One entity per dog.** A SerializedDog handles exactly one domain — weather OR species OR routes, never two.
+2. **Hunters fetch, entity dogs normalize, the compositor composes.** No mixing.
+3. **The compositor does no fetching, no per-source filtering.** It reads only entity yields.
+4. **A fat lead is a code smell.** If the lead is more than ~30 lines, split it.
+
+**Why:** Reuse (entity dogs work in many Kennels), debuggability (failures localize per entity), versioning sanity (renderer evolves separately from data logic), multi-consumer (some clients want only weather, not the full bundle), HTML safety (the renderer is the only place that touches `<script>`).
+
+If the Kennel has only one source, the lead may be the renderer directly — but the moment a second source enters, refactor to the compositor pattern.
+
+> *Vome — order does not negotiate.*
+
 ### Waves
 
 Dogs don't run at once. They go out in waves:
@@ -207,6 +230,82 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aw
 
 ---
 
+## Authentication & Access Control
+
+dataDogs ships with optional Google SSO + OAuth 2.1 + an ACL-based permission model.
+
+### Toggle
+
+| `MCP_AUTH_REQUIRED` | Behavior |
+|---|---|
+| `false` (or unset) | Dev mode. Every request is super-user, all entities visible, no login required. |
+| `true` | Production mode. Anonymous sees only public entities. Mutations require login + ownership/edit-rights. |
+
+### Identity
+
+- **Google SSO** via `GET /auth/google/login` → cookie session for the browser UI.
+- **Personal Access Tokens** at `GET /auth/tokens` (HTML page). Long-lived JWTs for MCP clients, Custom GPT API-keys, scripts.
+- **Full OAuth 2.1 Authorization Server** at `/auth/authorize`, `/auth/token`, `/auth/register`. Discovery via `GET /.well-known/oauth-authorization-server` — for clients that auto-configure (Cursor, Claude.ai Connectors, Custom GPTs with OAuth).
+
+### Visibility & Ownership
+
+Both Kennels and SerializedDogs carry:
+
+- **`visibility`** — `"public"` (anyone reads + runs) or `"private"`.
+- **`ownerId`** — the creator's `User.id`, full rights.
+- **`editors[]`** — additional users who may mutate.
+- **`viewers[]`** — additional users who may read on private entities.
+
+**Special rules:**
+- Legacy entities (`ownerId = null`) are **community-editable** — any logged-in user reads + mutates.
+- Hunters (BaseDogs) are project-wide infrastructure — no per-user ACL.
+- **Cascade respects manual visibility:** when a kennel flips to public, its own SerializedDogs cascade — **but only nodes whose `visibility` is still `NULL`** (never explicitly set). A node you manually flipped to private (or to public) is never overwritten by a kennel cascade. Other-user-owned nodes stay where they are.
+- **Node bypass:** any kennel-owner or kennel-editor of a kennel that uses a node may also mutate that node. *"If you depend on it, you can fix it."*
+
+### ACL tools
+
+Available via MCP (`POST /mcp`) and via the OpenAPI mirror (`POST /actions/<tool>`):
+
+- `grant_access(entity_type, id, user, role)` — `role ∈ "editor" | "viewer" | "owner"`. `"owner"` transfers ownership.
+- `revoke_access(entity_type, id, user, role)` — remove from `editors[]` or `viewers[]`.
+- `release_ownership(entity_type, id)` — set `ownerId = null`, hand the entity back to community-edit mode. Editors and viewers stay intact. Only the current owner (or super-user) can release.
+- `list_collaborators(entity_type, id)` — owner + editors + viewers, resolved with email and name.
+
+`user` accepts an email or a `User.id` GUID. Only the owner (or super-user, or any logged-in user on a community-owned entity) may manage the ACL.
+
+`grant_access` returns informative `action` codes for redundant requests:
+- `already_editor` / `already_viewer` / `already_owner` — user is already in that role.
+- `redundant_owner_is_editor` / `redundant_owner_is_viewer` — owner already has those rights.
+- `redundant_editor_is_viewer` — editor includes read; viewer is implicit.
+
+### Endpoint reference
+
+```
+GET  /auth/me                         Browser session check
+GET  /auth/google/login                Start Google flow (?returnTo=…)
+GET  /auth/google/callback             Google OAuth callback
+POST /auth/logout                      Clear session
+
+GET  /auth/tokens                      HTML — manage Personal Access Tokens
+POST /auth/tokens                      Create new PAT (returned once)
+POST /auth/tokens/:jti/revoke          Revoke a PAT
+
+GET  /auth/authorize                   OAuth 2.1 authorization endpoint
+POST /auth/authorize                   Consent submit
+POST /auth/token                       Token + refresh
+POST /auth/revoke                      Token revocation
+POST /auth/register                    Dynamic Client Registration (RFC 7591)
+
+GET  /.well-known/oauth-authorization-server   OAuth metadata
+GET  /.well-known/oauth-protected-resource     MCP protected-resource metadata
+```
+
+### Tone for AI clients
+
+The MCP server returns `mcp/skill.md` as the `instructions` field at initialization, so connected AI clients adopt the kennel-master voice automatically. For Custom GPTs and Vertex agents, copy the same content into the GPT's instructions field — `GET /actions/gpt-template` returns a ready-to-paste config block.
+
+---
+
 ## API
 
 ### Kennels
@@ -259,7 +358,8 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aw
 | Layer | Tech |
 |-------|------|
 | Backend | Express.js, TypeScript, Node.js VM |
-| Database | Prisma ORM — SQLite for local dev; PostgreSQL for **integration** staging and production |
+| Databases | **Four** physically-separate Prisma schemas, each with its own `*_DATABASE_URL`: `DATABASE_URL` (kennels + nodes), `CACHE_DATABASE_URL` (run-cache), `JSON_STORAGE_DATABASE_URL` (fachliche JSON-Ablage), `AUTH_DATABASE_URL` (User, OAuthClient, AccessToken, RefreshToken, AuthorizationCode). SQLite for local dev; PostgreSQL for **integration** and production. |
+| Auth | Google SSO via `openid-client`, OAuth 2.1 AS via `jose` (HS256 JWTs), browser session via `express-session` |
 | Frontend | Angular 18, Monaco Editor, vis-network |
 | Core | `datadogs` package (local, in `packages/core`) |
 

@@ -22,6 +22,12 @@ model Dog {
   defaultQuery         String?
   defaultBody          String?
   emoji                String?
+  visibility           String?  // "public" | "private". Null bei Nicht-Kennel-Dogs.
+  ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
+  editors              String?  // Comma-separated User.id list — additional editors.
+  viewers              String?  // Comma-separated User.id list — additional viewers (private only).
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }
+
+// Auth + OAuth tables live in store/prisma-auth/ (separate DB: AUTH_DATABASE_URL).

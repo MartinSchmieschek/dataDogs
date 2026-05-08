@@ -1,0 +1,114 @@
+:host {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 999;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-size: 13px;
+  color: #e8e8f0;
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(20, 22, 36, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  user-select: none;
+
+  &--loading {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    cursor: default;
+    opacity: 0.4;
+  }
+
+  &--login {
+    color: #e8e8f0;
+    border: none;
+    background: linear-gradient(135deg, #5b8def 0%, #3d6bff 100%);
+
+    &:hover { filter: brightness(1.1); }
+    .g-icon {
+      width: 18px; height: 18px; border-radius: 50%; background: #fff; color: #3d6bff;
+      display: inline-grid; place-items: center; font-weight: 700; font-size: 12px;
+    }
+    .label { font-weight: 600; }
+  }
+
+  &--user {
+    padding: 0;
+    overflow: visible;
+
+    .trigger {
+      all: unset;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px 4px 4px;
+      cursor: pointer;
+      color: inherit;
+    }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      object-fit: cover;
+      &--initial {
+        background: linear-gradient(135deg, #5b8def 0%, #3d6bff 100%);
+        color: #fff;
+        display: inline-grid; place-items: center;
+        font-weight: 700; font-size: 13px;
+      }
+    }
+    .who {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .caret { color: #a8a8c0; font-size: 11px; }
+  }
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: rgba(26, 26, 46, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.menu-row {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.menu-info {
+  cursor: default;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+  small { display: block; color: #a8a8c0; margin-top: 2px; font-weight: 400; }
+}
+
+.menu-action:hover {
+  background: rgba(255, 255, 255, 0.06);
+}

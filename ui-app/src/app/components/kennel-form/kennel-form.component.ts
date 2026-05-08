@@ -10,6 +10,7 @@ export interface KennelFormData {
   description: string;
   /** Ein Emoji (optional) */
   emoji: string;
+  visibility: 'public' | 'private';
 }
 
 @Component({
@@ -35,6 +36,20 @@ export interface KennelFormData {
         <div class="form-group">
           <label for="kennel-desc">Description</label>
           <textarea id="kennel-desc" [(ngModel)]="formData.description" name="description" placeholder="Optional" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Sichtbarkeit</label>
+          <div class="visibility-row">
+            <label class="visibility-option">
+              <input type="radio" name="visibility" value="private" [(ngModel)]="formData.visibility" />
+              <span>🔒 Private</span>
+            </label>
+            <label class="visibility-option">
+              <input type="radio" name="visibility" value="public" [(ngModel)]="formData.visibility" />
+              <span>🌐 Public</span>
+            </label>
+          </div>
+          <small class="hint-line">Public — jeder kann lesen und ausführen. Private — nur Owner, Editors und Viewers.</small>
         </div>
         @if (error) {
           <div
@@ -101,6 +116,20 @@ export interface KennelFormData {
     .btn-primary:hover { background: #00ff00; }
     .btn-secondary { background: #666; }
     .btn-secondary:hover { background: #888; }
+    .visibility-row { display: flex; gap: 12px; }
+    .visibility-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border: 1px solid #333;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #ccc;
+      background: #000;
+    }
+    .visibility-option input { width: auto; }
+    .hint-line { display: block; margin-top: 6px; color: #888; font-size: 12px; }
   `]
 })
 export class KennelFormComponent {
@@ -109,7 +138,7 @@ export class KennelFormComponent {
   @Output() submitted = new EventEmitter<KennelFormData>();
   @Output() cancelled = new EventEmitter<void>();
 
-  formData: KennelFormData = { id: '', name: '', description: '', emoji: '' };
+  formData: KennelFormData = { id: '', name: '', description: '', emoji: '', visibility: 'private' };
   error = '';
 
   onComfortVideoClick(): void {

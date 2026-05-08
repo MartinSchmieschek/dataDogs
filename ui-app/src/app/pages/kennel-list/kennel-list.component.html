@@ -31,6 +31,17 @@
               aria-label="Sortierung"
               [attr.aria-hidden]="hideSortBesideSearch() ? 'true' : null"
               [attr.inert]="hideSortBesideSearch() ? '' : null">
+              @if (authUser()) {
+                <button
+                  type="button"
+                  class="kennel-sort-cycle kennel-sort-cycle--beside"
+                  [class.is-active]="onlyMine()"
+                  (click)="onlyMine.set(!onlyMine())"
+                  [attr.aria-pressed]="onlyMine()"
+                  [title]="onlyMine() ? 'Filter aus: alle sichtbaren Kennels zeigen' : 'Nur eigene Kennels zeigen'">
+                  {{ onlyMine() ? 'Nur meine ✓' : 'Nur meine' }}
+                </button>
+              }
               <button
                 type="button"
                 class="kennel-sort-cycle kennel-sort-cycle--beside"
@@ -129,6 +140,7 @@
                             <h3 class="kennel-card-name">
                               {{ kennel.name || kennelRef(kennel) }}
                             </h3>
+                            <app-visibility-badge [visibility]="kennel.visibility" />
                           </div>
                           @if (kennel.description) {
                             <div class="kennel-card-desc-panel">

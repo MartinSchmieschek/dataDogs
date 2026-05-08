@@ -13,6 +13,7 @@ import {
 import { RESERVED_TOP_LEVEL_SEGMENTS } from './spaRouteConstants';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
+import { canRead } from '../../mcp/auth/visibility';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { isHtmlResultString, isMarkdownResultString } from '../../services/leadResultStringFormat';
 
@@ -340,6 +341,10 @@ export class KennelRunHandler {
                 res.status(404).json({ ok: false, error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }
+            if (!canRead(config as any, req.ctx)) {
+                res.status(404).json({ ok: false, error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
 
             const query = this.mergeQueryParams(config.defaultQuery, req.query);
             const body =
@@ -369,6 +374,10 @@ export class KennelRunHandler {
         try {
             const config = await this.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
+                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
+            if (!canRead(config as any, req.ctx)) {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }
@@ -418,6 +427,10 @@ export class KennelRunHandler {
                 res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
                 return;
             }
+            if (!canRead(config as any, req.ctx)) {
+                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+                return;
+            }
 
             const dogIds = config.dogIds || [];
             if (dogIds.length === 0) {
@@ -450,6 +463,10 @@ export class KennelRunHandler {
         try {
             const config = await this.loadKennelConfig(kennelId, req.query.version);
             if (!config) {
+                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+                return;
+            }
+            if (!canRead(config as any, req.ctx)) {
                 res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
                 return;
             }

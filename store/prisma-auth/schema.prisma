@@ -1,0 +1,66 @@
+// Auth & ACL store — User identities, OAuth clients/codes/tokens.
+// Physically separate from the kennel/node store (DATABASE_URL) — backups,
+// connection pool, and lifecycle are independent.
+//
+// Local dev: SQLite (this file). Postgres for prod: schema.postgres.prisma.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma-auth-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("AUTH_DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  googleSub   String   @unique
+  email       String   @unique
+  name        String?
+  picture     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OAuthClient {
+  id            String   @id @default(uuid())
+  clientId      String   @unique
+  clientSecret  String?
+  name          String
+  redirectUris  String              // comma-separated, SQLite parity
+  createdAt     DateTime @default(now())
+}
+
+model AuthorizationCode {
+  code                 String   @id
+  clientId             String
+  userId               String
+  redirectUri          String
+  codeChallenge        String?
+  codeChallengeMethod  String?
+  scope                String
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+}
+
+model AccessToken {
+  jti          String   @id
+  userId       String
+  clientId     String
+  scope        String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+}
+
+model RefreshToken {
+  token        String   @id        // SHA-256 hashed, never the raw value
+  userId       String
+  clientId     String
+  scope        String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+}
