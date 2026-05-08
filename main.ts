@@ -189,6 +189,14 @@ import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
 import { SPA_FALLBACK_SKIP_PREFIXES } from './api/routes/spaRouteConstants';
+import cookieParser from 'cookie-parser';
+import { PrismaClient as AuthPrismaClient } from './store/generated/prisma-auth-client';
+import { createSessionMiddleware } from './mcp/auth/sessions';
+import { createAuthRouter } from './mcp/auth/router';
+import { createAuthContextMiddleware } from './mcp/auth/middleware';
+import { createDiscoveryRouter } from './mcp/auth/discovery';
+import { createMcpRouter } from './mcp/transports/mcp';
+import { createActionsRouter } from './mcp/transports/openapi';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
@@ -466,6 +474,21 @@ async function start() {
 
     app.use(express.json({ limit: '5mb' }));
 
+    // === Auth pipeline (mcp/auth/*) — cookie-session + Google login + /auth/* router ===
+    // Mounted before the SPA fallback so /auth/* is handled here, not by Angular.
+    // The auth-context middleware runs on EVERY request: it attaches req.ctx with the
+    // current user (or super-user when MCP_AUTH_REQUIRED=false) so downstream route
+    // handlers can apply visibility/ownership filters.
+    // Auth-specific Prisma client — uses AUTH_DATABASE_URL, separate from content DB.
+    const authPrisma = new AuthPrismaClient();
+    app.use(cookieParser());
+    // OAuth POST endpoints accept application/x-www-form-urlencoded as well as JSON.
+    app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+    app.use(createSessionMiddleware());
+    app.use(createAuthContextMiddleware(authPrisma));
+    app.use('/auth', createAuthRouter(authPrisma));
+    app.use('/.well-known', createDiscoveryRouter());
+
     // Static assets (Swagger UI hero, etc.) — served from /static/*
     const publicDir = resolvePublicDir();
     if (publicDir) {
@@ -503,7 +526,8 @@ async function start() {
     readmeRouteHandler.registerRoutes(app);
 
     // Raise the CRUD sails — all routes for nodes and kennels now billow in the cosmic wind.
-    const routeHandler = new ConfigRouteHandler(registry);
+    // kennelsStore is passed so node-mutation routes can apply the kennel-owner-bypass rule.
+    const routeHandler = new ConfigRouteHandler(registry, kennelsStore);
     routeHandler.registerRoutes(app, '/api');
 
     // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
@@ -517,6 +541,34 @@ async function start() {
     kennelSwaggerHandler.registerRoutes(app);
     kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);
+
+    // === MCP transport at POST /mcp ===
+    // Stateless Streamable HTTP. Tools wrap the kennel/node controllers and
+    // the run handler. Auth context (req.ctx) is set by the middleware above.
+    const baseDogsList = allBaseDogs.map((dog) => ({
+        id: 'base:' + dog.name,
+        name: dog.name,
+        description: dog.description,
+        type: 'BaseDog' as const,
+        icon: dog.icon,
+    }));
+    const toolDeps = {
+        kennelsController,
+        nodesController,
+        kennelRunHandler,
+        kennelsStore,
+        nodesStore,
+        prisma: authPrisma,
+        baseDogsList,
+        projectRoot: __dirname,
+    };
+    app.use('/mcp', createMcpRouter(toolDeps));
+
+    // === OpenAPI / Action endpoints at /actions/* ===
+    // Same tools, REST-shaped, for ChatGPT Custom GPT Actions and other
+    // OpenAPI-driven consumers. /actions/openapi.json is the spec, /actions/gpt-template
+    // is a config block to paste when creating a Custom GPT.
+    app.use('/actions', createActionsRouter(toolDeps));
 
     // SPA-Fallback (Angular): Express 5 — kein app.get('*', …). Keine Kollision mit /api, /static (siehe spaRouteConstants).
     if (angularBrowserDir) {

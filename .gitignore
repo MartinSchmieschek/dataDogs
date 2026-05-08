@@ -11,7 +11,9 @@ node_modules/
 
 # Dev DB (SQLite)
 dev.db
+auth.db
 store/prisma/*.db
+store/prisma-auth/*.db
 
 # Cache DB (SQLite)
 cache.db

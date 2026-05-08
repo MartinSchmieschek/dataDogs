@@ -1,6 +1,6 @@
 import { DogEntry } from '../models/dog-entry.model';
 
-export type DogPanelSectionId = 'code' | 'vm' | 'result' | 'parents';
+export type DogPanelSectionId = 'code' | 'vm' | 'result' | 'parents' | 'acl';
 
 export interface DogPanelSectionItem {
   id: DogPanelSectionId;
@@ -14,6 +14,7 @@ export const SECTION_ICON: Record<DogPanelSectionId, string> = {
   vm: '📐',
   result: '📄',
   parents: '🔗',
+  acl: '🔑',
 };
 
 export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
@@ -25,6 +26,11 @@ export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
   out.push({ id: 'result', label: 'Result', icon: SECTION_ICON.result });
   if (dog.codeTs) {
     out.push({ id: 'parents', label: 'Parents', icon: SECTION_ICON.parents });
+  }
+  // SerializedDogs and MimicDogs have a lineageId — only those have an ACL.
+  // Hunters (BaseDogs) are project-wide, no ACL.
+  if (dog.lineageId) {
+    out.push({ id: 'acl', label: 'Access', icon: SECTION_ICON.acl });
   }
   return out;
 }

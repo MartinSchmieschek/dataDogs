@@ -24,6 +24,8 @@ import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdr
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
+import { VisibilityBadgeComponent } from '../../components/visibility-badge/visibility-badge.component';
+import { AuthService } from '../../services/auth.service';
 
 const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v1';
 
@@ -65,6 +67,7 @@ const initialKennelListSort = readPersistedKennelListSort();
     KennelScenicParallaxBackdropComponent,
     KennelCardMotionDirective,
     KennelActionFanComponent,
+    VisibilityBadgeComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
@@ -74,6 +77,15 @@ export class KennelListComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
   private backdropDrive = inject(BackdropDriveService);
+  private auth = inject(AuthService);
+
+  /** Authenticated user — exposed so the template can hide owner-only filters when anonymous. */
+  readonly authUser = this.auth.user;
+  /** When true, only show kennels owned by the current user. Hidden when not logged in. */
+  readonly onlyMine = signal(false);
+
+  /** Skip the first auth-effect trigger so we don't double-load alongside ngOnInit. */
+  private skipFirstAuthEffect = true;
 
   /** iOS: Hinweis ausgeblendet ohne Erlaubnis. */
   compassPromptDismissed = signal(false);
@@ -106,6 +118,20 @@ export class KennelListComponent implements OnInit, OnDestroy {
       const host = this.kennelScrollRef()?.nativeElement;
       if (!host) return;
       this.backdropDrive.bindScrollElement(host, { scrollRangePx: 560 });
+    });
+
+    // Auth-reactive reload: when login/logout flips the user signal, refresh the list
+    // so the visibility filters on the backend kick in for the new identity.
+    effect(() => {
+      if (!this.auth.isReady()) return;
+      const _u = this.auth.user(); // tracked
+      if (this.skipFirstAuthEffect) {
+        this.skipFirstAuthEffect = false;
+        return;
+      }
+      this.loadKennels();
+      // Reset onlyMine when logging out — there's no "mine" without a user.
+      if (!_u) this.onlyMine.set(false);
     });
   }
 
@@ -150,6 +176,8 @@ export class KennelListComponent implements OnInit, OnDestroy {
 
   filteredKennels = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
+    const me = this.auth.user();
+    const mineOnly = this.onlyMine();
     let list = [...this.kennels()];
     if (q) {
       list = list.filter((k) => {
@@ -158,6 +186,9 @@ export class KennelListComponent implements OnInit, OnDestroy {
         const desc = (k.description || '').toLowerCase();
         return ref.includes(q) || name.includes(q) || desc.includes(q);
       });
+    }
+    if (mineOnly && me) {
+      list = list.filter((k) => k.ownerId === me.id);
     }
     const key = this.sortKey();
     const dir = this.sortDir() === 'asc' ? 1 : -1;
@@ -388,6 +419,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
         name: data.name,
         description: data.description,
         emoji: data.emoji.trim() || undefined,
+        visibility: data.visibility,
         dogIds: [],
       })
       .subscribe({

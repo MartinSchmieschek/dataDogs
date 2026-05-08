@@ -7,7 +7,7 @@
  */
 import { KENNEL_RESERVED_SLUGS } from '@datadogs/core';
 
-export const SPA_FALLBACK_SKIP_PREFIXES = ['/api', '/static'] as const;
+export const SPA_FALLBACK_SKIP_PREFIXES = ['/api', '/static', '/auth', '/mcp', '/actions', '/.well-known'] as const;
 
 /** Gleiche Einträge wie KENNEL_RESERVED_SLUGS (lowercase) — Routing + Validierung. */
 export const KENNEL_LINEAGE_ID_BLOCKLIST = new Set(KENNEL_RESERVED_SLUGS.map((s) => s.toLowerCase()));

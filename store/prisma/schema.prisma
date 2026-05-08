@@ -25,6 +25,14 @@ model Dog {
   defaultQuery         String?  // JSON-String
   defaultBody          String?  // JSON-String
   emoji                String?  // Kennel-Icon (ein Emoji), optional
+  visibility           String?  // Kennel-Visibility: "public" | "private". Null bei Nicht-Kennel-Dogs.
+  ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
+  editors              String?  // Comma-separated User.id list — additional users with edit rights.
+  viewers              String?  // Comma-separated User.id list — additional users with read rights on private entities.
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }
+
+// Auth + OAuth tables moved to store/prisma-auth/ (own DATABASE: AUTH_DATABASE_URL).
+// Kennel.ownerId / Dog.editors / Dog.viewers stay here as plain User-ID strings —
+// the FK is logical, not enforced at DB level (cross-DB).

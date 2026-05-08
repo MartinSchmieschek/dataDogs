@@ -1,0 +1,108 @@
+@if (loading() && !state()) {
+  <div class="acl-card loading">Loading collaborators…</div>
+} @else if (state()) {
+  <div class="acl-card">
+    <header class="head">
+      <h3>Access</h3>
+      <app-visibility-badge [visibility]="state()!.visibility" />
+      @if (state()!.is_community) {
+        <span class="badge community" title="Legacy entity without owner — community-editable">
+          Community
+        </span>
+      }
+    </header>
+
+    @if (error()) {
+      <div class="error">{{ error() }}</div>
+    }
+    @if (info()) {
+      <div class="info">{{ info() }}</div>
+    }
+
+    <section class="row">
+      <h4>Owner</h4>
+      @if (state()!.owner; as o) {
+        <div class="person owner">
+          <span class="name">{{ o.name || o.email }}</span>
+          <small class="email">{{ o.email }}</small>
+          @if (canRelease()) {
+            <button
+              class="btn-release"
+              type="button"
+              [disabled]="busy()"
+              (click)="onReleaseOwnership()"
+              title="Release ownership and return this entity to community-editable mode">
+              Release
+            </button>
+          }
+        </div>
+      } @else {
+        <em class="muted">no owner — community entity, any logged-in user may edit</em>
+      }
+    </section>
+
+    <section class="row">
+      <h4>Editors <small>can mutate (save / rename / delete)</small></h4>
+      @if (state()!.editors.length === 0) {
+        <em class="muted">none yet</em>
+      } @else {
+        <ul class="people">
+          @for (u of state()!.editors; track trackUser($index, u)) {
+            <li class="person">
+              <span class="name">{{ u.name || u.email }}</span>
+              <small class="email">{{ u.email }}</small>
+              <button class="x" type="button" [disabled]="busy()" (click)="onRevoke('editor', u.id)" title="Revoke editor">×</button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="row">
+      <h4>Viewers <small>can read on private entities</small></h4>
+      @if (state()!.viewers.length === 0) {
+        <em class="muted">none yet</em>
+      } @else {
+        <ul class="people">
+          @for (u of state()!.viewers; track trackUser($index, u)) {
+            <li class="person">
+              <span class="name">{{ u.name || u.email }}</span>
+              <small class="email">{{ u.email }}</small>
+              <button class="x" type="button" [disabled]="busy()" (click)="onRevoke('viewer', u.id)" title="Revoke viewer">×</button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="row grant-form">
+      <h4>Grant access</h4>
+      <div class="grant-fields">
+        <input
+          type="text"
+          class="user-input"
+          placeholder="email or User.id"
+          [ngModel]="newUser()"
+          (ngModelChange)="newUser.set($event)"
+          [disabled]="busy()"
+        />
+        <select
+          class="role-select"
+          [ngModel]="newRole()"
+          (ngModelChange)="newRole.set($event)"
+          [disabled]="busy()"
+        >
+          <option value="editor">Editor</option>
+          <option value="viewer">Viewer</option>
+          <option value="owner">Owner (transfer)</option>
+        </select>
+        <button class="btn-grant" type="button" [disabled]="busy() || !newUser().trim()" (click)="onGrant()">
+          Grant
+        </button>
+      </div>
+      <p class="hint">
+        Editors can save and delete. Viewers see private entities. Owner transfer is irreversible — the new owner must consent before you do this.
+      </p>
+    </section>
+  </div>
+}

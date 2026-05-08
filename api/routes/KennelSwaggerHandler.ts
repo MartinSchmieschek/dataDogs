@@ -3,6 +3,7 @@
 import { castGrimoire } from '@datadogs/swaggrid';
 import { toSwaggridCast } from '../../services/swaggridAdapter';
 import { KennelRunHandler } from './KennelRunHandler';
+import { canRead } from '../../mcp/auth/visibility';
 
 /**
  * Handles Swagger/OpenAPI endpoints for kennels.
@@ -32,15 +33,65 @@ export class KennelSwaggerHandler {
                 return;
             }
 
+            // Spec is discoverable to everyone; for PRIVATE kennels we'd leak only structure
+            // (paths + schemas), not data — but we don't want to leak yields either, so we
+            // skip the warm-up run when the caller can't read it. The spec then carries
+            // empty examples but still describes the API surface.
+            const callerCanRead = canRead(config as any, req.ctx);
             const query = this.runHandler.mergeQueryParams(config.defaultQuery, req.query);
             const body = config.defaultBody;
-            const waves = await this.runHandler.runKennel(config, query, body);
+            const waves = callerCanRead ? await this.runHandler.runKennel(config, query, body) : [];
 
-            const spec = castGrimoire(toSwaggridCast(config, waves));
+            const spec: any = castGrimoire(toSwaggridCast(config, waves));
+            this.augmentForVisibility(spec, config, req);
             res.json(spec);
         } catch (err) {
             console.error('[KennelSwaggerHandler.handleSwaggerJson]', err);
             res.status(500).json({ error: String(err) });
+        }
+    }
+
+    /**
+     * For private kennels, mark every operation with bearerAuth security so the Swagger UI
+     * shows the lock icon and the "Authorize" button. The user pastes a PAT (from /auth/tokens)
+     * and can then "Try it out" — the actual endpoint enforces canRead with that token.
+     */
+    private augmentForVisibility(spec: any, config: any, req: any): void {
+        if (config.visibility !== 'private') return;
+        spec.components = spec.components || {};
+        spec.components.securitySchemes = spec.components.securitySchemes || {};
+        spec.components.securitySchemes.bearerAuth = {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description: 'Personal Access Token from /auth/tokens, or OAuth-issued access token.',
+        };
+        const proto = (req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
+        const host = (req.get('x-forwarded-host') || req.get('host') || 'localhost:3000').split(',')[0].trim();
+        const base = process.env.MCP_BASE_URL?.replace(/\/$/, '') || `${proto}://${host}`;
+        spec.components.securitySchemes.oauth2 = {
+            type: 'oauth2',
+            description: 'Authorization Code + PKCE. Discovery: ' + base + '/.well-known/oauth-authorization-server',
+            flows: {
+                authorizationCode: {
+                    authorizationUrl: base + '/auth/authorize',
+                    tokenUrl: base + '/auth/token',
+                    scopes: { default: 'Default access' },
+                },
+            },
+        };
+        spec.info = spec.info || {};
+        const note =
+            '\n\n> 🔒 **This pen is private.** Click **Authorize** above and paste a Bearer token ' +
+            `from [${base}/auth/tokens](${base}/auth/tokens) (the owner's account) — or run the ` +
+            'OAuth flow. Anonymous calls return 404.';
+        spec.info.description = (spec.info.description ?? '') + note;
+        for (const pathItem of Object.values(spec.paths ?? {}) as any[]) {
+            if (!pathItem || typeof pathItem !== 'object') continue;
+            for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+                if (!pathItem[method]) continue;
+                pathItem[method].security = [{ bearerAuth: [] }, { oauth2: ['default'] }];
+            }
         }
     }
 
@@ -51,6 +102,8 @@ export class KennelSwaggerHandler {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }
+            // UI is rendered for everyone — the lock and "Authorize" button appear for private
+            // kennels via the spec's security scheme. The actual run endpoint enforces canRead.
             const title = config.name || config.id;
             const titleSafe = escapeHtml(title);
             const versionSuffix = req.query.version ? `?version=${req.query.version}` : '';

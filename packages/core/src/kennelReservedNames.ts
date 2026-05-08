@@ -11,6 +11,10 @@ export const KENNEL_RESERVED_SLUGS: readonly string[] = [
     'static',
     'save',
     'nodes',
+    'auth',
+    'mcp',
+    'actions',
+    '.well-known',
 ];
 
 const LOWER = new Set(KENNEL_RESERVED_SLUGS.map((s) => s.toLowerCase()));

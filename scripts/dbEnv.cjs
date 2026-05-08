@@ -11,6 +11,8 @@ function assertRequiredDbEnv() {
     const cachePath = (process.env.CACHE_DB_PATH || '').trim();
     const jsonStorageUrl = (process.env.JSON_STORAGE_DATABASE_URL || '').trim();
     const jsonStoragePath = (process.env.JSON_STORAGE_DB_PATH || '').trim();
+    const authUrl = (process.env.AUTH_DATABASE_URL || '').trim();
+    const authPath = (process.env.AUTH_DB_PATH || '').trim();
 
     const blocks = [];
 
@@ -59,6 +61,22 @@ function assertRequiredDbEnv() {
         );
     }
 
+    if (!authUrl && !authPath) {
+        blocks.push(
+            '[ENV] Auth-DB: Weder AUTH_DATABASE_URL noch AUTH_DB_PATH ist gesetzt.',
+            '',
+            '  Lokale Entwicklung (SQLite, Schema: store/prisma-auth/schema.prisma):',
+            '    AUTH_DATABASE_URL="file:./auth.db"',
+            '  oder: AUTH_DB_PATH="store/prisma-auth/auth.db"',
+            '',
+            '  Integration/Production (PostgreSQL, Schema: store/prisma-auth/schema.postgres.prisma):',
+            '    AUTH_DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/AUTH_DB?sslmode=require"',
+            '',
+            '  Auth-Daten (User, OAuth*, Tokens) sollten in eigener DB liegen — Backup, Lifecycle und',
+            '  Sicherheit profitieren von der Trennung zur Content-DB.',
+        );
+    }
+
     if (blocks.length) {
         const err = new Error('\n' + blocks.join('\n'));
         err.name = 'DbEnvError';
@@ -95,4 +113,18 @@ function resolveJsonStorageDatabaseUrl() {
     return `file:${pathOnly.replace(/\\/g, '/')}`;
 }
 
-module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl };
+/**
+ * Setzt aus AUTH_DATABASE_URL oder AUTH_DB_PATH die finale URL fuer Prisma (Auth-Schema).
+ */
+function resolveAuthDatabaseUrl() {
+    const authUrl = (process.env.AUTH_DATABASE_URL || '').trim();
+    if (authUrl) return authUrl;
+    const pathOnly = (process.env.AUTH_DB_PATH || '').trim();
+    if (!pathOnly) {
+        throw new Error('resolveAuthDatabaseUrl: AUTH_DATABASE_URL / AUTH_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
+    }
+    if (pathOnly.startsWith('file:')) return pathOnly;
+    return `file:${pathOnly.replace(/\\/g, '/')}`;
+}
+
+module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, resolveAuthDatabaseUrl };

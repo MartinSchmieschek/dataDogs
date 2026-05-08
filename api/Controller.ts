@@ -33,12 +33,20 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             const id = this.enableVersioning ? generateVersionId() : (input.id || `${this.entityType.toLowerCase()}-${Date.now()}`);
             const lineageId = this.enableVersioning ? generateLineageId() : undefined;
 
+            // Pull ACL fields off the input — they live on the outer row, not in the config.
+            const visibility = (input as any).visibility === 'private' ? 'private'
+                : (input as any).visibility === 'public' ? 'public' : undefined;
+            const ownerId = (input as any).ownerId !== undefined ? (input as any).ownerId : undefined;
+            const editors = (input as any).editors !== undefined ? (input as any).editors : undefined;
+            const viewers = (input as any).viewers !== undefined ? (input as any).viewers : undefined;
+            const { visibility: _v, ownerId: _o, editors: _e, viewers: _w, ...rest } = (input as any) ?? {};
+
             const entity: T = {
-                ...input,
+                ...rest,
                 id,
                 lineageId,
                 parentId: null,
-                displayName: input.displayName || input.id || id,
+                displayName: rest.displayName || rest.id || id,
             } as T;
 
             // Resolve the type brand: if the entity imitates a Pact, it is a MimicDog.
@@ -52,13 +60,23 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 parentId: null,
                 displayName: entity.displayName,
                 serializedDogConfig: JSON.stringify(entity),
+                ...(visibility !== undefined ? { visibility } : {}),
+                ...(ownerId !== undefined ? { ownerId } : {}),
+                ...(editors !== undefined ? { editors } : {}),
+                ...(viewers !== undefined ? { viewers } : {}),
                 createdAt: new Date(),
             });
 
             return {
                 ok: true,
                 id,
-                data: entity
+                data: {
+                    ...entity,
+                    ...(visibility ? { visibility } : {}),
+                    ...(ownerId !== undefined ? { ownerId } : {}),
+                    ...(editors !== undefined ? { editors } : {}),
+                    ...(viewers !== undefined ? { viewers } : {}),
+                } as T,
             };
         } catch (error) {
             return { ok: false, error: String(error) };
@@ -79,36 +97,62 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             // The new incarnation's GUID — unique across all realms.
             const saveId = this.enableVersioning ? generateVersionId() : input.id;
 
-            // Seek the ancestor in the deep — load the Store-Row and unshackle its inner cfg
-            // from serializedDogConfig. We merge against the INNER cfg only, never against the
-            // outer Store envelope; otherwise `serializedDogConfig` would nest into itself on every save.
-            const existingRaw = await this.store.load(input.id);
+            // Resolve the ancestor row. `input.id` may be a version-GUID OR a lineageId;
+            // findLatestVersionsByType handles both: exact-id match first, then lineageId-latest.
+            // store.load() can't do that (it's findUnique-by-id only), so calling save with a
+            // lineageId via that path would orphan the new version into a fresh lineage.
+            // Carrion left in the deep: that legacy bug haunted grant_access on nodes.
+            const existingRow = (await this.store.findLatestVersionsByType(this.entityType, [input.id]))[0] as any;
             let existingInner: Record<string, any> | null = null;
             let existingLineageId: string | undefined;
             let existingDisplayName: string | undefined;
             let existingType: string = this.entityType;
 
-            if (existingRaw) {
-                const row = typeof existingRaw === 'string' ? JSON.parse(existingRaw) : existingRaw;
-                const innerRaw = (row as any).serializedDogConfig;
+            if (existingRow) {
+                const innerRaw = existingRow.serializedDogConfig;
                 if (innerRaw !== undefined && innerRaw !== null) {
                     existingInner = typeof innerRaw === 'string' ? JSON.parse(innerRaw) : innerRaw;
                 } else {
                     // Legacy rows without serializedDogConfig — treat the row itself as the cfg.
-                    existingInner = row;
+                    existingInner = existingRow;
                 }
-                existingLineageId = (row as any).lineageId || existingInner?.lineageId;
-                existingDisplayName = (row as any).displayName || existingInner?.displayName;
+                existingLineageId = existingRow.lineageId || existingInner?.lineageId;
+                existingDisplayName = existingRow.displayName || existingInner?.displayName;
                 if (existingInner?.imitates) existingType = 'MimicDog';
             }
 
             // Inherit the lineage mark from the ancestor, or forge a new one fer an orphan.
             const lineageId = input.lineageId || existingLineageId || generateLineageId();
-            const parentId = this.enableVersioning ? input.id : null; // The ancestor from which this incarnation was born
+            // parentId must point to the actual previous version-GUID — never to the lineageId
+            // (which is what input.id would be when the caller passes a lineage-style reference).
+            const parentId = this.enableVersioning ? (existingRow?.id ?? input.id) : null;
             const displayName = input.displayName || existingDisplayName || input.id;
 
-            // Merge inner cfg → input. Strip transient envelope fields so they don't leak into cfg.
-            const { id: _oldId, ...inputCfgFields } = (input as any);
+            // Resolve ACL fields BEFORE the change-detection so they participate in it.
+            const inputVisibility = (input as any).visibility;
+            const inputOwnerId = (input as any).ownerId;
+            const inputEditors = (input as any).editors;
+            const inputViewers = (input as any).viewers;
+            const nextVisibility = inputVisibility === 'public' || inputVisibility === 'private'
+                ? inputVisibility
+                : existingRow?.visibility ?? undefined;
+            const nextOwnerId = inputOwnerId !== undefined
+                ? inputOwnerId
+                : existingRow?.ownerId ?? undefined;
+            const nextEditors = inputEditors !== undefined
+                ? inputEditors
+                : existingRow?.editors ?? undefined;
+            const nextViewers = inputViewers !== undefined
+                ? inputViewers
+                : existingRow?.viewers ?? undefined;
+            const visibilityChanged = (existingRow?.visibility ?? undefined) !== nextVisibility;
+            const ownerChanged = (existingRow?.ownerId ?? undefined) !== nextOwnerId;
+            const editorsChanged = JSON.stringify(existingRow?.editors ?? null) !== JSON.stringify(nextEditors ?? null);
+            const viewersChanged = JSON.stringify(existingRow?.viewers ?? null) !== JSON.stringify(nextViewers ?? null);
+
+            // Strip envelope-only fields before merging into the inner cfg, otherwise they
+            // land in serializedDogConfig as duplicates of the row columns.
+            const { id: _oldId, visibility: _vIn, ownerId: _oIn, editors: _eIn, viewers: _wIn, ...inputCfgFields } = (input as any);
             const { id: _prevId, serializedDogConfig: _stripNested, ...priorCfg } = (existingInner || {}) as any;
             const nextCfg = {
                 ...priorCfg,
@@ -119,8 +163,16 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 displayName,
             } as T;
 
-            // If nothing has changed, spare the deep — no phantom incarnations shall be born.
-            if (existingInner && this.enableVersioning && !this.hasContentChanged(existingInner as T, nextCfg)) {
+            // If nothing has changed (cfg, visibility, ownership, editors, viewers), spare the deep.
+            if (
+                existingInner &&
+                this.enableVersioning &&
+                !this.hasContentChanged(existingInner as T, nextCfg) &&
+                !visibilityChanged &&
+                !ownerChanged &&
+                !editorsChanged &&
+                !viewersChanged
+            ) {
                 return {
                     ok: true,
                     id: (existingInner as any).id || input.id,
@@ -140,16 +192,53 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 parentId,
                 displayName,
                 serializedDogConfig: JSON.stringify(nextCfg),
+                ...(nextVisibility !== undefined ? { visibility: nextVisibility } : {}),
+                ...(nextOwnerId !== undefined ? { ownerId: nextOwnerId } : {}),
+                ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
+                ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
                 createdAt: new Date(),
             });
 
             return {
                 ok: true,
                 id: saveId,
-                data: nextCfg
+                data: {
+                    ...nextCfg,
+                    ...(nextVisibility !== undefined ? { visibility: nextVisibility } : {}),
+                    ...(nextOwnerId !== undefined ? { ownerId: nextOwnerId } : {}),
+                    ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
+                    ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+                } as T,
             };
         } catch (error) {
             return { ok: false, error: String(error) };
+        }
+    }
+
+    /**
+     * Override getById so visibility + ownerId from the outer row land on the parsed entity.
+     * The base AbstractController.getById passes data through parseEntity which only sees
+     * serializedDogConfig; the outer row's visibility/ownerId are lost. We use
+     * findLatestVersionsByType (which returns the full row) and graft the metadata back on.
+     */
+    async getById(id: string): Promise<IControllerResponse<T | null>> {
+        try {
+            const rows = await this.store.findLatestVersionsByType(this.entityType, [id]);
+            if (rows.length === 0) {
+                return { ok: false, error: `Entity mit ID ${id} nicht gefunden`, data: null };
+            }
+            const r: any = rows[0];
+            const parsed = this.parseEntity(r.serializedDogConfig || r);
+            if (r.id) (parsed as any).id = r.id;
+            if (r.lineageId) (parsed as any).lineageId = r.lineageId;
+            if (r.displayName) (parsed as any).displayName = r.displayName;
+            if (r.visibility !== undefined && r.visibility !== null) (parsed as any).visibility = r.visibility;
+            if (r.ownerId !== undefined && r.ownerId !== null) (parsed as any).ownerId = r.ownerId;
+            if (r.editors !== undefined && r.editors !== null) (parsed as any).editors = r.editors;
+            if (r.viewers !== undefined && r.viewers !== null) (parsed as any).viewers = r.viewers;
+            return { ok: true, data: parsed };
+        } catch (error) {
+            return { ok: false, error: String(error), data: null };
         }
     }
 

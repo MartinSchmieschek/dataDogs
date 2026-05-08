@@ -11,6 +11,14 @@ export interface IKennelConfig {
   dogIds: string[];
   defaultQuery?: Record<string, string>;
   defaultBody?: any;
+  /** ACL — public lets anyone read+run, private restricts to owner/editors/viewers. */
+  visibility?: 'public' | 'private' | null;
+  /** User.id of the creator. null = community-owned (legacy / system). */
+  ownerId?: string | null;
+  /** Comma-separated User.id list — additional users who may mutate. */
+  editors?: string | null;
+  /** Comma-separated User.id list — additional users who may read on private entities. */
+  viewers?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

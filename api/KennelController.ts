@@ -20,6 +20,10 @@ export interface ICreateKennelInput extends ICreateInput {
     description?: string;
     emoji?: string;
     dogIds?: string[];
+    visibility?: 'public' | 'private';
+    ownerId?: string | null;
+    editors?: string[] | string | null;
+    viewers?: string[] | string | null;
 }
 
 /**
@@ -33,6 +37,10 @@ export interface ISaveKennelInput extends IUpdateInput {
     dogIds?: string[];
     defaultQuery?: Record<string, string>;
     defaultBody?: any;
+    visibility?: 'public' | 'private';
+    ownerId?: string | null;
+    editors?: string[] | string | null;
+    viewers?: string[] | string | null;
 }
 
 /**
@@ -74,9 +82,13 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
+            const visibility = input.visibility === 'private' ? 'private' : 'public';
+            const ownerId = input.ownerId ?? null;
+            const editors = input.editors ?? undefined;
+            const viewers = input.viewers ?? undefined;
 
             if (isRuntimeLogVerbose()) {
-                console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}`);
+                console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}, visibility=${visibility}, ownerId=${ownerId}`);
             }
 
             await this.store.save({
@@ -90,12 +102,19 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                visibility,
+                ownerId,
+                ...(editors !== undefined ? { editors } : {}),
+                ...(viewers !== undefined ? { viewers } : {}),
                 createdAt: config.createdAt?.toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
 
-            // Attach lineageId to the returned config so callers can reference the kennel stably.
-            const result = { ...config, lineageId } as any;
+            // Cascade: a public kennel needs its own nodes to be public too.
+            await this.cascadeVisibilityToOwnedNodes(config.dogIds, visibility, ownerId);
+
+            // Attach ACL fields to the returned config.
+            const result = { ...config, lineageId, visibility, ownerId, ...(editors !== undefined ? { editors } : {}), ...(viewers !== undefined ? { viewers } : {}) } as any;
 
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelController.create] Erfolgreich gespeichert: lineageId=${lineageId}`);
@@ -132,6 +151,19 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 return { ok: false, error: `Kennel mit ID ${input.id} nicht gefunden` };
             }
 
+            // ACL fields: resolve early so they participate in the change-detection.
+            const existingVisibility = (existing as any).visibility;
+            const existingOwnerId = (existing as any).ownerId;
+            const existingEditors = (existing as any).editors;
+            const existingViewers = (existing as any).viewers;
+            const nextVisibility =
+                input.visibility === 'public' || input.visibility === 'private'
+                    ? input.visibility
+                    : existingVisibility ?? 'public';
+            const nextOwnerId = input.ownerId !== undefined ? input.ownerId : existingOwnerId ?? null;
+            const nextEditors = input.editors !== undefined ? input.editors : existingEditors ?? undefined;
+            const nextViewers = input.viewers !== undefined ? input.viewers : existingViewers ?? undefined;
+
             // Merge new cargo with what was already in the hold.
             const config: IKennelConfig = {
                 id: existing.id, // will be replaced by new versionId
@@ -149,9 +181,13 @@ export class KennelController extends AbstractController<IKennelConfig> {
             };
 
             const contentChanged = this.hasContentChanged(existing, config);
+            const visibilityChanged = nextVisibility !== existingVisibility;
+            const ownerChanged = nextOwnerId !== existingOwnerId;
+            const editorsChanged = JSON.stringify(existingEditors ?? null) !== JSON.stringify(nextEditors ?? null);
+            const viewersChanged = JSON.stringify(existingViewers ?? null) !== JSON.stringify(nextViewers ?? null);
 
-            // Check if content actually changed — spare the deep from phantom versions.
-            if (!contentChanged) {
+            // Check if anything changed — spare the deep from phantom versions.
+            if (!contentChanged && !visibilityChanged && !ownerChanged && !editorsChanged && !viewersChanged) {
                 return {
                     ok: true,
                     id: (existing as any).lineageId || input.id,
@@ -165,7 +201,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const parentId = existing.id; // The ancestor from which this incarnation was born
 
             if (isRuntimeLogVerbose()) {
-                console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}`);
+                console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}, visibility=${nextVisibility}, ownerId=${nextOwnerId}`);
             }
 
             await this.store.save({
@@ -179,11 +215,28 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                visibility: nextVisibility,
+                ownerId: nextOwnerId,
+                ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
+                ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
                 createdAt: new Date().toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
 
-            const result = { ...config, id: newVersionId, lineageId } as any;
+            // Cascade only on public-direction transitions: private/null → public.
+            if (nextVisibility === 'public' && existingVisibility !== 'public') {
+                await this.cascadeVisibilityToOwnedNodes(config.dogIds, 'public', nextOwnerId);
+            }
+
+            const result = {
+                ...config,
+                id: newVersionId,
+                lineageId,
+                visibility: nextVisibility,
+                ownerId: nextOwnerId,
+                ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
+                ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+            } as any;
 
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelController.save] Erfolgreich gespeichert: ${newVersionId}`);
@@ -196,6 +249,55 @@ export class KennelController extends AbstractController<IKennelConfig> {
         } catch (error) {
             console.error('[KennelController.save] Fehler:', error);
             return { ok: false, error: String(error) };
+        }
+    }
+
+    /**
+     * When a kennel flips to public, cascade the visibility flag to all SerializedDog/MimicDog
+     * rows referenced in dogIds that are owned by the same user. Other-user-owned nodes stay
+     * private (don't trespass on someone else's visibility decisions). Hunters (base:*) are
+     * always visible, no cascade needed.
+     *
+     * Direction is one-way: only public-cascade, never private-cascade. Reason: making a kennel
+     * private shouldn't blindly hide nodes that other public kennels might still reference.
+     */
+    private async cascadeVisibilityToOwnedNodes(
+        dogIds: string[] | undefined,
+        targetVisibility: 'public' | 'private',
+        ownerForCascade: string | null,
+    ): Promise<void> {
+        if (targetVisibility !== 'public') return;
+        if (!ownerForCascade) return; // super-user create has no owner anchor — skip cascade
+        if (!Array.isArray(dogIds) || dogIds.length === 0) return;
+
+        const refs = dogIds.filter((ref) => typeof ref === 'string' && !ref.startsWith('base:'));
+        if (refs.length === 0) return;
+
+        // Try both SerializedDog and MimicDog tables (same Dog table, different type).
+        const fromSerialized = await this.store.findLatestVersionsByType('SerializedDog', refs);
+        const fromMimic = await this.store.findLatestVersionsByType('MimicDog', refs);
+        const rows = [...fromSerialized, ...fromMimic] as any[];
+
+        for (const row of rows) {
+            if (row.ownerId !== ownerForCascade) continue;
+            // Respect explicit settings — only cascade nodes that have NEVER had a visibility
+            // chosen (visibility IS NULL). If the user (or a previous cascade) ever wrote a
+            // value, leave it alone. This prevents "I set it private manually, the next kennel
+            // flip overrode my choice" — see test report Bug 4.
+            if (row.visibility !== null && row.visibility !== undefined) continue;
+            // Heal in place — same id, full row data, only visibility flips. No version bump.
+            await this.store.save({
+                id: row.id,
+                type: row.type,
+                lineageId: row.lineageId,
+                parentId: row.parentId,
+                displayName: row.displayName,
+                serializedDogConfig: row.serializedDogConfig,
+                visibility: 'public',
+                ownerId: row.ownerId,
+                createdAt: row.createdAt,
+                updatedAt: row.updatedAt,
+            });
         }
     }
 
@@ -517,6 +619,12 @@ export class KennelController extends AbstractController<IKennelConfig> {
         // Preserve lineageId and parentId for version tracking.
         if (data.lineageId) result.lineageId = data.lineageId;
         if (data.parentId !== undefined) result.parentId = data.parentId;
+
+        // ACL fields — null/undefined treated as "public" / no-extras downstream.
+        if (data.visibility !== undefined) result.visibility = data.visibility;
+        if (data.ownerId !== undefined) result.ownerId = data.ownerId;
+        if (data.editors !== undefined) result.editors = data.editors;
+        if (data.viewers !== undefined) result.viewers = data.viewers;
 
         return result as IKennelConfig;
     }

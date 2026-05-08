@@ -2,7 +2,7 @@
  * Muss mit packages/core/src/kennelReservedNames.ts (KENNEL_RESERVED_SLUGS) übereinstimmen.
  */
 const LOWER = new Set(
-  ['api', 'kennel', 'edit', 'static', 'save', 'nodes'].map((s) => s.toLowerCase()),
+  ['api', 'kennel', 'edit', 'static', 'save', 'nodes', 'auth', 'mcp', 'actions', '.well-known'].map((s) => s.toLowerCase()),
 );
 
 export function kennelLineageIdBlockedReason(id: string): string | null {
