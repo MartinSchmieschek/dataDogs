@@ -137,6 +137,8 @@ npx ng serve --proxy-config proxy.conf.js
 
 Opens at `http://localhost:4300` (see `angular.json` → `serve.options.port`). The lodge is warm.
 
+**Kennel list — copy & paste:** **📋** imports bundle JSON from the clipboard (`POST /api/kennels/import`). On each card, **Kopieren** in the action fan copies that Kennel’s export JSON (`GET …/export`). Same flow as documented in the [root README](../README.md#kennel-list-copy-and-paste).
+
 ### Full Pack (from project root)
 
 ```bash

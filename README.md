@@ -51,12 +51,14 @@ Wave 3 (Compositor):    NaturBundle  (= the lead)                         ← me
 
 **Rules — non-negotiable for non-trivial Kennels:**
 
-1. **One entity per dog.** A SerializedDog handles exactly one domain — weather OR species OR routes, never two.
 2. **Hunters fetch, entity dogs normalize, the compositor composes.** No mixing.
-3. **The compositor does no fetching, no per-source filtering.** It reads only entity yields.
 4. **A fat lead is a code smell.** If the lead is more than ~30 lines, split it.
+5. **Provide the user a detailed info well formated for its need** be playful with the final composition and aware that some dataDog can fail.
+6. **Split data from ui** good data can lead to bad ui experience, good ui is nothing without data. be playful test whats possible and create ui that combines kennel.
 
+##may be deprecated?
 **Why:** Reuse (entity dogs work in many Kennels), debuggability (failures localize per entity), versioning sanity (renderer evolves separately from data logic), multi-consumer (some clients want only weather, not the full bundle), HTML safety (the renderer is the only place that touches `<script>`).
+##
 
 If the Kennel has only one source, the lead may be the renderer directly — but the moment a second source enters, refactor to the compositor pattern.
 
@@ -210,7 +212,7 @@ In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are r
 
 **Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
 
-**Kennel export & import** -- `GET /api/kennels/:id/export` bundles a Kennel with all its dogs and version history into a portable JSON artifact. `POST /api/kennels/import` re-creates it elsewhere. If the Kennel ID already exists, the system auto-suffixes (`-copy`, `-copy-2`, ...) and remaps all internal references. Copy and paste across instances.
+**Kennel export & import** -- `GET /api/kennels/:id/export` bundles a Kennel with all its dogs and version history into a portable JSON artifact. `POST /api/kennels/import` re-creates it elsewhere. If the Kennel ID already exists, the system auto-suffixes (`-copy`, `-copy-2`, ...) and remaps all internal references. **In the browser UI** (Kennel list on `:4300`), the same workflow is copy-and-paste: **Kopieren** in a card’s action fan copies that bundle JSON to the clipboard; the **clipboard (📋)** button pastes bundle JSON from the clipboard and imports it. See [Kennel list copy and paste](#kennel-list-copy-and-paste). Copy and paste across instances or between UI, terminal, and other tools.
 
 **Caching** -- Two-tier memory so dogs don't repeat themselves:
 - **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication plus negative-caching for 429/504 to break provider retry storms.
@@ -381,6 +383,17 @@ Backend wakes on `:3000`, UI (dev) on `:4300`. Open the UI. The lodge is warm.
 **Server-side:** On every startup, `main.ts` calls **`runSeeds()`** ([`seed.ts`](seed.ts)) against the Prisma store. If the database is still empty of those rows, the seed creates **`seed-serialized-1-v1`** (the LayoutInput Mimic) and a **`KennelConfig`** with id **`default-kennel`** — see `dogIds` there (serialized dog first as **lead**, then all registered BaseDogs). Nothing special-cases that Kennel at runtime: **`GET /api/kennels/default-kennel/run`** (waves + config), **`GET /default-kennel`** (public **lead** yield only), and **`POST /default-kennel`** with a body all go through the same **`KennelRunHandler` → `KennelRun`** path as any other Kennel (load config from DB → fill kennel → run waves).
 
 **UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4300`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4300/kennel/default-kennel`**. The Waves viewer loads that Kennel run (graph + results); **⟳ Neu laden** re-runs it. The **Antwort (Server)** button opens the raw public response (**`http://localhost:3000/default-kennel`**, plus any query params from the panel) in a new tab so you can compare browser vs UI.
+
+### Kennel list copy and paste
+
+On the **Kennel list** (`http://localhost:4300`):
+
+| Action | Where | What it does |
+|--------|--------|----------------|
+| **Paste / import** | **Clipboard (📋)** button (stacked above **+**) | Reads the system clipboard. If the text is valid Kennel bundle JSON (same shape as `GET /api/kennels/:id/export`), calls **`POST /api/kennels/import`** and reloads the list. |
+| **Copy / export** | **Kopieren** in a Kennel card’s radial menu | Fetches the bundle via **`GET /api/kennels/:id/export`** and writes pretty-printed JSON to the clipboard. |
+
+Use this to move Kennels between environments, share bundles in chat or tickets, or round-trip with `curl` / file saves without retyping IDs.
 
 Manual seed (e.g. after resetting the DB): `npx prisma db seed` (same [`seed.ts`](seed.ts); set `DATABASE_URL` like for `prisma:sync`).
 

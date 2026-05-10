@@ -538,13 +538,9 @@ async function start() {
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
-    kennelSwaggerHandler.registerRoutes(app);
-    kennelBundleHandler.registerRoutes(app);
-    kennelRunHandler.registerRoutes(app);
 
-    // === MCP transport at POST /mcp ===
-    // Stateless Streamable HTTP. Tools wrap the kennel/node controllers and
-    // the run handler. Auth context (req.ctx) is set by the middleware above.
+    // === MCP + Actions BEFORE `/:kennelId` ===
+    // Otherwise POST /mcp matches KennelRunHandler's `/:kennelId` first (kennelId=mcp).
     const baseDogsList = allBaseDogs.map((dog) => ({
         id: 'base:' + dog.name,
         name: dog.name,
@@ -563,12 +559,11 @@ async function start() {
         projectRoot: __dirname,
     };
     app.use('/mcp', createMcpRouter(toolDeps));
-
-    // === OpenAPI / Action endpoints at /actions/* ===
-    // Same tools, REST-shaped, for ChatGPT Custom GPT Actions and other
-    // OpenAPI-driven consumers. /actions/openapi.json is the spec, /actions/gpt-template
-    // is a config block to paste when creating a Custom GPT.
     app.use('/actions', createActionsRouter(toolDeps));
+
+    kennelSwaggerHandler.registerRoutes(app);
+    kennelBundleHandler.registerRoutes(app);
+    kennelRunHandler.registerRoutes(app);
 
     // SPA-Fallback (Angular): Express 5 — kein app.get('*', …). Keine Kollision mit /api, /static (siehe spaRouteConstants).
     if (angularBrowserDir) {
