@@ -56,6 +56,29 @@ function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: K
 
 const initialKennelListSort = readPersistedKennelListSort();
 
+type KennelDescHighlightPart = { text: string; match: boolean };
+
+/** Case-insensitive Treffer-Segmente für `<mark>` — kein HTML, nur Fließtext. */
+function splitKennelDescForHighlight(text: string, query: string): KennelDescHighlightPart[] {
+  const q = query.trim();
+  if (!q || !text) return [{ text, match: false }];
+  const lower = text.toLowerCase();
+  const qLower = q.toLowerCase();
+  const parts: KennelDescHighlightPart[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(qLower, i);
+    if (idx === -1) {
+      parts.push({ text: text.slice(i), match: false });
+      break;
+    }
+    if (idx > i) parts.push({ text: text.slice(i, idx), match: false });
+    parts.push({ text: text.slice(idx, idx + q.length), match: true });
+    i = idx + q.length;
+  }
+  return parts;
+}
+
 @Component({
   selector: 'app-kennel-list',
   standalone: true,
@@ -266,6 +289,17 @@ export class KennelListComponent implements OnInit, OnDestroy {
   kennelEmojiForList(k: IKennelConfig): string {
     const e = k.emoji?.trim();
     return e || '🐕';
+  }
+
+  /** Suchtext trifft die Beschreibung — Karte klappt Beschreibung auf + Highlight. */
+  descriptionMatchesSearch(k: IKennelConfig): boolean {
+    const q = this.searchQuery().trim().toLowerCase();
+    if (!q) return false;
+    return (k.description || '').toLowerCase().includes(q);
+  }
+
+  descriptionHighlightParts(k: IKennelConfig): KennelDescHighlightPart[] {
+    return splitKennelDescForHighlight(k.description || '', this.searchQuery());
   }
 
   /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */

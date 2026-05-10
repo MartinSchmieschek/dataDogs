@@ -117,69 +117,81 @@
                     appKennelCardMotion
                     role="listitem"
                     [style.animation-delay]="(i * 42) + 'ms'">
-                    <article class="kennel-card kennel-card--elevated">
-                    <div class="kennel-card-body">
-                      <div
-                        class="kennel-card-rail kennel-card-rail--start"
-                        role="toolbar"
-                        [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
-                        <button
-                          type="button"
-                          class="kennel-rail-btn kennel-rail-btn--primary"
-                          (click)="onExecute(kennel)"
-                          [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
-                          title="Ausführen — gespeicherte Query-Parameter in der URL; Body wie in der Kennel-Config">
-                          <span aria-hidden="true">▶</span>
-                        </button>
-                      </div>
-
-                      <div class="kennel-card-main">
-                        <div class="kennel-card-top">
-                          <div class="kennel-card-headline">
-                            <span class="kennel-card-emoji" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
-                            <h3 class="kennel-card-name">
-                              {{ kennel.name || kennelRef(kennel) }}
-                            </h3>
-                            <app-visibility-badge [visibility]="kennel.visibility" />
+                    <div class="kennel-card-motion-visual">
+                      <article class="kennel-card kennel-card--elevated">
+                        <div class="kennel-card-body">
+                          <div
+                            class="kennel-card-rail kennel-card-rail--start"
+                            role="toolbar"
+                            [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
+                            <button
+                              type="button"
+                              class="kennel-rail-btn kennel-rail-btn--primary"
+                              (click)="onExecute(kennel)"
+                              [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
+                              title="Ausführen — gespeicherte Query-Parameter in der URL; Body wie in der Kennel-Config">
+                              <span aria-hidden="true">▶</span>
+                            </button>
                           </div>
-                          @if (kennel.description) {
-                            <div class="kennel-card-desc-panel">
-                              <p class="kennel-card-desc">{{ kennel.description }}</p>
-                            </div>
-                          }
-                          @if (showExecutePath()) {
-                            <div class="kennel-card-meta-panel">
-                              <div class="kennel-card-meta-line">
-                                <code class="kennel-endpoint-chip">{{ executePathForDisplay(kennel) }}</code>
-                                @if (mirrorExecutePath()) {
-                                  <code class="kennel-endpoint-chip kennel-endpoint-chip--mirrored" [attr.title]="'Gespiegelte Segmentreihenfolge (nur Anzeige)'">
-                                    {{ executePathMirroredSegments(kennel) }}
-                                  </code>
-                                }
+
+                          <div class="kennel-card-main">
+                            <div class="kennel-card-top">
+                              <div class="kennel-card-headline">
+                                <span class="kennel-card-emoji" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
+                                <h3 class="kennel-card-name">
+                                  {{ kennel.name || kennelRef(kennel) }}
+                                </h3>
+                                <app-visibility-badge [visibility]="kennel.visibility" />
                               </div>
+                              @if (kennel.description) {
+                                <div
+                                  class="kennel-card-desc-panel"
+                                  [class.kennel-card-desc-panel--search-hit]="descriptionMatchesSearch(kennel)">
+                                  <p class="kennel-card-desc">
+                                    @for (part of descriptionHighlightParts(kennel); track $index) {
+                                      @if (part.match) {
+                                        <mark class="kennel-search-hit">{{ part.text }}</mark>
+                                      } @else {
+                                        {{ part.text }}
+                                      }
+                                    }
+                                  </p>
+                                </div>
+                              }
+                              @if (showExecutePath()) {
+                                <div class="kennel-card-meta-panel">
+                                  <div class="kennel-card-meta-line">
+                                    <code class="kennel-endpoint-chip">{{ executePathForDisplay(kennel) }}</code>
+                                    @if (mirrorExecutePath()) {
+                                      <code class="kennel-endpoint-chip kennel-endpoint-chip--mirrored" [attr.title]="'Gespiegelte Segmentreihenfolge (nur Anzeige)'">
+                                        {{ executePathMirroredSegments(kennel) }}
+                                      </code>
+                                    }
+                                  </div>
+                                </div>
+                              }
                             </div>
-                          }
+                          </div>
+                          <div
+                            class="kennel-card-rail kennel-card-rail--end"
+                            role="toolbar"
+                            [attr.aria-label]="'Bearbeiten und mehr: ' + (kennel.name || kennelRef(kennel))">
+                            <div class="kennel-card-rail-fan">
+                              <app-kennel-action-fan [alignMenuToEnd]="true" (action)="onFanAction(kennel, $event)" />
+                            </div>
+                          </div>
+                          <div class="kennel-card-date-foot">
+                            <span class="kennel-sr-only">Zuletzt geändert</span>
+                            @if (kennel.updatedAt || kennel.createdAt) {
+                              <time [attr.datetime]="kennel.updatedAt || kennel.createdAt">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</time>
+                            } @else {
+                              <span class="kennel-card-date-foot--empty">—</span>
+                            }
+                          </div>
                         </div>
-                      </div>
-                      <div
-                        class="kennel-card-rail kennel-card-rail--end"
-                        role="toolbar"
-                        [attr.aria-label]="'Bearbeiten und mehr: ' + (kennel.name || kennelRef(kennel))">
-                        <div class="kennel-card-rail-fan">
-                          <app-kennel-action-fan [alignMenuToEnd]="true" (action)="onFanAction(kennel, $event)" />
-                        </div>
-                      </div>
-                      <div class="kennel-card-date-foot">
-                        <span class="kennel-sr-only">Zuletzt geändert</span>
-                        @if (kennel.updatedAt || kennel.createdAt) {
-                          <time [attr.datetime]="kennel.updatedAt || kennel.createdAt">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</time>
-                        } @else {
-                          <span class="kennel-card-date-foot--empty">—</span>
-                        }
-                      </div>
+                      </article>
                     </div>
-                  </article>
-                </div>
+                  </div>
               } @empty {
                 @if (!loading()) {
                   @if (kennels().length === 0) {
