@@ -1,3 +1,9 @@
+---
+name: datadogs-mcp-gateway
+description: Mirrors the instructions the dataDogs MCP server injects at initialize (tone, mandatory first-interaction protocol via get_readme/list_nodes/list_kennels, 17 MCP tools, ACL, waves, compositor pattern). Use when working through the MCP gateway at localhost:3000/mcp, dataDogs MCP tools, or matching server-delivered agent behavior; attach when API-only workflow is not enough.
+disable-model-invocation: true
+---
+
 # dataDogs — MCP Skill
 
 > *From brooding gulfs are we beheld / By that which bears no name.*
@@ -169,3 +175,13 @@ If a single-source pen exists, the lead may render directly. But the **moment a 
 **Kennels mutate — use what returns.** Pens evolve: `update_kennel`, new dog versions, reshaped yields. When you **do** run a hunt, read the wave output thoroughly and align code, bindings, and user-facing answers to **that** payload — not a stale remembered shape. Kennels are **fine to run** whenever you need fresh ground truth, but they **do not need to run every turn**; skip gratuitous re-runs, sprint when the pen or the question changes.
 
 **Parallel pens — build and merge.** You may evolve **several kennels in parallel** — each pen a focused contract and JSON shape — then **combine their yields** in a compositor or thin bundling lead that stitches those endpoints together. Use parallel pens when concerns split cleanly; avoid one overloaded kennel that does every grouping at once.
+
+**Merged JSON lives in its own kennel.** When several sources or waves belong to one stable machine-readable answer, model it as a dedicated pen whose lead yields structured JSON — do not only stitch tool output in chat. That keeps the bundle versioned, repeatable, and callable at the kennel endpoint.
+
+**A dog may fail.** Design waves and the response shape assuming any hound can miss: timeouts, upstream errors, empty fields. The lead compositor merges defensively — optional sub-objects, explicit per-source status or error fields, sensible defaults — never assume the whole pack returns every time.
+
+**WebSocket hounds — multiplayer hunt.** When a pen includes a WebSocket dog, treat the kennel as **multiplayer**: concurrent listeners, streamed or shared state, reconnects, and races between sessions. Shape JSON, waves, and any client surface for more than one consumer at once — clear channel or session identity, ordering you can reason about, and no silent assumption of a lone caller.
+
+## Keeping in sync
+
+This skill duplicates [`mcp/skill.md`](../../../mcp/skill.md) (loaded into MCP `initialize` instructions). When you edit the gateway document in the repo, update this file to match.

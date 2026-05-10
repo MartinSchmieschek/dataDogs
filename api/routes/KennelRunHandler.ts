@@ -409,7 +409,7 @@ export class KennelRunHandler {
 
     private async handlePublicGet(req: any, res: any, next: any): Promise<void> {
         const kennelId = req.params.kennelId;
-        if (RESERVED_TOP_LEVEL_SEGMENTS.has(kennelId)) {
+        if (RESERVED_TOP_LEVEL_SEGMENTS.has(String(kennelId || '').toLowerCase())) {
             next();
             return;
         }
@@ -455,7 +455,7 @@ export class KennelRunHandler {
 
     private async handlePublicPost(req: any, res: any, next: any): Promise<void> {
         const kennelId = req.params.kennelId;
-        if (RESERVED_TOP_LEVEL_SEGMENTS.has(kennelId)) {
+        if (RESERVED_TOP_LEVEL_SEGMENTS.has(String(kennelId || '').toLowerCase())) {
             next();
             return;
         }
