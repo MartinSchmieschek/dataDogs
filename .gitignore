@@ -32,3 +32,4 @@ store/generated/
 .env.*.local
 .cursor/debug.log
 store/prisma-json-storage/json-storage.db
+store/prisma-auth/auth.db
