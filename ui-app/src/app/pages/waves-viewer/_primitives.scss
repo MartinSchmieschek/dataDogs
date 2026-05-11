@@ -1,0 +1,271 @@
+/*
+ * Style-Primitives — Mixins für Buttons, Inputs, Cards.
+ * Konsumenten: @use './tokens' as tk; @use './primitives' as pr;
+ * Niemals globale Klassen exportieren — nur Mixins.
+ */
+@use './tokens' as tk;
+
+/* === Button base === */
+@mixin btn-base($height: tk.$control-h-md) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: tk.$space-2;
+  height: $height;
+  padding: 0 tk.$space-4;
+  font-family: tk.$font-sans;
+  font-size: tk.$font-md;
+  font-weight: tk.$weight-medium;
+  line-height: 1;
+  letter-spacing: 0;
+  border-radius: tk.$radius-sm;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  transition: background tk.$dur-fast tk.$ease-out,
+              border-color tk.$dur-fast tk.$ease-out,
+              color tk.$dur-fast tk.$ease-out,
+              box-shadow tk.$dur-fast tk.$ease-out;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: tk.$shadow-focus;
+  }
+
+  &:disabled,
+  &[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+@mixin btn-primary {
+  @include btn-base;
+  background: tk.$accent;
+  color: tk.$accent-on;
+  border-color: tk.$accent;
+  font-weight: tk.$weight-bold;
+
+  &:hover { background: tk.$accent-hover; border-color: tk.$accent-hover; }
+  &:active { transform: translateY(0.5px); }
+}
+
+@mixin btn-secondary {
+  @include btn-base;
+  background: tk.$surface;
+  color: tk.$text;
+  border-color: tk.$border;
+
+  &:hover {
+    background: tk.$surface-muted;
+    border-color: tk.$border-strong;
+  }
+}
+
+@mixin btn-ghost {
+  @include btn-base;
+  background: transparent;
+  color: tk.$text-muted;
+  border-color: transparent;
+
+  &:hover {
+    background: tk.$surface-muted;
+    color: tk.$text;
+  }
+
+  &.is-active,
+  &[aria-pressed='true'] {
+    background: tk.$accent-soft;
+    color: tk.$accent;
+  }
+}
+
+@mixin btn-danger {
+  @include btn-base;
+  background: tk.$danger-50;
+  color: tk.$danger-500;
+  border-color: tk.$danger-200;
+
+  &:hover {
+    background: tk.$danger-500;
+    color: tk.$text-inverse;
+    border-color: tk.$danger-500;
+  }
+}
+
+@mixin btn-icon($size: tk.$control-h-md) {
+  @include btn-base($size);
+  width: $size;
+  padding: 0;
+  font-size: tk.$font-lg;
+}
+
+/* === Input/Textarea === */
+@mixin input-base {
+  display: block;
+  width: 100%;
+  height: tk.$control-h-md;
+  padding: 0 tk.$space-3;
+  font-family: tk.$font-sans;
+  font-size: tk.$font-md;
+  color: tk.$text;
+  background: tk.$surface;
+  border: 1px solid tk.$border;
+  border-radius: tk.$radius-sm;
+  transition: border-color tk.$dur-fast tk.$ease-out,
+              box-shadow tk.$dur-fast tk.$ease-out,
+              background tk.$dur-fast tk.$ease-out;
+
+  &::placeholder { color: tk.$text-faint; }
+
+  &:hover { border-color: tk.$border-strong; }
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+    border-color: tk.$border-focus;
+    box-shadow: tk.$shadow-focus;
+  }
+
+  &:disabled {
+    background: tk.$surface-muted;
+    color: tk.$text-muted;
+    cursor: not-allowed;
+  }
+}
+
+@mixin input-code {
+  @include input-base;
+  font-family: tk.$font-mono;
+  font-size: tk.$font-sm;
+  background: tk.$surface-sunken;
+}
+
+@mixin textarea-base {
+  @include input-base;
+  height: auto;
+  min-height: 96px;
+  padding: tk.$space-3;
+  line-height: tk.$lh-base;
+  resize: vertical;
+}
+
+/* === Card / Surface === */
+@mixin card {
+  background: tk.$surface;
+  border: 1px solid tk.$border;
+  border-radius: tk.$radius-md;
+  box-shadow: tk.$shadow-sm;
+}
+
+@mixin surface-card {
+  background: tk.$surface;
+  border-radius: tk.$radius-lg;
+  box-shadow: tk.$shadow-md;
+}
+
+/* === Label / Form-Field === */
+@mixin field-label {
+  display: block;
+  font-family: tk.$font-sans;
+  font-size: tk.$font-sm;
+  font-weight: tk.$weight-medium;
+  color: tk.$text-muted;
+  letter-spacing: 0.02em;
+  margin-bottom: tk.$space-1;
+}
+
+@mixin field-helper {
+  font-size: tk.$font-sm;
+  color: tk.$text-faint;
+  line-height: tk.$lh-base;
+}
+
+/* === Chip / Badge === */
+@mixin chip {
+  display: inline-flex;
+  align-items: center;
+  gap: tk.$space-1;
+  height: 28px;
+  padding: 0 tk.$space-3;
+  font-size: tk.$font-sm;
+  font-weight: tk.$weight-medium;
+  color: tk.$text-muted;
+  background: tk.$surface-muted;
+  border: 1px solid tk.$border;
+  border-radius: tk.$radius-full;
+  cursor: pointer;
+  transition: background tk.$dur-fast tk.$ease-out,
+              color tk.$dur-fast tk.$ease-out,
+              border-color tk.$dur-fast tk.$ease-out;
+
+  &:hover { background: tk.$surface-sunken; color: tk.$text; }
+
+  &.is-active,
+  &[aria-pressed='true'] {
+    background: tk.$accent-soft;
+    color: tk.$accent;
+    border-color: tk.$accent;
+  }
+}
+
+/* === Tab === */
+@mixin tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: tk.$space-2;
+  height: 44px;
+  padding: 0 tk.$space-4;
+  font-family: tk.$font-sans;
+  font-size: tk.$font-md;
+  font-weight: tk.$weight-medium;
+  color: tk.$text-muted;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color tk.$dur-fast tk.$ease-out;
+
+  &:hover { color: tk.$text; }
+
+  &.is-active {
+    color: tk.$accent;
+
+    &::after {
+      content: '';
+      position: absolute;
+      left: tk.$space-3;
+      right: tk.$space-3;
+      bottom: 0;
+      height: 2px;
+      background: tk.$accent;
+      border-radius: tk.$radius-full;
+    }
+  }
+}
+
+/* === Status-Dot === */
+@mixin status-dot($size: 8px) {
+  display: inline-block;
+  width: $size;
+  height: $size;
+  border-radius: tk.$radius-full;
+  flex-shrink: 0;
+}
+
+/* === Scrollbar refinement === */
+@mixin nice-scrollbar {
+  &::-webkit-scrollbar { width: 10px; height: 10px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: tk.$neutral-200;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: tk.$radius-full;
+    &:hover { background: tk.$neutral-300; background-clip: padding-box; }
+  }
+}

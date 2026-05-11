@@ -1,0 +1,111 @@
+@use '../tokens' as tk;
+@use '../primitives' as pr;
+
+:host {
+  display: contents;
+  font-family: tk.$font-sans;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 22, 38, 0.55);
+  z-index: tk.$z-modal;
+  animation: fade-in tk.$dur-base tk.$ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: calc(#{tk.$z-modal} + 1);
+  width: min(440px, calc(100vw - #{tk.$space-5}));
+  background: tk.$surface;
+  border-radius: tk.$radius-lg;
+  box-shadow: tk.$shadow-lg;
+  padding: tk.$space-5;
+  display: flex;
+  flex-direction: column;
+  gap: tk.$space-4;
+  animation: dialog-in tk.$dur-base tk.$ease-out;
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.98); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: tk.$space-3;
+}
+
+.icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: tk.$radius-full;
+
+  &--danger {
+    background: tk.$danger-50;
+    color: tk.$danger-500;
+  }
+}
+
+.head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: tk.$font-lg;
+  font-weight: tk.$weight-bold;
+  color: tk.$text;
+  letter-spacing: -0.01em;
+  line-height: tk.$lh-tight;
+}
+
+.message {
+  margin-top: tk.$space-1;
+  font-size: tk.$font-md;
+  color: tk.$text-muted;
+  line-height: tk.$lh-base;
+  word-break: break-word;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: tk.$space-2;
+}
+
+.btn-cancel {
+  @include pr.btn-secondary;
+}
+
+.btn-confirm {
+  @include pr.btn-primary;
+
+  &.is-danger {
+    background: tk.$danger-500;
+    border-color: tk.$danger-500;
+    &:hover { background: #b91c1c; border-color: #b91c1c; }
+  }
+}
+
+@media (max-width: tk.$breakpoint-tablet) {
+  .dialog { padding: tk.$space-4; gap: tk.$space-3; }
+  .actions { flex-direction: column-reverse; align-items: stretch; }
+  .btn-cancel, .btn-confirm { width: 100%; }
+}

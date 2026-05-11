@@ -1,5 +1,5 @@
 import { Component, computed, input, output, signal } from '@angular/core';
-import { DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
+import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { DogDisplayComponent } from '../dog-display/dog-display.component';
 
 function normalizeDogSearch(q: string): string {
@@ -12,10 +12,17 @@ function normalizeDogSearch(q: string): string {
   imports: [DogDisplayComponent],
   template: `
     <div class="toolbar">
-      <div class="toolbar-header">Dogs</div>
+      <div class="toolbar-header">
+        <div class="toolbar-title">Dogs</div>
+        @if (showCloseButton()) {
+          <button type="button" class="btn-close" (click)="closeRequested.emit()" aria-label="Schließen">×</button>
+        }
+      </div>
 
       <div class="toolbar-new-row">
-        <button type="button" class="btn-new-dog" (click)="newDogRequested.emit()">+ Neuer Dog</button>
+        <button type="button" class="btn-new-dog" (click)="newDogRequested.emit()">
+          <span class="plus">+</span> Neuer Dog
+        </button>
       </div>
 
       <div class="toolbar-search-wrap">
@@ -31,97 +38,138 @@ function normalizeDogSearch(q: string): string {
           (input)="searchQuery.set($any($event.target).value)" />
       </div>
 
-      <div class="toolbar-section">
-        <div class="section-label" (click)="baseCollapsed = !baseCollapsed">
-          <span class="toggle">{{ baseCollapsed ? '▸' : '▾' }}</span>
-          Base Dogs
+      <div class="toolbar-scroll">
+        <div class="toolbar-section">
+          <button type="button" class="section-label" (click)="baseCollapsed = !baseCollapsed">
+            <span class="toggle">{{ baseCollapsed ? '▸' : '▾' }}</span>
+            Base Dogs
+            <span class="count">{{ filteredBaseDogs().length }}</span>
+          </button>
+          @if (!baseCollapsed) {
+            <div class="section-items">
+              @for (dog of filteredBaseDogs(); track dog.id) {
+                <div
+                  class="toolbar-item base"
+                  draggable="true"
+                  (dragstart)="onDragStart($event, dog)">
+                  <span class="drag-handle" aria-hidden="true">⠿</span>
+                  <div class="item-body">
+                    <app-dog-display
+                      class="item-name"
+                      [label]="getDogLabel(dog)"
+                      [icon]="dog.icon"
+                      variant="toolbar" />
+                    @if (dog.description) {
+                      <div class="item-desc">{{ dog.description }}</div>
+                    }
+                  </div>
+                </div>
+              } @empty {
+                <div class="empty-hint">
+                  {{ searchQuery().trim() ? 'Keine Treffer' : 'Keine BaseDogs' }}
+                </div>
+              }
+            </div>
+          }
         </div>
-        @if (!baseCollapsed) {
-          <div class="section-items">
-            @for (dog of filteredBaseDogs(); track dog.id) {
-              <div
-                class="toolbar-item base"
-                draggable="true"
-                (dragstart)="onDragStart($event, dog)">
-                <div class="drag-handle">⠿</div>
-                <app-dog-display
-                  class="item-name"
-                  [label]="getDogLabel(dog)"
-                  [icon]="dog.icon"
-                  variant="toolbar" />
-              </div>
-            } @empty {
-              <div class="empty-hint">
-                {{ searchQuery().trim() ? 'Keine Treffer' : 'Keine BaseDogs' }}
-              </div>
-            }
-          </div>
-        }
-      </div>
 
-      <div class="toolbar-section">
-        <div class="section-label" (click)="serializedCollapsed = !serializedCollapsed">
-          <span class="toggle">{{ serializedCollapsed ? '▸' : '▾' }}</span>
-          Serialized Dogs
+        <div class="toolbar-section">
+          <button type="button" class="section-label" (click)="serializedCollapsed = !serializedCollapsed">
+            <span class="toggle">{{ serializedCollapsed ? '▸' : '▾' }}</span>
+            Serialized Dogs
+            <span class="count">{{ filteredSerializedDogs().length }}</span>
+          </button>
+          @if (!serializedCollapsed) {
+            <div class="section-items">
+              @for (dog of filteredSerializedDogs(); track dog.id) {
+                <div
+                  class="toolbar-item serialized"
+                  draggable="true"
+                  (dragstart)="onDragStart($event, dog)">
+                  <span class="drag-handle" aria-hidden="true">⠿</span>
+                  <div class="item-body">
+                    <app-dog-display
+                      class="item-name"
+                      [label]="getSerializedLabel(dog)"
+                      [icon]="dog.icon"
+                      variant="toolbar" />
+                    @if (getSerializedDescription(dog); as desc) {
+                      <div class="item-desc">{{ desc }}</div>
+                    }
+                  </div>
+                </div>
+              } @empty {
+                <div class="empty-hint">
+                  {{ searchQuery().trim() ? 'Keine Treffer' : 'Keine SerializedDogs' }}
+                </div>
+              }
+            </div>
+          }
         </div>
-        @if (!serializedCollapsed) {
-          <div class="section-items">
-            @for (dog of filteredSerializedDogs(); track dog.id) {
-              <div
-                class="toolbar-item serialized"
-                draggable="true"
-                (dragstart)="onDragStart($event, dog)">
-                <div class="drag-handle">⠿</div>
-                <app-dog-display
-                  class="item-name"
-                  [label]="getSerializedLabel(dog)"
-                  [icon]="dog.icon"
-                  variant="toolbar" />
-              </div>
-            } @empty {
-              <div class="empty-hint">
-                {{ searchQuery().trim() ? 'Keine Treffer' : 'Keine SerializedDogs' }}
-              </div>
-            }
-          </div>
-        }
       </div>
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      height: 100%;
+    }
+
     .toolbar {
       display: flex;
       flex-direction: column;
       height: 100%;
-      background: #0c0c0c;
-      border-right: 1px solid #2a2a2a;
-      overflow-y: auto;
-      overflow-x: hidden;
+      background: #ffffff;
+      color: #1a2236;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
       user-select: none;
     }
 
     .toolbar-header {
-      padding: 10px 12px;
-      font-size: 11px;
-      font-weight: bold;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #888;
-      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
       flex-shrink: 0;
+    }
+
+    .toolbar-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #5a6378;
+    }
+
+    .btn-close {
+      background: transparent;
+      border: none;
+      color: #5a6378;
+      font-size: 28px;
+      line-height: 1;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: background 0.15s;
+
+      &:hover { background: #f1f3f7; color: #1a2236; }
     }
 
     .toolbar-new-row {
       flex-shrink: 0;
-      padding: 8px 10px 6px;
-      border-bottom: 1px solid #1f1f1f;
+      padding: 0 16px 10px;
     }
 
     .toolbar-search-wrap {
       position: relative;
       flex-shrink: 0;
-      padding: 8px 10px 10px;
-      border-bottom: 1px solid #2a2a2a;
+      padding: 0 16px 12px;
     }
 
     .toolbar-search-sr {
@@ -138,138 +186,192 @@ function normalizeDogSearch(q: string): string {
 
     .toolbar-search-icon {
       position: absolute;
-      left: 1.15rem;
+      left: 28px;
       top: 50%;
-      transform: translateY(-50%);
-      font-size: 0.85rem;
-      opacity: 0.45;
+      transform: translateY(calc(-50% - 6px));
+      font-size: 14px;
+      color: #8a93a4;
       pointer-events: none;
     }
 
     .toolbar-search {
       width: 100%;
       box-sizing: border-box;
-      padding: 0.45rem 0.5rem 0.45rem 1.85rem;
-      border: 1px solid #333;
-      border-radius: 6px;
-      background: #111;
-      color: #ddd;
+      padding: 10px 12px 10px 34px;
+      border: 1px solid #e4e8ef;
+      border-radius: 10px;
+      background: #f7f8fa;
+      color: #1a2236;
       font-family: inherit;
-      font-size: 11px;
+      font-size: 14px;
 
-      &::placeholder {
-        color: #666;
-      }
+      &::placeholder { color: #8a93a4; }
 
       &:focus {
         outline: none;
-        border-color: #4a7a9e;
-        box-shadow: 0 0 0 1px rgba(80, 140, 200, 0.2);
+        border-color: #2563eb;
+        background: #ffffff;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
       }
+    }
+
+    .toolbar-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-bottom: 16px;
     }
 
     .toolbar-section {
-      border-bottom: 1px solid #1a1a1a;
+      margin-top: 4px;
     }
 
     .section-label {
+      width: 100%;
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      font-size: 10px;
-      font-weight: bold;
+      gap: 8px;
+      padding: 10px 16px;
+      font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #777;
+      letter-spacing: 0.6px;
+      color: #5a6378;
+      background: transparent;
+      border: none;
       cursor: pointer;
-      background: #0e0e0e;
+      font-family: inherit;
 
-      &:hover {
-        background: #151515;
-        color: #999;
-      }
+      &:hover { background: #f4f6fa; color: #1a2236; }
     }
 
     .toggle {
-      font-size: 9px;
-      color: #555;
-      width: 10px;
+      font-size: 10px;
+      color: #8a93a4;
+      width: 12px;
+      flex-shrink: 0;
+    }
+
+    .count {
+      margin-left: auto;
+      font-size: 11px;
+      color: #8a93a4;
+      background: #f1f3f7;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 500;
     }
 
     .section-items {
-      padding: 4px 0;
+      padding: 4px 8px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
     .toolbar-item {
       display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      margin: 2px 6px;
-      border-radius: 4px;
-      font-size: 11px;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
       cursor: grab;
-      transition: background 0.15s, border-color 0.15s;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.05s;
       border: 1px solid transparent;
+      background: #ffffff;
+      min-height: 44px;
 
-      &:active { cursor: grabbing; }
+      &:active {
+        cursor: grabbing;
+        transform: scale(0.99);
+      }
 
       &.base {
-        color: #aaa;
-        background: transparent;
-        border: none;
+        background: #f7f8fa;
         &:hover {
-          background: transparent;
-          border: none;
-          color: #c8c8c8;
+          background: #eef1f7;
+          border-color: #d8dde6;
         }
       }
 
       &.serialized {
-        color: #8cb4e0;
-        background: #111828;
+        background: #eef4ff;
         &:hover {
-          background: #182440;
-          border-color: #1a3a5c;
+          background: #e3edff;
+          border-color: #bcd2f8;
         }
       }
     }
 
     .drag-handle {
-      color: #444;
-      font-size: 12px;
-      line-height: 1;
+      color: #c0c6d2;
+      font-size: 14px;
+      line-height: 1.4;
       flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .item-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
 
     .item-name {
       min-width: 0;
-      flex: 1;
+      font-size: 14px;
+      color: #1a2236;
+      font-weight: 500;
+    }
+
+    .item-desc {
+      font-size: 12px;
+      line-height: 1.4;
+      color: #5a6378;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
     }
 
     .empty-hint {
-      padding: 8px 12px;
-      font-size: 10px;
-      color: #444;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #8a93a4;
       font-style: italic;
     }
 
     .btn-new-dog {
       width: 100%;
-      padding: 7px 10px;
-      border: 1px solid #2a2a2a;
-      border-radius: 4px;
-      background: #111;
-      color: #0c6;
-      font-family: 'Courier New', monospace;
-      font-size: 11px;
+      padding: 10px 14px;
+      border: 1px solid #d8dde6;
+      border-radius: 10px;
+      background: #ffffff;
+      color: #1a2236;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 44px;
+
+      .plus {
+        color: #2563eb;
+        font-weight: 700;
+        font-size: 16px;
+      }
 
       &:hover {
-        background: #1a1a1a;
-        border-color: #0c6;
+        background: #f4f6fa;
+        border-color: #2563eb;
+        color: #2563eb;
       }
     }
   `]
@@ -277,31 +379,36 @@ function normalizeDogSearch(q: string): string {
 export class DogToolbarComponent {
   /** Signal-Input: damit `computed`-Filter bei Daten vom Parent zuverlässig neu laufen. */
   readonly availableDogs = input<DogInfo[]>([]);
+  /** Wenn true: Schließen-Button im Header zeigen (für Popover/Sheet-Kontext). */
+  readonly showCloseButton = input<boolean>(false);
 
   readonly newDogRequested = output<void>();
+  readonly closeRequested = output<void>();
 
   readonly searchQuery = signal('');
 
   baseCollapsed = false;
   serializedCollapsed = false;
 
-  readonly filteredBaseDogs = computed(() => {
+  readonly filteredBaseDogs = computed<BaseDogInfo[]>(() => {
     const q = normalizeDogSearch(this.searchQuery());
-    const list = this.availableDogs().filter(d => isBaseDog(d));
+    const list = this.availableDogs().filter(isBaseDog);
     if (!q) return list;
     return list.filter(d => this.dogMatchesSearch(d, q));
   });
 
-  readonly filteredSerializedDogs = computed(() => {
+  readonly filteredSerializedDogs = computed<SerializedDogInfo[]>(() => {
     const q = normalizeDogSearch(this.searchQuery());
-    const list = this.availableDogs().filter(d => !isBaseDog(d));
+    const list = this.availableDogs().filter((d): d is SerializedDogInfo => !isBaseDog(d));
     if (!q) return list;
     return list.filter(d => this.dogMatchesSearch(d, q));
   });
 
   private dogMatchesSearch(dog: DogInfo, q: string): boolean {
     if (isBaseDog(dog)) {
-      return dog.name.toLowerCase().includes(q) || dog.id.toLowerCase().includes(q);
+      return dog.name.toLowerCase().includes(q)
+        || dog.id.toLowerCase().includes(q)
+        || (dog.description?.toLowerCase().includes(q) ?? false);
     }
     const s = dog as SerializedDogInfo;
     const hay = [
@@ -324,6 +431,17 @@ export class DogToolbarComponent {
   getSerializedLabel(dog: DogInfo): string {
     const sd = dog as SerializedDogInfo;
     return sd.displayName || sd.id;
+  }
+
+  /** Pulls a short, single-line preview from the dog's `theRun` source — used as fallback description. */
+  getSerializedDescription(dog: DogInfo): string | null {
+    if (isBaseDog(dog)) return null;
+    const sd = dog as SerializedDogInfo;
+    const code = sd.theRun?.trim();
+    if (!code) return null;
+    const firstLine = code.split('\n').find(l => l.trim().length > 0)?.trim() ?? '';
+    if (!firstLine) return null;
+    return firstLine.length > 80 ? firstLine.slice(0, 80) + '…' : firstLine;
   }
 
   onDragStart(event: DragEvent, dog: DogInfo) {

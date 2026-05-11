@@ -76,7 +76,7 @@ export class OsmLandscapeFeaturesRetriever extends OsmFeatureRetriever<OsmLandsc
     }
 
     get description(): string {
-        return "Hunts point + line features that vegetation polygons miss: single trees, tree rows, walls/fences/hedges, towers/masts/chimneys. Three independent axes — `nature`, `barrier`, `manMade` — each with defaults or caller-supplied lists. Returns mixed Points + LineStrings.";
+        return "Hunts point + line features that vegetation polygons miss: single trees, tree rows, walls/fences/hedges, towers/masts/chimneys/incinerators/gas-tanks. Three independent axes — `nature`, `barrier`, `manMade` — each accepts enum values or **custom OSM values** matching `[a-z0-9_:]+`. Defaults pick sensible subsets. Returns mixed Points + LineStrings. `simplify(m)` thins vertices, `merge()` unions polygons. Each feature's `properties` carries all OSM tags — trees: `species` (latin + `species:de`), `genus`, `height`, `circumference`, `leaf_type`, `leaf_cycle`, `denotation`, `start_date`; barriers: `height`, `material`; towers/masts: `tower:type`, `height`, `operator`.";
     }
 
     get icon(): string | undefined {

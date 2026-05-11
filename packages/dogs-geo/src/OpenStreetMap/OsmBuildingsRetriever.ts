@@ -71,7 +71,7 @@ export class OsmBuildingsRetriever extends OsmFeatureRetriever<OsmBuildingsResul
     }
 
     get description(): string {
-        return "Hunts building polygons within lat/lng/radius. Defaults to every `building=*`; narrow via `building: ['residential','industrial',…]`. `simplify(m)` thins vertices, `merge()` unions adjacent buildings into one MultiPolygon. Tile-cached per subtype.";
+        return "Hunts building polygons within lat/lng/radius. Defaults to every `building=*`; narrow via `building: ['residential','industrial','commercial','office','retail','garage','apartments','house','school','church',…]` — any **custom OSM value** matching `[a-z0-9_:]+` is accepted for long-tail tags. `simplify(m)` thins vertices, `merge()` unions adjacent buildings into one MultiPolygon. Each feature's `properties` carries all OSM tags — `building:levels`, `height`, `roof:shape`, `roof:material`, `addr:street/housenumber/postcode/city`, `name`, `start_date`, `wikidata`, `wikipedia`, plus combined-use tags (`amenity`, `shop`, `tourism`, `office`) and `wheelchair`. Tile-cached per subtype.";
     }
 
     get icon(): string | undefined {

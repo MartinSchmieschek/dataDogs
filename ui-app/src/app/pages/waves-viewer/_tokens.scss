@@ -1,0 +1,146 @@
+/*
+ * Waves-Viewer Design Tokens.
+ * Scoped via :host — keine globalen Side-Effects auf andere Pages.
+ * Wer Tokens nutzt: alle SCSS-Dateien im waves-viewer Subtree per @use './tokens' as tk;
+ */
+
+// === Spacing (4-pt grid) ===
+$space-0: 0;
+$space-1: 4px;
+$space-2: 8px;
+$space-3: 12px;
+$space-4: 16px;
+$space-5: 24px;
+$space-6: 32px;
+$space-7: 48px;
+$space-8: 64px;
+
+// === Radii ===
+$radius-xs: 4px;
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 14px;
+$radius-xl: 20px;
+$radius-full: 999px;
+
+// === Type-Scale ===
+$font-xs: 11px;
+$font-sm: 12px;
+$font-md: 14px;
+$font-lg: 16px;
+$font-xl: 20px;
+$font-2xl: 26px;
+
+$weight-regular: 400;
+$weight-medium: 500;
+$weight-bold: 700;
+
+$lh-tight: 1.2;
+$lh-base: 1.5;
+$lh-relaxed: 1.6;
+
+$font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+$font-mono: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+
+// === Touch / Sizing ===
+$control-h-sm: 32px;
+$control-h-md: 40px;
+$control-h-lg: 44px;
+$tap-min: 44px;
+
+// === Motion ===
+$ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+$ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+$dur-fast: 120ms;
+$dur-base: 200ms;
+$dur-slow: 320ms;
+
+// === Color Palette ===
+// Neutrals (cool grey w/ slight indigo tilt)
+$neutral-0:   #ffffff;
+$neutral-25:  #fafbfc;
+$neutral-50:  #f4f6fa;
+$neutral-75:  #eef1f6;
+$neutral-100: #e4e8ef;
+$neutral-200: #d8dde6;
+$neutral-300: #c0c6d2;
+$neutral-400: #8a93a4;
+$neutral-500: #5a6378;
+$neutral-600: #3d465a;
+$neutral-700: #2a3344;
+$neutral-800: #1a2236;
+$neutral-900: #0f1626;
+
+// Brand accent — Coral/Amber-Warm
+$brand-50:  #fff5ed;
+$brand-100: #ffe6d4;
+$brand-200: #ffc8a3;
+$brand-300: #ffa46c;
+$brand-400: #fb7c34;
+$brand-500: #ea580c;  // primary
+$brand-600: #c44a09;  // hover
+$brand-700: #9c3a07;
+$brand-800: #7a2d06;
+$brand-soft: rgba(234, 88, 12, 0.10);
+$brand-focus-ring: rgba(234, 88, 12, 0.25);
+
+// Semantic colors
+$success-500: #16a34a;
+$success-50:  #ecfdf5;
+$success-200: #b7e0c5;
+
+$warning-500: #d97706;
+$warning-50:  #fff7ed;
+$warning-200: #fcd9a8;
+
+$danger-500:  #dc2626;
+$danger-50:   #fef2f2;
+$danger-200:  #fecaca;
+
+$info-500:    #2563eb;
+$info-50:     #eff6ff;
+
+// === Shadows ===
+$shadow-xs: 0 1px 2px rgba(15, 22, 38, 0.04);
+$shadow-sm: 0 1px 2px rgba(15, 22, 38, 0.04), 0 1px 3px rgba(15, 22, 38, 0.06);
+$shadow-md: 0 2px 6px rgba(15, 22, 38, 0.06), 0 6px 16px rgba(15, 22, 38, 0.08);
+$shadow-lg: 0 8px 24px rgba(15, 22, 38, 0.12), 0 20px 48px rgba(15, 22, 38, 0.12);
+$shadow-focus: 0 0 0 3px $brand-focus-ring;
+
+// === Layout ===
+$breakpoint-tablet: 768px;
+$breakpoint-desktop: 1024px;
+$breakpoint-wide: 1440px;
+
+$z-base: 1;
+$z-canvas: 1;
+$z-overlay: 50;
+$z-drawer: 80;
+$z-modal: 100;
+$z-toast: 200;
+
+// === Semantic role tokens (used by components — never raw scales) ===
+$page-bg:        $neutral-50;
+$surface:        $neutral-0;
+$surface-muted:  $neutral-50;
+$surface-sunken: $neutral-75;
+$surface-inverse: $neutral-900;
+
+// Canvas surface (the "void" graph) — dusk-blue with brand warmth; deliberately lighter than black.
+$canvas-bg:        #2a2f4a;
+$canvas-bg-deep:   #1d2138;
+$canvas-bg-gradient: radial-gradient(120% 90% at 30% 10%, #3a3f5e 0%, #2a2f4a 45%, #1d2138 100%);
+
+$border:         $neutral-100;
+$border-strong:  $neutral-200;
+$border-focus:   $brand-500;
+
+$text:           $neutral-800;
+$text-muted:     $neutral-500;
+$text-faint:     $neutral-400;
+$text-inverse:   $neutral-0;
+
+$accent:         $brand-500;
+$accent-hover:   $brand-600;
+$accent-soft:    $brand-soft;
+$accent-on:      $neutral-0;
