@@ -36,7 +36,7 @@ export class OsmTracksRetriever extends OsmFeatureRetriever<OsmTracksResult, typ
     }
 
     get description(): string {
-        return "Finds nearby OSM ways (path, footway, cycleway, track, …) via Overpass — use a modest radius; results can be large.";
+        return "Finds nearby OSM ways (path, footway, cycleway, track, bridleway, steps, …) via Overpass. Each element's `tags` carries the full OSM record — `surface` (paved/asphalt/gravel/dirt/grass), `smoothness`, `width`, `lit`, `access`, `incline`, `tunnel`, `bridge`, `layer`, `tracktype` (grade1-5), `sac_scale` (Wander-Schwierigkeit), `mtb:scale`, `name`, `ref`. Use a modest radius; results can be large.";
     }
 
     get icon(): string | undefined {

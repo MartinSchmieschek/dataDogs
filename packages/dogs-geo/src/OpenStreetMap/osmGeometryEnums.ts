@@ -67,7 +67,7 @@ export enum OsmRailwayValue {
     Construction = "construction",
 }
 
-/** `man_made=*` values for vertical structures that cast shadows / mark skyline */
+/** `man_made=*` values for vertical structures and industrial facilities */
 export enum OsmManMadeValue {
     Tower = "tower",
     Chimney = "chimney",
@@ -77,6 +77,13 @@ export enum OsmManMadeValue {
     CommunicationsTower = "communications_tower",
     Lighthouse = "lighthouse",
     Antenna = "antenna",
+    Incinerator = "incinerator",
+    Crane = "crane",
+    Windmill = "windmill",
+    Watermill = "watermill",
+    Storage_Tank = "storage_tank",
+    GasTank = "gasometer",
+    Works = "works",
 }
 
 /** `barrier=*` linear values — walls, fences, hedges */
@@ -221,41 +228,42 @@ export function parseOsmNaturalList(raw: unknown): OsmNaturalValue[] {
 export function parseOsmRailwayList(raw: unknown): OsmRailwayValue[] {
     const parsed = parseStringList(raw);
     if (parsed === null || parsed.length === 0) return [...DEFAULT_RAIL_RAILWAY];
-    const out: OsmRailwayValue[] = [];
+    const out: string[] = [];
     for (const s of parsed) {
-        if (RAILWAY_SET.has(s)) out.push(s as OsmRailwayValue);
+        // Accept enum values + any long-tail OSM railway value matching the standard tag shape.
+        if (RAILWAY_SET.has(s) || /^[a-z0-9_:]+$/.test(s)) out.push(s);
     }
-    return out.length ? out : [...DEFAULT_RAIL_RAILWAY];
+    return (out.length ? out : [...DEFAULT_RAIL_RAILWAY]) as OsmRailwayValue[];
 }
 
 export function parseOsmManMadeList(raw: unknown): OsmManMadeValue[] {
     const parsed = parseStringList(raw);
     if (parsed === null || parsed.length === 0) return [...DEFAULT_MAN_MADE];
-    const out: OsmManMadeValue[] = [];
+    const out: string[] = [];
     for (const s of parsed) {
-        if (MAN_MADE_SET.has(s)) out.push(s as OsmManMadeValue);
+        if (MAN_MADE_SET.has(s) || /^[a-z0-9_:]+$/.test(s)) out.push(s);
     }
-    return out.length ? out : [...DEFAULT_MAN_MADE];
+    return (out.length ? out : [...DEFAULT_MAN_MADE]) as OsmManMadeValue[];
 }
 
 export function parseOsmBarrierList(raw: unknown): OsmBarrierValue[] {
     const parsed = parseStringList(raw);
     if (parsed === null || parsed.length === 0) return [...DEFAULT_BARRIER];
-    const out: OsmBarrierValue[] = [];
+    const out: string[] = [];
     for (const s of parsed) {
-        if (BARRIER_SET.has(s)) out.push(s as OsmBarrierValue);
+        if (BARRIER_SET.has(s) || /^[a-z0-9_:]+$/.test(s)) out.push(s);
     }
-    return out.length ? out : [...DEFAULT_BARRIER];
+    return (out.length ? out : [...DEFAULT_BARRIER]) as OsmBarrierValue[];
 }
 
 export function parseOsmNaturePointList(raw: unknown): OsmNaturePointValue[] {
     const parsed = parseStringList(raw);
     if (parsed === null || parsed.length === 0) return [...DEFAULT_NATURE_POINT];
-    const out: OsmNaturePointValue[] = [];
+    const out: string[] = [];
     for (const s of parsed) {
-        if (NATURE_POINT_SET.has(s)) out.push(s as OsmNaturePointValue);
+        if (NATURE_POINT_SET.has(s) || /^[a-z0-9_:]+$/.test(s)) out.push(s);
     }
-    return out.length ? out : [...DEFAULT_NATURE_POINT];
+    return (out.length ? out : [...DEFAULT_NATURE_POINT]) as OsmNaturePointValue[];
 }
 
 function highwayPresetValues(preset: string): OsmHighwayValue[] | null {

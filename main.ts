@@ -28,6 +28,14 @@ import {
     OsmBuildingsRetriever,
     OsmRailsRetriever,
     OsmLandscapeFeaturesRetriever,
+    OsmWaterRetriever,
+    OsmLanduseRetriever,
+    OsmAmenitiesRetriever,
+    OsmBoundariesRetriever,
+    OsmPowerRetriever,
+    OsmPublicTransitStopsRetriever,
+    OsmShopsRetriever,
+    OsmSportsRecreationRetriever,
     BloodhoundRouteQueryPact,
     BloodhoundIsochronePact,
     NearbyLandmarksPact,
@@ -37,6 +45,14 @@ import {
     OsmBuildingsGeometryPact,
     OsmRailsGeometryPact,
     OsmLandscapeFeaturesPact,
+    OsmWaterPact,
+    OsmLandusePact,
+    OsmAmenitiesPact,
+    OsmBoundariesPact,
+    OsmPowerPact,
+    OsmPublicTransitStopsPact,
+    OsmShopsPact,
+    OsmSportsRecreationPact,
     DrinkingWaterRetriever,
     DrinkingWaterQueryPact,
     OpenFoodRetriever,
@@ -285,6 +301,14 @@ async function start() {
         OsmBuildingsRetriever,
         OsmRailsRetriever,
         OsmLandscapeFeaturesRetriever,
+        OsmWaterRetriever,
+        OsmLanduseRetriever,
+        OsmAmenitiesRetriever,
+        OsmBoundariesRetriever,
+        OsmPowerRetriever,
+        OsmPublicTransitStopsRetriever,
+        OsmShopsRetriever,
+        OsmSportsRecreationRetriever,
         HueBridgeEnvRetriever,
         HuePlaygroundRetriever,
         PublicTransportRetriever,
@@ -393,7 +417,7 @@ async function start() {
     // The Pacts — eldritch contracts sealed between dogs and the void,
     // through which the MimicDog may wear another's form.
     // Through endless faces, countless forms, a multitude unfolds.
-    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, OsmBuildingsGeometryPact, OsmRailsGeometryPact, OsmLandscapeFeaturesPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact, GeoPointPact, JokeQueryPact, DadJokeQueryPact, ChuckNorrisQueryPact, CatFactQueryPact, FoxQueryPact, DuckQueryPact, WordQueryPact, DatamuseQueryPact, QuoteQueryPact, GutenbergQueryPact, WikidataQueryPact, PopCultureQueryPact, MusicBrainzQueryPact, LyricsQueryPact, RadioBrowserQueryPact, F1QueryPact, SportsDbQueryPact, ChessQueryPact, NpmQueryPact, StackExchangeQueryPact, GitHubPublicQueryPact, AirportQueryPact, WikivoyageQueryPact, TriviaQueryPact, BoredQueryPact, RandomUserQueryPact, BibleQueryPact, QuranQueryPact, DiseaseQueryPact, OpenFdaQueryPact, CocktailQueryPact, MealQueryPact, WaybackQueryPact, DogCeoQueryPact, PicsumQueryPact, NasaApodQueryPact, NameQueryPact, PokeApiQueryPact, DeckOfCardsQueryPact, ScryfallQueryPact, LibreTranslateQueryPact, TvMazeQueryPact, HackerNewsQueryPact, LemmyQueryPact, CoinGeckoQueryPact];
+    const allPacts = [LayoutInputPact, BloodhoundRouteQueryPact, BloodhoundIsochronePact, NearbyLandmarksPact, NearbyTracksPact, NearbyVegetationPact, NearbyFastRoadsPact, OsmBuildingsGeometryPact, OsmRailsGeometryPact, OsmLandscapeFeaturesPact, OsmWaterPact, OsmLandusePact, OsmAmenitiesPact, OsmBoundariesPact, OsmPowerPact, OsmPublicTransitStopsPact, OsmShopsPact, OsmSportsRecreationPact, HueBridgeQueryPact, PublicTransportQueryPact, WeatherQueryPact, AirQualityQueryPact, GeocodingQueryPact, WikiNearbyQueryPact, SunQueryPact, BiodiversityQueryPact, BirdQueryPact, PhenologyQueryPact, WebcamQueryPact, RegionalNewsQueryPact, TransitTripQueryPact, ElevationQueryPact, TrailQueryPact, AstronomyQueryPact, WaterQueryPact, HistoricalWeatherQueryPact, ChargingQueryPact, NoiseQueryPact, ParkingQueryPact, PlaygroundQueryPact, DrinkingWaterQueryPact, OpenFoodQueryPact, CurrencyQueryPact, HolidayQueryPact, WikiSearchQueryPact, SeasonQueryPact, IPGeoQueryPact, RandomFactQueryPact, SpaceQueryPact, OpenLibraryQueryPact, GitHubTrendingQueryPact, GeoPointPact, JokeQueryPact, DadJokeQueryPact, ChuckNorrisQueryPact, CatFactQueryPact, FoxQueryPact, DuckQueryPact, WordQueryPact, DatamuseQueryPact, QuoteQueryPact, GutenbergQueryPact, WikidataQueryPact, PopCultureQueryPact, MusicBrainzQueryPact, LyricsQueryPact, RadioBrowserQueryPact, F1QueryPact, SportsDbQueryPact, ChessQueryPact, NpmQueryPact, StackExchangeQueryPact, GitHubPublicQueryPact, AirportQueryPact, WikivoyageQueryPact, TriviaQueryPact, BoredQueryPact, RandomUserQueryPact, BibleQueryPact, QuranQueryPact, DiseaseQueryPact, OpenFdaQueryPact, CocktailQueryPact, MealQueryPact, WaybackQueryPact, DogCeoQueryPact, PicsumQueryPact, NasaApodQueryPact, NameQueryPact, PokeApiQueryPact, DeckOfCardsQueryPact, ScryfallQueryPact, LibreTranslateQueryPact, TvMazeQueryPact, HackerNewsQueryPact, LemmyQueryPact, CoinGeckoQueryPact];
     allPacts.forEach(PactClass => {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);

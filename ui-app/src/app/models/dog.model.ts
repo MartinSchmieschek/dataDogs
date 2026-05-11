@@ -3,6 +3,7 @@ export interface BaseDogInfo {
   name: string;
   type: 'BaseDog';
   icon?: string;
+  description?: string;
 }
 
 export interface SerializedDogInfo {

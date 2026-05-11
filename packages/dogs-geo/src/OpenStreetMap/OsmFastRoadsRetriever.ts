@@ -34,7 +34,7 @@ export class OsmFastRoadsRetriever extends OsmFeatureRetriever<OsmFastRoadsResul
     }
 
     get description(): string {
-        return "Finds nearby OSM fast roads (motorway, trunk, primary, …) via Overpass — use a modest radius; many segments in dense areas.";
+        return "Finds nearby OSM fast roads (motorway, trunk, primary, secondary, tertiary) via Overpass. Each element's `tags` carries the full OSM record — `maxspeed`, `lanes`, `oneway`, `surface`, `lit`, `access`, `tunnel`, `bridge`, `layer`, `ref` (Straßennummer/A-/B-Nummer), `name`, `int_ref` (E-Roads), `operator`. Use a modest radius; many segments in dense areas.";
     }
 
     get icon(): string | undefined {

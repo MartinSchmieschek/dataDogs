@@ -1,0 +1,39 @@
+@if (open()) {
+  <div class="backdrop" (click)="onBackdropClick()"></div>
+
+  <aside class="drawer" role="dialog" [attr.aria-label]="title()">
+    <header class="head">
+      <div class="head-text">
+        <div class="head-title">{{ title() }}</div>
+        @if (subtitle(); as sub) { <div class="head-sub">{{ sub }}</div> }
+      </div>
+      <button type="button" class="close" (click)="onClose()" aria-label="Schließen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </header>
+
+    @if (tabs().length > 0) {
+      <nav class="tabs" role="tablist">
+        @for (tab of tabs(); track tab.id) {
+          <button type="button"
+                  role="tab"
+                  class="tab"
+                  [class.is-active]="tab.id === activeTab()"
+                  [attr.aria-selected]="tab.id === activeTab() ? 'true' : 'false'"
+                  (click)="onTabClick(tab.id)">
+            <span class="tab-label">{{ tab.label }}</span>
+            @if (tab.badge != null) { <span class="tab-badge">{{ tab.badge }}</span> }
+            @if (tab.dirty) { <span class="tab-dirty" aria-hidden="true"></span> }
+          </button>
+        }
+      </nav>
+    }
+
+    <div class="body">
+      <ng-content />
+    </div>
+  </aside>
+}
