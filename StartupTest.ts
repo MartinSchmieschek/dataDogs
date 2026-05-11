@@ -76,6 +76,12 @@ export class StartupTest {
             // KennelConfig-Tests
             await this.testKennelConfigList(kennelsController);
             await this.testKennelConfigGetById(kennelsController);
+            await this.testKennelStatusTrackingPersist(kennelsController);
+            await this.testKennelStatusTrackingMerge(kennelsController);
+            await this.testKennelStatusTrackingTextChanges(kennelsController);
+            await this.testKennelNodeCommentMutations(kennelsController);
+            await this.testKennelEdgeCommentMutations(kennelsController);
+            await this.testKennelStatusTrackingVersioning(kennelsController);
             
             // BaseDogs-Tests
             await this.testBaseDogsAvailability(baseDogsMap);
@@ -334,6 +340,447 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Status-Tracking-Felder (task / nodes / edges) ueberleben den Roundtrip.
+     * Create kennel -> PUT mit task/nodes/edges -> GET zurueck -> alle Felder muessen
+     * in korrekter Form vorliegen.
+     */
+    private async testKennelStatusTrackingPersist(controller: AbstractController<IKennelConfig>): Promise<void> {
+        const testName = 'KennelConfig: Status-Tracking Persistence';
+        const kennelId = 'test-status-persist-' + Date.now();
+        try {
+            const created = await controller.create({
+                id: kennelId,
+                name: 'Status Test Persist',
+                dogIds: ['base:QueryRetriever'],
+            } as any);
+            if (!created.ok) throw new Error('Create fehlgeschlagen: ' + created.error);
+
+            const saved = await controller.save({
+                id: kennelId,
+                task: 'Mission: tracke den Status',
+                nodes: [{ id: 'base:QueryRetriever', x: 10, y: 20, comment: 'Einstieg' }],
+                edges: [{ fromId: 'base:QueryRetriever', toId: 'base:QueryRetriever', comment: 'self-ref' }],
+            } as any);
+            if (!saved.ok) throw new Error('Save fehlgeschlagen: ' + saved.error);
+
+            const loaded = await controller.getById(kennelId);
+            if (!loaded.ok || !loaded.data) throw new Error('GetById fehlgeschlagen: ' + loaded.error);
+            const cfg = loaded.data as any;
+
+            if (cfg.task !== 'Mission: tracke den Status') {
+                throw new Error('task falsch: ' + JSON.stringify(cfg.task));
+            }
+            if (!Array.isArray(cfg.nodes) || cfg.nodes.length !== 1) {
+                throw new Error('nodes falsch: ' + JSON.stringify(cfg.nodes));
+            }
+            const n = cfg.nodes[0];
+            if (n.id !== 'base:QueryRetriever' || n.x !== 10 || n.y !== 20 || n.comment !== 'Einstieg') {
+                throw new Error('nodes[0] Inhalt falsch: ' + JSON.stringify(n));
+            }
+            if (!Array.isArray(cfg.edges) || cfg.edges.length !== 1) {
+                throw new Error('edges falsch: ' + JSON.stringify(cfg.edges));
+            }
+            const e = cfg.edges[0];
+            if (e.fromId !== 'base:QueryRetriever' || e.toId !== 'base:QueryRetriever' || e.comment !== 'self-ref') {
+                throw new Error('edges[0] Inhalt falsch: ' + JSON.stringify(e));
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await controller.delete(kennelId); } catch { /* swallow */ }
+        }
+    }
+
+    /**
+     * Test: Partielle Updates der Status-Felder ueberschreiben nicht die anderen.
+     * PUT nur {task} laesst nodes/edges intakt; PUT nur {nodes} laesst task intakt.
+     */
+    private async testKennelStatusTrackingMerge(controller: AbstractController<IKennelConfig>): Promise<void> {
+        const testName = 'KennelConfig: Status-Tracking Merge';
+        const kennelId = 'test-status-merge-' + Date.now();
+        try {
+            await controller.create({ id: kennelId, name: 'Merge Test', dogIds: ['base:QueryRetriever'] } as any);
+
+            // Voll bestuecken
+            await controller.save({
+                id: kennelId,
+                task: 'initial task',
+                nodes: [{ id: 'base:QueryRetriever', comment: 'note A' }],
+                edges: [{ fromId: 'base:QueryRetriever', toId: 'base:QueryRetriever', comment: 'flow A' }],
+            } as any);
+
+            // Nur task aktualisieren
+            await controller.save({ id: kennelId, task: 'updated task' } as any);
+
+            let r = await controller.getById(kennelId);
+            let cfg = r.data as any;
+            if (cfg.task !== 'updated task') throw new Error('task nicht aktualisiert');
+            if (!cfg.nodes || cfg.nodes.length !== 1 || cfg.nodes[0].comment !== 'note A') {
+                throw new Error('nodes verloren nach task-only save: ' + JSON.stringify(cfg.nodes));
+            }
+            if (!cfg.edges || cfg.edges.length !== 1 || cfg.edges[0].comment !== 'flow A') {
+                throw new Error('edges verloren nach task-only save: ' + JSON.stringify(cfg.edges));
+            }
+
+            // Nur nodes aktualisieren
+            await controller.save({
+                id: kennelId,
+                nodes: [{ id: 'base:QueryRetriever', comment: 'note B' }],
+            } as any);
+
+            r = await controller.getById(kennelId);
+            cfg = r.data as any;
+            if (cfg.task !== 'updated task') {
+                throw new Error('task verloren nach nodes-only save: ' + JSON.stringify(cfg.task));
+            }
+            if (!cfg.nodes || cfg.nodes[0].comment !== 'note B') {
+                throw new Error('nodes nicht aktualisiert: ' + JSON.stringify(cfg.nodes));
+            }
+            if (!cfg.edges || cfg.edges[0].comment !== 'flow A') {
+                throw new Error('edges verloren nach nodes-only save: ' + JSON.stringify(cfg.edges));
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await controller.delete(kennelId); } catch { /* swallow */ }
+        }
+    }
+
+    /**
+     * Test: Vorhandene Texte koennen geaendert werden — nicht nur neu gesetzt.
+     * Eine Annotation wird belegt, dann mit anderem Wert ueberschrieben.
+     * Der aktuelle Stand muss den NEUEN Wert zeigen, alte Versionen den ALTEN.
+     */
+    private async testKennelStatusTrackingTextChanges(controller: AbstractController<IKennelConfig>): Promise<void> {
+        const testName = 'KennelConfig: Status-Tracking Text-Aenderungen';
+        const kennelId = 'test-status-changes-' + Date.now();
+        try {
+            await controller.create({ id: kennelId, name: 'Changes Test', dogIds: ['base:QueryRetriever'] } as any);
+
+            // Initialer Stand
+            await controller.save({
+                id: kennelId,
+                task: 'alt task',
+                nodes: [{ id: 'base:QueryRetriever', x: 10, y: 20, comment: 'alt node' }],
+                edges: [{ fromId: 'base:QueryRetriever', toId: 'base:QueryRetriever', comment: 'alt edge' }],
+            } as any);
+
+            // ALLE Texte aendern + Position verschieben
+            await controller.save({
+                id: kennelId,
+                task: 'neu task',
+                nodes: [{ id: 'base:QueryRetriever', x: 999, y: 888, comment: 'neu node' }],
+                edges: [{ fromId: 'base:QueryRetriever', toId: 'base:QueryRetriever', comment: 'neu edge' }],
+            } as any);
+
+            // Aktueller Stand muss alle neuen Werte tragen
+            const latest = await controller.getById(kennelId);
+            const cfg = latest.data as any;
+            if (cfg.task !== 'neu task') throw new Error('task nicht geaendert: ' + JSON.stringify(cfg.task));
+            if (cfg.nodes?.[0]?.comment !== 'neu node') {
+                throw new Error('node-comment nicht geaendert: ' + JSON.stringify(cfg.nodes?.[0]));
+            }
+            if (cfg.nodes?.[0]?.x !== 999 || cfg.nodes?.[0]?.y !== 888) {
+                throw new Error('node-Position nicht geaendert: ' + JSON.stringify(cfg.nodes?.[0]));
+            }
+            if (cfg.edges?.[0]?.comment !== 'neu edge') {
+                throw new Error('edge-comment nicht geaendert: ' + JSON.stringify(cfg.edges?.[0]));
+            }
+
+            // Die ALTEN Werte muessen in der History noch existieren
+            const versions = await controller.getVersions(kennelId);
+            // 3 Versionen: initial-create, alt-save, neu-save (newest first)
+            if (versions.length !== 3) {
+                throw new Error('Erwartet 3 Versionen, gefunden: ' + versions.length);
+            }
+            const altVersion = versions[1].config as any;
+            if (altVersion?.task !== 'alt task') {
+                throw new Error('Alte task-Version verloren: ' + JSON.stringify(altVersion?.task));
+            }
+            if (altVersion?.nodes?.[0]?.comment !== 'alt node') {
+                throw new Error('Alte node-comment-Version verloren: ' + JSON.stringify(altVersion?.nodes));
+            }
+            if (altVersion?.nodes?.[0]?.x !== 10) {
+                throw new Error('Alte node-Position verloren: ' + JSON.stringify(altVersion?.nodes?.[0]));
+            }
+            if (altVersion?.edges?.[0]?.comment !== 'alt edge') {
+                throw new Error('Alte edge-comment-Version verloren: ' + JSON.stringify(altVersion?.edges));
+            }
+
+            // Loeschen eines Texts (leerer task -> undefined) muss auch greifen
+            await controller.save({ id: kennelId, task: '' } as any);
+            const cleared = await controller.getById(kennelId);
+            const c = cleared.data as any;
+            // Backend normalisiert leeren task auf undefined/null
+            if (c.task) {
+                throw new Error('task nicht geloescht (leerer String): ' + JSON.stringify(c.task));
+            }
+            // nodes/edges bleiben unangetastet
+            if (c.nodes?.[0]?.comment !== 'neu node') {
+                throw new Error('nodes verloren beim task-clear: ' + JSON.stringify(c.nodes));
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await controller.delete(kennelId); } catch { /* swallow */ }
+        }
+    }
+
+    /**
+     * Test: Node-Kommentare werden gezielt geaendert, einer hinzugefuegt, einer entfernt.
+     * Drei Knoten mit unterschiedlichen Comments; danach selektive Mutationen pruefen.
+     */
+    private async testKennelNodeCommentMutations(controller: AbstractController<IKennelConfig>): Promise<void> {
+        const testName = 'KennelConfig: Node-Comment Mutationen';
+        const kennelId = 'test-node-comments-' + Date.now();
+        try {
+            await controller.create({
+                id: kennelId,
+                name: 'Node Comments',
+                dogIds: ['base:QueryRetriever', 'base:RandomEveryThingRetriever', 'base:TalkingDog'],
+            } as any);
+
+            // 3 Knoten mit Initial-Comments + Positionen
+            await controller.save({
+                id: kennelId,
+                nodes: [
+                    { id: 'base:QueryRetriever',           x: 10, y: 10, comment: 'A initial' },
+                    { id: 'base:RandomEveryThingRetriever', x: 20, y: 20, comment: 'B initial' },
+                    { id: 'base:TalkingDog',                x: 30, y: 30, comment: 'C initial' },
+                ],
+            } as any);
+
+            // Mutation: A behaelt Comment+Pos; B aendert NUR Comment; C verliert Comment (Pos bleibt)
+            await controller.save({
+                id: kennelId,
+                nodes: [
+                    { id: 'base:QueryRetriever',           x: 10, y: 10, comment: 'A initial' },
+                    { id: 'base:RandomEveryThingRetriever', x: 20, y: 20, comment: 'B GEANDERT' },
+                    { id: 'base:TalkingDog',                x: 30, y: 30 },
+                ],
+            } as any);
+
+            const r = await controller.getById(kennelId);
+            const ns = (r.data as any).nodes as Array<any>;
+            const byId: Record<string, any> = Object.fromEntries(ns.map(n => [n.id, n]));
+
+            if (byId['base:QueryRetriever']?.comment !== 'A initial') {
+                throw new Error('A-Comment ungewollt veraendert: ' + JSON.stringify(byId['base:QueryRetriever']));
+            }
+            if (byId['base:RandomEveryThingRetriever']?.comment !== 'B GEANDERT') {
+                throw new Error('B-Comment nicht geaendert: ' + JSON.stringify(byId['base:RandomEveryThingRetriever']));
+            }
+            if (byId['base:RandomEveryThingRetriever']?.x !== 20 || byId['base:RandomEveryThingRetriever']?.y !== 20) {
+                throw new Error('B-Position ungewollt veraendert: ' + JSON.stringify(byId['base:RandomEveryThingRetriever']));
+            }
+            if (byId['base:TalkingDog']?.comment != null) {
+                throw new Error('C-Comment nicht entfernt: ' + JSON.stringify(byId['base:TalkingDog']));
+            }
+            if (byId['base:TalkingDog']?.x !== 30 || byId['base:TalkingDog']?.y !== 30) {
+                throw new Error('C-Position ungewollt veraendert: ' + JSON.stringify(byId['base:TalkingDog']));
+            }
+
+            // Mutation 2: D dazu (neuer Knoten), A weg
+            await controller.save({
+                id: kennelId,
+                nodes: [
+                    { id: 'base:RandomEveryThingRetriever', x: 20, y: 20, comment: 'B GEANDERT' },
+                    { id: 'base:TalkingDog',                x: 30, y: 30 },
+                    { id: 'base:CountryFlagBlackLab',       x: 40, y: 40, comment: 'D NEU' },
+                ],
+            } as any);
+            const r2 = await controller.getById(kennelId);
+            const ns2 = (r2.data as any).nodes as Array<any>;
+            if (ns2.length !== 3) throw new Error('Erwartet 3 Knoten, gefunden: ' + ns2.length);
+            if (ns2.find(n => n.id === 'base:QueryRetriever')) {
+                throw new Error('A wurde nicht entfernt');
+            }
+            const d = ns2.find(n => n.id === 'base:CountryFlagBlackLab');
+            if (!d || d.comment !== 'D NEU') throw new Error('D nicht hinzugefuegt: ' + JSON.stringify(d));
+
+            // Alter Stand muss in der History noch da sein
+            const versions = await controller.getVersions(kennelId);
+            // 4 Versionen: initial-create, initial-save, mutation, mutation-2 (newest first)
+            const initialMutation = (versions[2].config as any).nodes as Array<any>;
+            const aInit = initialMutation.find(n => n.id === 'base:QueryRetriever');
+            if (!aInit || aInit.comment !== 'A initial') {
+                throw new Error('Alte A-Initial-Version verloren: ' + JSON.stringify(aInit));
+            }
+            const cInit = initialMutation.find(n => n.id === 'base:TalkingDog');
+            if (!cInit || cInit.comment !== 'C initial') {
+                throw new Error('Alte C-Initial-Version verloren: ' + JSON.stringify(cInit));
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await controller.delete(kennelId); } catch { /* swallow */ }
+        }
+    }
+
+    /**
+     * Test: Edge-Kommentare werden gezielt geaendert, einer hinzugefuegt, einer entfernt.
+     * Mehrere Edges mit unterschiedlichen Comments; danach selektive Mutationen pruefen.
+     */
+    private async testKennelEdgeCommentMutations(controller: AbstractController<IKennelConfig>): Promise<void> {
+        const testName = 'KennelConfig: Edge-Comment Mutationen';
+        const kennelId = 'test-edge-comments-' + Date.now();
+        try {
+            await controller.create({
+                id: kennelId,
+                name: 'Edge Comments',
+                dogIds: ['base:QueryRetriever', 'base:RandomEveryThingRetriever', 'base:TalkingDog'],
+            } as any);
+
+            // 3 Edges mit Initial-Comments
+            await controller.save({
+                id: kennelId,
+                edges: [
+                    { fromId: 'base:QueryRetriever',           toId: 'base:RandomEveryThingRetriever', comment: 'X initial' },
+                    { fromId: 'base:RandomEveryThingRetriever', toId: 'base:TalkingDog',                 comment: 'Y initial' },
+                    { fromId: 'base:QueryRetriever',           toId: 'base:TalkingDog',                  comment: 'Z initial' },
+                ],
+            } as any);
+
+            // Mutation: X bleibt; Y aendert Comment; Z verliert Comment (Edge bleibt)
+            await controller.save({
+                id: kennelId,
+                edges: [
+                    { fromId: 'base:QueryRetriever',           toId: 'base:RandomEveryThingRetriever', comment: 'X initial' },
+                    { fromId: 'base:RandomEveryThingRetriever', toId: 'base:TalkingDog',                 comment: 'Y GEANDERT' },
+                    { fromId: 'base:QueryRetriever',           toId: 'base:TalkingDog' },
+                ],
+            } as any);
+
+            const r = await controller.getById(kennelId);
+            const es = (r.data as any).edges as Array<any>;
+            const findEdge = (from: string, to: string) =>
+                es.find(e => e.fromId === from && e.toId === to);
+
+            const xE = findEdge('base:QueryRetriever', 'base:RandomEveryThingRetriever');
+            const yE = findEdge('base:RandomEveryThingRetriever', 'base:TalkingDog');
+            const zE = findEdge('base:QueryRetriever', 'base:TalkingDog');
+
+            if (xE?.comment !== 'X initial') {
+                throw new Error('X-Comment ungewollt veraendert: ' + JSON.stringify(xE));
+            }
+            if (yE?.comment !== 'Y GEANDERT') {
+                throw new Error('Y-Comment nicht geaendert: ' + JSON.stringify(yE));
+            }
+            if (!zE) throw new Error('Z-Edge verloren');
+            if (zE.comment != null) {
+                throw new Error('Z-Comment nicht entfernt: ' + JSON.stringify(zE));
+            }
+
+            // Mutation 2: X loeschen (Edge weg), W dazu (neue Edge)
+            await controller.save({
+                id: kennelId,
+                edges: [
+                    { fromId: 'base:RandomEveryThingRetriever', toId: 'base:TalkingDog',                 comment: 'Y GEANDERT' },
+                    { fromId: 'base:QueryRetriever',           toId: 'base:TalkingDog' },
+                    { fromId: 'base:TalkingDog',                toId: 'base:QueryRetriever',           comment: 'W NEU (rueckkopplung)' },
+                ],
+            } as any);
+
+            const r2 = await controller.getById(kennelId);
+            const es2 = (r2.data as any).edges as Array<any>;
+            if (es2.length !== 3) throw new Error('Erwartet 3 Edges, gefunden: ' + es2.length);
+            if (es2.find(e => e.fromId === 'base:QueryRetriever' && e.toId === 'base:RandomEveryThingRetriever')) {
+                throw new Error('X-Edge wurde nicht entfernt');
+            }
+            const wE = es2.find(e => e.fromId === 'base:TalkingDog' && e.toId === 'base:QueryRetriever');
+            if (!wE || wE.comment !== 'W NEU (rueckkopplung)') {
+                throw new Error('W nicht hinzugefuegt: ' + JSON.stringify(wE));
+            }
+
+            // Alter Stand muss in der History noch da sein
+            const versions = await controller.getVersions(kennelId);
+            const initialMutation = (versions[2].config as any).edges as Array<any>;
+            const xInit = initialMutation.find((e: any) =>
+                e.fromId === 'base:QueryRetriever' && e.toId === 'base:RandomEveryThingRetriever',
+            );
+            if (!xInit || xInit.comment !== 'X initial') {
+                throw new Error('Alte X-Initial-Version verloren: ' + JSON.stringify(xInit));
+            }
+            const zInit = initialMutation.find((e: any) =>
+                e.fromId === 'base:QueryRetriever' && e.toId === 'base:TalkingDog',
+            );
+            if (!zInit || zInit.comment !== 'Z initial') {
+                throw new Error('Alte Z-Initial-Version verloren: ' + JSON.stringify(zInit));
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await controller.delete(kennelId); } catch { /* swallow */ }
+        }
+    }
+
+    /**
+     * Test: Jede Aenderung an task/nodes/edges erzeugt eine eigene Version, alte Versionen
+     * behalten ihren Snapshot. Identische PUTs erzeugen KEINE neue Version (No-Op-Detection).
+     */
+    private async testKennelStatusTrackingVersioning(controller: AbstractController<IKennelConfig>): Promise<void> {
+        const testName = 'KennelConfig: Status-Tracking Versioning';
+        const kennelId = 'test-status-versioning-' + Date.now();
+        try {
+            await controller.create({ id: kennelId, name: 'Versioning Test', dogIds: ['base:QueryRetriever'] } as any);
+
+            // Drei Saves mit jeweils anderen Texten
+            await controller.save({ id: kennelId, task: 'v1', nodes: [{ id: 'base:QueryRetriever', comment: 'a' }] } as any);
+            await controller.save({ id: kennelId, task: 'v2', nodes: [{ id: 'base:QueryRetriever', comment: 'b' }] } as any);
+            await controller.save({ id: kennelId, task: 'v3', nodes: [{ id: 'base:QueryRetriever', comment: 'c' }] } as any);
+
+            const versions = await controller.getVersions(kennelId);
+            // Initial-Create + 3 saves = 4 Versionen
+            if (versions.length !== 4) {
+                throw new Error('Erwartet 4 Versionen, gefunden: ' + versions.length);
+            }
+
+            // Versionen sind newest-first sortiert
+            const tasks = versions.map(v => (v.config as any)?.task ?? null);
+            // Erwartet: ["v3", "v2", "v1", null]
+            if (tasks[0] !== 'v3' || tasks[1] !== 'v2' || tasks[2] !== 'v1' || tasks[3] != null) {
+                throw new Error('Versions-Snapshots falsch: ' + JSON.stringify(tasks));
+            }
+
+            // Pro Version den eigenen node-comment pruefen
+            const comments = versions.map(v => (v.config as any)?.nodes?.[0]?.comment ?? null);
+            if (comments[0] !== 'c' || comments[1] !== 'b' || comments[2] !== 'a' || comments[3] != null) {
+                throw new Error('Node-comment History falsch: ' + JSON.stringify(comments));
+            }
+
+            // No-Op-Save: identischer Payload soll KEINE neue Version anlegen
+            await controller.save({ id: kennelId, task: 'v3', nodes: [{ id: 'base:QueryRetriever', comment: 'c' }] } as any);
+            const afterNoop = await controller.getVersions(kennelId);
+            if (afterNoop.length !== 4) {
+                throw new Error('No-Op-Save erzeugte Phantom-Version, jetzt: ' + afterNoop.length);
+            }
+
+            // Aelteren Snapshot per version-GUID abrufen
+            const oldVersionId = versions[2].id; // sollte v1 sein
+            const old = await controller.getById(oldVersionId);
+            if (!old.ok || (old.data as any)?.task !== 'v1') {
+                throw new Error('Alte Version per GUID liefert nicht v1: ' + JSON.stringify((old.data as any)?.task));
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await controller.delete(kennelId); } catch { /* swallow */ }
         }
     }
 

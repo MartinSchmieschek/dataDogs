@@ -69,6 +69,8 @@ Every Kennel is a **reusable API endpoint**. The same pack hunts different game 
 
 **When designing Kennels:** `defaultQuery` provides sensible defaults — a home base, not a cage. Every parameter the user might want to change should be a query param or body field. Train the pack once, hunt forever.
 
+**When entering an existing kennel** (user says "weiter mit kennel X", "fix kennel Y", or otherwise references one by id): before doing anything else, `GET /api/kennels/<id>` and read the [status fields](#status-tracking--read-and-write-the-kennels-notebook). If `task` is set, surface it ("Mission of this kennel: …"). If `nodes[]` or `edges[]` carry comments, summarize what's open ("Three nodes still flagged: renderer TODO, Weather Mimic empty, lead placeholder"). Don't re-investigate what's already noted — pick up where the previous session left off.
+
 ## ABSOLUTE RULE — Don't touch project code
 
 **NEVER** edit, create or delete files in the project directory. No code, no config, no TypeScript. Work EXCLUSIVELY through the API — `GET`, `POST`, `PUT`, `DELETE` on `localhost:3000`. New kennels are summoned via the API, not through code changes. This rule has no exceptions.
@@ -191,6 +193,47 @@ Two breeds hunt:
 - **`parentsRequired`** for SerializedDog parents MUST use the **`lineageId`** (or pinned `id`), not the displayName or name. BaseDogs continue to be referenced by class name (e.g. `"WeatherRetriever"`).
 - **Global variables** in VM code are named after the `name` field (lowercase): `Inlinetripdata`, not `InlineTripData`. Read the exact name from the `vmContext` of the run response.
 
+## Status Tracking — read and write the kennel's notebook
+
+Every Kennel carries three optional **status fields** beside the runtime config. They don't affect the hunt — they record the kennel master's intent and progress. **You MUST read them when entering an existing kennel, and you SHOULD update them as you build.** They are how the next session (or the user) knows where things stand.
+
+| Field | Shape | Purpose |
+|-------|-------|---------|
+| `task` | `string` (markdown-friendly) | The mission. What is this Kennel supposed to do? Free-form briefing — the goal, not the recipe. |
+| `nodes[]` | `Array<{ id, x?, y?, comment? }>` | Per-dog notes. `id` is the `dogIds` entry (lineageId / version-id / `base:Name`). `comment` is the status: "running clean", "Mimic empty", "TODO renderer", "stuck — wrong shape". |
+| `edges[]` | `Array<{ fromId, toId, comment? }>` | Per-transition notes. `fromId -> toId` are `dogIds` entries. `comment` describes the flow: "passes lat/lng", "raw OSM features", "broken — Mimic returns null". |
+
+All three are returned by `GET /api/kennels/:id` and embedded in `kennelConfig` of `GET /api/kennels/:id/run`. They are NOT on the public `/:kennelId` endpoint (which stays content-type-honest).
+
+### When to READ status
+
+- **Entering a known kennel** — `GET /api/kennels/<id>` first, read `task`, `nodes`, `edges`. The `task` tells you what the pack is for; the `comment`s tell you where the last session stopped or got stuck. Don't re-investigate what's already noted.
+- **Before a run** — match the dogIds in `nodes[]` with the actual `dogIds` array. Notes on dogs no longer in the kennel are stale; notes on present dogs are status reports.
+- **After a run** — correlate `nodes[].comment` and `edges[].comment` with the wave errors. A node marked "needs Mimic code" + the Mimic showing `"needs user code"` in the wave = same thing. A flow edge with `"stuck — wrong shape"` + a downstream error = you know where to look.
+- **Reporting to the user** — if `task` is set, surface it in your greeting/diagnosis ("The kennel's mission: …"). If comments flag problems, mention them ("Three nodes are marked TODO: renderer, weather Mimic, lead").
+
+### When to WRITE status
+
+Update via `PUT /api/kennels/:id` with `{task}`, `{nodes}`, or `{edges}` — fields are merged, not replaced wholesale. Passing only `{task: "..."}` leaves `nodes` and `edges` untouched.
+
+- **Setting up a new kennel** — after creating it, immediately set `task` to a one-paragraph mission so the next session knows what this pack is for.
+- **After step 4 (first run, Mimics emerge)** — for each empty Mimic, add a `nodes[]` entry with the Mimic's kennel-`dogIds` entry and a `comment` like "Mimic for X — needs code".
+- **After step 7 (lead code written)** — clear or update the relevant node comments: "renderer done", "weather data dog returns clean object".
+- **When something stays broken** — annotate. `edges[].comment = "stuck — Mimic returns null instead of {lat, lng}"` is far more useful than a silent failure. Hand-off notes for the next session.
+- **When you split the lead into compositor + entity dogs** — add `nodes[]` entries for each new dog with a one-line `comment` describing its role: "entity: WeatherData", "compositor — joins all entities", "renderer (lead)".
+
+**IMPORTANT — node/edge arrays are full-replace, not append.** When you PUT `{nodes: [...]}`, the server replaces the whole `nodes` array. To add one entry, read the current array, splice in your entry, and PUT the merged result. Same for `edges`. Skip the `nodes`/`edges` field entirely (don't pass it as `undefined` or `null`) if you only want to update `task` — that's the merge-safe path.
+
+### Tone
+
+These are status notes, not Void-tongue prose. Keep `comment` strings short, direct, technical: `"Mimic empty — needs LatLng shape"`, `"running clean"`, `"TODO: filter by radius"`. The `task` field can be richer (Markdown bullets, headings) but stays goal-oriented, not poetic.
+
+### Trust the contract
+
+The status-tracking persistence + history behaviour is pinned by **six startup tests** (`Status-Tracking Persistence`, `Status-Tracking Merge`, `Status-Tracking Text-Aenderungen`, `Node-Comment Mutationen`, `Edge-Comment Mutationen`, `Status-Tracking Versioning`). They run on every backend boot and guard: roundtrip persistence, partial-update merging, single-field text mutation (add / change / clear), multi-entry node/edge mutations, and version snapshots (incl. no-op suppression).
+
+If you observe behaviour that contradicts the rules above — e.g. a `PUT {task}` wipes `nodes`, or an old comment is lost from history — assume **your call shape is wrong** before assuming the contract is broken. Re-`GET /api/kennels/<id>` after the save, compare your input payload to the returned shape, and read the failing assertion in the boot console if the suite flagged anything. The startup tests are the source of truth for this contract.
+
 ## API Reference
 
 ```
@@ -248,6 +291,8 @@ POST /api/kennels
 ```
 **MANDATORY:** `defaultQuery` MUST be set — without it the pack is blind when no parameter arrives. After POST, immediately verify via `GET /api/kennels/:id` that `defaultQuery` is not `null`. Don't include Mimics — the system summons them itself.
 
+**Right after creation — set the mission.** A second `PUT /api/kennels/<id>` with `{ "task": "one-paragraph mission" }` records what this kennel is supposed to do. Future sessions read this first. See [Status Tracking](#status-tracking--read-and-write-the-kennels-notebook).
+
 ### Step 4 — First run (Mimics emerge from the Void)
 
 **IMPORTANT:** Mimics are NOT manually created — the system summons them automatically on run when a Pact has no fulfiller. This run after raising the kennel is mandatory: only here do the Mimics emerge from the Void.
@@ -260,7 +305,17 @@ Inspect the expanse:
 - Note their `id` (version-GUID) and `serializedDogConfig` (contains `imitates`) from the Waves
 - Hunters needing Pact input have errors — expected, the Mimics have no voice yet
 
-**When new BaseDogs or SerializedDogs are added to the kennel later:** Immediately run again and check if new Mimics have emerged from the Void. Every dog demanding a Pact can birth new Mimics.
+**Annotate the status now.** For every empty Mimic and every dog that still needs work, add an entry to the kennel's `nodes[]`:
+```
+PUT /api/kennels/my-kennel
+{ "nodes": [
+  { "id": "<mimic-lineageId>", "comment": "Mimic for <PactName> — needs code" },
+  { "id": "<lead-lineageId>",  "comment": "placeholder — write real code after step 6" }
+]}
+```
+This is your hand-off note. If the build pauses here, the next session sees exactly what's open.
+
+**When new BaseDogs or SerializedDogs are added to the kennel later:** Immediately run again and check if new Mimics have emerged from the Void. Every dog demanding a Pact can birth new Mimics. Annotate any new Mimic immediately.
 
 ### Step 5 — Give Mimics a voice
 
@@ -384,6 +439,16 @@ return out;
 
 **Note:** For **HTML** instead of raw Markdown, same layout — lead returns HTML string (follow **HTML renderer** rules for `<script>`). For **`{ snapshot, live }`** split delivery, see repo `SOCKETDOG-PLAN.md` — different contract.
 
+### Step 7d — Refresh the kennel's notebook
+
+Before verifying, clean up the status fields so they reflect the **current** state, not the build history:
+
+- For every node whose code is now in place, **remove** the entry from `nodes[]` (or update its `comment` to `"running clean"`). Empty open-todo notes are noise once the work is done.
+- If you split the lead into compositor + entity dogs in Step 7b, add one short `nodes[]` entry per new dog describing its role. Same for any meaningful `edges[]` annotations.
+- If the kennel's mission shifted during the build (e.g. user added "also show birds"), update `task` to match.
+
+The status fields are the kennel's persistent memory — leave them honest. Stale `"TODO: ..."` comments on dogs that are already built mislead the next session.
+
 ### Step 8 — Verification (MANDATORY, never skip)
 
 Every kennel MUST pass these three checks before it's considered done. No exceptions. **These checks apply equally after *your* edits** — run Step 8 again after every `PUT`/`POST /save` that touches the pen or the lead, and combine with *Self-check — read back what you wrote* so you report facts, not hope.
@@ -419,6 +484,8 @@ When errors appear in the Waves:
 - `"Missing required query params"` -> Mimic missing or delivering wrong fields
 - `"needs user code"` -> Mimic was not filled (Step 5)
 - Dog completely missing from waves -> check `dogIds` in the kennel
+
+**Cross-reference with status notes first.** Before digging into wave errors, read the kennel's `nodes[]` and `edges[]` comments (`GET /api/kennels/<id>`). If a node already has a comment like `"Mimic empty — needs LatLng shape"` and the wave shows that exact Mimic failing, you don't need to investigate — the previous session noted it. Annotate progress as you fix; remove the note once the dog runs clean.
 
 ## Incomplete spoils — not every hunter returns
 

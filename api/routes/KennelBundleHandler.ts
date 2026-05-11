@@ -112,6 +112,9 @@ export class KennelBundleHandler {
                     dogIds: config.dogIds,
                     defaultQuery: config.defaultQuery,
                     defaultBody: config.defaultBody,
+                    task: config.task,
+                    nodes: config.nodes,
+                    edges: config.edges,
                 },
                 dogs,
             };
@@ -260,12 +263,25 @@ export class KennelBundleHandler {
 
             // 5. Create the kennel as a single fresh version — no history restore.
             const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
+            const remappedNodes = Array.isArray(bundle.kennel.nodes)
+                ? bundle.kennel.nodes.map((n: any) => ({ ...n, id: remap(n.id) }))
+                : undefined;
+            const remappedEdges = Array.isArray(bundle.kennel.edges)
+                ? bundle.kennel.edges.map((e: any) => ({
+                    ...e,
+                    fromId: remap(e.fromId),
+                    toId: remap(e.toId),
+                }))
+                : undefined;
             const createResult = await this.kennelsController.create({
                 id: kennelId,
                 name: kennelName,
                 description: bundle.kennel.description,
                 emoji: bundle.kennel.emoji,
                 dogIds: remappedDogIds,
+                task: bundle.kennel.task,
+                nodes: remappedNodes,
+                edges: remappedEdges,
             });
             if (!createResult.ok) {
                 res.status(500).json({ error: createResult.error });

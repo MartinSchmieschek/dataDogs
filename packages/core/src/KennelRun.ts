@@ -46,10 +46,37 @@ export interface IKennelConfig {
     defaultQuery?: Record<string, string>;
     /** Default body data fer the editor -- the cargo manifest, pre-loaded into the hold */
     defaultBody?: any;
+    /** Global mission briefing -- what dark task this kennel is bound to complete */
+    task?: string;
+    /** Per-node layout hints (position) and annotations (comments) for the wave-view canvas */
+    nodes?: IKennelNodeAnnotation[];
+    /** Per-edge annotations (comments) attached to a (fromId -> toId) transition */
+    edges?: IKennelEdgeAnnotation[];
     /** When this kennel was first conjured from the void */
     createdAt?: Date;
     /** When this kennel last felt the touch of mortal hands */
     updatedAt?: Date;
+}
+
+/**
+ * Layout + annotation for a single kennel node. `id` matches the kennel's dogIds entry
+ * (lineageId for SerializedDogs, or "base:Name" for base-dogs).
+ */
+export interface IKennelNodeAnnotation {
+    id: string;
+    x?: number;
+    y?: number;
+    comment?: string;
+}
+
+/**
+ * Annotation for a transition between two kennel nodes, identified by the source and target
+ * dogIds entries (same identity rules as IKennelNodeAnnotation.id).
+ */
+export interface IKennelEdgeAnnotation {
+    fromId: string;
+    toId: string;
+    comment?: string;
 }
 
 /**

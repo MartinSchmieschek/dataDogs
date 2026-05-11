@@ -16,7 +16,14 @@ export { Dog } from './core/entities/abstractHuntingDog';
 export { IHuntingSeason, IWaveEntry, IReadTrackingEntry } from './core/entities/IHuntingSeason';
 
 // The captain and the hunt -- orchestration of the abyss
-export { KennelRun, IKennelConfig, BASE_DOG_PREFIX, type MimicAdopter } from './KennelRun';
+export {
+    KennelRun,
+    IKennelConfig,
+    BASE_DOG_PREFIX,
+    type IKennelNodeAnnotation,
+    type IKennelEdgeAnnotation,
+    type MimicAdopter,
+} from './KennelRun';
 export { isRuntimeLogVerbose } from './runtimeLog';
 export {
     KENNEL_RESERVED_SLUGS,
