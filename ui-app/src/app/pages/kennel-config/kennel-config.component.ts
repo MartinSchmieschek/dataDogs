@@ -68,6 +68,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   name = '';
   description = '';
   emoji = '';
+  task = '';
   /** Eine Liste: Reihenfolge = Ausführungsreihenfolge; Index 0 = API-Ergebnis-Hund */
   orderedDogIds = signal<string[]>([]);
   availableDogs = signal<DogInfo[]>([]);
@@ -147,6 +148,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
     this.name = cfg.name ?? '';
     this.description = cfg.description ?? '';
     this.emoji = cfg.emoji ?? '';
+    this.task = cfg.task ?? '';
 
     this.orderedDogIds.set([...(cfg.dogIds ?? [])]);
 
@@ -344,6 +346,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
       dogIds,
       defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
       defaultBody,
+      task: this.task.trim() || undefined,
     };
 
     this.kennelService.update(this.kennelId, data).subscribe({

@@ -11,8 +11,28 @@ export interface IKennelConfig {
   dogIds: string[];
   defaultQuery?: Record<string, string>;
   defaultBody?: any;
+  /** Global mission briefing -- what the kennel is supposed to do */
+  task?: string;
+  /** Per-node layout + comment for the wave-view canvas */
+  nodes?: IKennelNodeAnnotation[];
+  /** Per-edge comment, keyed by (fromId, toId) */
+  edges?: IKennelEdgeAnnotation[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface IKennelNodeAnnotation {
+  /** Kennel-dogIds entry (lineageId for SerializedDogs, "base:Name" for base-dogs) */
+  id: string;
+  x?: number;
+  y?: number;
+  comment?: string;
+}
+
+export interface IKennelEdgeAnnotation {
+  fromId: string;
+  toId: string;
+  comment?: string;
 }
 
 export interface KennelVersionEntry {

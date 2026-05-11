@@ -1,9 +1,11 @@
 import { Component, Input, Output, EventEmitter, signal, computed, OnChanges, SimpleChanges } from '@angular/core';
 import { DogEntry } from '../../models/dog-entry.model';
-import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel-sections';
+import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 
 /**
- * Graph-Knoten: Icon oben, Name zentriert darunter. Ausgewählt: voller Name + Beschreibung; sonst eine Zeile mit Ellipsis.
+ * Graph node — icon + name. Click on the surrounding slot opens the inspector;
+ * there is no separate edit button. Errors surface as a corner badge and as a
+ * one-line message under the name when the node is selected.
  */
 @Component({
   selector: 'app-graph-dog-node',
@@ -17,14 +19,18 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       [class.serialized]="isSerialized"
       [class.mimic]="isMimic"
       [class.has-lead-actions]="isLead && !!(leadRunUrl || leadSwaggerUrl)">
+
       @if (isLead) {
-        <span class="lead-star" title="Lead-Hund (API-Antwort)">★</span>
+        <span class="lead-star" title="Lead-Hund (API-Antwort)" aria-hidden="true">★</span>
       }
+
+      @if (hasError) {
+        <span class="error-badge" [title]="errorText || 'Fehler'" aria-label="Fehler">!</span>
+      }
+
       <div class="graph-node-stack">
         <div class="node-hub" aria-hidden="true">
-          <div
-            class="node-icon-port"
-            [class.node-icon-port--placeholder]="!icon?.trim()">
+          <div class="node-icon-port" [class.node-icon-port--placeholder]="!icon?.trim()">
             @if (icon?.trim()) {
               <span class="node-glyph">{{ icon }}</span>
             } @else {
@@ -37,38 +43,32 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
           @if (selected && descriptionFull()) {
             <span class="node-desc-expanded">{{ descriptionFull() }}</span>
           }
+          @if (selected && hasError && errorText) {
+            <span class="node-error-text" [title]="errorText">{{ errorText }}</span>
+          }
         </div>
       </div>
+
       @if (isLead && (leadRunUrl || leadSwaggerUrl)) {
         <div class="lead-links" (pointerdown)="$event.stopPropagation()">
           @if (leadRunUrl) {
-            <a
-              class="lead-link lead-link--run"
-              [href]="leadRunUrl"
-              target="_blank"
-              rel="noopener"
-              title="Antwort (Server) — öffentlicher Kennel-Endpunkt">▶</a>
+            <a class="lead-link lead-link--run"
+               [href]="leadRunUrl"
+               target="_blank"
+               rel="noopener"
+               title="Antwort (Server)"
+               aria-label="Antwort öffnen">▶</a>
           }
           @if (leadSwaggerUrl) {
-            <a
-              class="lead-link lead-link--swagger"
-              [href]="leadSwaggerUrl"
-              target="_blank"
-              rel="noopener"
-              title="Swagger UI">📖</a>
+            <a class="lead-link lead-link--swagger"
+               [href]="leadSwaggerUrl"
+               target="_blank"
+               rel="noopener"
+               title="Swagger UI"
+               aria-label="Swagger UI öffnen">📖</a>
           }
         </div>
       }
-      <div class="graph-edit-fan-wrap" (pointerdown)="$event.stopPropagation()">
-        <button
-          type="button"
-          class="graph-edit-btn"
-          aria-label="Bearbeiten"
-          title="Bearbeiten — Panel mit Standard-Bereich öffnen"
-          (click)="onEditButtonClick($event)">
-          <span class="graph-edit-icon" aria-hidden="true">✎</span>
-        </button>
-      </div>
     </div>
   `,
   styles: [`
@@ -85,51 +85,10 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       overflow: visible;
       background: transparent;
       border: none;
-      border-radius: 0;
       transition: opacity 0.12s ease;
     }
-    .graph-node-root.has-lead-actions {
-      padding-bottom: 22px;
-    }
-    .graph-node-root.selected .node-name-under {
-      max-width: min(22rem, 92vw);
-    }
-    .graph-node-root.selected .node-name {
-      color: #b8dcff;
-      text-shadow: 0 0 12px rgba(120, 180, 255, 0.35);
-      white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
-      word-break: break-word;
-      font-size: 11px;
-      line-height: 1.3;
-    }
-    .node-desc-expanded {
-      display: block;
-      margin-top: 5px;
-      font-size: 9.5px;
-      font-weight: 400;
-      line-height: 1.35;
-      color: rgba(185, 198, 220, 0.94);
-      word-break: break-word;
-      white-space: pre-wrap;
-      max-width: 100%;
-      text-align: center;
-    }
-    .graph-node-root.selected.error .node-desc-expanded {
-      color: rgba(255, 210, 210, 0.88);
-    }
-    .graph-node-root.selected.mimic .node-desc-expanded {
-      font-style: italic;
-      opacity: 0.95;
-    }
-    .graph-node-root.error .node-name {
-      color: #ffb0b0;
-    }
-    .graph-node-root.mimic .node-name {
-      font-style: italic;
-      opacity: 0.92;
-    }
+    .graph-node-root.has-lead-actions { padding-bottom: 22px; }
+
     .graph-node-stack {
       display: flex;
       flex-direction: column;
@@ -140,6 +99,7 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       padding-top: 2px;
       box-sizing: border-box;
     }
+
     .node-hub {
       position: relative;
       width: 52px;
@@ -158,34 +118,49 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       justify-content: center;
       background: radial-gradient(
         120% 120% at 35% 28%,
-        rgba(72, 82, 102, 0.55) 0%,
-        rgba(28, 32, 44, 0.92) 62%,
-        rgba(14, 16, 24, 0.96) 100%
+        rgba(82, 92, 118, 0.55) 0%,
+        rgba(32, 38, 56, 0.92) 62%,
+        rgba(18, 22, 36, 0.96) 100%
       );
-      border: 1px solid rgba(130, 150, 185, 0.38);
+      border: 1px solid rgba(140, 160, 195, 0.38);
       box-shadow:
-        0 0 0 1px rgba(0, 0, 0, 0.35) inset,
-        0 2px 10px rgba(0, 0, 0, 0.35);
+        0 0 0 1px rgba(0, 0, 0, 0.30) inset,
+        0 2px 10px rgba(0, 0, 0, 0.30);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
     }
     .node-icon-port--placeholder {
-      border-color: rgba(120, 135, 165, 0.32);
+      border-color: rgba(130, 145, 175, 0.32);
       background: radial-gradient(
         120% 120% at 35% 28%,
-        rgba(60, 68, 88, 0.5) 0%,
-        rgba(22, 26, 36, 0.9) 55%,
-        rgba(12, 14, 22, 0.95) 100%
+        rgba(70, 78, 98, 0.5) 0%,
+        rgba(26, 30, 44, 0.9) 55%,
+        rgba(16, 20, 32, 0.95) 100%
       );
     }
+
+    .graph-node-root.selected .node-icon-port {
+      border-color: rgba(255, 168, 110, 0.7);
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.30) inset,
+        0 0 0 2px rgba(234, 88, 12, 0.35),
+        0 2px 14px rgba(234, 88, 12, 0.20);
+    }
+    .graph-node-root.error .node-icon-port {
+      border-color: rgba(244, 100, 100, 0.65);
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.30) inset,
+        0 0 0 2px rgba(220, 38, 38, 0.35),
+        0 2px 14px rgba(220, 38, 38, 0.22);
+    }
+
     .node-glyph {
       font-size: 2.15rem;
       line-height: 1;
       user-select: none;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
     }
-    .node-glyph--placeholder {
-      font-size: 1.85rem;
-      opacity: 0.72;
-    }
+    .node-glyph--placeholder { font-size: 1.85rem; opacity: 0.72; }
+
     .node-name-under {
       margin-top: 4px;
       width: 100%;
@@ -193,6 +168,9 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       z-index: 1;
       text-align: center;
       pointer-events: none;
+    }
+    .graph-node-root.selected .node-name-under {
+      max-width: min(22rem, 92vw);
     }
     .node-name {
       pointer-events: auto;
@@ -207,18 +185,84 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .graph-node-root.selected .node-name {
+      color: #ffd9b8;
+      text-shadow: 0 0 12px rgba(255, 170, 110, 0.30);
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      word-break: break-word;
+      font-size: 11px;
+      line-height: 1.3;
+    }
+    .graph-node-root.error .node-name { color: #ffb0b0; }
+    .graph-node-root.mimic .node-name { font-style: italic; opacity: 0.92; }
+
+    .node-desc-expanded {
+      display: block;
+      margin-top: 5px;
+      font-size: 9.5px;
+      font-weight: 400;
+      line-height: 1.35;
+      color: rgba(195, 208, 230, 0.92);
+      word-break: break-word;
+      white-space: pre-wrap;
+      max-width: 100%;
+      text-align: center;
+    }
+    .graph-node-root.selected.error .node-desc-expanded {
+      color: rgba(255, 210, 210, 0.85);
+    }
+
+    .node-error-text {
+      display: block;
+      margin-top: 4px;
+      padding: 3px 6px;
+      font-size: 9.5px;
+      font-weight: 500;
+      line-height: 1.3;
+      color: #ffd1d1;
+      background: rgba(220, 38, 38, 0.22);
+      border: 1px solid rgba(220, 38, 38, 0.45);
+      border-radius: 4px;
+      max-width: 100%;
+      word-break: break-word;
+      white-space: pre-wrap;
+      text-align: left;
+    }
+
     .lead-star {
       position: absolute;
-      top: 0;
-      left: 0;
+      top: -2px;
+      left: -2px;
       font-size: 11px;
       line-height: 1;
-      color: #e6b800;
-      text-shadow: 0 0 8px rgba(230, 184, 0, 0.45);
+      color: #f5c542;
+      text-shadow: 0 0 8px rgba(245, 197, 66, 0.45);
       pointer-events: none;
       user-select: none;
       z-index: 4;
     }
+
+    .error-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #dc2626;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 14px;
+      text-align: center;
+      box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25), 0 0 6px rgba(220, 38, 38, 0.4);
+      pointer-events: none;
+      user-select: none;
+      z-index: 5;
+    }
+
     .lead-links {
       position: absolute;
       bottom: 0;
@@ -227,79 +271,39 @@ import { DogPanelSectionId, getDefaultPanelSection } from '../../utils/dog-panel
       display: flex;
       flex-direction: row;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
       z-index: 4;
       pointer-events: auto;
+      opacity: 0.78;
+      transition: opacity 0.15s ease;
     }
+    .graph-node-root:hover .lead-links,
+    .graph-node-root.selected .lead-links { opacity: 1; }
+
     .lead-link {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 22px;
-      height: 20px;
-      padding: 0 5px;
-      font-size: 11px;
+      min-width: 20px;
+      height: 18px;
+      padding: 0 4px;
+      font-size: 10px;
       line-height: 1;
       text-decoration: none;
       border-radius: 4px;
-      font-family: inherit;
       cursor: pointer;
       border: 1px solid rgba(120, 130, 150, 0.45);
-      color: rgba(235, 238, 248, 0.95);
-      opacity: 0.88;
+      color: rgba(235, 238, 248, 0.92);
     }
-    .lead-link:hover {
-      opacity: 1;
-    }
+    .lead-link:hover { background: rgba(255, 255, 255, 0.08); }
+
     .lead-link--run {
-      background: rgba(58, 48, 80, 0.92);
-      border-color: rgba(120, 100, 160, 0.55);
+      background: rgba(234, 88, 12, 0.22);
+      border-color: rgba(234, 88, 12, 0.55);
     }
     .lead-link--swagger {
-      background: rgba(36, 58, 36, 0.92);
-      border-color: rgba(70, 110, 70, 0.55);
-    }
-    .graph-edit-fan-wrap {
-      --graph-edit-btn-size: 24px;
-      position: absolute;
-      top: -6px;
-      right: -6px;
-      z-index: 5;
-      pointer-events: auto;
-    }
-
-    .graph-edit-btn {
-      width: var(--graph-edit-btn-size);
-      height: var(--graph-edit-btn-size);
-      padding: 0;
-      border-radius: 50%;
-      border: 1px solid rgba(110, 125, 145, 0.5);
-      background: linear-gradient(165deg, rgba(42, 50, 62, 0.95) 0%, rgba(22, 26, 34, 0.98) 100%);
-      color: rgba(210, 218, 230, 0.92);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
-    }
-
-    .graph-edit-btn:hover {
-      border-color: rgba(160, 180, 210, 0.7);
-      background: linear-gradient(165deg, rgba(52, 62, 78, 0.95) 0%, rgba(28, 34, 44, 0.98) 100%);
-    }
-
-    .graph-edit-btn:active {
-      transform: scale(0.96);
-    }
-
-    .graph-edit-btn:focus-visible {
-      outline: 2px solid rgba(110, 150, 200, 0.75);
-      outline-offset: 2px;
-    }
-
-    .graph-edit-icon {
-      font-size: 13px;
-      line-height: 1;
+      background: rgba(46, 70, 46, 0.65);
+      border-color: rgba(80, 120, 80, 0.55);
     }
   `],
 })
@@ -308,6 +312,7 @@ export class GraphDogNodeComponent implements OnChanges {
   @Input() icon?: string;
   @Input() selected = false;
   @Input() hasError = false;
+  @Input() errorText: string | null = null;
   @Input() isSerialized = false;
   @Input() isMimic = false;
   @Input() isLead = false;
@@ -315,6 +320,7 @@ export class GraphDogNodeComponent implements OnChanges {
   @Input() leadRunUrl: string | null = null;
   @Input() leadSwaggerUrl: string | null = null;
 
+  /** Kept for compatibility — parent still listens; no internal trigger remains. */
   @Output() sectionEditRequested = new EventEmitter<DogPanelSectionId>();
 
   private readonly dogRef = signal<DogEntry | null>(null);
@@ -326,18 +332,11 @@ export class GraphDogNodeComponent implements OnChanges {
     return this.label ?? '';
   });
 
-  /** Volle Beschreibung (nur bei Auswahl im Graph sichtbar). */
   readonly descriptionFull = computed(() => this.dogRef()?.description?.trim() ?? '');
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['dog'] && this.dog) {
       this.dogRef.set(this.dog);
     }
-  }
-
-  onEditButtonClick(ev: MouseEvent): void {
-    ev.stopPropagation();
-    ev.preventDefault();
-    this.sectionEditRequested.emit(getDefaultPanelSection(this.dog));
   }
 }

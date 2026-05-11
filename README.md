@@ -136,6 +136,48 @@ When you run a Kennel (`/api/kennels/:id/run`), Mimics appear in the Waves respo
 - **Kennel version drop** — if a later PUT removes mimic lineages from `dogIds`, the adopter pulls them back from kennel-version history and heals them in again.
 - **Manual mimic edit** — editing a mimic's `theRun` via `POST /save` bumps its version but keeps the `lineageId`. The next run loads the new version through normal lineage resolution. The `imitates` binding must be preserved in the saved config.
 
+### Status Tracking — Mission, Notes, Flow Annotations
+
+A Kennel is rarely built in one breath. Pacts fall short, Mimics need voice, parents need to be re-wired, the lead is half-finished. To track what state a Kennel is in — what it's supposed to do, where it sticks, what still needs work — every Kennel carries three optional **status fields**. These are NOT runtime configuration; they don't change how the pack hunts. They are the kennel master's notebook, persisted with the Kennel.
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `task` | string | The Kennel's mission. What should this pack accomplish? Free-form, Markdown-friendly — a paragraph, a bullet list, a TODO. The big picture. |
+| `nodes[]` | `Array<{ id, x?, y?, comment? }>` | Per-dog annotations. `id` is the kennel-`dogIds` entry (lineageId, version-id, or `base:Name`). `x/y` are Wave-View layout coordinates (optional). `comment` is a note: "running clean", "needs Mimic code", "TODO renderer". |
+| `edges[]` | `Array<{ fromId, toId, comment? }>` | Per-transition annotations. `fromId → toId` are kennel-`dogIds` entries. `comment` describes the data flow: "passes lat/lng", "stuck — Mimic returns wrong shape", "raw OSM features". |
+
+**What this is for:**
+- **Mission briefing** — `task` tells the next person (or the next session) what the Kennel is supposed to do. Survives kennel re-loads, version branches, hand-overs.
+- **Workflow status** — `nodes[].comment` and `edges[].comment` are status markers: where the pipeline runs cleanly, where it's stuck, what's still TODO. Update them as you build.
+- **Layout memory** — `nodes[].x/y` persist where dogs sit on the Wave-View canvas; drag a node, save, and it stays where you put it on the next visit.
+
+**Persistence rules:**
+- All three fields are optional. Old Kennels without them keep working unchanged.
+- `PUT /api/kennels/:id` with `{task}`, `{nodes}`, or `{edges}` merges into the existing Kennel — passing one field doesn't wipe the others.
+- The Kennel bundle export (`/api/kennels/:id/export`) carries the three fields; import round-trips them (dogId references in `nodes[].id` and `edges[].fromId/toId` are remapped along with `dogIds`).
+- These behaviours are pinned by the startup test suite — see [Startup tests](#startup-tests). Six tests cover persistence, partial-update merge semantics, text mutation (add/change/remove), per-dog comment mutations across multi-node arrays, per-edge comment mutations, and versioning (incl. no-op-detection). Every backend boot re-verifies them.
+
+**Fully versioned — every text-note has a history:**
+
+The status fields ride the same versioning rail as `dogIds`. Every `PUT` that changes `task`, a `nodes[].comment`, a `nodes[].x/y`, or an `edges[].comment` forges a **new Kennel version** with a fresh `id` and a `parentId` pointing back. The previous version stays in the deep — nothing is overwritten, nothing is lost.
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /api/kennels/:id/versions` | Full version list. Each entry's `config` carries the **complete `task`, `nodes`, `edges` snapshot** as it was at that save — not just a diff. |
+| `GET /api/kennels/<version-guid>` | The exact historical Kennel config — `task`, `nodes`, `edges` frozen at that incarnation. |
+| `GET /api/kennels/:id/run?version=<guid>` | Re-runs the Kennel under the historical config — see what the pack was supposed to do *back then*. |
+
+Editing notes therefore costs nothing — wrong comment, stale TODO, mis-spelled mission? Just `PUT` the corrected version; the old text lives on in the version timeline and the Wave-Viewer lets you click any past incarnation to inspect it.
+
+> *Khra — To cosmic forms from tangent planes, we end as we began.* The pack's memory is the Kennel's memory; every note ever written is one branch back.
+
+**Where they show up:**
+- `GET /api/kennels/:id` — full Kennel config including `task`, `nodes`, `edges`.
+- `GET /api/kennels/:id/run` — same fields, embedded in `kennelConfig` alongside the Waves.
+- `GET /:kennelId` (the **public** Lead-Yield endpoint) — does **NOT** include them. The public endpoint stays content-type-honest (HTML stays HTML, JSON stays JSON). Status tracking is for the kennel master, not for downstream consumers.
+
+> *Ris — In luminous space blackened stars, they gaze, accuse, deny.* The comments are the gaze; they accuse the broken edges and bless the working ones.
+
 ### Data Pipelines
 
 Mimics act as transformers between raw-data Dogs and consumers:
@@ -253,6 +295,21 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aw
 | `GET` | `/api/readme` | Project README as rendered HTML |
 
 ---
+
+## Startup tests
+
+On every boot, `main.ts` runs [`StartupTest.runAllTests`](StartupTest.ts) — a self-check against the freshly initialised stores, controllers and BaseDogs map. Failures are logged and surface in the boot console; pass lines are summarised at the end. The suite covers Store / Controller plumbing, BaseDog availability, Pact / Mimic resolution, auto-mimic adoption, kennel export / import round-trip, the tile feature cache, and the **Kennel status-tracking contract** for `task`, `nodes` and `edges`:
+
+| Test | What it pins |
+|------|--------------|
+| `KennelConfig: Status-Tracking Persistence` | Create → save with `task` + `nodes` + `edges` → reload — all fields, positions and comments survive verbatim. |
+| `KennelConfig: Status-Tracking Merge` | Partial saves (`{task}` only, `{nodes}` only) leave untouched fields intact — guards the merge semantics in `KennelController.save`. |
+| `KennelConfig: Status-Tracking Text-Aenderungen` | Mutating an existing `task` / `node.comment` / `edge.comment` updates the latest version while older versions keep the old text; clearing `task` with `""` doesn't wipe other fields. |
+| `KennelConfig: Node-Comment Mutationen` | Multi-node arrays: change one comment, drop one (keep position), add a fresh node, remove an old one — verified against current state **and** version history. |
+| `KennelConfig: Edge-Comment Mutationen` | Multi-edge arrays: same shape as node mutations, including removing an edge entirely and adding a feedback edge later. |
+| `KennelConfig: Status-Tracking Versioning` | Three text edits → three new versions, newest-first, each with its own snapshot. Identical no-op save produces **no** phantom version. Historical version-GUID fetches return the frozen text. |
+
+If a status-tracking save ever stops behaving as documented, the boot console flags exactly which guarantee broke before any kennel work begins.
 
 ## Tech Stack
 
