@@ -25,6 +25,14 @@ model Dog {
   defaultQuery         String?  // JSON-String
   defaultBody          String?  // JSON-String
   emoji                String?  // Kennel-Icon (ein Emoji), optional
+  task                 String?  // Kennel-Aufgaben-/Briefing-Text (markdown-fähig)
+  nodes                String?  // JSON-String: [{ id, x?, y?, comment? }]
+  edges                String?  // JSON-String: [{ fromId, toId, comment? }]
+  // ACL-Felder aus parallelem Branch — hier deklarieren, damit prisma db push sie nicht droppt.
+  ownerId              String?
+  visibility           String?
+  editors              String?
+  viewers              String?
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }
