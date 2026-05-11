@@ -1,35 +1,39 @@
 import { Component, inject, signal, OnInit, computed, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { KennelService } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
-import { IKennelConfig, KennelVersionEntry } from '../../models/kennel-config.model';
+import { IKennelConfig, KennelVersionEntry, IKennelNodeAnnotation, IKennelEdgeAnnotation } from '../../models/kennel-config.model';
+import { kennelRefForDog } from '../../utils/kennel-ref-for-dog';
 import { DogEntry, Waves } from '../../models/dog-entry.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
-import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
 import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-panel.component';
-import { FloatingPanelWindowComponent } from '../../components/floating-panel-window/floating-panel-window.component';
-import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
-import { DogToolbarComponent } from '../../components/dog-toolbar/dog-toolbar.component';
 import { findKennelDogIndex, graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
 import { collectDescendantBranchNodeIds } from '../../components/vis-network/graph-layout';
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { apiAbsoluteUrl } from '../../config/api-base';
+import { WavesAppBarComponent, AppBarStatus, OverflowItem } from './components/waves-app-bar.component';
+import { WavesInspectorComponent, InspectorTab } from './components/waves-inspector.component';
+import { WavesJsonEditorComponent } from './components/waves-json-editor.component';
+import { WavesDogPaletteComponent } from './components/waves-dog-palette.component';
+import { WavesConfirmDialogComponent } from './components/waves-confirm-dialog.component';
+
+type KennelTab = 'kennel' | 'versions';
 
 @Component({
   selector: 'app-waves-viewer',
   standalone: true,
   imports: [
-    RouterLink, FormsModule,
+    FormsModule,
     GraphCanvasScaleComponent, VoidMythicBackdropComponent, VisNetworkComponent, DogSidePanelComponent,
-    FloatingPanelWindowComponent,
-    LoadingIndicatorComponent, DogToolbarComponent, DogDisplayComponent, VersionTimelineComponent
+    VersionTimelineComponent,
+    WavesAppBarComponent, WavesInspectorComponent, WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
@@ -77,13 +81,36 @@ export class WavesViewerComponent implements OnInit {
     return this.activeKennelVersionId() || this.kennelConfig()?.id || '';
   }
 
-  paramsOpen = false;
   queryParams = signal<Array<{ key: string; value: string }>>([]);
   bodyJson = signal('{}');
   newQueryKey = '';
   newQueryValue = '';
   paramsSaving = signal(false);
   paramsDirty = signal(false);
+
+  // --- Layout / annotations / task state ---
+  /** Layout-Map keyed by kennel-dogIds-Ref (lineageId, base:Name, or version ID). */
+  layoutNodes = signal<IKennelNodeAnnotation[]>([]);
+  /** Edge-Kommentare keyed by (fromRef, toRef) — same identity rules as nodes. */
+  layoutEdges = signal<IKennelEdgeAnnotation[]>([]);
+  /** Global kennel-task text (markdown-fähig). */
+  taskText = signal('');
+  /** True if any layout/comment/task change is unsaved. */
+  layoutDirty = signal(false);
+  layoutSaving = signal(false);
+  /** Edge whose comment editor is currently open in the canvas. */
+  editingEdgeKey = signal<{ fromId: string; toId: string } | null>(null);
+  edgeCommentDraft = '';
+
+  // === Inspector / Palette UI state ===
+  /** Kennel-inspector drawer (Aufgabe/Query/Body/Versions). */
+  readonly kennelInspectorOpen = signal(false);
+  /** Active tab inside the kennel inspector. */
+  readonly kennelInspectorTab = signal<KennelTab>('kennel');
+  /** Dog-palette drawer / side-rail visible? */
+  readonly paletteOpen = signal(false);
+  /** Edge-cut staged but not confirmed yet — drives confirm dialog. */
+  readonly pendingCut = signal<{ fromId: string; toId: string } | null>(null);
 
   flatDogList = computed(() => {
     const w = this.waves();
@@ -96,6 +123,110 @@ export class WavesViewerComponent implements OnInit {
     const d = this.selectedDog();
     return d ? `Node: ${d.displayName || d.name}` : '';
   });
+
+  // === App-bar derived state ===
+
+  readonly appBarStatus = computed<AppBarStatus>(() => {
+    if (this.error()) return { kind: 'error', label: 'Fehler beim letzten Run' };
+    if (this.layoutDirty() || this.paramsDirty()) return { kind: 'dirty', label: 'Ungespeicherte Änderungen' };
+    return { kind: 'ok', label: 'Aktuell' };
+  });
+
+  readonly appBarSubtitle = computed<string | null>(() => {
+    const dogs = this.flatDogList();
+    const cfg = this.kennelConfig();
+    const parts: string[] = [];
+    if (cfg?.dogIds?.length) parts.push(`${cfg.dogIds.length} Dogs`);
+    else if (dogs.length) parts.push(`${dogs.length} Dogs`);
+    const v = this.kennelVersions()[0]?.version;
+    if (typeof v === 'number') parts.push(`v${v}`);
+    return parts.length ? parts.join(' · ') : null;
+  });
+
+  readonly appBarChips = computed(() => ([
+    {
+      id: 'kennel',
+      label: 'Kennel',
+      dirty: this.layoutDirty() || this.paramsDirty(),
+      active: this.kennelInspectorOpen() && this.kennelInspectorTab() === 'kennel',
+    },
+  ]));
+
+  readonly overflowItems = computed<OverflowItem[]>(() => {
+    const items: OverflowItem[] = [];
+    items.push({
+      id: 'open-kennel',
+      label: 'Kennel bearbeiten',
+      dirty: this.layoutDirty() || this.paramsDirty(),
+    });
+    if (this.timelineVersions().length > 1) {
+      items.push({ id: 'open-versions', label: 'Versionen' });
+    }
+    if (this.layoutDirty() || this.paramsDirty()) {
+      items.push({
+        id: 'save-kennel',
+        label: this.layoutSaving() || this.paramsSaving() ? 'Speichert…' : 'Alles speichern',
+        enabled: !this.layoutSaving() && !this.paramsSaving(),
+      });
+    }
+    items.push({ id: 'palette', label: 'Dogs hinzufügen' });
+    items.push({ id: 'open-swagger', label: 'Swagger JSON', href: this.swaggerJsonUrl, external: true });
+    items.push({ id: 'export', label: 'Als JSON exportieren' });
+    return items;
+  });
+
+  readonly kennelInspectorTabs = computed<InspectorTab[]>(() => {
+    // Tab bar only shown when there's more than one tab (Versions).
+    if (this.timelineVersions().length <= 1) return [];
+    return [
+      { id: 'kennel', label: 'Bearbeiten', dirty: this.layoutDirty() || this.paramsDirty() },
+      { id: 'versions', label: 'Versionen', badge: this.timelineVersions().length },
+    ];
+  });
+
+  openKennelInspector(tab: KennelTab): void {
+    this.kennelInspectorTab.set(tab);
+    this.kennelInspectorOpen.set(true);
+  }
+
+  onAppBarChip(id: string): void {
+    if (id === 'kennel' || id === 'versions') {
+      this.openKennelInspector(id);
+    }
+  }
+
+  onOverflowAction(id: string): void {
+    switch (id) {
+      case 'open-kennel': this.openKennelInspector('kennel'); return;
+      case 'open-versions': this.openKennelInspector('versions'); return;
+      case 'save-kennel': this.saveKennel(); return;
+      case 'palette': this.paletteOpen.set(true); return;
+      case 'export': this.exportKennel(); return;
+    }
+  }
+
+  /** Save both task/layout and query/body in one go — one button, one signal. */
+  saveKennel(): void {
+    if (this.paramsDirty()) this.saveParams();
+    if (this.layoutDirty()) this.saveLayout();
+  }
+
+  onPaletteAdd(dogRef: string): void {
+    const cfg = this.kennelConfig();
+    if (!cfg) return;
+    const dogIds = [...(cfg.dogIds ?? []), dogRef];
+    this.kennelService.update(this.kennelId, { dogIds }).subscribe({
+      next: () => {
+        this.loadWaves();
+        this.loadAvailableDogs();
+      },
+    });
+  }
+
+  /** Auto-close kennel inspector if there's nothing relevant to show on the active tab. */
+  closeKennelInspector(): void {
+    this.kennelInspectorOpen.set(false);
+  }
 
   /** Append ?version=... to a URL if a specific kennel version is selected. */
   private appendVersionParam(url: string): string {
@@ -142,6 +273,9 @@ export class WavesViewerComponent implements OnInit {
       this.activeKennelVersionId.set(null);
       this.selectedKennelVersionId.set(null);
       this.paramsDirty.set(false);
+      this.layoutDirty.set(false);
+      this.editingEdgeKey.set(null);
+      this.edgeCommentDraft = '';
       this.error.set(null);
       this.loadWaves();
       this.loadAvailableDogs();
@@ -208,6 +342,221 @@ export class WavesViewerComponent implements OnInit {
       }
       this.bodyJson.set(config.defaultBody ? JSON.stringify(config.defaultBody, null, 2) : '{}');
     }
+    if (!this.layoutDirty()) {
+      this.layoutNodes.set(Array.isArray(config.nodes) ? config.nodes.map(n => ({ ...n })) : []);
+      this.layoutEdges.set(Array.isArray(config.edges) ? config.edges.map(e => ({ ...e })) : []);
+      this.taskText.set(config.task ?? '');
+    }
+  }
+
+  /** Compute a stable kennel-ref for a DogEntry (lineageId, base:Name, or version ID). */
+  kennelRefForDog(dog: DogEntry): string {
+    return kennelRefForDog(dog, this.kennelConfig()?.dogIds ?? []);
+  }
+
+  /** Current node comment (if any) for the selected dog — fed into the side panel. */
+  commentForSelectedDog = computed<string | null>(() => {
+    const dog = this.selectedDog();
+    if (!dog) return null;
+    const ref = kennelRefForDog(dog, this.kennelConfig()?.dogIds ?? []);
+    return this.layoutNodes().find(n => n.id === ref)?.comment ?? null;
+  });
+
+  /** Map of layout positions keyed by current Wave-DogEntry instance ID — feeds vis-network. */
+  nodePositionsForGraph = computed<Map<string, { x: number; y: number }>>(() => {
+    const cfg = this.kennelConfig();
+    const dogs = this.flatDogList();
+    const out = new Map<string, { x: number; y: number }>();
+    if (!cfg || dogs.length === 0) return out;
+    for (const ann of this.layoutNodes()) {
+      if (ann.x == null || ann.y == null) continue;
+      const dog = dogs.find(d => kennelRefForDog(d, cfg.dogIds ?? []) === ann.id);
+      if (dog) out.set(dog.id, { x: ann.x, y: ann.y });
+    }
+    return out;
+  });
+
+  /** Map of node comments keyed by current Wave-DogEntry instance ID. */
+  nodeCommentsForGraph = computed<Map<string, string>>(() => {
+    const cfg = this.kennelConfig();
+    const dogs = this.flatDogList();
+    const out = new Map<string, string>();
+    if (!cfg || dogs.length === 0) return out;
+    for (const ann of this.layoutNodes()) {
+      if (!ann.comment) continue;
+      const dog = dogs.find(d => kennelRefForDog(d, cfg.dogIds ?? []) === ann.id);
+      if (dog) out.set(dog.id, ann.comment);
+    }
+    return out;
+  });
+
+  /** Edge comments keyed as "fromInstanceId|toInstanceId" for the current waves. */
+  edgeCommentsForGraph = computed<Map<string, string>>(() => {
+    const cfg = this.kennelConfig();
+    const dogs = this.flatDogList();
+    const out = new Map<string, string>();
+    if (!cfg || dogs.length === 0) return out;
+    const refToInstanceIds = new Map<string, string[]>();
+    for (const dog of dogs) {
+      const ref = kennelRefForDog(dog, cfg.dogIds ?? []);
+      const arr = refToInstanceIds.get(ref) ?? [];
+      arr.push(dog.id);
+      refToInstanceIds.set(ref, arr);
+    }
+    for (const ann of this.layoutEdges()) {
+      if (!ann.comment) continue;
+      const fromIds = refToInstanceIds.get(ann.fromId) ?? [];
+      const toIds = refToInstanceIds.get(ann.toId) ?? [];
+      for (const fId of fromIds) {
+        for (const tId of toIds) {
+          out.set(`${fId}|${tId}`, ann.comment);
+        }
+      }
+    }
+    return out;
+  });
+
+  onNodePositionsChanged(positions: Map<string, { x: number; y: number }>) {
+    const cfg = this.kennelConfig();
+    const dogs = this.flatDogList();
+    if (!cfg) return;
+    const byRef = new Map<string, { x: number; y: number }>();
+    for (const [instId, pos] of positions) {
+      const dog = dogs.find(d => d.id === instId);
+      if (!dog) continue;
+      byRef.set(kennelRefForDog(dog, cfg.dogIds ?? []), pos);
+    }
+    const existing = this.layoutNodes();
+    const seenRefs = new Set<string>();
+    const next: IKennelNodeAnnotation[] = existing.map(ann => {
+      const pos = byRef.get(ann.id);
+      seenRefs.add(ann.id);
+      if (pos) return { ...ann, x: pos.x, y: pos.y };
+      return ann;
+    });
+    for (const [ref, pos] of byRef) {
+      if (!seenRefs.has(ref)) next.push({ id: ref, x: pos.x, y: pos.y });
+    }
+    this.layoutNodes.set(next);
+    this.layoutDirty.set(true);
+  }
+
+  onNodeCommentChanged(ev: { kennelRef: string; comment: string }) {
+    const trimmed = ev.comment.trim();
+    const existing = this.layoutNodes();
+    const idx = existing.findIndex(n => n.id === ev.kennelRef);
+    if (idx >= 0) {
+      const ann = existing[idx];
+      const next = [...existing];
+      if (!trimmed && ann.x == null && ann.y == null) {
+        next.splice(idx, 1);
+      } else {
+        next[idx] = { ...ann, comment: trimmed || undefined };
+      }
+      this.layoutNodes.set(next);
+    } else if (trimmed) {
+      this.layoutNodes.set([...existing, { id: ev.kennelRef, comment: trimmed }]);
+    }
+    this.layoutDirty.set(true);
+  }
+
+  /** Open the inline edge-comment editor for the given (from, to) instance IDs. */
+  startEdgeComment(ev: { fromId: string; toId: string }) {
+    const cfg = this.kennelConfig();
+    if (!cfg) return;
+    const dogs = this.flatDogList();
+    const fromDog = dogs.find(d => d.id === ev.fromId);
+    const toDog = dogs.find(d => d.id === ev.toId);
+    if (!fromDog || !toDog) return;
+    const fromRef = kennelRefForDog(fromDog, cfg.dogIds ?? []);
+    const toRef = kennelRefForDog(toDog, cfg.dogIds ?? []);
+    const cur = this.layoutEdges().find(e => e.fromId === fromRef && e.toId === toRef);
+    this.editingEdgeKey.set({ fromId: ev.fromId, toId: ev.toId });
+    this.edgeCommentDraft = cur?.comment ?? '';
+  }
+
+  commitEdgeComment() {
+    const slot = this.editingEdgeKey();
+    if (!slot) return;
+    const cfg = this.kennelConfig();
+    if (!cfg) {
+      this.editingEdgeKey.set(null);
+      return;
+    }
+    const dogs = this.flatDogList();
+    const fromDog = dogs.find(d => d.id === slot.fromId);
+    const toDog = dogs.find(d => d.id === slot.toId);
+    if (!fromDog || !toDog) {
+      this.editingEdgeKey.set(null);
+      return;
+    }
+    const fromRef = kennelRefForDog(fromDog, cfg.dogIds ?? []);
+    const toRef = kennelRefForDog(toDog, cfg.dogIds ?? []);
+    const trimmed = this.edgeCommentDraft.trim();
+    const existing = this.layoutEdges();
+    const idx = existing.findIndex(e => e.fromId === fromRef && e.toId === toRef);
+    let changed = false;
+    if (idx >= 0) {
+      const next = [...existing];
+      if (!trimmed) {
+        next.splice(idx, 1);
+      } else {
+        next[idx] = { fromId: fromRef, toId: toRef, comment: trimmed };
+      }
+      this.layoutEdges.set(next);
+      changed = true;
+    } else if (trimmed) {
+      this.layoutEdges.set([...existing, { fromId: fromRef, toId: toRef, comment: trimmed }]);
+      changed = true;
+    }
+    if (changed) this.layoutDirty.set(true);
+    this.editingEdgeKey.set(null);
+    this.edgeCommentDraft = '';
+  }
+
+  cancelEdgeComment() {
+    this.editingEdgeKey.set(null);
+    this.edgeCommentDraft = '';
+  }
+
+  onTaskTextChange(value: string) {
+    this.taskText.set(value);
+    this.layoutDirty.set(true);
+  }
+
+  saveLayout() {
+    if (this.layoutSaving()) return;
+    this.layoutSaving.set(true);
+    const cfg = this.kennelConfig();
+    const payload: Partial<IKennelConfig> = {
+      task: this.taskText().trim() || undefined,
+      nodes: this.layoutNodes(),
+      edges: this.layoutEdges(),
+    };
+    // Preserve other fields the backend merges by undefined.
+    if (cfg) {
+      payload.dogIds = cfg.dogIds;
+      payload.name = cfg.name;
+      payload.description = cfg.description;
+      payload.emoji = cfg.emoji;
+      payload.defaultQuery = cfg.defaultQuery;
+      payload.defaultBody = cfg.defaultBody;
+    }
+    this.kennelService.update(this.kennelId, payload).subscribe({
+      next: (res) => {
+        this.layoutSaving.set(false);
+        if (!res.ok) {
+          this.error.set(res.error ?? 'Speichern fehlgeschlagen');
+          return;
+        }
+        this.layoutDirty.set(false);
+        this.loadWaves();
+      },
+      error: (err) => {
+        this.layoutSaving.set(false);
+        this.error.set(err.error?.error ?? err.message);
+      }
+    });
   }
 
   private buildQueryRecord(): Record<string, string> {
@@ -360,9 +709,35 @@ export class WavesViewerComponent implements OnInit {
   }
 
   /**
-   * B1: Kante Parent→Kind — transitiven Teilbaum ab dem Kind-Knoten aus `dogIds` entfernen, neu laden (ohne Dialog).
+   * Stage a branch-cut request — actual removal is gated through the confirm dialog.
    */
   onBranchCutRequested(ev: { fromId: string; toId: string }) {
+    this.pendingCut.set(ev);
+  }
+
+  cancelBranchCut(): void {
+    this.pendingCut.set(null);
+  }
+
+  /** Compute a short label for the confirm dialog: "<from> → <to>". */
+  cutLabel(): string | null {
+    const ev = this.pendingCut();
+    if (!ev) return null;
+    const dogs = this.flatDogList();
+    const from = dogs.find(d => d.id === ev.fromId);
+    const to = dogs.find(d => d.id === ev.toId);
+    const fromLabel = from?.displayName || from?.name || ev.fromId;
+    const toLabel = to?.displayName || to?.name || ev.toId;
+    return `${fromLabel} → ${toLabel}`;
+  }
+
+  /**
+   * Confirmed branch-cut — transitive sub-tree below the child node is removed.
+   */
+  confirmBranchCut() {
+    const ev = this.pendingCut();
+    this.pendingCut.set(null);
+    if (!ev) return;
     const config = this.kennelConfig();
     const waves = this.waves();
     if (!config || !waves?.length) return;

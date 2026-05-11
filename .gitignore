@@ -31,6 +31,6 @@ store/generated/
 .env.integration
 .env.*.local
 .cursor/debug.log
-.cursor/skills/datadogs-kennels/SKILL.md
 store/prisma-json-storage/json-storage.db
 .cursor/skills/datadogs-api-workflow/SKILL.md
+store/prisma-auth/auth.db

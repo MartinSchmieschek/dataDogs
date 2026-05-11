@@ -4,6 +4,8 @@ import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } f
 import { IStore } from '../store/IStore';
 import {
     IKennelConfig,
+    IKennelNodeAnnotation,
+    IKennelEdgeAnnotation,
     isRuntimeLogVerbose,
     kennelDisplayNameBlockedReason,
     kennelLineageIdBlockedReason,
@@ -20,6 +22,9 @@ export interface ICreateKennelInput extends ICreateInput {
     description?: string;
     emoji?: string;
     dogIds?: string[];
+    task?: string;
+    nodes?: IKennelNodeAnnotation[];
+    edges?: IKennelEdgeAnnotation[];
 }
 
 /**
@@ -33,6 +38,9 @@ export interface ISaveKennelInput extends IUpdateInput {
     dogIds?: string[];
     defaultQuery?: Record<string, string>;
     defaultBody?: any;
+    task?: string;
+    nodes?: IKennelNodeAnnotation[];
+    edges?: IKennelEdgeAnnotation[];
 }
 
 /**
@@ -71,6 +79,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 description: input.description || undefined,
                 emoji: input.emoji?.trim() || undefined,
                 dogIds: input.dogIds || [],
+                task: input.task || undefined,
+                nodes: input.nodes,
+                edges: input.edges,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -90,6 +101,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                task: config.task,
+                nodes: config.nodes ? JSON.stringify(config.nodes) : undefined,
+                edges: config.edges ? JSON.stringify(config.edges) : undefined,
                 createdAt: config.createdAt?.toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
@@ -144,6 +158,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: input.dogIds !== undefined ? input.dogIds : (existing.dogIds || []),
                 defaultQuery: input.defaultQuery !== undefined ? input.defaultQuery : (existing.defaultQuery || undefined),
                 defaultBody: input.defaultBody !== undefined ? input.defaultBody : (existing.defaultBody || undefined),
+                task: input.task !== undefined ? (input.task || undefined) : (existing.task || undefined),
+                nodes: input.nodes !== undefined ? input.nodes : (existing.nodes),
+                edges: input.edges !== undefined ? input.edges : (existing.edges),
                 createdAt: existing.createdAt || new Date(),
                 updatedAt: new Date()
             };
@@ -179,6 +196,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                task: config.task,
+                nodes: config.nodes ? JSON.stringify(config.nodes) : undefined,
+                edges: config.edges ? JSON.stringify(config.edges) : undefined,
                 createdAt: new Date().toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
@@ -203,7 +223,11 @@ export class KennelController extends AbstractController<IKennelConfig> {
      * Compare kennel configs — if content is identical, no new version shall be born.
      */
     private hasContentChanged(old: IKennelConfig, next: IKennelConfig): boolean {
-        const contentKeys: (keyof IKennelConfig)[] = ['name', 'description', 'emoji', 'dogIds', 'defaultQuery', 'defaultBody'];
+        const contentKeys: (keyof IKennelConfig)[] = [
+            'name', 'description', 'emoji', 'dogIds',
+            'defaultQuery', 'defaultBody',
+            'task', 'nodes', 'edges',
+        ];
         for (const key of contentKeys) {
             if (JSON.stringify(old[key]) !== JSON.stringify(next[key])) return true;
         }
@@ -230,6 +254,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const versionId = existing.id;
             const lineageId = (existing as any).lineageId || id;
 
+            const nextTask = patch.task !== undefined ? patch.task : existing.task;
+            const nextNodes = patch.nodes !== undefined ? patch.nodes : existing.nodes;
+            const nextEdges = patch.edges !== undefined ? patch.edges : existing.edges;
+
             await this.store.save({
                 id: versionId,
                 type: this.KENNEL_TYPE,
@@ -243,6 +271,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                     ? JSON.stringify(patch.defaultQuery !== undefined ? patch.defaultQuery : existing.defaultQuery) : undefined,
                 defaultBody: (patch.defaultBody !== undefined ? patch.defaultBody : existing.defaultBody)
                     ? JSON.stringify(patch.defaultBody !== undefined ? patch.defaultBody : existing.defaultBody) : undefined,
+                task: nextTask || undefined,
+                nodes: nextNodes ? JSON.stringify(nextNodes) : undefined,
+                edges: nextEdges ? JSON.stringify(nextEdges) : undefined,
                 createdAt: existing.createdAt?.toISOString(),
                 updatedAt: new Date().toISOString(),
             });
@@ -502,6 +533,42 @@ export class KennelController extends AbstractController<IKennelConfig> {
             dogIds = [];
         }
 
+        // Unshackle nodes (layout + comments) and edges (transition comments).
+        let nodes: IKennelNodeAnnotation[] | undefined = undefined;
+        if (data.nodes !== null && data.nodes !== undefined) {
+            if (typeof data.nodes === 'string') {
+                if (data.nodes.trim() !== '') {
+                    try {
+                        const parsed = JSON.parse(data.nodes);
+                        nodes = Array.isArray(parsed) ? parsed : undefined;
+                    } catch (e) {
+                        console.warn('[parseEntity] Fehler beim Parsen von nodes:', e);
+                    }
+                }
+            } else if (Array.isArray(data.nodes)) {
+                nodes = data.nodes;
+            }
+        }
+
+        let edges: IKennelEdgeAnnotation[] | undefined = undefined;
+        if (data.edges !== null && data.edges !== undefined) {
+            if (typeof data.edges === 'string') {
+                if (data.edges.trim() !== '') {
+                    try {
+                        const parsed = JSON.parse(data.edges);
+                        edges = Array.isArray(parsed) ? parsed : undefined;
+                    } catch (e) {
+                        console.warn('[parseEntity] Fehler beim Parsen von edges:', e);
+                    }
+                }
+            } else if (Array.isArray(data.edges)) {
+                edges = data.edges;
+            }
+        }
+
+        const task: string | undefined =
+            typeof data.task === 'string' && data.task.length > 0 ? data.task : undefined;
+
         const result: any = {
             id: data.id,
             name: data.name,
@@ -510,6 +577,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
             dogIds: dogIds,
             defaultQuery,
             defaultBody,
+            task,
+            nodes,
+            edges,
             createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined
         };

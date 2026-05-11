@@ -41,7 +41,7 @@ export class OsmVegetationRetriever extends OsmFeatureRetriever<OsmVegetationRes
     }
 
     get description(): string {
-        return "Finds nearby OSM vegetation / landcover (wood, forest, meadow, park, …) via Overpass — polygons can be large; prefer smaller radii.";
+        return "Finds nearby OSM vegetation / landcover (wood, forest, meadow, park, scrub, grassland, heath, wetland, orchard, vineyard) via Overpass. Each element's `tags` carries the full OSM record — `leaf_type` (broadleaved/needleleaved/mixed), `leaf_cycle` (deciduous/evergreen), `name` (Naturparks/Wälder), `protect_class`, `protection_title`, `operator`, `wikidata`. Polygons can be large; prefer smaller radii.";
     }
 
     get icon(): string | undefined {
