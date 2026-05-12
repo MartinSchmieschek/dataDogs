@@ -175,6 +175,8 @@ import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 
                   [hasError]="!!n.dog.error"
 
+                  [errorText]="n.dog.error ?? null"
+
                   [isSerialized]="!!n.dog.codeTs"
 
                   [isMimic]="n.dog.mimic"
@@ -187,9 +189,41 @@ import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 
                   (sectionEditRequested)="onDogSectionFan($event, n.dog)" />
 
+                @if (commentForNode(n.id); as cmt) {
+
+                  <div class="node-comment-badge" [title]="cmt">💬</div>
+
+                }
+
               </div>
 
             </div>
+
+          }
+
+          @for (slot of edgeCommentSlots(); track slot.key) {
+
+            <button
+
+              type="button"
+
+              class="edge-comment-btn"
+
+              [class.edge-comment-btn--has]="!!slot.comment"
+
+              [style.left.px]="slot.left"
+
+              [style.top.px]="slot.top"
+
+              [title]="slot.comment || 'Kommentar hinzufügen'"
+
+              (pointerdown)="$event.stopPropagation()"
+
+              (click)="onEdgeCommentClick($event, slot.fromId, slot.toId)">
+
+              <span aria-hidden="true">{{ slot.comment ? '💬' : '＋' }}</span>
+
+            </button>
 
           }
 
@@ -609,6 +643,104 @@ import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 
     }
 
+    .node-comment-badge {
+
+      position: absolute;
+
+      bottom: -2px;
+
+      right: -2px;
+
+      width: 16px;
+
+      height: 16px;
+
+      border-radius: 50%;
+
+      background: rgba(234, 88, 12, 0.92);
+
+      color: #fff;
+
+      border: 1px solid rgba(255, 200, 150, 0.55);
+
+      font-size: 9px;
+
+      line-height: 14px;
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: center;
+
+      box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.18);
+
+      pointer-events: none;
+
+      z-index: 5;
+
+    }
+
+    .edge-comment-btn {
+
+      position: absolute;
+
+      transform: translate(-50%, -50%);
+
+      z-index: 2;
+
+      width: 18px;
+
+      height: 18px;
+
+      border-radius: 50%;
+
+      border: 1px solid rgba(120, 140, 180, 0.6);
+
+      background: rgba(18, 22, 32, 0.85);
+
+      color: rgba(180, 200, 230, 0.85);
+
+      font-size: 11px;
+
+      line-height: 1;
+
+      padding: 0;
+
+      cursor: pointer;
+
+      opacity: 0.45;
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: center;
+
+    }
+
+    .edge-comment-btn:hover {
+
+      opacity: 1;
+
+      border-color: rgba(160, 190, 230, 0.85);
+
+      color: #fff;
+
+    }
+
+    .edge-comment-btn--has {
+
+      opacity: 1;
+
+      background: rgba(36, 50, 84, 0.96);
+
+      color: #f4d774;
+
+      border-color: rgba(244, 215, 116, 0.7);
+
+    }
+
   `]
 
 })
@@ -634,6 +766,24 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
   /** Kante Parent → Kind: gesamten Teilbaum ab Kind aus `dogIds` des Kennels streichen. */
   @Output() branchCutRequested = new EventEmitter<{ fromId: string; toId: string }>();
+
+  /**
+   * Initial-Layout vom Parent: Map<instanceId, {x, y}>.
+   * Wird in ngOnChanges in manualPositions übernommen.
+   */
+  @Input() initialNodePositions: Map<string, { x: number; y: number }> | null = null;
+
+  /** Node-Kommentare zur Anzeige als Badge — Map<instanceId, comment>. */
+  @Input() nodeComments: Map<string, string> | null = null;
+
+  /** Edge-Kommentare — Map<"fromInstanceId|toInstanceId", comment>. */
+  @Input() edgeComments: Map<string, string> | null = null;
+
+  /** Nach echtem Drag emittiert: aktuelle manualPositions als Snapshot. */
+  @Output() nodePositionsChanged = new EventEmitter<Map<string, { x: number; y: number }>>();
+
+  /** Klick auf Kanten-Kommentar-Icon → Parent öffnet Editor (oder Inline-Variante). */
+  @Output() edgeCommentRequested = new EventEmitter<{ fromId: string; toId: string }>();
 
   /** Erster Eintrag in kennel.dogIds — für Lead-Stern am Knoten */
   @Input() kennelLeadDogIdsSlot: string | null = null;
@@ -747,6 +897,36 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
 
 
+  commentForNode(id: string): string | null {
+    return this.nodeComments?.get(id) ?? null;
+  }
+
+  /**
+   * Comment-Button-Slot fer jede Kante — gesetzt oder leer.
+   * Positioniert am Bezier-Midpoint, leichter Offset damit Edge-Cut-Cluster nicht überlappt.
+   */
+  edgeCommentSlots = computed(() => {
+    const vm = this.viewModel();
+    if (!vm) return [] as Array<{ key: string; left: number; top: number; fromId: string; toId: string; comment: string }>;
+    return vm.renderEdges.map(e => {
+      const mid = cubicBezierMidpoint(e.rx1, e.ry1, e.rx2, e.ry2);
+      const comment = this.edgeComments?.get(`${e.fromId}|${e.toId}`) ?? '';
+      return {
+        key: e.key,
+        left: mid.x + 18,
+        top: mid.y + 18,
+        fromId: e.fromId,
+        toId: e.toId,
+        comment,
+      };
+    });
+  });
+
+  onEdgeCommentClick(event: MouseEvent, fromId: string, toId: string) {
+    event.stopPropagation();
+    this.edgeCommentRequested.emit({ fromId, toId });
+  }
+
   /**
    * Schere in Kantenmitte; „Liest von“ / „Wird gelesen“ nur für diese Kante (from → to), mit Pfeil Richtung Zielknoten.
    */
@@ -856,9 +1036,20 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
 
       const pruned = new Map<string, { x: number; y: number }>();
 
+      // Seed manualPositions from the parent's persisted layout when waves arrive.
+      if (this.initialNodePositions) {
+
+        for (const [id, pos] of this.initialNodePositions) {
+
+          if (baseIds.has(id)) pruned.set(id, pos);
+
+        }
+
+      }
+
       for (const [id, pos] of this.manualPositions()) {
 
-        if (baseIds.has(id)) pruned.set(id, pos);
+        if (baseIds.has(id) && !pruned.has(id)) pruned.set(id, pos);
 
       }
 
@@ -879,6 +1070,27 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
         this.zoom.set(1);
 
       }
+
+    } else if (changes['initialNodePositions'] && this.initialNodePositions) {
+
+      const baseIds = new Set((this.waves ?? []).flat().map(d => d.id));
+
+      const merged = new Map<string, { x: number; y: number }>();
+
+      for (const [id, pos] of this.initialNodePositions) {
+
+        if (baseIds.has(id)) merged.set(id, pos);
+
+      }
+
+      // Preserve in-flight drags that haven't yet been emitted.
+      for (const [id, pos] of this.manualPositions()) {
+
+        if (baseIds.has(id) && !merged.has(id)) merged.set(id, pos);
+
+      }
+
+      this.manualPositions.set(merged);
 
     }
 
@@ -1056,6 +1268,8 @@ export class VisNetworkComponent implements OnChanges, OnDestroy {
         for (const n of vm.worldNodes) m.set(n.id, { x: n.x, y: n.y });
 
         this.manualPositions.set(m);
+
+        this.nodePositionsChanged.emit(new Map(m));
 
       }
 

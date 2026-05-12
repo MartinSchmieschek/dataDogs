@@ -52,7 +52,11 @@ export class DogSidePanelComponent implements OnChanges {
   @Input() initialSection: DogPanelSectionId | null = null;
   /** The kennel's reference for this dog — lineageId means "latest", version-ID means "pinned". */
   @Input() kennelDogRef: string | null = null;
+  /** Bestehender Node-Kommentar im Kennel (kennel.nodes[].comment). */
+  @Input() kennelNodeComment: string | null = null;
   @Output() saved = new EventEmitter<void>();
+  /** Emits the trimmed comment together with the kennel-ref of this dog. */
+  @Output() kennelNodeCommentChanged = new EventEmitter<{ kennelRef: string; comment: string }>();
   @Output() deleted = new EventEmitter<string>();
   @Output() movedToFirst = new EventEmitter<string>();
   /** Emits { lineageId, versionId } — parent updates the kennel's dogIds entry accordingly. */
@@ -303,5 +307,14 @@ export class DogSidePanelComponent implements OnChanges {
 
   moveToFirst() {
     this.movedToFirst.emit(this.dog.id);
+  }
+
+  /**
+   * The user edited the per-node kennel comment. We emit the kennel-ref + trimmed comment;
+   * the parent (waves-viewer) merges it into kennelConfig.nodes and marks the layout dirty.
+   */
+  onKennelNodeCommentInput(value: string) {
+    if (!this.kennelDogRef) return;
+    this.kennelNodeCommentChanged.emit({ kennelRef: this.kennelDogRef, comment: value });
   }
 }

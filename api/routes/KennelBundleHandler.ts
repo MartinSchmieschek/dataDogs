@@ -113,6 +113,9 @@ export class KennelBundleHandler {
                     dogIds: config.dogIds,
                     defaultQuery: config.defaultQuery,
                     defaultBody: config.defaultBody,
+                    task: config.task,
+                    nodes: config.nodes,
+                    edges: config.edges,
                 },
                 dogs,
             };
@@ -243,12 +246,25 @@ export class KennelBundleHandler {
             const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
             const importerId = req.ctx?.user?.id ?? null;
             const importedVisibility = bundle.kennel.visibility === 'public' ? 'public' : 'private';
+            const remappedNodes = Array.isArray(bundle.kennel.nodes)
+                ? bundle.kennel.nodes.map((n: any) => ({ ...n, id: remap(n.id) }))
+                : undefined;
+            const remappedEdges = Array.isArray(bundle.kennel.edges)
+                ? bundle.kennel.edges.map((e: any) => ({
+                    ...e,
+                    fromId: remap(e.fromId),
+                    toId: remap(e.toId),
+                }))
+                : undefined;
             const createResult = await this.kennelsController.create({
                 id: kennelId,
                 name: kennelName,
                 description: bundle.kennel.description,
                 emoji: bundle.kennel.emoji,
                 dogIds: remappedDogIds,
+                task: bundle.kennel.task,
+                nodes: remappedNodes,
+                edges: remappedEdges,
                 visibility: importedVisibility,
                 ownerId: req.ctx?.isSuperUser ? null : importerId,
             } as any);
