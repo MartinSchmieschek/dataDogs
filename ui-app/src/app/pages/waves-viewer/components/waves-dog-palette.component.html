@@ -1,0 +1,121 @@
+@if (open() && mode() === 'overlay') {
+  <div class="backdrop" (click)="closeRequested.emit()"></div>
+}
+
+<aside class="palette"
+       [class.is-overlay]="mode() === 'overlay'"
+       [class.is-docked]="mode() === 'docked'"
+       [class.is-open]="open()"
+       [attr.aria-hidden]="!open()">
+  <header class="head">
+    <h2 class="head-title">Dogs hinzufügen</h2>
+    @if (mode() === 'overlay') {
+      <button type="button" class="close" (click)="closeRequested.emit()" aria-label="Schließen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    }
+  </header>
+
+  <div class="peek">
+    <label class="search">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input type="search"
+             [value]="searchQuery()"
+             (input)="searchQuery.set($any($event.target).value)"
+             placeholder="Suchen…"
+             aria-label="Dogs durchsuchen">
+      @if (searchQuery()) {
+        <button type="button" class="search-clear" (click)="searchQuery.set('')" aria-label="Leeren">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      }
+    </label>
+
+    <div class="filters" role="tablist" aria-label="Filter">
+      <button type="button"
+              class="chip"
+              role="tab"
+              [class.is-active]="filter() === 'all'"
+              [attr.aria-selected]="filter() === 'all' ? 'true' : 'false'"
+              (click)="setFilter('all')">
+        Alle <span class="chip-count">{{ counts().all }}</span>
+      </button>
+      <button type="button"
+              class="chip"
+              role="tab"
+              [class.is-active]="filter() === 'base'"
+              [attr.aria-selected]="filter() === 'base' ? 'true' : 'false'"
+              (click)="setFilter('base')">
+        Base <span class="chip-count">{{ counts().base }}</span>
+      </button>
+      <button type="button"
+              class="chip"
+              role="tab"
+              [class.is-active]="filter() === 'serialized'"
+              [attr.aria-selected]="filter() === 'serialized' ? 'true' : 'false'"
+              (click)="setFilter('serialized')">
+        Serialized <span class="chip-count">{{ counts().serialized }}</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="grid">
+      <button type="button" class="card card--new" (click)="newDogRequested.emit()">
+        <span class="card-new-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </span>
+        <span class="card-new-label">Neuer Dog</span>
+      </button>
+
+      @for (dog of filteredDogs(); track dog.id) {
+        <div class="card"
+             [class.card--base]="isBaseDog(dog)"
+             [class.card--serialized]="!isBaseDog(dog)"
+             draggable="true"
+             (click)="onAdd(dog)"
+             (dragstart)="onDragStart($event, dog)"
+             tabindex="0"
+             (keydown.enter)="onAdd(dog)"
+             (keydown.space)="$event.preventDefault(); onAdd(dog)">
+          <div class="card-head">
+            <span class="card-icon" aria-hidden="true">{{ iconFor(dog) || '🐕' }}</span>
+            <span class="card-cat">{{ categoryFor(dog) }}</span>
+          </div>
+          <div class="card-name" [title]="labelFor(dog)">{{ labelFor(dog) }}</div>
+          @if (descriptionFor(dog); as desc) {
+            <div class="card-desc" [title]="desc">{{ desc }}</div>
+          }
+          <div class="card-action" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>Hinzufügen</span>
+          </div>
+        </div>
+      } @empty {
+        <div class="empty">
+          @if (searchQuery().trim()) {
+            <p>Keine Treffer für „{{ searchQuery() }}"</p>
+            <button type="button" class="empty-action" (click)="searchQuery.set('')">Suche leeren</button>
+          } @else {
+            <p>Keine Dogs verfügbar.</p>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</aside>

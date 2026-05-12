@@ -103,6 +103,20 @@
     </div>
   </div>
 
+  @if (kennelDogRef) {
+    <div class="kennel-node-comment">
+      <label class="kennel-node-comment__label">💬 Kommentar im Kennel</label>
+      <textarea
+        class="kennel-node-comment__input"
+        rows="2"
+        spellcheck="false"
+        placeholder="Notiz zu diesem Knoten im Kennel"
+        [value]="kennelNodeComment ?? ''"
+        (input)="onKennelNodeCommentInput($any($event.target).value)"></textarea>
+      <div class="kennel-node-comment__hint">Wird beim 💾 Layout speichern persistiert.</div>
+    </div>
+  }
+
   <div class="save-bar-sticky">
     @if (isSerialized) {
       <button class="btn-save" (click)="saveCode()" [disabled]="saving()">

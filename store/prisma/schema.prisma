@@ -25,6 +25,9 @@ model Dog {
   defaultQuery         String?  // JSON-String
   defaultBody          String?  // JSON-String
   emoji                String?  // Kennel-Icon (ein Emoji), optional
+  task                 String?  // Kennel-Aufgaben-/Briefing-Text (markdown-fähig)
+  nodes                String?  // JSON-String: [{ id, x?, y?, comment? }]
+  edges                String?  // JSON-String: [{ fromId, toId, comment? }]
   visibility           String?  // Kennel-Visibility: "public" | "private". Null bei Nicht-Kennel-Dogs.
   ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
   editors              String?  // Comma-separated User.id list — additional users with edit rights.

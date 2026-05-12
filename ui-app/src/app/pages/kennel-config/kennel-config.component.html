@@ -32,6 +32,13 @@
       </div>
 
       <div class="form-group">
+        <label>Aufgabe / Briefing:</label>
+        <textarea [(ngModel)]="task" rows="5"
+          placeholder="Was soll dieser Kennel tun? (markdown-fähig)"></textarea>
+        <p class="hint">Längere Mission-Beschreibung — wird auch im Wave-Viewer angezeigt.</p>
+      </div>
+
+      <div class="form-group">
         <label>Emoji (optional):</label>
         <app-kennel-emoji-picker [(emoji)]="emoji" />
         <p class="hint">Wird in der Kennel-Liste groß neben dem Namen angezeigt.</p>

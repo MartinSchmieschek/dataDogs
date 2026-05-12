@@ -22,6 +22,9 @@ model Dog {
   defaultQuery         String?
   defaultBody          String?
   emoji                String?
+  task                 String?
+  nodes                String?
+  edges                String?
   visibility           String?  // "public" | "private". Null bei Nicht-Kennel-Dogs.
   ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
   editors              String?  // Comma-separated User.id list — additional editors.

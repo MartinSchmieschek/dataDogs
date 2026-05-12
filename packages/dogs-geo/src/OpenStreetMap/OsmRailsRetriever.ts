@@ -45,7 +45,7 @@ export class OsmRailsRetriever extends OsmFeatureRetriever<OsmRailsResult, typeo
     }
 
     get description(): string {
-        return "Hunts railway lines within lat/lng/radius. Defaults to passenger transit (rail, tram, subway, light_rail). Switch via `railway: ['monorail','funicular','disused',…]`. `simplify(m)` thins vertices. Tile-cached per railway value.";
+        return "Hunts railway lines within lat/lng/radius. Defaults to passenger transit (rail, tram, subway, light_rail). Pass `railway: [...]` from `OsmRailwayValue` (monorail, funicular, disused, abandoned, construction, …) or any **custom OSM value** matching `[a-z0-9_:]+`. `simplify(m)` thins vertices. Each feature's `properties` carries all OSM tags — `electrified`, `voltage`, `frequency`, `gauge`, `maxspeed`, `usage` (main/branch/industrial), `service` (yard/siding/spur), `operator`, `operator:wikidata`, `ref` (line number), `name`, `tunnel`, `bridge`, `layer`. Tile-cached per railway value.";
     }
 
     get icon(): string | undefined {
