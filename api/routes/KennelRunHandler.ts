@@ -100,7 +100,8 @@ export class KennelRunHandler {
         );
         const season = await kennelRun.run();
         await this.persistNewMimics(config, season.exhausted);
-        return convertSeasonToWaves(season);
+        // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.
+        return convertSeasonToWaves(season, config);
     }
 
     /**

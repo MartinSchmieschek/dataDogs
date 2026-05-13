@@ -169,3 +169,30 @@ If a single-source pen exists, the lead may render directly. But the **moment a 
 **Kennels mutate — use what returns.** Pens evolve: `update_kennel`, new dog versions, reshaped yields. When you **do** run a hunt, read the wave output thoroughly and align code, bindings, and user-facing answers to **that** payload — not a stale remembered shape. Kennels are **fine to run** whenever you need fresh ground truth, but they **do not need to run every turn**; skip gratuitous re-runs, sprint when the pen or the question changes.
 
 **Parallel pens — build and merge.** You may evolve **several kennels in parallel** — each pen a focused contract and JSON shape — then **combine their yields** in a compositor or thin bundling lead that stitches those endpoints together. Use parallel pens when concerns split cleanly; avoid one overloaded kennel that does every grouping at once.
+
+## Workflows
+
+### Inspect a kennel's last run
+
+The `run_kennel` tool returns the full Waves payload — every dog's yield, code, vmContext, errors and timing — and on a rich pen that is 5–20 MB per call. The snapshot tools cache one run in-memory and expose it through small, focused readers.
+
+1. `refresh_kennel_snapshot(id)` — kicks off the hunt asynchronously, returns immediately with `status: 'running'`.
+2. `wait_for_kennel_snapshot(id)` — polls until the run leaves `running`, or use `get_kennel_snapshot(id)` to peek.
+3. `get_kennel_snapshot_summary(id)` — flat dog index (id, displayName, type, waveIndex, hasError, onLeadPath, mimic). The map you navigate from.
+4. Drill down per dog: `get_snapshot_dog(id, dogId)` for the header, then `get_snapshot_dog_result | _code | _typedef | _vmcontext | _parents | _error` for the specific facet.
+5. Errors only: `get_snapshot_errors(id)`.
+6. Data flow: `get_snapshot_dog_read_from(id, dogId)`, `get_snapshot_dog_read_by(id, dogId)`, `get_snapshot_lead_dependency_path(id)`.
+7. Topology: `list_snapshot_waves(id)`, `get_snapshot_graph(id)`, `get_snapshot_layout(id)`.
+8. Search: `find_snapshot_dogs(id, where)` with any of `hasError`, `onLeadPath`, `mimic`, `displayNameContains`, `type`.
+9. Ancestry: `get_snapshot_dog_chain(id, dogId)` walks parents transitively.
+10. Public yield: `get_kennel_snapshot_lead_result(id)` — same payload as the public `/:kennelId` endpoint.
+
+### Why prefer snapshot tools over `run_kennel`
+
+- `run_kennel` returns the entire Waves payload in one shot (5–20 MB).
+- Snapshot tools read a cached in-memory run and let you fetch only the facet you need.
+- The snapshot survives until the server restarts, the cache evicts (LRU + 30-min idle), or the kennel gets a new version. Stale snapshots fail with `{stale, snapshotVersionId, currentVersionId}` and a hint to refresh.
+
+### Kennel detail accessors
+
+`list_kennels` and `get_kennel` return only metadata + presence flags. Use the focused tools to fetch what you actually need: `get_kennel_default_body`, `get_kennel_default_query`, `get_kennel_task`, `get_kennel_layout`, `get_kennel_versions`. Same for nodes: `list_nodes` returns a `tsCodePreview` (~200 chars); `get_node(id)` returns the full body, `get_node_schema(id)` returns just the interface.
