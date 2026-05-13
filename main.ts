@@ -219,6 +219,7 @@ import { createAuthContextMiddleware } from './mcp/auth/middleware';
 import { createDiscoveryRouter } from './mcp/auth/discovery';
 import { createMcpRouter } from './mcp/transports/mcp';
 import { createActionsRouter } from './mcp/transports/openapi';
+import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
@@ -581,6 +582,9 @@ async function start() {
         type: 'BaseDog' as const,
         icon: dog.icon,
     }));
+    // Single snapshot cache shared between MCP and the OpenAPI Actions transport —
+    // a kennel refreshed via one is visible to the other.
+    const snapshotCache = new KennelSnapshotCache();
     const toolDeps = {
         kennelsController,
         nodesController,
@@ -590,6 +594,7 @@ async function start() {
         prisma: authPrisma,
         baseDogsList,
         projectRoot: __dirname,
+        snapshotCache,
     };
     app.use('/mcp', createMcpRouter(toolDeps));
     app.use('/actions', createActionsRouter(toolDeps));

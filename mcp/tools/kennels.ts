@@ -1,27 +1,63 @@
-// Kennel tools — list, get, create, update, delete, run, execute.
+// Kennel tools — list, get, create, update, delete, run, execute, plus
+// granular kennel-detail accessors (defaultBody, defaultQuery, task, layout, versions).
 // Each respects the visibility/ownership rules; super-user (dev mode) bypasses.
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
-import { type ToolDef, type ToolDeps, ok, fail } from './types';
+import { type ToolDef, ok, fail } from './types';
+
+/** Minimal projection for list_kennels — no payloads, no layout. */
+function leanKennel(k: any) {
+    return {
+        id: k.id,
+        lineageId: k.lineageId,
+        name: k.name,
+        emoji: k.emoji,
+        dogCount: Array.isArray(k.dogIds) ? k.dogIds.length : 0,
+        visibility: k.visibility ?? 'public',
+        updatedAt: k.updatedAt,
+    };
+}
+
+/** Header projection for get_kennel — payload presence flagged, not dumped. */
+function kennelHeader(k: any) {
+    return {
+        id: k.id,
+        lineageId: k.lineageId,
+        parentId: k.parentId ?? null,
+        name: k.name,
+        description: k.description,
+        emoji: k.emoji,
+        dogIds: Array.isArray(k.dogIds) ? k.dogIds : [],
+        visibility: k.visibility ?? 'public',
+        ownerId: k.ownerId ?? null,
+        hasDefaultBody: k.defaultBody !== undefined && k.defaultBody !== null,
+        hasDefaultQuery: !!(k.defaultQuery && Object.keys(k.defaultQuery).length > 0),
+        hasTask: typeof k.task === 'string' && k.task.length > 0,
+        hasNodes: Array.isArray(k.nodes) && k.nodes.length > 0,
+        hasEdges: Array.isArray(k.edges) && k.edges.length > 0,
+        createdAt: k.createdAt,
+        updatedAt: k.updatedAt,
+    };
+}
 
 export function getKennelTools(): ToolDef[] {
     return [
         {
             name: 'list_kennels',
             description:
-                'Lists all kennels visible to the current user (public + own private). Returns id, name, description, dogIds, defaultQuery, visibility and ownerId for each.',
+                'Lists kennels visible to the current user. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt). Use get_kennel for the header, and the get_kennel_* tools for payload fields.',
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
             handler: async (_args, ctx, deps) => {
                 const result = await deps.kennelsController.listLatest();
                 if (!result.ok) return fail(result.error ?? 'list failed');
                 const visible = filterReadable(result.data ?? [], ctx);
-                return ok(visible);
+                return ok(visible.map(leanKennel));
             },
         },
         {
             name: 'get_kennel',
             description:
-                'Loads a single kennel by lineageId or version-id. Returns 404-equivalent (error) if the kennel is private and the caller is not the owner.',
+                'Returns the header of one kennel — identity, dogIds, visibility, owner, and presence flags for the heavy fields (defaultBody/defaultQuery/task/nodes/edges). Use get_kennel_default_body / _default_query / _task / _layout to fetch those.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -34,7 +70,101 @@ export function getKennelTools(): ToolDef[] {
                 const result = await deps.kennelsController.getById(String(args.id));
                 if (!result.ok || !result.data) return fail(result.error ?? 'not found');
                 if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
-                return ok(result.data);
+                return ok(kennelHeader(result.data));
+            },
+        },
+        {
+            name: 'get_kennel_default_body',
+            description: 'Returns the kennel\'s defaultBody JSON.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: { id: { type: 'string' } },
+            },
+            handler: async (args, ctx, deps) => {
+                const result = await deps.kennelsController.getById(String(args.id));
+                if (!result.ok || !result.data) return fail(`Kennel ${args.id} not found`);
+                if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                return ok({ defaultBody: (result.data as any).defaultBody ?? null });
+            },
+        },
+        {
+            name: 'get_kennel_default_query',
+            description: 'Returns the kennel\'s defaultQuery map.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: { id: { type: 'string' } },
+            },
+            handler: async (args, ctx, deps) => {
+                const result = await deps.kennelsController.getById(String(args.id));
+                if (!result.ok || !result.data) return fail(`Kennel ${args.id} not found`);
+                if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                return ok({ defaultQuery: (result.data as any).defaultQuery ?? {} });
+            },
+        },
+        {
+            name: 'get_kennel_task',
+            description: 'Returns the kennel\'s task markdown (mission briefing). null if unset.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: { id: { type: 'string' } },
+            },
+            handler: async (args, ctx, deps) => {
+                const result = await deps.kennelsController.getById(String(args.id));
+                if (!result.ok || !result.data) return fail(`Kennel ${args.id} not found`);
+                if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                return ok({ task: (result.data as any).task ?? null });
+            },
+        },
+        {
+            name: 'get_kennel_layout',
+            description:
+                'Returns layout annotations (nodes positions + edges comments) for the kennel\'s wave-view canvas.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: { id: { type: 'string' } },
+            },
+            handler: async (args, ctx, deps) => {
+                const result = await deps.kennelsController.getById(String(args.id));
+                if (!result.ok || !result.data) return fail(`Kennel ${args.id} not found`);
+                if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                return ok({
+                    nodes: (result.data as any).nodes ?? [],
+                    edges: (result.data as any).edges ?? [],
+                });
+            },
+        },
+        {
+            name: 'get_kennel_versions',
+            description:
+                'Lists every version of a kennel\'s lineage. Returns slim version refs (id, parentId, createdAt, displayName) — fetch a specific version\'s details via get_kennel(versionId).',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: { id: { type: 'string' } },
+            },
+            handler: async (args, ctx, deps) => {
+                const id = String(args.id);
+                const head = await deps.kennelsController.getById(id);
+                if (!head.ok || !head.data) return fail(`Kennel ${id} not found`);
+                if (!canRead(head.data as any, ctx)) return fail(`Kennel ${id} not found`);
+                const versions = await deps.kennelsController.getVersions(id);
+                return ok(
+                    versions.map((v) => ({
+                        id: v.id,
+                        parentId: v.parentId ?? null,
+                        createdAt: v.createdAt ?? null,
+                        displayName: (v.config as any)?.name ?? null,
+                    })),
+                );
             },
         },
         {
@@ -122,7 +252,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'run_kennel',
             description:
-                'Runs a kennel and returns the full Waves diagnostic — every dog\'s yield, errors and timing. Use this to debug or to inspect intermediate spoils. For only the lead\'s output, use execute_kennel instead.',
+                'Runs a kennel and returns the full Waves payload — every dog\'s yield, code, vmContext, errors and timing. WARNING: this can be megabytes per call (5–20 MB on rich kennels). Prefer refresh_kennel_snapshot + the get_snapshot_* / get_kennel_snapshot_* tools for granular access. Use run_kennel only when you truly need every dog\'s details in one shot.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],

@@ -13,6 +13,7 @@ import { getKennelTools } from '../tools/kennels';
 import { getNodeTools } from '../tools/nodes';
 import { getMetaTools } from '../tools/meta';
 import { getAclTools } from '../tools/acl';
+import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
 
 function baseUrl(req: Request): string {
@@ -55,7 +56,13 @@ async function loadSkill(projectRoot: string): Promise<string> {
 
 export function createActionsRouter(deps: ToolDeps): Router {
     const router = Router();
-    const tools: ToolDef[] = [...getKennelTools(), ...getNodeTools(), ...getAclTools(), ...getMetaTools()];
+    const tools: ToolDef[] = [
+        ...getKennelTools(),
+        ...getNodeTools(),
+        ...getSnapshotTools(),
+        ...getAclTools(),
+        ...getMetaTools(),
+    ];
     const toolMap = new Map(tools.map((t) => [t.name, t]));
 
     // === GET /actions/openapi.json ===

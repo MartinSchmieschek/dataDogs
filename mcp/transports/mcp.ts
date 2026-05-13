@@ -18,6 +18,7 @@ import { getKennelTools } from '../tools/kennels';
 import { getNodeTools } from '../tools/nodes';
 import { getMetaTools } from '../tools/meta';
 import { getAclTools } from '../tools/acl';
+import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
 import type { AuthCtx } from '../auth/middleware';
 
@@ -78,9 +79,20 @@ function buildServer(tools: ToolDef[], ctx: AuthCtx, deps: ToolDeps, instruction
     return server;
 }
 
+/**
+ * createMcpRouter is invoked once at startup. The snapshotCache comes from
+ * the caller (main.ts) so MCP and the OpenAPI Actions transport observe the
+ * same void memory.
+ */
 export function createMcpRouter(deps: ToolDeps): Router {
     const router = Router();
-    const tools: ToolDef[] = [...getKennelTools(), ...getNodeTools(), ...getAclTools(), ...getMetaTools()];
+    const tools: ToolDef[] = [
+        ...getKennelTools(),
+        ...getNodeTools(),
+        ...getSnapshotTools(),
+        ...getAclTools(),
+        ...getMetaTools(),
+    ];
 
     router.post('/', async (req: Request, res: Response) => {
         const ctx = req.ctx;

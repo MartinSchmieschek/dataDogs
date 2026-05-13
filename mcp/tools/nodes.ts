@@ -13,14 +13,116 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'list_nodes',
             description:
-                'Lists nodes visible to the current user — Hunters (BaseDogs) are always shown, Breeds (SerializedDogs) are filtered by visibility (public + own private). Each entry has id, lineageId, displayName, type, visibility, ownerId and (for Breeds) tsCode.',
+                'Lists nodes visible to the current user — Hunters (BaseDogs) always shown, Breeds (SerializedDogs) filtered by visibility. Returns a lean projection (id, lineageId, displayName, name, icon, type, visibility, ownerId, tsCodePreview, parentsRequired, parentsOptional, updatedAt). The tsCodePreview is the first ~200 chars of the body — use get_node for the full tsCode.',
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
             handler: async (_args, ctx, deps) => {
                 const result = await deps.nodesController.listLatest();
                 if (!result.ok) return fail(result.error ?? 'list failed');
                 const visibleSerialized = filterReadable(result.data ?? [], ctx);
-                // Hunters are project-wide infrastructure: always visible, no ownership.
-                return ok([...deps.baseDogsList, ...visibleSerialized]);
+                const lean = [
+                    ...deps.baseDogsList.map((b) => ({
+                        id: b.id,
+                        lineageId: undefined,
+                        displayName: b.name,
+                        name: b.name,
+                        icon: b.icon,
+                        type: 'BaseDog' as const,
+                        visibility: 'public',
+                        ownerId: null,
+                        tsCodePreview: null,
+                        parentsRequired: [],
+                        parentsOptional: [],
+                        updatedAt: null,
+                    })),
+                    ...visibleSerialized.map((s: any) => {
+                        const code = typeof s.theRun === 'string' ? s.theRun : '';
+                        const preview =
+                            code.length > 200 ? code.substring(0, 200) + '…' : code;
+                        return {
+                            id: s.id,
+                            lineageId: s.lineageId,
+                            displayName: s.displayName,
+                            name: s.displayName,
+                            icon: s.icon,
+                            type: 'SerializedDog' as const,
+                            visibility: s.visibility ?? 'public',
+                            ownerId: s.ownerId ?? null,
+                            tsCodePreview: preview,
+                            parentsRequired: s.parentsRequired ?? [],
+                            parentsOptional: s.parentsOptional ?? [],
+                            updatedAt: s.updatedAt ?? null,
+                        };
+                    }),
+                ];
+                return ok(lean);
+            },
+        },
+        {
+            name: 'get_node',
+            description:
+                'Returns the full detail of a node — including tsCode and the complete SerializedDogConfig (or BaseDog metadata).',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: {
+                    id: { type: 'string', description: 'lineageId or version GUID, or a BaseDog name' },
+                },
+            },
+            handler: async (args, ctx, deps) => {
+                const id = String(args.id);
+                // BaseDog first — match against the in-memory list.
+                const base = deps.baseDogsList.find(
+                    (b) => b.id === id || b.name === id || `base:${b.name}` === id,
+                );
+                if (base) return ok(base);
+                const result = await deps.nodesController.getById(id);
+                if (!result.ok || !result.data) return fail(`Node ${id} not found`);
+                if (!canRead(result.data as any, ctx)) return fail(`Node ${id} not found`);
+                return ok(result.data);
+            },
+        },
+        {
+            name: 'get_node_schema',
+            description:
+                'Returns just the interface of a node — id, lineageId, displayName, name, icon, type, parents. No tsCode, no extra config. Use when you only need to bind to a node\'s shape.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: { id: { type: 'string' } },
+            },
+            handler: async (args, ctx, deps) => {
+                const id = String(args.id);
+                const base = deps.baseDogsList.find(
+                    (b) => b.id === id || b.name === id || `base:${b.name}` === id,
+                );
+                if (base) {
+                    return ok({
+                        id: base.id,
+                        lineageId: undefined,
+                        displayName: base.name,
+                        name: base.name,
+                        icon: base.icon,
+                        type: 'BaseDog',
+                        parentsRequired: [],
+                        parentsOptional: [],
+                    });
+                }
+                const result = await deps.nodesController.getById(id);
+                if (!result.ok || !result.data) return fail(`Node ${id} not found`);
+                if (!canRead(result.data as any, ctx)) return fail(`Node ${id} not found`);
+                const s = result.data as any;
+                return ok({
+                    id: s.id,
+                    lineageId: s.lineageId,
+                    displayName: s.displayName,
+                    name: s.displayName,
+                    icon: s.icon,
+                    type: 'SerializedDog',
+                    parentsRequired: s.parentsRequired ?? [],
+                    parentsOptional: s.parentsOptional ?? [],
+                });
             },
         },
         {
