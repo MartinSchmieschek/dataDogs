@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-gaming",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Gaming: PokeApi, DeckOfCards, Scryfall (Magic the Gathering)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

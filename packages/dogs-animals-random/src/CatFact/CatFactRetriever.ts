@@ -23,11 +23,12 @@ export class CatFactRetriever extends Dog<CatFactResult> implements ICacheable {
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [CatFactQueryPact];
+        return [];
     }
 
+    // Welle 10: maxLength ist optional -- ohne Mimic kommt einfach der naechste Random-Fact.
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
+        return [CatFactQueryPact];
     }
 
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<CatFactResult> => {

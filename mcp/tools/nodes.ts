@@ -6,33 +6,61 @@
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
-import { type ToolDef, ok, fail } from './types';
+import { type ToolDef, ok, fail, resolveTsCode } from './types';
 
 export function getNodeTools(): ToolDef[] {
     return [
         {
             name: 'list_nodes',
             description:
-                'Lists nodes visible to the current user — Hunters (BaseDogs) always shown, Breeds (SerializedDogs) filtered by visibility. Returns a lean projection (id, lineageId, displayName, name, icon, type, visibility, ownerId, tsCodePreview, parentsRequired, parentsOptional, updatedAt). The tsCodePreview is the first ~200 chars of the body — use get_node for the full tsCode.',
-            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-            handler: async (_args, ctx, deps) => {
+                'Lists nodes visible to the current user. Returns a paged window with metadata only (no tsCode). Hunters (BaseDogs) and Breeds (SerializedDogs/MimicDogs) share the same listing. Default limit=50, cap=200. Filter via type, search by name/displayName substring (case-insensitive).',
+            inputSchema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    limit: { type: 'number', description: 'max results (default 50, hard cap 200)' },
+                    offset: { type: 'number', description: 'skip first N (default 0)' },
+                    type: {
+                        type: 'string',
+                        enum: ['BaseDog', 'SerializedDog', 'MimicDog'],
+                        description: 'filter by node type',
+                    },
+                    search: {
+                        type: 'string',
+                        description: 'case-insensitive substring match on name and displayName',
+                    },
+                },
+            },
+            handler: async (args, ctx, deps) => {
                 const result = await deps.nodesController.listLatest();
                 if (!result.ok) return fail(result.error ?? 'list failed');
                 const visibleSerialized = filterReadable(result.data ?? [], ctx);
-                const lean = [
+
+                // MimicDog-Heuristik: ein SerializedDog gilt als MimicDog, wenn
+                // sein displayName mit "auto-mimic-" beginnt oder sein
+                // serializedDogConfig ein `imitates`-Feld traegt. Beides sind
+                // die Marker, die der Server beim Auto-Spawn setzt.
+                const classifyType = (s: any): 'SerializedDog' | 'MimicDog' => {
+                    if (typeof s?.type === 'string' && s.type === 'MimicDog') return 'MimicDog';
+                    if (typeof s?.displayName === 'string' && s.displayName.startsWith('auto-mimic-')) return 'MimicDog';
+                    if (s?.imitates || s?.serializedDogConfig?.imitates) return 'MimicDog';
+                    return 'SerializedDog';
+                };
+
+                const all = [
                     ...deps.baseDogsList.map((b) => ({
                         id: b.id,
-                        lineageId: undefined,
+                        lineageId: undefined as string | undefined,
                         displayName: b.name,
                         name: b.name,
                         icon: b.icon,
                         type: 'BaseDog' as const,
                         visibility: 'public',
-                        ownerId: null,
-                        tsCodePreview: null,
-                        parentsRequired: [],
-                        parentsOptional: [],
-                        updatedAt: null,
+                        ownerId: null as string | null,
+                        tsCodePreview: null as string | null,
+                        parentsRequired: [] as string[],
+                        parentsOptional: [] as string[],
+                        updatedAt: null as string | null,
                     })),
                     ...visibleSerialized.map((s: any) => {
                         const code = typeof s.theRun === 'string' ? s.theRun : '';
@@ -44,7 +72,7 @@ export function getNodeTools(): ToolDef[] {
                             displayName: s.displayName,
                             name: s.displayName,
                             icon: s.icon,
-                            type: 'SerializedDog' as const,
+                            type: classifyType(s),
                             visibility: s.visibility ?? 'public',
                             ownerId: s.ownerId ?? null,
                             tsCodePreview: preview,
@@ -54,7 +82,35 @@ export function getNodeTools(): ToolDef[] {
                         };
                     }),
                 ];
-                return ok(lean);
+
+                const typeFilter = typeof args.type === 'string' ? args.type : undefined;
+                const searchRaw = typeof args.search === 'string' ? args.search : undefined;
+                const s = searchRaw ? searchRaw.toLowerCase() : undefined;
+
+                const filtered = all.filter((n) => {
+                    if (typeFilter && n.type !== typeFilter) return false;
+                    if (s) {
+                        const name = (n.name ?? '').toLowerCase();
+                        const display = (n.displayName ?? '').toLowerCase();
+                        if (!name.includes(s) && !display.includes(s)) return false;
+                    }
+                    return true;
+                });
+
+                const total = filtered.length;
+                const rawLimit = typeof args.limit === 'number' ? args.limit : 50;
+                const limit = Math.max(0, Math.min(200, Math.floor(rawLimit)));
+                const rawOffset = typeof args.offset === 'number' ? args.offset : 0;
+                const offset = Math.max(0, Math.floor(rawOffset));
+                const paged = filtered.slice(offset, offset + limit);
+
+                return ok({
+                    nodes: paged,
+                    total,
+                    offset,
+                    limit,
+                    hasMore: offset + paged.length < total,
+                });
             },
         },
         {
@@ -128,14 +184,15 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'create_node',
             description:
-                'Creates a new Breed (SerializedDog). Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to share. Parents are referenced as either "ClassName" for Hunters or a lineageId GUID for Breeds.',
+                'Creates a new Breed (SerializedDog). Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to share. Parents are referenced as either "ClassName" for Hunters or a lineageId GUID for Breeds. Use refresh_kennel_snapshot afterwards to see the run state. Provide EITHER tsCode (raw string) OR tsCodeBase64 (utf8 base64) — the base64 form avoids JSON-escape hell for code with backticks, newlines, template literals or PowerShell-hostile quoting.',
             inputSchema: {
                 type: 'object',
                 required: ['displayName'],
                 additionalProperties: false,
                 properties: {
                     displayName: { type: 'string' },
-                    tsCode: { type: 'string', description: 'TypeScript body (return yields the spoils)' },
+                    tsCode: { type: 'string', description: 'TypeScript body (return yields the spoils). Mutually exclusive with tsCodeBase64.' },
+                    tsCodeBase64: { type: 'string', description: 'utf8-encoded base64 of the TypeScript body — use this to avoid JSON-escape hell. Mutually exclusive with tsCode.' },
                     parentsRequired: { type: 'array', items: { type: 'string' } },
                     parentsOptional: { type: 'array', items: { type: 'string' } },
                     icon: { type: 'string', description: 'one emoji' },
@@ -144,9 +201,20 @@ export function getNodeTools(): ToolDef[] {
             },
             handler: async (args, ctx, deps) => {
                 if (!canMutate(null, ctx)) return fail('Login required to create nodes');
+                // Resolve tsCode/tsCodeBase64. Default to 'return {}' if neither given (back-compat).
+                let theRun: string;
+                if (typeof args.tsCode === 'string' || typeof args.tsCodeBase64 === 'string') {
+                    try {
+                        theRun = resolveTsCode(args as any);
+                    } catch (err: any) {
+                        return fail(err?.message ?? String(err));
+                    }
+                } else {
+                    theRun = 'return {}';
+                }
                 const baseInput = {
                     displayName: String(args.displayName),
-                    theRun: String(args.tsCode ?? 'return {}'),
+                    theRun,
                     parentsRequired: Array.isArray(args.parentsRequired) ? args.parentsRequired : [],
                     parentsOptional: Array.isArray(args.parentsOptional) ? args.parentsOptional : [],
                     ...(typeof args.icon === 'string' ? { icon: args.icon } : {}),
@@ -155,20 +223,25 @@ export function getNodeTools(): ToolDef[] {
                 const input = applyCreateDefaults(baseInput, ctx);
                 const result = await deps.nodesController.create(input);
                 if (!result.ok) return fail(result.error ?? 'create failed');
-                return ok({ id: result.id, node: result.data });
+                return ok({
+                    id: result.id,
+                    lineageId: (result.data as any)?.lineageId,
+                    displayName: (result.data as any)?.displayName,
+                });
             },
         },
         {
             name: 'save_node',
             description:
-                'Saves a new version of a Breed (SerializedDog). Only the owner (or super-user) can save. Pass id (lineageId or version GUID), tsCode and updated parents. For Mimics, also pass serializedDogConfig with the imitates field intact. Pass "visibility" to flip public/private.',
+                'Saves a new version of a Breed (SerializedDog). Only the owner (or super-user) can save. Pass id (lineageId or version GUID), tsCode (or tsCodeBase64) and updated parents. For Mimics, also pass serializedDogConfig with the imitates field intact. Pass "visibility" to flip public/private. Provide EITHER tsCode (raw string) OR tsCodeBase64 (utf8 base64) — the base64 form avoids JSON-escape hell.',
             inputSchema: {
                 type: 'object',
-                required: ['id', 'tsCode'],
+                required: ['id'],
                 additionalProperties: false,
                 properties: {
                     id: { type: 'string' },
-                    tsCode: { type: 'string' },
+                    tsCode: { type: 'string', description: 'TypeScript body. Mutually exclusive with tsCodeBase64.' },
+                    tsCodeBase64: { type: 'string', description: 'utf8-encoded base64 of the TypeScript body. Mutually exclusive with tsCode.' },
                     parentsRequired: { type: 'array', items: { type: 'string' } },
                     parentsOptional: { type: 'array', items: { type: 'string' } },
                     serializedDogConfig: { type: 'object' },
@@ -184,11 +257,17 @@ export function getNodeTools(): ToolDef[] {
                 if (!allowed) {
                     return fail(canRead(existing.data as any, ctx) ? 'Not authorized' : `Node ${id} not found`);
                 }
+                let theRun: string;
+                try {
+                    theRun = resolveTsCode(args as any);
+                } catch (err: any) {
+                    return fail(err?.message ?? String(err));
+                }
                 const existingConfig = (args.serializedDogConfig as Record<string, any>) ?? {};
                 const input = {
                     ...existingConfig,
                     id,
-                    theRun: String(args.tsCode),
+                    theRun,
                     parentsRequired: Array.isArray(args.parentsRequired)
                         ? args.parentsRequired
                         : existingConfig.parentsRequired ?? [],

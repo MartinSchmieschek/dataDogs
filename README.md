@@ -131,6 +131,34 @@ After the season runs, **`persistNewMimics`** closes the loop: every Mimic in `e
 
 The net effect: **the first run teaches the kennel what it needs**, and every subsequent run loads those mimics directly from `dogIds` via `createSerializedDogFactory` — no adoption, no conjuring. If a client later PUTs a new kennel version that drops the mimic lineageIds, the adopter resurrects them from history on the next run and heals them back.
 
+#### Placeholder runtime — why the throw doesn't crash the run
+
+The fresh placeholder's `theRun` is literally `throw new Error("MimicDog for '<PactName>' needs user code")`. It **does throw** on every run -- this is intentional, not a sleeping clause. Two things keep the rest of the pack alive:
+
+1. **The SeasonRunner brands, it does not abort.** [`harverster.ts → letOut`](packages/core/src/harverster.ts) wraps every dog in a `try/catch`. On throw, the dog is marked with `__error`, pushed into `season.exhausted` like any other returnee, and `dog.collected` stays `undefined`. The pack carries on.
+2. **The downstream BaseDog still sees the Pact as "fulfilled".** `matchesParent` checks `imitatesClasses` -- and the placeholder Mimic carries the Pact class regardless of whether `theRun` threw or returned. So `areRequiredParentsReady` flips `true`, the BaseDog runs in the next wave, calls `season.exhausted.find(d => matchesParent(<Pact>, d))`, reads `queryDog?.collected` -- gets `undefined` -- and falls back to whatever default its `yieldCollectorFactory` defines (typically `?? ({} as <PactType>)`).
+
+What happens after that fallback is the BaseDog's own contract. Some BaseDogs survive cleanly on an empty query (e.g. they have sensible defaults); others throw immediately ("Missing required query params"). Either way, the **placeholder Mimic itself shows up in snapshots as `hasError: true`** with the placeholder error message -- a clear TODO marker, not a runtime catastrophe.
+
+Once you (or a UI user, or an MCP client) overwrites `theRun` via `POST /save`, the Mimic stops throwing, returns a real value, and the BaseDog gets the data shape the Pact promised. The lineage stays stable -- editing only bumps the version.
+
+**Authoring a Mimic from the placeholder:**
+
+The Mimic's job is to read from whatever raw source is in the kennel (usually `QueryRetriever` or `BodyRetriever`) and return the Pact's interface. Inspect the consuming dog's Pact type via `get_snapshot_dog_typedef`, then `POST /save?id=<mimic-versionId>` with the full `serializedDogConfig` (always preserve `imitates`!):
+
+```jsonc
+{
+  "displayName": "weather-query-transformer",
+  "tsCode": "return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, time: QueryRetriever.time };",
+  "serializedDogConfig": {
+    "imitates": "WeatherQueryProvider",
+    "parentsRequired": ["base:QueryRetriever"]
+  }
+}
+```
+
+Drop `imitates` and the Mimic loses its Pact binding -- the BaseDog will conjure a fresh placeholder again on the next run. Drop `parentsRequired` and your `theRun` has no globals to read from. Keep both.
+
 #### Factory dedup — MimicDog wins on type upgrade
 
 `createSerializedDogFactory` in [`api/routes/KennelRunHandler.ts`](api/routes/KennelRunHandler.ts) now fetches both `SerializedDog` and `MimicDog` rows for the requested IDs in parallel, then **deduplicates by `lineageId`**. When the same logical dog exists as both types (because someone saved an `imitates` field onto a formerly-serialized dog), the most recent `createdAt` wins — MimicDog upgrades survive, older SerializedDog incarnations are dropped silently. The factory also sniffs `config.imitates` on construction: if the field is a non-empty string, a `MimicDog` is instantiated; otherwise a `SerializedDog`.
@@ -460,6 +488,20 @@ Backend only:
 npm run prisma:sync
 npm start
 ```
+
+### Build & emit -- where the .js lands
+
+The root `tsconfig.json` is **typecheck-only** (`noEmit: true`). It exists for editor IntelliSense, `tsc --noEmit`, and ts-node. **It must never emit** -- a stray `npx tsc` at the repo root would otherwise drop `.js` next to every `.ts`, and ts-node / Node module resolution prefers those `.js` over the actual source. You then debug ghosts.
+
+The real build runs through dedicated configs that write into `dist/` only:
+
+| Script | Config | Output |
+|--------|--------|--------|
+| `npm run build` | root [`tsconfig.build.json`](tsconfig.build.json) | `./dist` (main.ts + api/services/store/mcp) |
+| `npm run build:core` | [`packages/core/tsconfig.json`](packages/core/tsconfig.json) | `packages/core/dist` |
+| `npm run build:dogs-<x>` | `packages/dogs-<x>/tsconfig.json` | `packages/dogs-<x>/dist` |
+
+If you ever see a `.js` file inside `packages/*/src/`, `api/`, `mcp/`, `services/`, or `store/` -- delete it. `.gitignore` blocks them from being committed; the root `noEmit: true` prevents new ones from being created. Build output lives in `dist/` and `packages/*/dist/` only.
 
 ### Integration mode (pre-release staging)
 

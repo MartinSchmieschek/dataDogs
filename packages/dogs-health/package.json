@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-health",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Health: disease.sh (COVID/Ebola/Influenza) und openFDA",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

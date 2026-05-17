@@ -106,7 +106,20 @@
     // "outFile": "./",                                  /* Specify a file that bundles all outputs into one JavaScript file. If 'declaration' is true, also designates a file that bundles all .d.ts output. */
     // "outDir": "./",                                   /* Specify an output folder for all emitted files. */
     // "removeComments": true,                           /* Disable emitting comments. */
-    // "noEmit": true,                                   /* Disable emitting files from a compilation. */
+    /*
+     * Welle 10 -- Build-Konfig-Fix.
+     *
+     * Dieser Root-tsconfig.json wird NIE zum Emit benutzt; er ist nur fuer
+     * tooling (typecheck, editor, ts-node). Der produktive Build laeuft ueber
+     * tsconfig.build.json -- dort wird `noEmit: false` + `outDir: ./dist`
+     * gesetzt und ausschliesslich nach ./dist geschrieben.
+     *
+     * `noEmit: true` verhindert, dass ein versehentlicher `npx tsc` (ohne -p)
+     * im Repo-Root .js-Schmutz neben jede .ts-Datei legt. ts-node/Node-Modul-
+     * Resolution wuerden diese .js sonst gegenueber dem aktuellen .ts-Source
+     * bevorzugen -- Geister-Debugging garantiert.
+     */
+    "noEmit": true,                                   /* Disable emitting files from a compilation. */
     // "importHelpers": true,                            /* Allow importing helper functions from tslib once per project, instead of including them per-file. */
     // "importsNotUsedAsValues": "remove",               /* Specify emit/checking behavior for imports that are only used for types. */
     // "downlevelIteration": true,                       /* Emit more compliant, but verbose and less performant JavaScript for iteration. */

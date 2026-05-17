@@ -150,6 +150,19 @@ If a single-source pen exists, the lead may render directly. But the **moment a 
 
 **Why:** entity dogs are reusable across pens (one fat lead is locked to its context); failures localize per entity (you grep `WeatherData` and find it instantly); versioning evolves separately for data and renderer; multi-consumer (one client wants only the weather slice, another wants the full bundle).
 
+### Why splitting helps debugging
+
+Every dog boundary is a **data inspection point**. The snapshot stores each dog's yield separately — once a kennel ran, you can drill into any single transformation without re-running the whole pen:
+
+- `get_snapshot_dog_result(kennelId, dogId)` — see exactly what came out of one step.
+- `get_snapshot_dog_read_from(kennelId, dogId)` — see which sources that step actually consumed.
+- `get_snapshot_dog_read_by(kennelId, dogId)` — see which downstream dogs consumed its yield.
+- `get_snapshot_dog_typedef(kennelId, dogId)` — the typed contract that step exposes upstream.
+
+A monolithic fat dog hides all of this in one black box. When it goes wrong you only see the final output and have to instrument from scratch. A pipeline of small dogs gives you free observability at every joint — `Hunter → EntityNormalizer → SubAggregator → Compositor` means four free debug points where you can stop, inspect, and verify the shape before moving on.
+
+**Practical guideline:** if you find yourself writing a dog that does fetch + parse + filter + format, stop and split it. Each verb is a dog. Each arrow between dogs is a snapshot you can read after the fact. The snapshot inspection tools were designed around this assumption — the more granular your pipeline, the more useful they become.
+
 ## How to behave
 
 **The README first.** `get_readme` is not optional at the start of a non-trivial session. Tool descriptions assume you know its content.
@@ -169,6 +182,286 @@ If a single-source pen exists, the lead may render directly. But the **moment a 
 **Kennels mutate — use what returns.** Pens evolve: `update_kennel`, new dog versions, reshaped yields. When you **do** run a hunt, read the wave output thoroughly and align code, bindings, and user-facing answers to **that** payload — not a stale remembered shape. Kennels are **fine to run** whenever you need fresh ground truth, but they **do not need to run every turn**; skip gratuitous re-runs, sprint when the pen or the question changes.
 
 **Parallel pens — build and merge.** You may evolve **several kennels in parallel** — each pen a focused contract and JSON shape — then **combine their yields** in a compositor or thin bundling lead that stitches those endpoints together. Use parallel pens when concerns split cleanly; avoid one overloaded kennel that does every grouping at once.
+
+## Run-first Doktrin
+
+Schnittstellen werden in dataDogs niemals durch statische Doku beschrieben. Wenn du wissen willst was ein Dog zurueckgibt, rufe `refresh_kennel_snapshot` und danach `get_snapshot_dog_result` oder `get_snapshot_dog_typedef`. Ein Run ist nicht teuer, und das Ergebnis kann nicht luegen — eine statische Doku waere irgendwann von der Realitaet entkoppelt.
+
+Konsequenz: nach jedem `create_node` / `save_node` / `create_kennel` / `update_kennel` solltest du als naechstes einen Snapshot ziehen, bevor du irgendetwas annimmst. Defensive Coding (`x?.y || fallback`) hilft beim ersten Wurf — der Snapshot zeigt dir, wie du den naechsten Wurf korrigierst.
+
+### Snapshot enthaelt auch Fehler
+
+`get_kennel_snapshot` zeigt `errorCount` -- wenn > 0, sind ein oder mehr Dogs ausgestiegen. Nutze `get_snapshot_errors` fuer die Liste und `get_snapshot_dog_error(dogId)` fuer Einzeldetails.
+
+Ein Dog kann fehlschlagen, ohne dass der Lead crasht -- die nachgelagerten Dogs sehen den Fehler-Dog dann NICHT als `undefined`, sondern als **ungebundene Variable** in ihrem VM-Scope. `(X && X.y)` wirft dann `ReferenceError`. Schreibe defensiv:
+
+```ts
+const safe = typeof X !== 'undefined' && X.y;
+```
+
+Snapshot zeigt dir per `get_snapshot_dog_result` auch, ob ein nachgelagerter Dog wegen eines crashed parent gestolpert ist.
+
+### Stale-Snapshot-Erkennung
+
+Wenn der Kennel zwischen `refresh_kennel_snapshot` und deinem Lese-Tool eine neue Version bekommen hat, geben **alle** `get_snapshot_*`-Tools **kein `isError`** zurueck, sondern ein normales Success-Payload mit Marker:
+
+```json
+{
+  "stale": true,
+  "snapshotVersionId": "<alte Version>",
+  "currentVersionId": "<neue Version>",
+  "hint": "call refresh_kennel_snapshot"
+}
+```
+
+Erkennst du diesen Marker, **rufe zuerst `refresh_kennel_snapshot(id)`** und dann das gewuenschte Lese-Tool erneut. Behandle Stale niemals wie einen echten Fehler -- es ist nur ein Hinweis, dass deine Karte veraltet ist.
+
+## Auto-Mimic-Transformer
+
+Was sie sind: automatisch erzeugte MimicDogs, die zwischen einem BaseDog (der einen Pact als `required`/`optional` deklariert) und der Datenquelle stehen. Sie sind **Transformer-Slots** -- der Server stellt sie dir bereit, damit du Eingabedaten umformen kannst, ohne von Hand einen Provider zu bauen.
+
+### Wann sie erscheinen
+
+`KennelRun.autoMimic` durchsucht beim Befuellen des Kennels alle Pact-Dependencies. Existiert fuer einen Pact **kein** echter Provider und **kein** Mimic, dann:
+
+1. Der `MimicAdopter` versucht zuerst, eine zuvor gespeicherte Mimic-Lineage aus der Kennel-Historie zu **adoptieren** (Reuse-First).
+2. Schlaegt das fehl, wird ein **frischer Platzhalter** erzeugt mit:
+   - `displayName: "auto-mimic-<PactName>"` (z.B. `auto-mimic-WeatherQueryProvider`)
+   - `imitates: "<PactName>"`
+   - `theRun: throw new Error("MimicDog for '<PactName>' needs user code");`
+3. Nach dem Lauf heilt `persistNewMimics` die `lineageId` zurueck in `config.dogIds` -- ab dem zweiten Run wird die Mimic direkt geladen, nicht mehr auto-erzeugt.
+
+### Was passiert zur Laufzeit
+
+**Wichtig:** der Platzhalter wirft tatsaechlich. Aber der Wave-Driver (`harverster.ts → letOut`) faengt jeden Throw, brandet den Dog mit `__error` und schiebt ihn ins `season.exhausted`. Der Run crasht **nicht** -- nur dieser eine Dog ist defekt.
+
+Der nachgelagerte BaseDog (z.B. `WeatherRetriever`) wird durch `matchesParent` ueber `imitatesClasses` trotzdem als "Pact erfuellt" gesehen und in der naechsten Welle ausgefuehrt. Er liest dann `queryDog?.collected` -- das ist `undefined` (Mimic hat ja keinen Wert geliefert) -- und faellt auf seinen Default-Pfad zurueck (z.B. `?? ({} as WeatherQuery)`). Was der BaseDog daraus macht, ist sein eigener Vertrag: manche fangen das auf (Fallback-Verhalten), manche werfen erneut ("Missing required query params"). Im Snapshot:
+
+- Frischer Platzhalter, der noch nie umgeschrieben wurde: `hasError: true`, `error: "MimicDog for ... needs user code"`.
+- Adoptierte Mimic mit produktivem Code: `hasError: false`, `result: {...}` -- das ist der Normalfall, sobald du sie einmal befuellt hast.
+
+### Wie du sie editierst (MCP-Flow)
+
+1. `refresh_kennel_snapshot(id)` → `wait_for_kennel_snapshot(id)` → `get_kennel_snapshot_summary(id)`.
+2. Filter: `find_snapshot_dogs(id, { mimic: true })`. Frische Platzhalter erkennst du am `displayName.startsWith("auto-mimic-")`.
+3. Drill-down: `get_snapshot_dog(id, dogId)` zeigt `imitates` und `displayName`; `get_snapshot_dog_code(id, dogId)` zeigt den Platzhalter-`theRun`.
+4. Pact-Shape verstehen: `get_snapshot_dog_typedef(id, dogId)` blendet die TypeScript-Definition des Pacts ein -- daraus erkennst du, welche Felder dein `return { ... }` liefern muss.
+5. Ueberschreiben mit `save_node`:
+
+   ```json
+   {
+     "id": "<lineageId der auto-mimic>",
+     "displayName": "weather-query-transformer",
+     "tsCode": "return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, time: QueryRetriever.time };",
+     "serializedDogConfig": {
+       "imitates": "WeatherQueryProvider",
+       "parentsRequired": ["base:QueryRetriever"]
+     }
+   }
+   ```
+
+   **Pflicht:** `serializedDogConfig.imitates` muss erhalten bleiben -- sonst verliert die Mimic ihren Pact und der BaseDog findet keinen Provider mehr. `parentsRequired` setzt du auf die Quelle, aus der dein Transformer liest (typisch `base:QueryRetriever` oder `base:BodyRetriever`).
+
+6. Refresh und neu inspizieren: `refresh_kennel_snapshot(id)` → `get_snapshot_dog_result(id, dogId)` zeigt deinen frischen Yield.
+
+### Faustregel
+
+- Auto-Mimic im Snapshot mit `error` ist **kein Bug**, sondern dein TODO.
+- Loeschen geht nicht (`deletable: false`). Wenn du die Mimic nicht willst: entweder den consumierenden BaseDog aus `dogIds` entfernen oder einen echten Provider-Dog hinzufuegen, der den Pact erfuellt -- dann wirft `autoMimic` die Mimic naechsten Run automatisch ueber Bord.
+- Lineage bleibt stabil: editierst du den Code, bleibt `lineageId` gleich; der Kennel laedt automatisch die neue Version. `imitates` darfst du dabei niemals fallen lassen.
+
+## Sandbox-Grenzen
+
+SerializedDogs laufen in einem Worker-Thread-Sandbox (Node `worker_threads`) mit
+JSON-Roundtrip an den Schnittstellen. Folgen:
+
+- Parents werden als reine Daten ueberreicht. Funktionen als direkte Top-Level-
+  Eintraege, Proxies und Cross-Realm-Referenzen sind im Worker NICHT verfuegbar.
+- **VM-Global-Capabilities (Welle 7):** SerializedDogs sehen folgende globale
+  Capabilities im VM-Context -- **keine Parent-Deklaration noetig**:
+
+  - `console` -- Logging
+  - `fetch` -- HTTP-Requests
+  - `jsonStore.get/set/delete/has/list/snapshot` -- persistente Key-Value-Ablage
+    (eigene SQLite-Truhe, async)
+
+  Beispiel:
+
+  ```ts
+  const cached = await jsonStore.get('myCacheKey');
+  if (cached) return cached;
+  const fresh = await fetch('https://api.example.com').then(r => r.json());
+  await jsonStore.set('myCacheKey', fresh);
+  return fresh;
+  ```
+
+  Hinweis: `JsonStorageRetriever` als Parent zu listen, ist nicht mehr moeglich
+  -- die Klasse wurde mit Welle 8 entfernt. `jsonStore` ist VM-Infrastruktur
+  wie `fetch` und `console` und steht jedem Dog automatisch zur Verfuegung.
+
+  **Tenant-Scope (Welle 8):** `jsonStore`-Keys sind pro eingeloggtem User
+  isoliert. Wenn du als User A `await jsonStore.set('myKey', ...)` rufst,
+  legt der Server intern `user:<A>:myKey` ab; User B sieht diesen Schluessel
+  nicht, weder ueber `get` noch ueber `list`/`snapshot`. Dein Dog-Code merkt
+  davon nichts -- du schreibst weiter mit den rohen Keys. Ausnahme: anonyme
+  Calls (kein Login) und der Dev-Mode-Super-User (MCP_AUTH_REQUIRED=false)
+  lesen/schreiben in einen gemeinsamen unpraefixierten Namespace, damit
+  oeffentliche Kennels weiterhin global cachen koennen.
+- **VM-Method-Bridge (seit Welle 6):** Jedes Objekt im VM-Context, das
+  Funktions-Methoden traegt (`jsonStore` oder ein parent-contributed Bundle via
+  `getVmContextContributions()`), wird vor der Sandbox-Grenze entfernt und im
+  Worker durch einen Proxy ersetzt. Jeder Methoden-Aufruf wird per
+  `postMessage`-RPC zurueck zum Main-Thread geroutet -- die Methode laeuft dort,
+  das Ergebnis kommt JSON-serialisiert zurueck. Konsequenz: alle Bridge-
+  Methoden sind **async**, der User-Code muss `await` benutzen:
+  ```ts
+  const cached = await jsonStore.get('weatherCache');
+  await jsonStore.set('weatherCache', fresh);
+  ```
+  Nur whitelisted Methodennamen (die Keys des Capability- bzw. contributed
+  Objekts) sind callable -- der Worker kann nicht durch geschickte Strings neue
+  Refs im Main beschaffen.
+- VM-Execution-Timeout: default 10000ms, via `DATADOGS_VM_TIMEOUT_MS` env
+  konfigurierbar. **Per Run-Call uebersteuerbar** via optionalem
+  `vmTimeoutMs`-Param an `run_kennel`, `execute_kennel`, `refresh_kennel_snapshot`
+  und `build_kennel` (dort fuer den initialen `firstRun`). Aufloesung pro Run:
+  `vmTimeoutMs` > `DATADOGS_VM_TIMEOUT_MS` env > 10000ms. **Niemals persistent**
+  am Kennel haengen -- gehoert pro Aufruf mitgegeben, nicht in `create_kennel` /
+  `update_kennel`.
+
+### VM-Variable-Naming
+
+Im VM-Context ist jeder Parent-Dog ueber `<VmName>` als Global im scope -- also so, wie du auf `QueryRetriever`, `WeatherRetriever` usw. zugreifst. Die Konvention zwischen `displayName` und VM-Variable:
+
+| displayName                  | VM-Variable               |
+|------------------------------|---------------------------|
+| `WeatherMapper`              | `WeatherMapper`           |
+| `ThemeTwister`               | `ThemeTwister`            |
+| `weather-mapper`             | `WeatherMapper`           |
+| `auto-mimic-XQueryProvider`  | `AutoMimicXQueryProvider` |
+| `data probe v2`              | `DataProbeV2`             |
+
+Faustregel: gueltiges PascalCase (`^[A-Z][a-zA-Z0-9_]*$`) bleibt 1:1 erhalten. Alles andere wird an `[-_\s]+` tokenisiert und CamelCase-zusammengesetzt (PascalCase-Tokens bleiben innerhalb intakt, andere werden lowercased + capitalisiert). Wenn dein Dog `MyMapper` im VM heissen soll, nimm `MyMapper` als displayName -- spar dir die Tokenisierung.
+
+## Kennel von Grund auf bauen (Recipe)
+
+**Direkt:** Nutze `build_kennel`. Ein einziger Tool-Call ersetzt das alte Sechs-Schritt-Ritual (create_node × N → create_kennel → refresh → wait → URL bauen). Atomar, mit Rollback bei Fehlern.
+
+### Was `build_kennel` macht
+
+1. Legt N SerializedDogs in der Reihenfolge des `dogs[]`-Arrays an, jeder mit eigener frischer `lineageId`.
+2. Spaeter aufgefuehrte Dogs duerfen frueher angelegte Sibling-Dogs via **`"@DisplayName"`** in `parentsRequired` / `parentsOptional` referenzieren. **Tiefen-zuerst-Reihenfolge ist Pflicht des Aufrufers** -- ein referenzierter Sibling muss frueher im Array stehen.
+3. BaseDog-Referenzen bleiben bare class names (`"QueryRetriever"` oder `"base:QueryRetriever"`), rohe Lineage-GUIDs werden unveraendert durchgereicht.
+4. `imitates: "<PactProviderName>"` macht den Dog zur MimicDog -- der Controller brandet den Storage-Type automatisch.
+5. Komponiert den Kennel: **per Default wird der LETZTE Eintrag in `dogs[]` zum Lead** (Renderer/Finalizer sitzt typischerweise am Ende der Pipeline). Wer einen anderen Lead will, gibt `"lead": "<displayName>"` an. Die Lead-lineageId wird intern an Position 0 von `dogIds` geschoben; die uebrigen Dogs folgen in ihrer urspruenglichen `dogs[]`-Reihenfolge, danach `extraDogIds`.
+6. Wenn `refresh: true` (Default): einmal jagen, Snapshot cachen, Lead-Beute (bis 200 Zeichen) in `firstRun.leadResultPreview` zurueckgeben.
+7. **Rollback:** Schlaegt irgendein Schritt **vor** dem ersten Run fehl, werden alle bereits erstellten Node-Lineages und der Kennel-Eintrag geloescht -- keine Orphans. Ein fehlgeschlagener Erst-Run ist **kein** Rollback-Trigger (der Kennel existiert ja); nur `firstRun.status === "failed"`.
+
+### Beispiel 1 -- Einzeiler mit einem Dog
+
+```json
+{
+    "id": "my-greeting",
+    "name": "Greeting",
+    "emoji": "👋",
+    "dogs": [
+        {
+            "displayName": "Greeter",
+            "tsCode": "const name = (typeof QueryRetriever !== 'undefined' && QueryRetriever.name) || 'Welt';\nreturn '<h1>Hallo, ' + name + '!</h1>';",
+            "parentsRequired": ["QueryRetriever"]
+        }
+    ],
+    "extraDogIds": ["base:QueryRetriever"]
+}
+```
+
+Antwort: `publicUrl: "/my-greeting"`. Aufruf mit `?name=Lotus` → `<h1>Hallo, Lotus!</h1>`.
+
+### Beispiel 2 -- Dog-Chain via `@DisplayName`
+
+```json
+{
+    "id": "joke-dashboard",
+    "dogs": [
+        {
+            "displayName": "Mapper",
+            "tsCode": "return { joke: (typeof ChuckNorrisRetriever !== 'undefined' && ChuckNorrisRetriever.joke) || 'kein joke' };",
+            "parentsRequired": ["ChuckNorrisRetriever"]
+        },
+        {
+            "displayName": "Render",
+            "tsCode": "return '<p>' + (typeof Mapper !== 'undefined' ? Mapper.joke : 'still leer') + '</p>';",
+            "parentsRequired": ["@Mapper"]
+        }
+    ],
+    "extraDogIds": ["base:ChuckNorrisRetriever"]
+}
+```
+
+`@Mapper` wird beim Build zur lineageId des ersten Dogs aufgeloest. **Der Lead ist `Render`** -- automatisch, weil es der letzte Eintrag in `dogs[]` ist. Wer einen anderen Lead will (z.B. wenn `Mapper` schon die Public-Antwort gibt und `Render` nur ein Debug-Layer ist), gibt `"lead": "Mapper"` mit. Die Tiefen-zuerst-Reihenfolge im Array bleibt Aufgabe des Aufrufers (`@Sibling` muss frueher stehen) -- die Lead-Position ist davon entkoppelt.
+
+### Beispiel 3 -- Mimic-Provider gleich mitbauen
+
+```json
+{
+    "id": "weather-here",
+    "dogs": [
+        {
+            "displayName": "weather-query-transformer",
+            "tsCode": "return { lat: QueryRetriever.lat, lng: QueryRetriever.lng };",
+            "imitates": "WeatherQueryProvider",
+            "parentsRequired": ["QueryRetriever"]
+        }
+    ],
+    "extraDogIds": ["base:QueryRetriever", "base:WeatherRetriever"]
+}
+```
+
+Der Transformer wird sofort als MimicDog gespeichert -- der nachfolgende Run erzeugt keinen auto-mimic-Platzhalter mehr.
+
+### Was zurueckkommt
+
+```json
+{
+    "kennelId": "joke-dashboard",
+    "kennelLineageId": "joke-dashboard",
+    "publicUrl": "/joke-dashboard",
+    "runUrl": "/api/kennels/joke-dashboard/run",
+    "dogs": [
+        { "displayName": "Mapper", "lineageId": "<guid>" },
+        { "displayName": "Render", "lineageId": "<guid>" }
+    ],
+    "firstRun": {
+        "status": "ok",
+        "leadOk": true,
+        "durationMs": 142,
+        "errorCount": 0,
+        "leadDogId": "<guid>",
+        "leadResultPreview": { "joke": "..." }
+    }
+}
+```
+
+Bei `refresh: false` faellt `firstRun` weg. `firstRun.status` ist vierwertig:
+
+- `ok` -- alle Dogs sauber zurueck, `errorCount === 0`.
+- `lead-ok-with-side-errors` -- der Lead lieferte ein sauberes Result, aber irgendein Seiten-Dog ist gefallen. Der Public-Endpoint dient trotzdem die Lead-Beute aus; pruefe via `get_snapshot_errors`, ob der Side-Fehler dich stoert.
+- `lead-failed` -- der Lead selbst ist gefallen. Der Public-Endpoint ist kaputt; geh per `get_snapshot_dog_error(leadDogId)` der Ursache nach.
+- `failed` -- der Run konnte nicht beobachtet werden (Worker-Crash, Kennel zwischen Build und Refresh verschwunden). `error` enthaelt die Roh-Meldung.
+
+`leadOk` ist die Boolean-Abkuerzung: `true` heisst die oeffentliche URL serviert den Lead-Yield. Danach normaler Snapshot-Workflow (`get_snapshot_errors`, `get_snapshot_dog_error`).
+
+### Code-Uebergabe per Base64 (anti-escape)
+
+Wenn dein `tsCode` Template-Literals, Newlines oder `</script>` enthaelt, wird das JSON-Escaping schnell zur Folter -- vor allem in PowerShell. `create_node`, `save_node` und jeder `dogs[]`-Eintrag in `build_kennel` akzeptieren stattdessen `tsCodeBase64`: utf8-encoded base64 des Codes. Beispiel (Node):
+
+```js
+const tsCodeBase64 = Buffer.from(myCode, 'utf8').toString('base64');
+// im Tool-Call:
+{ "displayName": "Render", "tsCodeBase64": tsCodeBase64, "parentsRequired": ["@Mapper"] }
+```
+
+Pflicht: genau eins von `tsCode` ODER `tsCodeBase64` -- beide ist ein Fehler, keins ist ein Fehler (ausser bei `create_node` wo es per Default `return {}` gibt).
 
 ## Workflows
 
@@ -191,8 +484,16 @@ The `run_kennel` tool returns the full Waves payload — every dog's yield, code
 
 - `run_kennel` returns the entire Waves payload in one shot (5–20 MB).
 - Snapshot tools read a cached in-memory run and let you fetch only the facet you need.
-- The snapshot survives until the server restarts, the cache evicts (LRU + 30-min idle), or the kennel gets a new version. Stale snapshots fail with `{stale, snapshotVersionId, currentVersionId}` and a hint to refresh.
+- The snapshot survives until the server restarts, the cache evicts (LRU + 30-min idle), or the kennel gets a new version. Stale snapshots **do not fail** — they return a success payload `{stale: true, snapshotVersionId, currentVersionId, hint: "call refresh_kennel_snapshot"}` (no `isError` flag). Treat it as "your map is outdated", call `refresh_kennel_snapshot(id)` and re-read.
 
 ### Kennel detail accessors
 
 `list_kennels` and `get_kennel` return only metadata + presence flags. Use the focused tools to fetch what you actually need: `get_kennel_default_body`, `get_kennel_default_query`, `get_kennel_task`, `get_kennel_layout`, `get_kennel_versions`. Same for nodes: `list_nodes` returns a `tsCodePreview` (~200 chars); `get_node(id)` returns the full body, `get_node_schema(id)` returns just the interface.
+
+### Cleanup — `delete_kennel`
+
+When a pen has outlived its purpose — a draft you no longer need, a scratch kennel from an experiment, a duplicate built by mistake — use `delete_kennel(id)` to send the pack to the deep. **Irreversible**: every version of the kennel dies; the Breeds (SerializedDogs) the kennel referenced **stay alive** (they may belong to other packs). Always confirm with the user before calling it. *"No dog dies without farewell."*
+
+### Tool discovery — `describe_tool`
+
+`tools/list` ships **one-line summaries** to keep the session handshake cheap. When you need the full long-form description of a tool — semantics, edge cases, exact field syntax — call `describe_tool(name)`. The full input schema and the canonical long description come back; that is the truth, the one-liner is the index.

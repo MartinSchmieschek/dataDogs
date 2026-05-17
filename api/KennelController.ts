@@ -22,6 +22,8 @@ export interface ICreateKennelInput extends ICreateInput {
     description?: string;
     emoji?: string;
     dogIds?: string[];
+    defaultQuery?: Record<string, string>;
+    defaultBody?: any;
     task?: string;
     nodes?: IKennelNodeAnnotation[];
     edges?: IKennelEdgeAnnotation[];
@@ -87,9 +89,17 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 description: input.description || undefined,
                 emoji: input.emoji?.trim() || undefined,
                 dogIds: input.dogIds || [],
+                // Welle 11: defaultQuery / defaultBody must round-trip into the
+                // stored row -- the previous shape dropped them silently, so a
+                // create_kennel with defaultQuery never actually persisted and
+                // every later run saw `freshConfig.defaultQuery === undefined`.
+                defaultQuery: input.defaultQuery,
+                defaultBody: input.defaultBody,
                 task: input.task || undefined,
                 nodes: input.nodes,
                 edges: input.edges,
+                // vmTimeoutMs gehoert NICHT in die Persistenz -- ist ein Run-Time-Param,
+                // der pro runKennel-Aufruf uebergeben wird (Welle 12 Korrektur).
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -198,10 +208,18 @@ export class KennelController extends AbstractController<IKennelConfig> {
             };
 
             const contentChanged = this.hasContentChanged(existing, config);
-            const visibilityChanged = nextVisibility !== existingVisibility;
-            const ownerChanged = nextOwnerId !== existingOwnerId;
-            const editorsChanged = JSON.stringify(existingEditors ?? null) !== JSON.stringify(nextEditors ?? null);
-            const viewersChanged = JSON.stringify(existingViewers ?? null) !== JSON.stringify(nextViewers ?? null);
+            // Normalize visibility: null/undefined are equivalent to the default 'public'
+            // — a DB-stored null must not look "different" from a freshly-resolved 'public'.
+            const visibilityChanged =
+                (nextVisibility ?? 'public') !== (existingVisibility ?? 'public');
+            const ownerChanged = (nextOwnerId ?? null) !== (existingOwnerId ?? null);
+            const aclNorm = (v: unknown): string => {
+                if (v === null || v === undefined) return 'null';
+                if (Array.isArray(v) && v.length === 0) return 'null';
+                return JSON.stringify(v);
+            };
+            const editorsChanged = aclNorm(existingEditors) !== aclNorm(nextEditors);
+            const viewersChanged = aclNorm(existingViewers) !== aclNorm(nextViewers);
 
             // Check if anything changed — spare the deep from phantom versions.
             if (!contentChanged && !visibilityChanged && !ownerChanged && !editorsChanged && !viewersChanged) {
@@ -323,6 +341,8 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
     /**
      * Compare kennel configs — if content is identical, no new version shall be born.
+     * `null` and `undefined` collapse to the same emptiness so a DB-stored null
+     * never haunts a freshly merged undefined as a phantom change.
      */
     private hasContentChanged(old: IKennelConfig, next: IKennelConfig): boolean {
         const contentKeys: (keyof IKennelConfig)[] = [
@@ -330,8 +350,14 @@ export class KennelController extends AbstractController<IKennelConfig> {
             'defaultQuery', 'defaultBody',
             'task', 'nodes', 'edges',
         ];
+        const normalize = (v: unknown): string => {
+            if (v === null || v === undefined) return 'null';
+            if (typeof v === 'string' && v === '') return 'null';
+            if (Array.isArray(v) && v.length === 0) return 'null';
+            return JSON.stringify(v);
+        };
         for (const key of contentKeys) {
-            if (JSON.stringify(old[key]) !== JSON.stringify(next[key])) return true;
+            if (normalize(old[key]) !== normalize(next[key])) return true;
         }
         return false;
     }
@@ -610,7 +636,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 try {
                     defaultQuery = JSON.parse(data.defaultQuery);
                 } catch (e) {
-                    console.warn('[parseEntity] Fehler beim Parsen von defaultQuery:', e);
+                    if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von defaultQuery:', e);
                 }
             } else if (typeof data.defaultQuery === 'object') {
                 defaultQuery = data.defaultQuery;
@@ -624,7 +650,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 try {
                     defaultBody = JSON.parse(data.defaultBody);
                 } catch (e) {
-                    console.warn('[parseEntity] Fehler beim Parsen von defaultBody:', e);
+                    if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von defaultBody:', e);
                 }
             } else {
                 defaultBody = data.defaultBody;
@@ -644,7 +670,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                         const parsed = JSON.parse(data.nodes);
                         nodes = Array.isArray(parsed) ? parsed : undefined;
                     } catch (e) {
-                        console.warn('[parseEntity] Fehler beim Parsen von nodes:', e);
+                        if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von nodes:', e);
                     }
                 }
             } else if (Array.isArray(data.nodes)) {
@@ -660,7 +686,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                         const parsed = JSON.parse(data.edges);
                         edges = Array.isArray(parsed) ? parsed : undefined;
                     } catch (e) {
-                        console.warn('[parseEntity] Fehler beim Parsen von edges:', e);
+                        if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von edges:', e);
                     }
                 }
             } else if (Array.isArray(data.edges)) {

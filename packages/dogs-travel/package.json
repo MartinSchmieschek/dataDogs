@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-travel",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Travel: Airport-Lookup, GeoNames (GeoPointPact), Wikivoyage",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

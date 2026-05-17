@@ -192,7 +192,7 @@ import {
     type ICacheHandler,
     WebSocketChannelRetriever,
     ChannelLiveSnippetRetriever,
-    JsonStorageRetriever,
+    registerVmGlobalCapability,
 } from '@datadogs/core';
 import http from 'http';
 import { ChannelHub } from './services/ChannelHub';
@@ -276,8 +276,50 @@ async function start() {
 
     // Fachliche JSON-Ablage: eigene SQLite (JSON_STORAGE_DATABASE_URL), bewusst getrennt
     // von Nodes/Kennels (DATABASE_URL) und Run-Cache (CACHE_DATABASE_URL).
+    //
+    // Welle 7: jsonStore ist VM-Infrastruktur, kein Daten-Pakt. Statt einen BaseDog
+    // (JsonStorageRetriever) zu registrieren, legen wir die Bruecke direkt als VM-Global-
+    // Capability beim Core ab. Jeder SerializedDog sieht `jsonStore` damit automatisch im
+    // VM-Context, ohne einen Parent zu deklarieren -- so wie er auch `fetch` und `console`
+    // sieht.
     const jsonStorageService = new JsonStorageService(dbEnv.resolveJsonStorageDatabaseUrl());
-    JsonStorageRetriever.initService(jsonStorageService);
+    registerVmGlobalCapability('jsonStore', (ctx) => {
+        // Welle 8: Tenant-Scoping.
+        //
+        //   - Super-User (dev mode, MCP_AUTH_REQUIRED=false) -> raw keys
+        //     (Backwards-Compat fuer Tests + administrative Inspektion).
+        //   - Anonymer Aufruf (kein eingeloggter User, kein super-user) -> raw keys
+        //     (oeffentliche Kennels nutzen einen geteilten Namespace -- noch nicht
+        //     pro-anonymous-session getrennt; das waere Welle 9).
+        //   - Eingeloggter User -> Keys werden mit `user:<userId>:` prefixiert,
+        //     `list()` filtert + strippt das Prefix transparent.
+        const userId = ctx?.userId ?? null;
+        const isSuper = ctx?.isSuperUser === true;
+        const usePrefix = !isSuper && typeof userId === 'string' && userId.length > 0;
+        const prefix = usePrefix ? `user:${userId}:` : '';
+        const wrap = (k: string) => prefix + k;
+
+        return {
+            get: (k: string) => jsonStorageService.get(wrap(k)),
+            set: (k: string, v: unknown) => jsonStorageService.set(wrap(k), v),
+            delete: (k: string) => jsonStorageService.delete(wrap(k)),
+            has: (k: string) => jsonStorageService.has(wrap(k)),
+            list: async () => {
+                const all = await jsonStorageService.list();
+                if (!usePrefix) return all;
+                return all
+                    .filter((k) => k.startsWith(prefix))
+                    .map((k) => k.substring(prefix.length));
+            },
+            snapshot: async () => {
+                const all = await jsonStorageService.snapshot();
+                if (!usePrefix) return all;
+                return all
+                    .filter((e) => e.key.startsWith(prefix))
+                    .map((e) => ({ ...e, key: e.key.substring(prefix.length) }));
+            },
+        };
+    });
 
     // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
     const channelHub = new ChannelHub({
@@ -352,7 +394,9 @@ async function start() {
         SpaceRetriever,
         OpenLibraryRetriever,
         GitHubTrendingRetriever,
-        JsonStorageRetriever,
+        // Welle 7: JsonStorageRetriever entfaellt als BaseDog -- `jsonStore` ist jetzt eine
+        // VM-Global-Capability (siehe `registerVmGlobalCapability('jsonStore', ...)` oben)
+        // und damit fuer jeden SerializedDog automatisch verfuegbar.
         WebSocketChannelRetriever,
         ChannelLiveSnippetRetriever,
         JokeRetriever,

@@ -6,6 +6,7 @@
 // the OpenAI Responses API's "mcp" tool type.
 
 import { Router, type Request, type Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -13,14 +14,31 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
+    ListResourcesRequestSchema,
+    ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { getKennelTools } from '../tools/kennels';
 import { getNodeTools } from '../tools/nodes';
-import { getMetaTools } from '../tools/meta';
+import { getMetaTools, setMetaToolRegistry } from '../tools/meta';
 import { getAclTools } from '../tools/acl';
 import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
 import type { AuthCtx } from '../auth/middleware';
+
+/**
+ * Welle 11: tools/list token diet. The full long-form description is kept on
+ * the ToolDef and reachable via describe_tool(name); tools/list ships only a
+ * one-liner so a session handshake doesn't burn 5-10k tokens on description text.
+ *
+ * Strategy: first sentence (cut at ".", "!" or "?" followed by whitespace) up to
+ * 120 chars, else a hard 140-char clip with ellipsis.
+ */
+function shortDescription(d: string): string {
+    if (!d) return '';
+    const m = d.match(/^([\s\S]{1,120}?[.!?])\s/);
+    if (m) return m[1];
+    return d.length > 140 ? d.slice(0, 137) + '...' : d;
+}
 
 let cachedSkill: string | null = null;
 
@@ -40,20 +58,34 @@ async function loadSkill(projectRoot: string): Promise<string> {
     return cachedSkill;
 }
 
-function buildServer(tools: ToolDef[], ctx: AuthCtx, deps: ToolDeps, instructions: string): Server {
+/** Stable URI fer the skill resource -- MCP-Clients addressieren es so. */
+const SKILL_RESOURCE_URI = 'datadogs://skill';
+
+function buildServer(
+    tools: ToolDef[],
+    ctx: AuthCtx,
+    deps: ToolDeps,
+    skillContent: string,
+): Server {
     const toolMap = new Map(tools.map((t) => [t.name, t]));
+    // Welle 8 (P6): skill.md zusaetzlich als MCP-Resource exponieren. Wir behalten
+    // die kurze `instructions`-Variante fuer MCP-Clients ohne Resource-Support;
+    // der volle Inhalt ist ueber Resource `datadogs://skill` abrufbar.
+    const shortInstructions = skillContent
+        ? 'See resource `datadogs://skill` for the full dataDogs MCP usage guide.'
+        : '';
     const server = new Server(
-        { name: 'datadogs', version: '0.1.0' },
+        { name: 'datadogs', version: '0.2.0-beta.0' },
         {
-            capabilities: { tools: {} },
-            instructions,
+            capabilities: { tools: {}, resources: {} },
+            instructions: shortInstructions,
         },
     );
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: tools.map((t) => ({
             name: t.name,
-            description: t.description,
+            description: shortDescription(t.description),
             inputSchema: t.inputSchema as any,
         })),
     }));
@@ -76,6 +108,36 @@ function buildServer(tools: ToolDef[], ctx: AuthCtx, deps: ToolDeps, instruction
         }
     });
 
+    // Resources: skill.md -- Clients koennen den vollen Skill-Guide lesen,
+    // ohne dass er als (gekuerzte) `instructions` im Connection-Handshake landet.
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+        resources: [
+            {
+                uri: SKILL_RESOURCE_URI,
+                name: 'Skill: dataDogs MCP usage guide',
+                description: 'Vollstaendiger Voidtongue/Pirate-Brief mit Tool-Workflows, Sandbox-Grenzen und Stale-Snapshot-Konventionen.',
+                mimeType: 'text/markdown',
+            },
+        ],
+    }));
+
+    server.setRequestHandler(ReadResourceRequestSchema, async (req): Promise<any> => {
+        const uri = req.params.uri;
+        if (uri !== SKILL_RESOURCE_URI) {
+            // Unknown resource -- MCP SDK turns thrown errors into proper JSON-RPC errors.
+            throw new Error(`Unknown resource: ${uri}`);
+        }
+        return {
+            contents: [
+                {
+                    uri,
+                    mimeType: 'text/markdown',
+                    text: skillContent,
+                },
+            ],
+        };
+    });
+
     return server;
 }
 
@@ -93,8 +155,29 @@ export function createMcpRouter(deps: ToolDeps): Router {
         ...getAclTools(),
         ...getMetaTools(),
     ];
+    // Wire the registry into the meta module so describe_tool can resolve names
+    // back to their full long-form description + schema (Welle 11 token diet).
+    setMetaToolRegistry(tools);
 
-    router.post('/', async (req: Request, res: Response) => {
+    // Rate limit -- pro Identity (User-Id, sonst IP, sonst 'anon').
+    // Default 120/min, env-override per `DATADOGS_MCP_RATE_LIMIT`.
+    const rateLimitMax = (() => {
+        const raw = Number(process.env.DATADOGS_MCP_RATE_LIMIT);
+        return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 120;
+    })();
+    const mcpLimiter = rateLimit({
+        windowMs: 60 * 1000,
+        limit: rateLimitMax,
+        standardHeaders: 'draft-7',
+        legacyHeaders: false,
+        keyGenerator: (req: Request) => req.ctx?.user?.id || req.ip || 'anon',
+        message: {
+            error: 'rate_limit_exceeded',
+            error_description: `Too many MCP calls -- max ${rateLimitMax}/min per identity.`,
+        },
+    });
+
+    router.post('/', mcpLimiter, async (req: Request, res: Response) => {
         const ctx = req.ctx;
         if (!ctx) {
             res.status(500).json({ error: 'no auth context — middleware misordered' });
@@ -113,8 +196,8 @@ export function createMcpRouter(deps: ToolDeps): Router {
             return;
         }
 
-        const instructions = await loadSkill(deps.projectRoot);
-        const server = buildServer(tools, ctx, deps, instructions);
+        const skillContent = await loadSkill(deps.projectRoot);
+        const server = buildServer(tools, ctx, deps, skillContent);
         const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: undefined, // stateless
         });
