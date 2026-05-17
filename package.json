@@ -1,6 +1,6 @@
 {
   "name": "dataDogs",
-  "version": "0.1.0-alpha.3",
+  "version": "0.2.0-beta.0",
   "description": "Data Hunt — dogs hunt data: Kennels, Waves, Serialized TypeScript in the void. Express, Angular, Prisma.",
   "main": "main.ts",
   "workspaces": [
@@ -48,7 +48,7 @@
     "build:dogs-space": "cd packages/dogs-space && npx tsc",
     "build:dogs-open-library": "cd packages/dogs-open-library && npx tsc",
     "build:dogs-github-trending": "cd packages/dogs-github-trending && npx tsc",
-"build:dogs-humor": "cd packages/dogs-humor && npx tsc",
+    "build:dogs-humor": "cd packages/dogs-humor && npx tsc",
     "build:dogs-animals-random": "cd packages/dogs-animals-random && npx tsc",
     "build:dogs-dictionary": "cd packages/dogs-dictionary && npx tsc",
     "build:dogs-knowledge": "cd packages/dogs-knowledge && npx tsc",
@@ -158,6 +158,7 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.3.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.5.2",
     "express-session": "^1.18.1",
     "fs": "^0.0.1-security",
     "jose": "^5.9.6",

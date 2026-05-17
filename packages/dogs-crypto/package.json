@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-crypto",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Crypto: CoinGecko (Preise, Marktkap, Coin-Details)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

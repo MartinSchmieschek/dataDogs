@@ -26,6 +26,7 @@ model Dog {
   nodes                String?
   edges                String?
   visibility           String?  // "public" | "private". Null bei Nicht-Kennel-Dogs.
+  // NOTE: vmTimeoutMs ist KEIN Persistenz-Feld -- gehoert per-run-call mitgegeben (Welle 12 Korrektur).
   ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
   editors              String?  // Comma-separated User.id list — additional editors.
   viewers              String?  // Comma-separated User.id list — additional viewers (private only).

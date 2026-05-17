@@ -14,8 +14,214 @@
 import { Dog } from "../core/entities/abstractHuntingDog";
 import { DogClass, IHuntingDog } from "../core/entities/IHuntingDog";
 import { IHuntingSeason } from "../core/entities/IHuntingSeason";
-import * as vm from "vm";
+import { Worker } from "worker_threads";
+import { transform as sucraseTransform } from "sucrase";
 import { isRuntimeLogVerbose } from "../runtimeLog";
+
+/**
+ * ============================================================
+ *  VM GLOBAL CAPABILITIES — Infrastruktur statt Daten-Pakt
+ * ============================================================
+ *  Manche Faehigkeiten -- jsonStore, gleich gelagerte Persistenz-
+ *  oder Service-Bruecken -- gehoeren ins VM-Sandkasten-Sein selbst,
+ *  nicht in den Parent-Vertrag eines Dogs. Der Server registriert
+ *  hier seine globalen Capabilities einmalig beim Boot; jeder
+ *  SerializedDog sieht sie additiv neben `fetch` und `console`,
+ *  ohne sie als Parent fordern zu muessen.
+ *
+ *  Die Factory wird bei jedem `runExternalCode`-Aufruf neu befragt --
+ *  so kann der Provider entscheiden, frisch zu binden oder einen
+ *  Singleton wiederzugeben. Wirft die Factory, wird die Capability
+ *  fuer diesen Lauf still uebersprungen (das Sandbox-Land bleibt
+ *  navigierbar, nur ein Werkzeug fehlt).
+ *
+ *  Welle 8: Factories bekommen einen optionalen `ctx`-Parameter
+ *  (userId, isSuperUser). Provider, die tenant-scoped sind (z.B.
+ *  jsonStore), wrappen ihre Methoden so, dass jeder User sein eigenes
+ *  Key-Prefix bekommt; anonyme/super-user-Calls behalten den rohen Key.
+ * ============================================================
+ */
+
+/**
+ * Laufzeit-Kontext, den ein SerializedDog beim Bauen seiner VM-Capabilities
+ * an die Factories weiterreicht. KennelRunHandler / MCP setzen das pro Request.
+ */
+export type VmGlobalCapabilityContext = {
+    /** Eingeloggter User -- null/undefined fuer anonyme oder dev-mode Calls. */
+    userId?: string | null;
+    /** Dev-Mode / Super-User (z.B. MCP_AUTH_REQUIRED=false). */
+    isSuperUser?: boolean;
+};
+
+/**
+ * Eine Factory, die fuer einen gegebenen Laufzeit-Kontext ein frisches
+ * Bundle von VM-Methoden liefert (z.B. tenant-scoped `jsonStore`).
+ */
+export type VmGlobalCapabilityFactory = (
+    ctx: VmGlobalCapabilityContext,
+) => Record<string, any>;
+
+const vmGlobalCapabilities: Map<string, VmGlobalCapabilityFactory> = new Map();
+
+/**
+ * Eine VM-Global-Capability registrieren. Idempotent unter gleichem Namen --
+ * eine zweite Registrierung ueberschreibt die erste.
+ *
+ * Welle 8: `factory` bekommt jetzt einen `ctx`-Parameter. Bestehende Aufrufe
+ * mit Zero-arg-Factories sind weiterhin gueltig (TypeScript laesst optionale
+ * Parameter zu); das ctx wird einfach ignoriert.
+ */
+export function registerVmGlobalCapability(
+    name: string,
+    factory: VmGlobalCapabilityFactory,
+): void {
+    vmGlobalCapabilities.set(name, factory);
+}
+
+/**
+ * Eine zuvor registrierte VM-Global-Capability entfernen.
+ * Liefert true, wenn etwas geloescht wurde.
+ */
+export function unregisterVmGlobalCapability(name: string): boolean {
+    return vmGlobalCapabilities.delete(name);
+}
+
+/**
+ * Alle registrierten VM-Global-Capabilities zu einem frischen Objekt-Bundle
+ * verschmelzen. Factories, die werfen, werden uebersprungen.
+ * Welle 8: nimmt optional einen ctx, den jede Factory bekommt.
+ */
+export function buildVmGlobalCapabilities(
+    ctx: VmGlobalCapabilityContext = {},
+): Record<string, any> {
+    const out: Record<string, any> = {};
+    for (const [name, factory] of vmGlobalCapabilities) {
+        try {
+            out[name] = factory(ctx);
+        } catch {
+            // Capability dieses Mal nicht verfuegbar -- still ueberspringen.
+        }
+    }
+    return out;
+}
+
+/**
+ * Worker source -- a tiny script inlined via `new Worker(code, { eval: true })`.
+ * Runs the spirit's incantation inside its own isolate, far from the captain's heart.
+ * Native fetch/console live in the worker realm naturally; only structured-clone-safe
+ * data crosses the membrane.
+ *
+ * Worker output passes through JSON.parse(JSON.stringify(...)) to escape the VM realm.
+ * Reason: `script.runInContext` returns objects from a foreign V8 realm; Node's
+ * structured-clone over postMessage refuses or corrupts those, even when the payload
+ * is "just data". JSON-roundtrip strips the realm tag and forces a plain shape.
+ * Loss-set: Date -> ISO string, undefined -> dropped, BigInt -> throw,
+ * Map/Set/RegExp/functions -> dropped or thrown. Pure data round-trips cleanly.
+ */
+const SANDBOX_WORKER_SOURCE = `
+    const { parentPort } = require('worker_threads');
+    const vm = require('vm');
+
+    // RPC plumbing for bridge-namespace callbacks. The worker exposes Proxy objects
+    // (built from a whitelisted method list) that postMessage their calls back to the
+    // main thread, which holds the live functions. Each call gets a unique id; the
+    // result-message resolves the matching Promise.
+    let nextRpcId = 0;
+    const pendingRpc = new Map();
+
+    function makeBridgeProxy(namespace, methods) {
+        const proxy = {};
+        for (const m of methods) {
+            proxy[m] = (...args) => new Promise((resolve, reject) => {
+                const id = ++nextRpcId;
+                pendingRpc.set(id, { resolve, reject });
+                try {
+                    parentPort.postMessage({ type: 'rpc:call', id, namespace, method: m, args });
+                } catch (err) {
+                    pendingRpc.delete(id);
+                    reject(err);
+                }
+            });
+        }
+        return proxy;
+    }
+
+    // The init payload arrives via postMessage (async transport) rather than workerData
+    // (sync structured-clone on construction), so any clone failure surfaces here --
+    // inside the worker -- with a clear error, not as a cryptic synchronous throw from
+    // the Worker constructor. Subsequent messages are rpc:result replies for bridge calls.
+    let initFired = false;
+    parentPort.on('message', async (msg) => {
+        if (msg && msg.type === 'rpc:result') {
+            const pending = pendingRpc.get(msg.id);
+            if (pending) {
+                pendingRpc.delete(msg.id);
+                if (msg.error) pending.reject(new Error(msg.error));
+                else pending.resolve(msg.value);
+            }
+            return;
+        }
+        if (initFired) return;
+        initFired = true;
+        try {
+            const { wrappedCode, contextObj, bridgeNamespaces } = msg;
+            const bridges = {};
+            for (const entry of (bridgeNamespaces || [])) {
+                bridges[entry.namespace] = makeBridgeProxy(entry.namespace, entry.methods);
+            }
+            const context = vm.createContext({
+                ...contextObj,
+                ...bridges,
+                console,
+                fetch,
+            });
+            const script = new vm.Script(wrappedCode);
+            const raw = await script.runInContext(context);
+            // Strip realm + non-cloneable via JSON roundtrip.
+            // Loss-set: Date, undefined, BigInt, Map, Set, RegExp, functions.
+            // Pure data passes through cleanly.
+            let safe;
+            try {
+                safe = raw === undefined ? null : JSON.parse(JSON.stringify(raw));
+            } catch (cloneErr) {
+                throw new Error('Result not JSON-serializable: ' + (cloneErr && cloneErr.message ? cloneErr.message : String(cloneErr)));
+            }
+            parentPort.postMessage({ ok: true, result: safe });
+        } catch (err) {
+            parentPort.postMessage({
+                ok: false,
+                error: (err && err.message) ? err.message : String(err),
+                stack: err && err.stack ? err.stack : undefined,
+            });
+        }
+    });
+`;
+
+/**
+ * Sanitize the VM context for cross-realm postMessage transport.
+ * Every value is JSON-roundtripped per key -- proxies, getters, cross-realm
+ * objects, and structurally-non-cloneable shapes all collapse to plain data.
+ * Functions / symbols / unserializable values (BigInt, circular) are dropped.
+ * Loss-set: Date -> ISO string. Map/Set/RegExp/functions silently lost.
+ */
+function sanitizeContextForWorker(ctx: Record<string, any>): Record<string, any> {
+    const safe: Record<string, any> = {};
+    for (const key of Object.keys(ctx)) {
+        const value = ctx[key];
+        if (typeof value === 'function' || typeof value === 'symbol') {
+            continue;
+        }
+        // JSON roundtrip per-key -- escapes proxies, cross-realm objects,
+        // and silently drops any non-serializable property nested deep.
+        try {
+            safe[key] = JSON.parse(JSON.stringify(value));
+        } catch {
+            // Property contains things JSON cannot serialize (BigInt, circular).
+            // Drop the whole key rather than risk a structured-clone explosion at postMessage time.
+        }
+    }
+    return safe;
+}
 
 /**
  * Input DTO fer update/save operations -- the scroll upon which a spirit's new config is writ.
@@ -91,6 +297,37 @@ export class SerializedDog<T> extends Dog<T> {
         this.vmGlobalsSuppliers = suppliers.length ? [...suppliers] : [];
     }
 
+    /**
+     * Per-instance override fer the VM execution timeout (ms). Set by KennelRun
+     * from the per-run `vmTimeoutMs` param (Welle 12 Korrektur: Run-Time-Param,
+     * not persisted on IKennelConfig). Resolution order in `runExternalCode`:
+     *   1. this override (when set + > 0)
+     *   2. `process.env.DATADOGS_VM_TIMEOUT_MS` (when numeric + > 0)
+     *   3. 10000 (10s default)
+     */
+    private vmTimeoutMsOverride: number | undefined;
+
+    /** Set the per-instance VM execution timeout (ms). Falsy / <=0 clears the override. */
+    public setVmTimeoutMs(ms: number | undefined): void {
+        if (typeof ms === 'number' && ms > 0) {
+            this.vmTimeoutMsOverride = ms;
+        } else {
+            this.vmTimeoutMsOverride = undefined;
+        }
+    }
+
+    /**
+     * Per-instance capability context (userId / isSuperUser). Set by KennelRun
+     * from the captain's request context; passed to every VM-Global-Capability
+     * factory so providers (e.g. `jsonStore`) can tenant-scope their bridges.
+     */
+    private capabilityCtx: VmGlobalCapabilityContext = {};
+
+    /** Set the capability context for this dog's next runs. Empty object = anonymous. */
+    public setCapabilityContext(ctx: VmGlobalCapabilityContext | undefined): void {
+        this.capabilityCtx = ctx ? { ...ctx } : {};
+    }
+
     /** Apply all VM globals suppliers to the context -- let each supplier inscribe its runes */
     private applyVmGlobalsSuppliers(
         ctx: Record<string, any>,
@@ -106,19 +343,52 @@ export class SerializedDog<T> extends Dog<T> {
     // Reference to the kennel -- so this spirit may find its kin in the crew
     private kennelRef: Array<IHuntingDog<unknown>> | null = null;
 
+    /**
+     * Transpiled JS form of `config.theRun`. Cached per instance.
+     * The void demands TypeScript, but `vm.Script` only speaks plain JS --
+     * sucrase strips the annotations once, then we feast on the cache.
+     */
+    private _strippedCode?: string;
+
+    /** Drop the cached transpile -- next run will re-strip. */
+    private invalidateStrippedCode(): void {
+        this._strippedCode = undefined;
+    }
+
+    /** Lazily produce the JS form of `theRun`, caching the result. */
+    private getRunnableCode(): string {
+        if (this._strippedCode !== undefined) return this._strippedCode;
+        const source = this.config.theRun || '';
+        try {
+            this._strippedCode = sucraseTransform(source, {
+                transforms: ['typescript'],
+            }).code;
+        } catch (err: any) {
+            throw new Error(
+                `SerializedDog ${this.storageId}: TypeScript transpile failed: ${err?.message ?? err}`
+            );
+        }
+        return this._strippedCode;
+    }
+
     /** Bind this spirit to its kennel -- grant it sight of the other hounds aboard */
     public setKennelRef(kennel: Array<IHuntingDog<unknown>>): void {
         this.kennelRef = kennel;
     }
 
     /**
-     * Build the base context object with standard keys (fetch, console).
-     * These be the minimal tools every spirit needs to navigate the void.
+     * Build the base context object with standard keys (fetch, console) plus all
+     * registered VM-global capabilities (e.g. `jsonStore`). The capabilities are
+     * Infrastruktur and always-on -- jeder Dog sieht sie, ohne einen Parent zu
+     * deklarieren. fer simpleVmContext (type-defs) sind Capability-Objekte als
+     * Methoden-Bundle sichtbar; fer runExternalCode werden sie spaeter erneut
+     * gemerged, sodass beide Pfade dieselbe Oberflaeche zeigen.
      */
     protected buildBaseContext(): Record<string, any> {
         return {
             fetch: fetch,
             console: console,
+            ...buildVmGlobalCapabilities(this.capabilityCtx),
         };
     }
 
@@ -277,11 +547,17 @@ export class SerializedDog<T> extends Dog<T> {
 
     /** Transmute a name into CamelCase — the spirit's identity in the VM realm must be a valid identifier */
     private toCamelCase(input: string): string {
-        // Transmute to CamelCase: "node-name" -> "NodeName", "node_name" -> "NodeName", "My Dog" -> "MyDog"
+        // Already a valid PascalCase identifier? Leave it untouched.
+        if (/^[A-Z][a-zA-Z0-9_]*$/.test(input)) {
+            return input;
+        }
+        // Split on separators; per token preserve PascalCase shape, otherwise capitalize-lowercase.
         return input
             .split(/[-_\s]+/)
             .filter(word => word.length > 0)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .map(word => /^[A-Z][a-zA-Z0-9]*$/.test(word)
+                ? word
+                : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join('');
     }
 
@@ -372,35 +648,41 @@ export class SerializedDog<T> extends Dog<T> {
         if (!this.config.theRun){
             this.config.theRun = `throw new Error("Empty yieldCollector!")`
         }
+        this.invalidateStrippedCode();
     }
 
     /**
-     * Execute the spirit's code in a sandboxed VM realm.
-     * Arr, this be the dark heart of the SerializedDog -- where user-written incantations
-     * run in an isolated context, with only their declared parents' plunder as globals.
-     * The code be wrapped in an async function and executed via vm.runInContext.
-     * From brooding gulfs are we beheld, by that which bears no name.
+     * Execute the spirit's code in a worker-thread sandbox.
+     *
+     * The void's bargain:
+     *  - `theRun` may carry TypeScript syntax; sucrase strips it once, cache holds the JS.
+     *  - Execution happens in a `worker_threads.Worker`, isolated from the captain's heart.
+     *    A wayward `while(true)` or `process.exit()` cannot drag the server into the deep.
+     *  - A timeout (`DATADOGS_VM_TIMEOUT_MS`, default 10s) terminates runaway spirits.
+     *  - Only structured-clone-safe context crosses the membrane. Methods contributed
+     *    either by registered VM-global capabilities (e.g. `jsonStore.get/set/...`,
+     *    Welle 7) or by parent dogs cannot survive postMessage as functions, but
+     *    Welle 6 plumbs them through a bridge: any context-object whose values are
+     *    functions is extracted before sanitize, its method-name whitelist is shipped
+     *    to the worker, and each call round-trips via rpc:call / rpc:result. Calls
+     *    are async -- user code must `await` the bridge method.
      */
     public async runExternalCode(
     season: IHuntingSeason
   ): Promise<T>  {
 
-        // Wrap the user's incantation in an async function -- the ritual demands it
-        const wrappedCode = `
-            (async () => {
-                try {
-                    ${this.config.theRun}
-                } catch (err) {
-                    throw err;
-                }
-            })()
-        `;
+        // Transpile (cached) and wrap the user's incantation in an async function
+        const runnable = this.getRunnableCode();
+        const wrappedCode = `(async () => { try { ${runnable} } catch (err) { throw err; } })()`;
 
-        // Build the context -- only declared parents' yields become global variables
-        const contextObj: any = {
-            fetch,
-            console,
-        };
+        // Build the context -- only declared parents' yields become global variables.
+        // (fetch/console are provided inside the worker itself, not crossed via postMessage.)
+        // VM-global capabilities (z.B. jsonStore) werden additiv eingestreut -- sie sind
+        // Infrastruktur, kein Parent-Vertrag, und damit fuer jeden Dog ohne Deklaration sichtbar.
+        // Welle 8: capabilityCtx (userId/isSuperUser) wird in jede Factory durchgereicht,
+        // damit tenant-scoped Provider (jsonStore) ihre Keys pro User prefixen koennen.
+        // Die Bridge-Extraktion weiter unten erkennt sie automatisch als Funktions-traegende Objekte.
+        const contextObj: Record<string, any> = { ...buildVmGlobalCapabilities(this.capabilityCtx) };
 
         // This dark magic binds exhausted hounds' yields into the VM realm -- safely contained in the void
         const parentsRequired = this.config.parentsRequired || [];
@@ -436,29 +718,189 @@ export class SerializedDog<T> extends Dog<T> {
 
         this.applyVmGlobalsSuppliers(contextObj, season.exhausted);
 
+        // Bridge extraction -- VM-context contributions like `jsonStore` arrive as an
+        // object whose values are functions. Those cannot survive postMessage's structured
+        // clone, so we pluck them out of contextObj BEFORE sanitize and register them as
+        // bridge namespaces. The worker receives only the method-name whitelist; each call
+        // is round-tripped back to the main thread via rpc:call / rpc:result. Whitelisting
+        // is enforced on the main side: any method name not declared in `bridges[ns]` is
+        // rejected with "Unknown method" -- the worker cannot conjure new function refs.
+        type BridgeMethodMap = Record<string, (...args: any[]) => any>;
+        const bridges: Record<string, BridgeMethodMap> = {};
+        for (const key of Object.keys(contextObj)) {
+            const value = (contextObj as any)[key];
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                const methods: BridgeMethodMap = {};
+                let hasMethod = false;
+                for (const mKey of Object.keys(value)) {
+                    const m = value[mKey];
+                    if (typeof m === 'function') {
+                        methods[mKey] = m.bind(value);
+                        hasMethod = true;
+                    }
+                }
+                if (hasMethod) {
+                    bridges[key] = methods;
+                    // Remove from contextObj so sanitize does not wrestle with a function-bearing object.
+                    delete (contextObj as any)[key];
+                }
+            }
+        }
+        const bridgeNamespaces = Object.keys(bridges).map((ns) => ({
+            namespace: ns,
+            methods: Object.keys(bridges[ns]),
+        }));
+
+        // Drop functions / symbols -- postMessage's structured clone cannot carry them.
+        const safeContext = sanitizeContextForWorker(contextObj);
+
         if (isRuntimeLogVerbose()) {
             console.log(`[SerializedDog ${this.storageId}] Required/Optional Parent IDs:`, allParentIds);
-            console.log(`[SerializedDog ${this.storageId}] Context keys vor createContext:`, Object.keys(contextObj));
+            console.log(`[SerializedDog ${this.storageId}] Context keys (raw):`, Object.keys(contextObj));
+            console.log(`[SerializedDog ${this.storageId}] Context keys (worker-safe):`, Object.keys(safeContext));
+            if (bridgeNamespaces.length > 0) {
+                console.log(`[SerializedDog ${this.storageId}] Bridge namespaces:`, bridgeNamespaces.map(b => `${b.namespace}.{${b.methods.join(',')}}`));
+            }
         }
 
-        // Create the VM context AFTER all variables are inscribed --
-        // IMPORTANT: all variables must be set BEFORE createContext or they vanish into the void!
-        const context = vm.createContext(contextObj);
+        // Resolution: per-kennel override > env var > default 10s. setVmTimeoutMs()
+        // only stores values > 0; env-Number-coercion of NaN / 0 falls through to 10000.
+        const timeoutMs =
+            this.vmTimeoutMsOverride
+            ?? (Number(process.env.DATADOGS_VM_TIMEOUT_MS) || 10_000);
 
-        if (isRuntimeLogVerbose()) {
-            console.log(`[SerializedDog ${this.storageId}] Context keys nach createContext:`, Object.keys(context));
+        // Diagnose: probe whether the payload is structured-cloneable BEFORE we hand it to a Worker.
+        // If this fails we know it is the context shape (not vm.runInContext output) and we get
+        // a clear log instead of a cryptic "could not be cloned" from the Worker constructor.
+        let cloneTestError: string | null = null;
+        try {
+            if (typeof (globalThis as any).structuredClone === 'function') {
+                (globalThis as any).structuredClone({ wrappedCode, contextObj: safeContext });
+            } else {
+                JSON.parse(JSON.stringify({ wrappedCode, contextObj: safeContext }));
+            }
+        } catch (e: any) {
+            cloneTestError = `pre-worker clone test failed: ${e?.message ?? e}`;
         }
-
-        // The script -- the spirit's incantation, ready to execute
-        const script = new vm.Script(wrappedCode);
+        if (cloneTestError) {
+            console.error(`[SerializedDog ${this.storageId}] ${cloneTestError}`);
+            console.error(`[SerializedDog ${this.storageId}] safeContext keys:`, Object.keys(safeContext));
+            for (const k of Object.keys(safeContext)) {
+                const v = (safeContext as any)[k];
+                let t: string;
+                try {
+                    t = typeof v + '/' + (Array.isArray(v) ? 'array' : (v === null ? 'null' : Object.prototype.toString.call(v)));
+                } catch { t = '<unreadable>'; }
+                console.error(`  [${k}]: ${t}`);
+            }
+            // Throw -- the harvester's letOut() will catch, brand the dog with __error,
+            // and WavesConverter surfaces it as `hasError: true`. Returning a string here
+            // would mask the failure as a result and leave hasError=false in the snapshot.
+            throw new Error(cloneTestError);
+        }
 
         try {
-            const result = await script.runInContext(context);
-            return result as T;
+            return await new Promise<T>((resolve, reject) => {
+                // No workerData -- payload goes via postMessage AFTER spawn so any clone failure
+                // can be caught/reported by us rather than thrown synchronously by the constructor.
+                const worker = new Worker(SANDBOX_WORKER_SOURCE, { eval: true });
+
+                let settled = false;
+                const settle = (fn: () => void) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    worker.terminate().catch(() => undefined);
+                    fn();
+                };
+
+                const timer = setTimeout(() => {
+                    settle(() => reject(new Error(
+                        `SerializedDog ${this.storageId}: VM execution timed out after ${timeoutMs}ms`
+                    )));
+                }, timeoutMs);
+
+                // Persistent listener -- rpc:call messages can arrive any number of times
+                // before the final {ok,...} / {ok:false,...} result message. The settle()
+                // guard ensures we resolve/reject the outer Promise exactly once even though
+                // the listener stays attached.
+                worker.on('message', async (msg: any) => {
+                    if (msg && msg.type === 'rpc:call') {
+                        const ns = bridges[msg.namespace];
+                        const id = msg.id;
+                        try {
+                            if (!ns) {
+                                throw new Error(`Unknown bridge namespace: ${msg.namespace}`);
+                            }
+                            const fn = ns[msg.method];
+                            if (typeof fn !== 'function') {
+                                // Whitelist enforcement -- only registered method names are callable.
+                                throw new Error(`Unknown method: ${msg.namespace}.${msg.method}`);
+                            }
+                            const args = Array.isArray(msg.args) ? msg.args : [];
+                            const result = await fn(...args);
+                            // JSON-roundtrip the result so it survives postMessage cleanly
+                            // (DB rows etc. may carry exotic shapes that structured-clone refuses).
+                            let safe: unknown = null;
+                            try {
+                                safe = result === undefined ? null : JSON.parse(JSON.stringify(result));
+                            } catch (cloneErr: any) {
+                                throw new Error(`RPC result not serializable: ${cloneErr?.message ?? cloneErr}`);
+                            }
+                            try {
+                                worker.postMessage({ type: 'rpc:result', id, value: safe });
+                            } catch {
+                                // Worker may have died between call and reply -- nothing to do.
+                            }
+                        } catch (err: any) {
+                            try {
+                                worker.postMessage({ type: 'rpc:result', id, error: err?.message ?? String(err) });
+                            } catch {
+                                // Worker gone -- swallow.
+                            }
+                        }
+                        return;
+                    }
+                    if (msg && typeof msg.ok === 'boolean') {
+                        if (msg.ok) {
+                            settle(() => resolve(msg.result as T));
+                        } else {
+                            const message = msg.error ?? 'unknown sandbox error';
+                            settle(() => reject(new Error(message)));
+                        }
+                    }
+                });
+                worker.once('error', (err: Error) => {
+                    settle(() => reject(err));
+                });
+                worker.once('exit', (code: number) => {
+                    if (code !== 0) {
+                        settle(() => reject(new Error(
+                            `SerializedDog ${this.storageId}: sandbox worker exited with code ${code}`
+                        )));
+                    }
+                });
+
+                // Send the payload AFTER Worker is up. Any clone failure here surfaces via the
+                // 'error' listener with full diagnostic, not as a synchronous throw that we'd
+                // misattribute to the user's code.
+                try {
+                    worker.postMessage({ wrappedCode, contextObj: safeContext, bridgeNamespaces });
+                } catch (postErr: any) {
+                    settle(() => reject(new Error(
+                        `SerializedDog ${this.storageId}: postMessage failed: ${postErr?.message ?? postErr}`
+                    )));
+                }
+            });
         } catch (err: any) {
-            //TODO: Provide proper errors to UI -- the void's messages deserve better presentation
-            console.error("Script Error:", err);
-            return ("Error: " + err.message) as unknown as T;
+            // Re-throw so the harvester's letOut() catches, brands the dog with __error,
+            // and WavesConverter surfaces hasError=true via get_snapshot_dog_error.
+            // Returning a result string here would mask the failure as a successful yield
+            // and leave hasError=false in the snapshot -- the original sin of this method.
+            console.error(`[SerializedDog ${this.storageId}] Script Error:`, err?.message ?? err);
+            throw err instanceof Error
+                ? err
+                : new Error(typeof err === 'string' ? err : String(err));
         }
     }
 

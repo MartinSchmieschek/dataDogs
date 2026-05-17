@@ -62,3 +62,34 @@ export function fail(message: string): ToolResult {
         isError: true,
     };
 }
+
+/**
+ * Resolve tsCode-or-tsCodeBase64 into the raw TypeScript source string.
+ *
+ * Welle 11: many MCP clients have to escape backticks, newlines, quotes and
+ * template literals into a JSON string. PowerShell's ConvertTo-Json mangles
+ * common dog-code shapes; long template literals turn quoting into a horror.
+ * The base64 alternative lets a client pass `Buffer.from(tsCode).toString('base64')`
+ * and skip the escape gauntlet entirely.
+ *
+ * Contract:
+ * - Provide exactly one of `tsCode` (raw string) or `tsCodeBase64` (utf8-encoded base64).
+ * - Both → error.
+ * - Neither → error (when tsCode is required by the tool).
+ */
+export function resolveTsCode(args: { tsCode?: unknown; tsCodeBase64?: unknown }): string {
+    const hasRaw = typeof args.tsCode === 'string';
+    const hasB64 = typeof args.tsCodeBase64 === 'string';
+    if (hasRaw && hasB64) {
+        throw new Error('Provide either tsCode or tsCodeBase64, not both');
+    }
+    if (hasB64) {
+        try {
+            return Buffer.from(args.tsCodeBase64 as string, 'base64').toString('utf8');
+        } catch (e: any) {
+            throw new Error('tsCodeBase64 decode failed: ' + (e?.message ?? String(e)));
+        }
+    }
+    if (hasRaw) return args.tsCode as string;
+    throw new Error('tsCode or tsCodeBase64 required');
+}

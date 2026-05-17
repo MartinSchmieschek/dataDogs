@@ -4,8 +4,9 @@
  * Eigene DB (JSON_STORAGE_DATABASE_URL), Schema: store/prisma-json-storage/schema.prisma.
  * Bewusst unabhaengig vom Run-Cache (PrismaCacheHandler) und vom Nodes/Kennels-Store.
  *
- * Wird vom JsonStorageRetriever genutzt, um Funktionen (get/set/delete/list)
- * als VM-Globals an SerializedDog-Children zu liefern (getVmContextContributions).
+ * Wird in main.ts ueber `registerVmGlobalCapability('jsonStore', ...)` als
+ * VM-Global-Capability registriert -- jeder SerializedDog sieht jsonStore.get/
+ * set/delete/has/list/snapshot automatisch im VM-Context, ohne Parent.
  *
  * Client-Pfad: relativ zum Projektroot (process.cwd()), damit dist/main.js nicht
  * nach dist/store/generated sucht.

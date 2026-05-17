@@ -8,6 +8,7 @@ import {
     KennelRun,
     type MimicAdopter,
     type ICacheHandler,
+    type VmGlobalCapabilityContext,
     isRuntimeLogVerbose,
 } from '@datadogs/core';
 import { RESERVED_TOP_LEVEL_SEGMENTS } from './spaRouteConstants';
@@ -83,8 +84,22 @@ export class KennelRunHandler {
         return result;
     }
 
-    /** Run a kennel and return waves. */
-    public async runKennel(config: IKennelConfig, query?: Record<string, string>, body?: any): Promise<Waves> {
+    /**
+     * Run a kennel and return waves.
+     * @param capabilityCtx Optional auth context (userId/isSuperUser) forwarded to
+     *   every SerializedDog so registered VM-Global-Capabilities can tenant-scope
+     *   their bridges (e.g. `jsonStore` per-user key prefix).
+     * @param vmTimeoutMs Optional per-run override for the SerializedDog VM execution
+     *   timeout (ms). Resolution order: vmTimeoutMs param > DATADOGS_VM_TIMEOUT_MS env >
+     *   10000ms default. Run-Time-Param (Welle 12 Korrektur) -- nicht in IKennelConfig.
+     */
+    public async runKennel(
+        config: IKennelConfig,
+        query?: Record<string, string>,
+        body?: any,
+        capabilityCtx?: VmGlobalCapabilityContext,
+        vmTimeoutMs?: number,
+    ): Promise<Waves> {
 
         const mimicAdopter = await this.createMimicAdopter(config);
 
@@ -98,6 +113,12 @@ export class KennelRunHandler {
             this.deps.cacheHandler,
             mimicAdopter
         );
+        if (capabilityCtx) {
+            kennelRun.setCapabilityContext(capabilityCtx);
+        }
+        if (typeof vmTimeoutMs === 'number' && vmTimeoutMs > 0) {
+            kennelRun.setVmTimeoutMs(vmTimeoutMs);
+        }
         const season = await kennelRun.run();
         await this.persistNewMimics(config, season.exhausted);
         // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.
@@ -186,6 +207,21 @@ export class KennelRunHandler {
                 lineageId: winner.lineageId,
             };
             return new MimicDog<unknown>(mimicCfg, winner.versionId);
+        };
+    }
+
+    /**
+     * Translate the request's AuthCtx into the core's VmGlobalCapabilityContext.
+     * - logged in: { userId, isSuperUser:false }
+     * - dev mode / super-user: { userId:null, isSuperUser:true }
+     * - anonymous: { userId:null, isSuperUser:false }
+     * undefined req.ctx (legacy callers) -> undefined, capabilities stay raw.
+     */
+    public toCapabilityCtx(reqCtx: any): VmGlobalCapabilityContext | undefined {
+        if (!reqCtx) return undefined;
+        return {
+            userId: reqCtx.user?.id ?? null,
+            isSuperUser: !!reqCtx.isSuperUser,
         };
     }
 
@@ -354,7 +390,7 @@ export class KennelRunHandler {
                     : config.defaultBody;
 
             try {
-                const waves = await this.runKennel(config, query, body);
+                const waves = await this.runKennel(config, query, body, this.toCapabilityCtx(req.ctx));
                 res.json({ ok: true, waves, kennelConfig: config });
             } catch (runError: any) {
                 const msg = runError?.message || String(runError);
@@ -394,7 +430,7 @@ export class KennelRunHandler {
                 req.method === 'POST' && req.body !== undefined && req.body !== null
                     ? req.body
                     : config.defaultBody;
-            const waves = await this.runKennel(config, queryData, body);
+            const waves = await this.runKennel(config, queryData, body, this.toCapabilityCtx(req.ctx));
 
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
@@ -441,7 +477,7 @@ export class KennelRunHandler {
 
             const queryData = this.mergeQueryParams(config.defaultQuery, req.query);
             // Wie GET /api/…/run: ohne Request-Body die gespeicherte defaultBody-Konfiguration nutzen.
-            const waves = await this.runKennel(config, queryData, config.defaultBody);
+            const waves = await this.runKennel(config, queryData, config.defaultBody, this.toCapabilityCtx(req.ctx));
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });
@@ -482,7 +518,7 @@ export class KennelRunHandler {
             const bodyData =
                 req.body !== undefined && req.body !== null ? req.body : config.defaultBody;
 
-            const waves = await this.runKennel(config, queryData, bodyData);
+            const waves = await this.runKennel(config, queryData, bodyData, this.toCapabilityCtx(req.ctx));
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
                 res.status(404).json({ error: `Hund ${dogIds[0]} nicht in den Waves gefunden` });

@@ -4,9 +4,24 @@
 
 import { canRead } from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail } from './types';
+import type { AuthCtx } from '../auth/middleware';
 import type { NodeEntry, Waves, ReadTrackingEntry } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from '../snapshots/types';
 import type { IKennelConfig } from '@datadogs/core';
+
+/**
+ * Inline MCP-AuthCtx -> VmGlobalCapabilityContext adapter (Welle 9 hotfix).
+ * Duplicated from kennels.ts so snapshots.ts doesn't depend on a method that
+ * may be missing from a stale-compiled KennelRunHandler at runtime.
+ */
+function authCtxToCapabilityCtx(ctx: AuthCtx | undefined | null):
+    { userId: string | null; isSuperUser: boolean } | undefined {
+    if (!ctx) return undefined;
+    return {
+        userId: ctx.user?.id ?? null,
+        isSuperUser: !!ctx.isSuperUser,
+    };
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -60,14 +75,43 @@ interface VisibleSnapshot {
 }
 
 /**
+ * Stale-Marker, der vom Caller im success-Pfad gerendert wird.
+ *
+ * Welle 8 + 11: Stale ist KEIN Tool-Failure, sondern ein normaler Zustand der
+ * Snapshot-Cache-Schicht. Wir geben deshalb `ok(marker)` zurueck -- nicht
+ * `fail(JSON.stringify(marker))`. `ok()` setzt `isError` NICHT, der MCP-Client
+ * sieht ein gewoehnliches Success-Payload mit `stale: true` als Marker und
+ * triggert keine Retry-Logik. Aufrufer-Pattern:
+ *
+ *   const gate = await loadVisibleSnapshot(id, ctx, deps);
+ *   if (!gate.ok) return gate.result; // bei stale: ein ok() mit Marker; bei fail: ein fail()
+ *
+ * loadVisibleSnapshot kapselt die Unterscheidung; Aufrufer brauchen nichts
+ * Stale-Spezifisches zu tun. Das `stale: true`-Discriminant im Result-Tuple
+ * ist nur dokumentarisch -- der Wert sitzt im `result`-Feld als `ok(marker)`.
+ */
+export interface StaleSnapshotMarker {
+    stale: true;
+    snapshotVersionId: string;
+    currentVersionId: string;
+    hint: 'call refresh_kennel_snapshot';
+}
+
+/**
  * Laed Snapshot + prueft Visibility + Stale.
- * Liefert entweder das gepruefte Paar oder einen fail()-Result.
+ * - `not-found` / `forbidden` / `no-snapshot` -> fail() (echte Fehler)
+ * - `stale` -> ok(StaleSnapshotMarker), kein isError
+ * - sonst -> die Visible-Snapshot-Daten
  */
 async function loadVisibleSnapshot(
     id: string,
     ctx: Parameters<ToolDef['handler']>[1],
     deps: ToolDeps,
-): Promise<{ ok: true; data: VisibleSnapshot } | { ok: false; result: ReturnType<typeof fail> }> {
+): Promise<
+    | { ok: true; data: VisibleSnapshot }
+    | { ok: false; result: ReturnType<typeof fail> }
+    | { ok: false; stale: true; result: ReturnType<typeof ok> }
+> {
     const current = await deps.kennelsController.getById(id);
     if (!current.ok || !current.data) {
         return { ok: false, result: fail(`Kennel ${id} not found`) };
@@ -86,17 +130,13 @@ async function loadVisibleSnapshot(
     }
     const currentVersionId = current.data.id;
     if (snapshot.kennelVersionId !== currentVersionId) {
-        return {
-            ok: false,
-            result: fail(
-                JSON.stringify({
-                    stale: true,
-                    snapshotVersionId: snapshot.kennelVersionId,
-                    currentVersionId,
-                    hint: 'call refresh_kennel_snapshot',
-                }),
-            ),
+        const marker: StaleSnapshotMarker = {
+            stale: true,
+            snapshotVersionId: snapshot.kennelVersionId,
+            currentVersionId,
+            hint: 'call refresh_kennel_snapshot',
         };
+        return { ok: false, stale: true, result: ok(marker) };
     }
     return { ok: true, data: { snapshot, currentVersionId } };
 }
@@ -140,7 +180,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'refresh_kennel_snapshot',
             description:
-                'Runs a kennel asynchronously and stores the full Waves in-memory as a snapshot, keyed by kennelLineageId. Returns immediately with status=running. Use wait_for_kennel_snapshot or get_kennel_snapshot to observe completion. Prefer this over run_kennel for any inspection workflow — subsequent get_snapshot_* tools read from the cached run.',
+                'Runs a kennel asynchronously and stores the full Waves in-memory as a snapshot, keyed by kennelLineageId. Returns immediately with status=running. Use wait_for_kennel_snapshot or get_kennel_snapshot to observe completion. Prefer this over run_kennel for any inspection workflow — subsequent get_snapshot_* tools read from the cached run. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > DATADOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -153,6 +193,11 @@ export function getSnapshotTools(): ToolDef[] {
                         description: 'query parameters (overrides defaultQuery)',
                     },
                     body: { description: 'body data (overrides defaultBody)' },
+                    vmTimeoutMs: {
+                        type: 'number',
+                        minimum: 1,
+                        description: 'Per-run VM timeout in ms. Overrides DATADOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
+                    },
                 },
             },
             handler: async (args, ctx, deps) => {
@@ -172,6 +217,9 @@ export function getSnapshotTools(): ToolDef[] {
 
                 const query = (args.query as Record<string, string> | undefined) ?? undefined;
                 const body = args.body;
+                const vmTimeoutMs = typeof args.vmTimeoutMs === 'number' && args.vmTimeoutMs > 0
+                    ? args.vmTimeoutMs
+                    : undefined;
                 deps.snapshotCache.startJob(
                     lineageId,
                     kennelVersionId,
@@ -197,6 +245,8 @@ export function getSnapshotTools(): ToolDef[] {
                             freshConfig,
                             mergedQuery,
                             effectiveBody,
+                            authCtxToCapabilityCtx(ctx),
+                            vmTimeoutMs,
                         );
                         const leadDogId = resolveLeadDogId(waves, freshConfig);
                         const leadResult = extractLeadResult(waves, freshConfig);
@@ -223,7 +273,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_kennel_snapshot',
             description:
-                'Returns the snapshot header (status, timing, counts, lead) for a kennel. Does NOT return waves payload — use the granular get_snapshot_* tools for that. Fails if no snapshot exists or the snapshot is stale (kennel version changed).',
+                'Returns the snapshot header (status, timing, counts, lead) for a kennel. Does NOT return waves payload — use the granular get_snapshot_* tools for that. Fails if no snapshot exists. If the snapshot is stale (kennel version changed), returns `{stale:true, snapshotVersionId, currentVersionId, hint:"call refresh_kennel_snapshot"}` in the result (no isError) — refresh first, then re-query.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -242,7 +292,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'wait_for_kennel_snapshot',
             description:
-                'Polls the snapshot until status leaves "running" or timeoutMs elapses (default 30000ms). Returns the snapshot header; sets timedOut=true if the wait expired.',
+                'Polls the snapshot until status leaves "running" or timeoutMs elapses (default 30000ms). Returns the snapshot header; sets timedOut=true if the wait expired. If the snapshot is stale (kennel version changed during the wait), returns `{stale:true, snapshotVersionId, currentVersionId, hint:"call refresh_kennel_snapshot"}` (no isError) — refresh first.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -269,14 +319,15 @@ export function getSnapshotTools(): ToolDef[] {
                     const snap = deps.snapshotCache.get(lineageId);
                     if (snap && snap.status !== 'running') {
                         if (snap.kennelVersionId !== currentVersionId) {
-                            return fail(
-                                JSON.stringify({
-                                    stale: true,
-                                    snapshotVersionId: snap.kennelVersionId,
-                                    currentVersionId,
-                                    hint: 'call refresh_kennel_snapshot',
-                                }),
-                            );
+                            // Stale: ok() statt fail() -- Marker im Success-Payload,
+                            // damit MCP-Clients keinen automatischen Retry triggern.
+                            const marker: StaleSnapshotMarker = {
+                                stale: true,
+                                snapshotVersionId: snap.kennelVersionId,
+                                currentVersionId,
+                                hint: 'call refresh_kennel_snapshot',
+                            };
+                            return ok(marker);
                         }
                         return ok(summaryHeader(snap));
                     }

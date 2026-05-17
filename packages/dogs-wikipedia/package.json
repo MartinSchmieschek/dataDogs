@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-wikipedia",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Wikipedia Nearby: Artikel in der Naehe per GPS aus dem Void",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
