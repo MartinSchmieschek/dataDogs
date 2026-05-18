@@ -17,7 +17,7 @@
   "license": "MIT",
   "private": true,
   "peerDependencies": {
-    "@datadogs/core": "0.1.0-alpha.1"
+    "@datadogs/core": "file:../core"
   },
   "dependencies": {
     "@datadogs/core": "file:../core",
