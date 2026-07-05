@@ -6,6 +6,7 @@ import { AbstractController, IControllerResponse, IEntity } from '../AbstractCon
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../mcp/auth/visibility';
 import { canMutateNode } from '../../mcp/auth/permissions';
 import { IStore } from '../../store/IStore';
+import { paramString } from '../utils/routeParams';
 
 /**
  * Returns true when the request has a logged-in user OR is in super-user dev mode.
@@ -144,7 +145,7 @@ export class ConfigRouteHandler {
      */
     private async handleList(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
+            const subpath = paramString(req.params.subpath);
             const controller = this.registry.get(subpath);
 
             if (!controller) {
@@ -175,8 +176,8 @@ export class ConfigRouteHandler {
      */
     private async handleGetById(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
-            const id = req.params.id;
+            const subpath = paramString(req.params.subpath);
+            const id = paramString(req.params.id);
             const controller = this.registry.get(subpath);
 
             if (!controller) {
@@ -208,7 +209,7 @@ export class ConfigRouteHandler {
      */
     private async handleCreate(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
+            const subpath = paramString(req.params.subpath);
             const controller = this.registry.get(subpath);
 
             if (!controller) {
@@ -326,8 +327,8 @@ export class ConfigRouteHandler {
      */
     private async handleUpdate(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
-            const id = req.params.id;
+            const subpath = paramString(req.params.subpath);
+            const id = paramString(req.params.id);
             const controller = this.registry.get(subpath);
 
             if (!controller) {
@@ -369,8 +370,8 @@ export class ConfigRouteHandler {
      */
     private async handleDelete(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
-            const id = req.params.id;
+            const subpath = paramString(req.params.subpath);
+            const id = paramString(req.params.id);
             const controller = this.registry.get(subpath);
 
             if (!controller) {
@@ -412,8 +413,8 @@ export class ConfigRouteHandler {
      */
     private async handleRename(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
-            const id = req.params.id;
+            const subpath = paramString(req.params.subpath);
+            const id = paramString(req.params.id);
             const { displayName } = req.body;
             const controller = this.registry.get(subpath);
 
@@ -457,8 +458,8 @@ export class ConfigRouteHandler {
      */
     private async handleGetVersions(req: Request, res: Response): Promise<void> {
         try {
-            const subpath = req.params.subpath;
-            const id = req.params.id;
+            const subpath = paramString(req.params.subpath);
+            const id = paramString(req.params.id);
             const controller = this.registry.get(subpath);
 
             if (!controller) {

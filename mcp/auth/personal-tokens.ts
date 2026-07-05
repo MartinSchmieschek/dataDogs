@@ -11,6 +11,7 @@
 import { Router, type Request, type Response } from 'express';
 import { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { issueAccessToken } from './jwt';
+import { paramString } from '../../api/utils/routeParams';
 
 const PAT_CLIENT_ID = 'pat';
 const PAT_TTL_SEC = 60 * 60 * 24 * 365; // 1 year
@@ -72,7 +73,7 @@ export function createPersonalTokensRouter(prisma: PrismaClient): Router {
         if (!userId) return;
 
         await prisma.accessToken.updateMany({
-            where: { jti: req.params.jti, userId, clientId: PAT_CLIENT_ID },
+            where: { jti: paramString(req.params.jti), userId, clientId: PAT_CLIENT_ID },
             data: { revokedAt: new Date() },
         });
         res.redirect('/auth/tokens');

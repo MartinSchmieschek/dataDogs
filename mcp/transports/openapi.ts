@@ -13,6 +13,7 @@ import { getKennelTools } from '../tools/kennels';
 import { getNodeTools } from '../tools/nodes';
 import { getMetaTools } from '../tools/meta';
 import { getAclTools } from '../tools/acl';
+import { paramString } from '../../api/utils/routeParams';
 import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
 
@@ -178,9 +179,10 @@ export function createActionsRouter(deps: ToolDeps): Router {
 
     // === POST /actions/<tool_name> ===
     router.post('/:tool', async (req: Request, res: Response) => {
-        const tool = toolMap.get(req.params.tool);
+        const toolName = paramString(req.params.tool);
+        const tool = toolMap.get(toolName);
         if (!tool) {
-            res.status(404).json({ error: `Unknown tool: ${req.params.tool}` });
+            res.status(404).json({ error: `Unknown tool: ${toolName}` });
             return;
         }
 
