@@ -1,6 +1,7 @@
 // The ConfigRouteHandler — the ship's navigator, mapping all HTTP requests to their captains.
 // In luminous space, blackened stars: each subpath is a star, each controller its light.
 import { Request, Response } from 'express';
+import { isRuntimeLogVerbose } from '@datadogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../mcp/auth/visibility';
 import { canMutateNode } from '../../mcp/auth/permissions';
@@ -38,7 +39,9 @@ export class ControllerRegistry {
      */
     register<T extends IEntity = IEntity>(subpath: string, controller: AbstractController<T>): void {
         this.controllers.set(subpath, controller as AbstractController<any>);
-        console.log(`[ControllerRegistry] Controller für Subpath '${subpath}' registriert`);
+        if (isRuntimeLogVerbose()) {
+            console.log(`[ControllerRegistry] Controller für Subpath '${subpath}' registriert`);
+        }
     }
 
     /**
@@ -130,7 +133,9 @@ export class ConfigRouteHandler {
             await this.handleDelete(req, res);
         });
 
-        console.log(`[ConfigRouteHandler] Routes registriert unter ${basePath}/:subpath`);
+        if (isRuntimeLogVerbose()) {
+            console.log(`[ConfigRouteHandler] Routes registriert unter ${basePath}/:subpath`);
+        }
     }
 
     /**
@@ -148,7 +153,6 @@ export class ConfigRouteHandler {
             }
 
             // For versioned entities (nodes), return only the latest incarnation per lineageId.
-            console.log(`[ConfigRouteHandler.handleList] subpath=${subpath}, calling listLatest()`);
             const result = await controller.listLatest();
             if (result.ok) {
                 // Filter both nodes and kennels by visibility/ownership.

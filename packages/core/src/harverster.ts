@@ -83,7 +83,10 @@ export class SeasonRunner {
 
         }
         catch (e) {
-            if (v) console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e);
+            if (v) {
+                const msg = e instanceof Error ? e.message : String(e);
+                console.warn(`Hunt failed. Name: <${dog.name}> — ${msg}`);
+            }
             // The hunt has failed -- store the horror in the dog's error brand
             (dog as any).__error = e instanceof Error ? e.message : String(e);
             // Add the dog to exhausted regardless -- even failed hunts leave their mark

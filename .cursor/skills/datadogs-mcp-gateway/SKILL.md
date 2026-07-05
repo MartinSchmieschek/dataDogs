@@ -1,6 +1,6 @@
 ---
 name: datadogs-mcp-gateway
-description: Mirrors the instructions the dataDogs MCP server injects at initialize (tone, mandatory first-interaction protocol via get_readme/list_nodes/list_kennels, 17 MCP tools, ACL, waves, compositor pattern). Use when working through the MCP gateway at localhost:3000/mcp, dataDogs MCP tools, or matching server-delivered agent behavior; attach when API-only workflow is not enough.
+description: Mirrors the instructions the dataDogs MCP server injects at initialize (Spuren-Pflicht, tone, first-interaction protocol, MCP tools, ACL, waves, compositor pattern). Use when working through the MCP gateway, dataDogs MCP tools, or matching server-delivered agent behavior; attach when API-only workflow is not enough.
 disable-model-invocation: true
 ---
 
@@ -150,13 +150,111 @@ Wave 3 (Compositor):  NaturBundle (the lead)         ← merge + format
 - **The compositor does no fetching, no per-source filtering, no domain logic.** It reads entity yields and stitches them.
 - **A fat lead is a code smell.** If the lead crosses ~30 lines of domain logic, you split it before saving.
 - **HTML and rendering** belong in a dedicated renderer dog — never blended with data logic.
-- **Grouped data logic — its own kennel.** When a coherent fetch-and-normalize graph answers a **specific information-grouping need** (a reusable slice or bundle), put it in a **dedicated pen** with a stable JSON lead yield. Other kennels compose against that contract — each pen stays one concern; consumers call the endpoint that matches the grouping they need instead of duplicating the same pack everywhere.
+- **Grouped data logic — its own kennel (`<Thema>Json`).** When a coherent fetch-and-normalize graph answers a **specific information-grouping need**, put it in a **dedicated Aggregations-Pen** with a stable JSON lead yield. Ansichts-Pens und Probe-Pens hängen daran — siehe § Datenaggregation getrennt von Ansicht.
 
 If a single-source pen exists, the lead may render directly. But the **moment a second source enters**, refactor to the compositor pattern. Don't wait for "later" — later never comes, and the fat dog locks the entity into one pen.
 
 **Why:** entity dogs are reusable across pens (one fat lead is locked to its context); failures localize per entity (you grep `WeatherData` and find it instantly); versioning evolves separately for data and renderer; multi-consumer (one client wants only the weather slice, another wants the full bundle).
 
+## Datenaggregation getrennt von Ansicht
+
+**Gute Daten und gute UI sind zwei Jagden.** Sammle und normalisiere in einem Pen; rendere in anderen. Ein Aggregat, viele Darstellungen — jede Ansicht liest dieselbe Beute, nicht ihre eigene Pipeline.
+
+### Drei Pen-Typen
+
+| Typ | Benennung | Lead liefert | Aufgabe |
+|-----|-----------|--------------|---------|
+| **Aggregations-Pen** | `<Thema>Json` (z. B. `gameMapJson`) | JSON | Hunter → Entity → Compositor. Kein HTML, kein UI-Code. Stabile, maschinenlesbare Beute. |
+| **Ansichts-Pen** | `<Thema>-<darstellung>` (z. B. `gameMap-leaflet`, `gameMap-liste`) | HTML / Markdown | Liest das Aggregat — per `fetch` auf den Json-Pen, geteilte Entity-Dogs, oder dünner Renderer-Hund. Nur Darstellung. |
+| **Probe-Pen** | `probe-<Thema>` (z. B. `probe-gameMap`) | HTML oder JSON | Zeigt dem Sterblichen **wie wir die Daten sehen** — Rohschichten, Zwischenstände, Feldwahl. Kein Produktions-UI. |
+
+### Beispiel — Game Map
+
+```
+gameMapJson          ← Wave 1–3: Hunter, Entity, Compositor → { tiles, markers, meta }
+gameMap-leaflet      ← liest gameMapJson → Leaflet-Karte
+gameMap-kompakt      ← liest gameMapJson → kompakte Listenansicht
+probe-gameMap        ← zeigt Layer für Layer was im Aggregat landet (für Verständnis/Debug)
+```
+
+**Aggregations-Pen zuerst.** Erst `gameMapJson` jagen und Snapshot prüfen — dann Ansichten bauen. Nie Fetch + Normalisierung + HTML in einem Pen vermischen, wenn mehr als eine Darstellung denkbar ist.
+
+**Ansichts-Pens sind dünn.** Der Renderer-Hund formatiert; er holt nicht nochmal die Welt ab. Wenn die Ansicht eigene Hunter braucht, fehlt wahrscheinlich ein Feld im Aggregat — zurück zum Json-Pen, nicht zur fetten Ansicht.
+
+**Probe-Pens bei Bedarf.** Wenn etwas Wichtiges sichtbar werden muss — unklarer Shape, mehrdeutige Quellen, User fragt „was seht ihr da?“ — einen `probe-*`-Pen schreiben. Er verdeutlicht unsere Sicht auf die Daten (Tabellen, farbige Layer, kommentierte Felder). Spuren in `task`: *warum dieser Probe existiert*. Probe-Pens dürfen wegwerfbar sein; das Aggregat bleibt.
+
+### Verknüpfung zwischen Pens
+
+1. **`fetch` auf Json-Pen** — Ansichts-Hund ruft `/<gameMapJson>?…` auf (gleiche Query-Parameter wie das Aggregat). Einfach, entkoppelt, eigene Versionierung.
+2. **Geteilte Entity-Dogs** — dieselbe `lineageId` in `dogIds` mehrerer Pens. Weniger Netzwerk, enger gekoppelt.
+3. **Compositor über mehrere Json-Pens** — dünner Lead-Pen liest zwei Aggregat-Endpoints und merged.
+
+Faustregel: **Json-Pen = Vertrag im Code.** Ansichts-Pens kommen und gehen; das Aggregat bleibt die Adresse der Wahrheit.
+
+## Eigenes Projekt — Kennel-Bundles exportieren
+
+Nutzt du den MCP **nicht nur für einmalige Jagden**, sondern als Infrastruktur **deines eigenen Produkts**, sind die Pens **Projekt-Assets** — nicht nur flüchtiger Server-Zustand.
+
+**Nach jeder relevanten Änderung** an Pens, die dein Produkt braucht (`build_kennel`, `update_kennel`, `save_node` an genutzten Dogs), die betroffenen Kennels **exportieren** und als JSON in deinem Repo zwischenspeichern — z. B. `kennels/gameMapJson.kennel.json`, `kennels/gameMap-leaflet.kennel.json`. So bleibt dein Datenstand über Sessions, Server-Neustarts und Umgebungswechsel erhalten.
+
+### Export / Import (REST)
+
+| Aktion | Endpoint | Inhalt |
+|--------|----------|--------|
+| **Export** | `GET /api/kennels/:id/export` | Bundle: Kennel-Config + alle SerializedDogs/Mimics + `task` / `nodes` / `edges` |
+| **Import** | `POST /api/kennels/import` | Body = Bundle-JSON; Response: `{ ok, kennelId, idMap }` |
+
+Kein separates MCP-Tool — dieselbe API-Basis wie der Gateway (`MCP_BASE_URL` bzw. dein dataDogs-Host). Pretty-printed JSON ins Projekt schreiben; das Bundle ist dein **offline Datenstand**, nicht der Chat.
+
+### Server kann umbenennen — IDs nicht blind vertrauen
+
+Beim **Import** kollidiert `bundle.kennel.kennelId` mit einem bestehenden Pen, vergibt der Server automatisch einen neuen Namen:
+
+`gameMapJson` → `gameMapJson-copy` → `gameMapJson-copy-2` …
+
+**Verlasse dich in deinem Produkt nicht starr auf die Kennel-ID aus der letzten MCP-Session.** Nach Import immer die Response-`kennelId` lesen oder `list_kennels` prüfen. Export-Dateien im Repo behalten die **logische** ID im Dateinamen; die **laufende** ID auf dem Server kann abweichen.
+
+Beim Import bekommen SerializedDogs außerdem **frische lineageIds** — die Import-Response liefert `idMap` (alt → neu). Hardcodierte Dog-GUIDs aus einer früheren Session brechen; Bundle-Re-Import ist die Wahrheit.
+
+Ansichts-Pens, die per `fetch('/<gameMapJson>?…')` an ein Aggregat hängen, müssen nach Umbenennung die **aktuelle** Aggregat-URL kennen — entweder zur Laufzeit auflösen oder beim Import die Renderer-URLs anpassen.
+
+### Agenten-Workflow (Produkt-Modus)
+
+1. Pack bauen oder ändern → Hunt-Gate → Spuren
+2. **Export** aller Pens, die das Produkt nutzt (`GET …/export`)
+3. JSON-Dateien ins Projekt schreiben (eine Datei pro Pen)
+4. Kurz notieren (README oder `task`), welches Bundle zu welchem Feature gehört
+5. Nach Re-Import oder Deploy: `kennelId` und ggf. `idMap` gegen exportierte Annahmen prüfen
+
+> *Khra* — der Server erinnert sich anders als dein Repo. Export ist dein Anker in der Zeit.
+
+## Spuren & Rechtfertigung — Agenten-Pflicht
+
+**Chat-Reasoning verweht.** Die nächste Session sieht nur, was am Kennel steht — nicht deine Gedanken.
+
+**Wunsch festhalten, nicht Vertrag.** Der **Vertrag** (JSON-Shape, Feldnamen, Pipeline-Details) lebt im **Code** und darf sich ändern. Spuren halten den **Wunsch** fest.
+
+| Feld | Zweck |
+|------|--------|
+| `task` | Der **Wunsch** + grobe Lage (Was fehlt uns? Was haben wir uns entschieden?) |
+| `nodes[]` | Pro Hund: **eine kurze Zeile** — warum dieser Hund für diesen Wunsch |
+| `edges[]` | Optional — nur wenn die **Kette des Wunsches** sonst unklar wäre |
+
+### Agenten-Anweisung (kurz)
+
+> MCP liefert dies bei Connect als `instructions` (`mcp/spuren-brief.ts`). Vollständig: [`mcp/skill.md`](../../../mcp/skill.md) § Spuren & Rechtfertigung oder Resource `datadogs://skill`.
+
+Nach Pack-Änderung (`build_kennel`, `create_kennel`, `update_kennel`) in `task` + `nodes[]` schreiben — **Wunsch**, nicht JSON-Vertrag.
+
+**`task`** — vier grobe Blöcke: `## Wunsch` / `## Was wir nicht wissen` / `## Was wir dafür brauchen` / `## Entscheidungen (grob)`
+
+**`nodes[]`** — jeder Hund in `dogIds`: `{ id, comment }` mit einem Satz (Wunsch-Perspektive).
+
 ## How to behave
+
+**Spuren when you mutate a pack.** After every `build_kennel`, `create_kennel`, or `update_kennel`, persist **`task`** and **`nodes[]`** per **Spuren & Rechtfertigung** above.
+
+**Eigenes Produkt — exportieren.** Wenn der MCP dein Projekt trägt (nicht nur ein Chat-Hunt), nach Pack-Änderungen die genutzten Pens per `GET /api/kennels/:id/export` als JSON ins Repo legen. Siehe § Eigenes Projekt — Kennel-Bundles exportieren. Server kann beim Import umbenennen (`-copy`); `kennelId` und `idMap` nicht blind aus alter Session übernehmen.
 
 **The README first.** `get_readme` is not optional at the start of a non-trivial session. Tool descriptions assume you know its content.
 
@@ -174,7 +272,7 @@ If a single-source pen exists, the lead may render directly. But the **moment a 
 
 **Kennels mutate — use what returns.** Pens evolve: `update_kennel`, new dog versions, reshaped yields. When you **do** run a hunt, read the wave output thoroughly and align code, bindings, and user-facing answers to **that** payload — not a stale remembered shape. Kennels are **fine to run** whenever you need fresh ground truth, but they **do not need to run every turn**; skip gratuitous re-runs, sprint when the pen or the question changes.
 
-**Parallel pens — build and merge.** You may evolve **several kennels in parallel** — each pen a focused contract and JSON shape — then **combine their yields** in a compositor or thin bundling lead that stitches those endpoints together. Use parallel pens when concerns split cleanly; avoid one overloaded kennel that does every grouping at once.
+**Parallel pens — build and merge.** You may evolve **several kennels in parallel** — each pen a focused contract and JSON shape — then **combine their yields** in a compositor or thin bundling lead that stitches those endpoints together. Use parallel pens when concerns split cleanly; avoid one overloaded kennel that does every grouping at once. See **Datenaggregation getrennt von Ansicht**: `<Thema>Json` für Beute, `<Thema>-<darstellung>` für UI, `probe-<Thema>` wenn der Sterbliche sehen soll wie wir die Daten lesen.
 
 **Merged JSON lives in its own kennel.** When several sources or waves belong to one stable machine-readable answer, model it as a dedicated pen whose lead yields structured JSON — do not only stitch tool output in chat. That keeps the bundle versioned, repeatable, and callable at the kennel endpoint.
 

@@ -710,8 +710,10 @@ export class SerializedDog<T> extends Dog<T> {
                     }
                 }
             } else if (parentDog && parentDog.collected === undefined) {
-                console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} gefunden, aber collected ist undefined`);
-            } else {
+                if (isRuntimeLogVerbose()) {
+                    console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} gefunden, aber collected ist undefined`);
+                }
+            } else if (isRuntimeLogVerbose()) {
                 console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} nicht in exhausted gefunden`);
             }
         });

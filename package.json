@@ -91,7 +91,9 @@
     "typecheck:core": "cd packages/core && npx tsc --noEmit",
     "typecheck:dogs": "cd packages/dogs-demo && npx tsc --noEmit && cd ../dogs-geo && npx tsc --noEmit && cd ../dogs-warframe && npx tsc --noEmit && cd ../dogs-hue && npx tsc --noEmit && cd ../dogs-talking && npx tsc --noEmit && cd ../dogs-public-transport && npx tsc --noEmit && cd ../dogs-weather && npx tsc --noEmit && cd ../dogs-air-quality && npx tsc --noEmit && cd ../dogs-geocoding && npx tsc --noEmit && cd ../dogs-wikipedia && npx tsc --noEmit && cd ../dogs-sun && npx tsc --noEmit && cd ../dogs-biodiversity && npx tsc --noEmit && cd ../dogs-birds && npx tsc --noEmit && cd ../dogs-phenology && npx tsc --noEmit && cd ../dogs-webcams && npx tsc --noEmit && cd ../dogs-regional-news && npx tsc --noEmit && cd ../dogs-transit-trips && npx tsc --noEmit",
     "typecheck": "npm run typecheck:core && npm run typecheck:dogs && tsc --noEmit -p tsconfig.build.json",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck",
+    "test:mcp:integration": "node mcp/integration/mcp-gateway.integration.cjs",
+    "test:mcp:integration:int": "cross-env NODE_ENV=integration node -r ./scripts/load-env.cjs mcp/integration/mcp-gateway.integration.cjs"
   },
   "author": "Martin",
   "license": "MIT",

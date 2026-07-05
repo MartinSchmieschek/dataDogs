@@ -5,6 +5,51 @@
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail, resolveTsCode } from './types';
 import type { AuthCtx } from '../auth/middleware';
+import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
+
+/** Status notebook — see mcp/skill.md § Spuren & Rechtfertigung */
+const KENNEL_TRACE_NODE_SCHEMA = {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+        id: { type: 'string', description: 'dogIds entry: lineageId, version GUID, or base:Name' },
+        x: { type: 'number', description: 'Wave-View canvas X (optional)' },
+        y: { type: 'number', description: 'Wave-View canvas Y (optional)' },
+        comment: {
+            type: 'string',
+            description: SPUREN_NODES_FIELD_HINT,
+        },
+    },
+} as const;
+
+const KENNEL_TRACE_EDGE_SCHEMA = {
+    type: 'object',
+    required: ['fromId', 'toId'],
+    additionalProperties: false,
+    properties: {
+        fromId: { type: 'string' },
+        toId: { type: 'string' },
+        comment: { type: 'string', description: 'Optional — grobe Wunsch-Kette (z.B. „Ort → Kandidaten“), kein Feld-Mapping' },
+    },
+} as const;
+
+const KENNEL_TRACE_FIELDS = {
+    task: {
+        type: 'string',
+        description: SPUREN_TASK_FIELD_HINT,
+    },
+    nodes: {
+        type: 'array',
+        description: SPUREN_NODES_FIELD_HINT,
+        items: KENNEL_TRACE_NODE_SCHEMA,
+    },
+    edges: {
+        type: 'array',
+        description: 'Optional — Wunsch-Kette in einem Satz pro Kante, nicht technisches Mapping.',
+        items: KENNEL_TRACE_EDGE_SCHEMA,
+    },
+} as const;
 
 /**
  * Inline MCP-AuthCtx -> VmGlobalCapabilityContext adapter.
@@ -187,7 +232,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'create_kennel',
             description:
-                'Creates a new kennel. Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to make it publicly accessible. dogIds is the ordered pack — first entry is the lead. Use refresh_kennel_snapshot afterwards to see the run state.',
+                'Creates a new kennel. Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to make it publicly accessible. dogIds is the ordered pack — first entry is the lead. **Spuren:** `task` (User-Wunsch) + `nodes[]` (ein Satz pro Hund) — siehe mcp/skill.md § Spuren & Rechtfertigung. Use refresh_kennel_snapshot afterwards to see the run state.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogIds'],
@@ -201,6 +246,7 @@ export function getKennelTools(): ToolDef[] {
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
                     defaultBody: {},
                     visibility: { type: 'string', enum: ['public', 'private'] },
+                    ...KENNEL_TRACE_FIELDS,
                 },
             },
             handler: async (args, ctx, deps) => {
@@ -221,7 +267,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'build_kennel',
             description:
-                'Composed one-shot kennel build. Creates a fresh set of Breeds (SerializedDogs / Mimics) AND assembles a kennel that uses them — atomic, with rollback on failure. **Lead convention:** by default the **LAST** dog in `dogs[]` becomes the lead (renderers / finalizers typically sit at the end of a pipeline). Pass `lead: "<displayName>"` to override. Sibling dogs reference each other by displayName via "@DisplayName" in parentsRequired/Optional; BaseDogs are referenced as bare class names ("QueryRetriever"), and raw lineageId GUIDs pass through unchanged. If `refresh` is true (default), the kennel is hunted once and the lead\'s spoils are previewed in the response. Rollback semantics: any failure during the build deletes every node already created in this call and the kennel row (if any) — no orphans left in the deep. **firstRun.status values:** `ok` (every dog clean), `lead-ok-with-side-errors` (lead returned cleanly but some upstream/side dog errored — public endpoint still serves), `lead-failed` (the lead itself errored — public endpoint is broken), `failed` (the run could not even be observed: worker crash, kennel vanished). `firstRun.leadOk` is a bool shortcut: true means the public endpoint serves the lead\'s payload.',
+                'Composed one-shot kennel build. Creates a fresh set of Breeds (SerializedDogs / Mimics) AND assembles a kennel that uses them — atomic, with rollback on failure. **Lead convention:** by default the **LAST** dog in `dogs[]` becomes the lead (renderers / finalizers typically sit at the end of a pipeline). Pass `lead: "<displayName>"` to override. **Spuren:** `task` + `nodes[]` beim Create (Wunsch, kein Vertrag — mcp/skill.md § Spuren & Rechtfertigung). Sibling dogs reference each other by displayName via "@DisplayName" in parentsRequired/Optional; BaseDogs are referenced as bare class names ("QueryRetriever"), and raw lineageId GUIDs pass through unchanged. If `refresh` is true (default), the kennel is hunted once and the lead\'s spoils are previewed in the response. Rollback semantics: any failure during the build deletes every node already created in this call and the kennel row (if any) — no orphans left in the deep. **firstRun.status values:** `ok` (every dog clean), `lead-ok-with-side-errors` (lead returned cleanly but some upstream/side dog errored — public endpoint still serves), `lead-failed` (the lead itself errored — public endpoint is broken), `failed` (the run could not even be observed: worker crash, kennel vanished). `firstRun.leadOk` is a bool shortcut: true means the public endpoint serves the lead\'s payload.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogs'],
@@ -239,6 +285,7 @@ export function getKennelTools(): ToolDef[] {
                     visibility: { type: 'string', enum: ['public', 'private'] },
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
                     defaultBody: {},
+                    ...KENNEL_TRACE_FIELDS,
                     dogs: {
                         type: 'array',
                         description:
@@ -297,7 +344,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'update_kennel',
             description:
-                'Updates an existing kennel — creates a new version. Only the owner (or super-user) can update. Pass only the fields you want to change; others are preserved. Use refresh_kennel_snapshot afterwards to see the run state.',
+                'Updates an existing kennel — creates a new version. Only the owner (or super-user) can update. Pass only the fields you want to change; others are preserved. **Spuren:** `task` + `nodes[]` — User-Wunsch festhalten, nicht JSON-Vertrag (mcp/skill.md § Spuren & Rechtfertigung). Use refresh_kennel_snapshot afterwards to see the run state.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -311,6 +358,7 @@ export function getKennelTools(): ToolDef[] {
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
                     defaultBody: {},
                     visibility: { type: 'string', enum: ['public', 'private'] },
+                    ...KENNEL_TRACE_FIELDS,
                 },
             },
             handler: async (args, ctx, deps) => {
@@ -690,6 +738,9 @@ async function buildKennel(
         if (args.defaultBody !== undefined) {
             kennelInput.defaultBody = args.defaultBody;
         }
+        if (typeof args.task === 'string') kennelInput.task = args.task;
+        if (Array.isArray(args.nodes)) kennelInput.nodes = args.nodes;
+        if (Array.isArray(args.edges)) kennelInput.edges = args.edges;
         const kennelWithDefaults = applyCreateDefaults(kennelInput, ctx);
         const kennelResult = await deps.kennelsController.create(kennelWithDefaults);
         if (!kennelResult.ok) {

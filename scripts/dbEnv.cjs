@@ -87,15 +87,20 @@ function assertRequiredDbEnv() {
 /**
  * Setzt aus CACHE_DATABASE_URL oder CACHE_DB_PATH die finale URL für Prisma (Cache-Schema).
  */
+function withSqliteBusyTimeout(url) {
+    if (!url.startsWith('file:') || /busy_timeout=/i.test(url)) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}busy_timeout=60000`;
+}
+
 function resolveCacheDatabaseUrl() {
     const cacheUrl = (process.env.CACHE_DATABASE_URL || '').trim();
-    if (cacheUrl) return cacheUrl;
+    if (cacheUrl) return withSqliteBusyTimeout(cacheUrl);
     const pathOnly = (process.env.CACHE_DB_PATH || '').trim();
     if (!pathOnly) {
         throw new Error('resolveCacheDatabaseUrl: CACHE_DATABASE_URL / CACHE_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
     }
-    if (pathOnly.startsWith('file:')) return pathOnly;
-    return `file:${pathOnly.replace(/\\/g, '/')}`;
+    if (pathOnly.startsWith('file:')) return withSqliteBusyTimeout(pathOnly);
+    return withSqliteBusyTimeout(`file:${pathOnly.replace(/\\/g, '/')}`);
 }
 
 /**

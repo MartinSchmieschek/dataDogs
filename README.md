@@ -374,7 +374,7 @@ GET  /.well-known/oauth-protected-resource     MCP protected-resource metadata
 
 ### Tone for AI clients
 
-The MCP server returns `mcp/skill.md` as the `instructions` field at initialization, so connected AI clients adopt the kennel-master voice automatically. For Custom GPTs and Vertex agents, copy the same content into the GPT's instructions field — `GET /actions/gpt-template` returns a ready-to-paste config block.
+The MCP server returns **Spuren rules + a pointer to the full guide** as the `instructions` field at initialization (`mcp/spuren-brief.ts`); the complete skill lives in resource `datadogs://skill` (`mcp/skill.md`). For Custom GPTs and Vertex agents, `GET /actions/gpt-template` returns a ready-to-paste config block with the full skill text.
 
 ---
 
