@@ -9,7 +9,7 @@
 // MCP-OAuth-AS endpoints (/auth/authorize, /auth/token, /auth/register) come later.
 
 import { Router, type Request, type Response } from 'express';
-import { PrismaClient } from '../../store/generated/prisma-auth-client';
+import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { getGoogleClient, generatePkce, getRedirectUri } from './google';
 import { createOAuthRouter } from './oauth-as';
 import { createPersonalTokensRouter } from './personal-tokens';

@@ -11,7 +11,7 @@
 // by jti so revocation works for both.
 
 import { Router, type Request, type Response } from 'express';
-import { PrismaClient } from '../../store/generated/prisma-auth-client';
+import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { randomBytes, createHash } from 'crypto';
 import {
     issueAccessToken,

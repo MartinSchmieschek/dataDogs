@@ -17,7 +17,7 @@ import { ReadmeRouteHandler } from '../api/routes/ReadmeRouteHandler';
 import { StartupTest } from '../StartupTest';
 import { PrismaCacheHandler } from '../services/PrismaCacheHandler';
 import { withResilientCacheInfra } from '../services/resilientCacheHandler';
-import { PrismaClient as AuthPrismaClient } from '../store/generated/prisma-auth-client';
+import { createPrismaAuthClient } from '../store/createPrismaAuthClient';
 import { createSessionMiddleware } from '../mcp/auth/sessions';
 import { createAuthRouter } from '../mcp/auth/router';
 import { createAuthContextMiddleware } from '../mcp/auth/middleware';
@@ -123,7 +123,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     app.use(express.json({ limit: '5mb' }));
 
-    const authPrisma = new AuthPrismaClient();
+    const authPrisma = createPrismaAuthClient();
     app.use(cookieParser());
     app.use(express.urlencoded({ extended: false, limit: '1mb' }));
     app.use(createSessionMiddleware());

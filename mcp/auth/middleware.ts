@@ -6,7 +6,7 @@
 // MCP_AUTH_REQUIRED=true   -> ctx.user set if Bearer or session resolves, anon otherwise
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import { PrismaClient } from '../../store/generated/prisma-auth-client';
+import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { tryResolveBearerUser } from './bearer';
 
 export interface AuthCtx {

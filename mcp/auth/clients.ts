@@ -3,7 +3,7 @@
 // or seeded by hand. clientId is randomly generated; clientSecret is null for
 // public PKCE-only clients.
 
-import { PrismaClient } from '../../store/generated/prisma-auth-client';
+import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { randomBytes } from 'crypto';
 
 export interface RegisterClientInput {

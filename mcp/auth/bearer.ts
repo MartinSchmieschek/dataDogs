@@ -3,7 +3,7 @@
 // Used by mcp/auth/middleware.ts before falling back to the session cookie.
 
 import type { Request } from 'express';
-import { PrismaClient } from '../../store/generated/prisma-auth-client';
+import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { verifyAccessToken } from './jwt';
 
 export interface BearerUser {

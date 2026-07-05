@@ -9,7 +9,7 @@
 // PATs are AccessToken rows with clientId = 'pat'. No refresh token; lifetime 1 year.
 
 import { Router, type Request, type Response } from 'express';
-import { PrismaClient } from '../../store/generated/prisma-auth-client';
+import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { issueAccessToken } from './jwt';
 import { paramString } from '../../api/utils/routeParams';
 
