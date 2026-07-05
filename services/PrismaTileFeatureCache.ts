@@ -118,9 +118,9 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
             }
         }
 
-        // Features fuer aktive Coverages holen: ein raw-SQL-JOIN statt
-        // zweier findMany-Calls mit tausenden OR-Conditions (die Prisma
-        // auf SQLite teilweise mit leerem Resultat beantwortet).
+        // Features fuer aktive Coverages holen: zweistufig via Prisma high-level
+        // (dialektneutral fuer SQLite + PostgreSQL). OR-Listen werden gechunkt,
+        // damit weder SQLite-Param-Limit noch PostgreSQL-Statement-Laenge stoeren.
         const features: StoredGeoFeature[] = [];
         if (activeCoverageKeys.size > 0) {
             const coverageConditions: Array<{
@@ -139,28 +139,35 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
                 });
             }
 
-            const tupleClause = coverageConditions
-                .map(() => '(m."zoom"=? AND m."tileX"=? AND m."tileY"=? AND m."facet"=?)')
-                .join(' OR ');
-            const params: Array<string | number> = [dogType];
-            for (const c of coverageConditions) {
-                params.push(c.zoom, c.tileX, c.tileY, c.facet);
+            // 1) Memberships, die auf eine aktive Coverage matchen — gechunkt.
+            const COVERAGE_CHUNK = 100;
+            const refKeys = new Set<string>();
+            const refs: Array<{ osmType: string; osmId: bigint }> = [];
+            for (let i = 0; i < coverageConditions.length; i += COVERAGE_CHUNK) {
+                const chunk = coverageConditions.slice(i, i + COVERAGE_CHUNK);
+                const memRows = (await this.prisma.featureTileMembership.findMany({
+                    where: { dogType, OR: chunk },
+                    select: { osmType: true, osmId: true },
+                })) as Array<{ osmType: string; osmId: bigint }>;
+                for (const m of memRows) {
+                    const k = `${m.osmType}:${m.osmId.toString()}`;
+                    if (!refKeys.has(k)) {
+                        refKeys.add(k);
+                        refs.push({ osmType: m.osmType, osmId: m.osmId });
+                    }
+                }
             }
 
-            const rows = (await this.prisma.$queryRawUnsafe(
-                `SELECT DISTINCT f.*
-                 FROM "GeoFeature" f
-                 INNER JOIN "FeatureTileMembership" m
-                   ON m."dogType"=f."dogType"
-                      AND m."osmType"=f."osmType"
-                      AND m."osmId"=f."osmId"
-                 WHERE f."dogType"=?
-                   AND (${tupleClause})`,
-                ...params,
-            )) as FeatureRow[];
-
-            for (const r of rows) {
-                features.push(this.rowToStored(r));
+            // 2) Features fuer die deduplizierten Refs — auch gechunkt.
+            const FEATURE_LOOKUP_CHUNK = 200;
+            for (let i = 0; i < refs.length; i += FEATURE_LOOKUP_CHUNK) {
+                const chunk = refs.slice(i, i + FEATURE_LOOKUP_CHUNK);
+                const featureRows = (await this.prisma.geoFeature.findMany({
+                    where: { dogType, OR: chunk },
+                })) as FeatureRow[];
+                for (const r of featureRows) {
+                    features.push(this.rowToStored(r));
+                }
             }
         }
 
@@ -230,103 +237,110 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
             }
         }
 
-        // Bulk-Upsert per raw SQL: SQLite `INSERT OR REPLACE` ist die schnelle
-        // Variante (statt N×upsert-Roundtrips). Wir chunken, damit die
-        // SQL-Parameter-Liste handhabbar bleibt (SQLite-Max ~999 params).
-        const FEATURE_COLS = 14;
-        const FEATURE_CHUNK = Math.floor(900 / FEATURE_COLS);
-        const MEM_COLS = 7;
-        const MEM_CHUNK = Math.floor(900 / MEM_COLS);
+        // Dialektneutrale Bulk-Variante via Prisma high-level. Upsert-Semantik
+        // bilden wir mit deleteMany + createMany ab (eine Loesch-, eine Schreib-
+        // Round-Trip pro Chunk). skipDuplicates ist im SQLite-Client nicht typisiert,
+        // darum: vor jedem createMany loeschen wir die zu ersetzenden Reihen explizit.
+        // Chunk-Groessen so gewaehlt, dass die Param-Anzahl unter dem klassischen
+        // SQLite-Limit (999) bleibt: 60 Features × 15 Spalten = 900, 120 Memberships
+        // × 7 Spalten = 840. PostgreSQL traegt locker mehr — Untergrenze regiert.
+        const FEATURE_CHUNK = 60;
+        const MEM_CHUNK = 120;
 
         // Alles innerhalb einer Transaktion → atomar und ohne parallele Write-Lock-Konflikte.
-        // Timeout generous setzen: bei vielen Tiles parallel serialisiert SQLite die Writes,
-        // die wartenden Transaktionen muessen laenger ueberleben duerfen als der Default (5s).
+        // Timeout generous: SQLite serialisiert Writes, PostgreSQL kann unter Last warten.
         await this.prisma.$transaction(async (tx) => {
-            // 1. Features (INSERT OR REPLACE)
+            // 1. Features upsert: alte Reihen mit gleichem PK loeschen, dann createMany.
             for (let i = 0; i < result.features.length; i += FEATURE_CHUNK) {
                 const chunk = result.features.slice(i, i + FEATURE_CHUNK);
                 if (chunk.length === 0) continue;
-                const placeholders = chunk.map(() =>
-                    '(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
-                ).join(',');
-                const values: any[] = [];
-                for (const f of chunk) {
-                    values.push(
+                const refs = chunk.map((f) => ({
+                    osmType: f.osmType,
+                    osmId: BigInt(f.osmId),
+                }));
+                await tx.geoFeature.deleteMany({
+                    where: { dogType, OR: refs },
+                });
+                await tx.geoFeature.createMany({
+                    data: chunk.map((f) => ({
                         dogType,
-                        f.osmType,
-                        BigInt(f.osmId),
-                        f.primaryKey,
-                        f.primaryValue,
-                        f.name,
-                        f.hasGeom ? 1 : 0,
-                        f.lat,
-                        f.lng,
-                        f.bboxMinLat,
-                        f.bboxMinLng,
-                        f.bboxMaxLat,
-                        f.bboxMaxLng,
-                        f.payload,
-                    );
-                }
-                await tx.$executeRawUnsafe(
-                    `INSERT OR REPLACE INTO "GeoFeature"
-                     ("dogType","osmType","osmId","primaryKey","primaryValue","name","hasGeom","lat","lng","bboxMinLat","bboxMinLng","bboxMaxLat","bboxMaxLng","payload","updatedAt")
-                     VALUES ${chunk.map(() =>
-                         '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,' + now.toString() + ')'
-                     ).join(',')}`,
-                    ...values,
-                );
+                        osmType: f.osmType,
+                        osmId: BigInt(f.osmId),
+                        primaryKey: f.primaryKey,
+                        primaryValue: f.primaryValue,
+                        name: f.name,
+                        hasGeom: f.hasGeom,
+                        lat: f.lat,
+                        lng: f.lng,
+                        bboxMinLat: f.bboxMinLat,
+                        bboxMinLng: f.bboxMinLng,
+                        bboxMaxLat: f.bboxMaxLat,
+                        bboxMaxLng: f.bboxMaxLng,
+                        payload: f.payload,
+                        updatedAt: now,
+                    })),
+                });
             }
 
-            // 2. Memberships (INSERT OR IGNORE — PK-Kollision = bereits drin, nichts zu tun)
+            // 2. Memberships: vor dem Insert die alten Memberships fuer
+            //    (Feature, refreshed-Facet) loeschen. Memberships fuer Facets,
+            //    die in diesem Fetch nicht angefasst wurden, bleiben unberuehrt.
+            if (result.features.length > 0 && result.facets.length > 0) {
+                for (let i = 0; i < result.features.length; i += FEATURE_CHUNK) {
+                    const refs = result.features.slice(i, i + FEATURE_CHUNK).map((f) => ({
+                        osmType: f.osmType,
+                        osmId: BigInt(f.osmId),
+                    }));
+                    await tx.featureTileMembership.deleteMany({
+                        where: {
+                            dogType,
+                            facet: { in: result.facets },
+                            OR: refs,
+                        },
+                    });
+                }
+            }
             for (let i = 0; i < memberships.length; i += MEM_CHUNK) {
                 const chunk = memberships.slice(i, i + MEM_CHUNK);
                 if (chunk.length === 0) continue;
-                const values: any[] = [];
-                for (const m of chunk) {
-                    values.push(
+                await tx.featureTileMembership.createMany({
+                    data: chunk.map((m) => ({
                         dogType,
-                        m.osmType,
-                        m.osmId,
-                        m.zoom,
-                        m.tileX,
-                        m.tileY,
-                        m.facet,
-                    );
-                }
-                await tx.$executeRawUnsafe(
-                    `INSERT OR IGNORE INTO "FeatureTileMembership"
-                     ("dogType","osmType","osmId","zoom","tileX","tileY","facet")
-                     VALUES ${chunk.map(() => '(?,?,?,?,?,?,?)').join(',')}`,
-                    ...values,
-                );
+                        osmType: m.osmType,
+                        osmId: m.osmId,
+                        zoom: m.zoom,
+                        tileX: m.tileX,
+                        tileY: m.tileY,
+                        facet: m.facet,
+                    })),
+                });
             }
 
-            // 3. Coverage fuer jede Facet dieses Fetches (auch bei 0 Features —
-            //    Negative-Cache fuer die Tile).
+            // 3. Coverage upsert: alte Reihen fuer (tile, facet)-Kombi loeschen,
+            //    dann createMany (auch bei 0 Features — Negative-Cache).
             if (result.facets.length > 0) {
-                const covValues: any[] = [];
-                for (const facet of result.facets) {
-                    covValues.push(
+                await tx.tileCoverage.deleteMany({
+                    where: {
                         dogType,
-                        fetchTile.zoom,
-                        fetchTile.x,
-                        fetchTile.y,
+                        zoom: fetchTile.zoom,
+                        tileX: fetchTile.x,
+                        tileY: fetchTile.y,
+                        facet: { in: result.facets },
+                    },
+                });
+                await tx.tileCoverage.createMany({
+                    data: result.facets.map((facet) => ({
+                        dogType,
+                        zoom: fetchTile.zoom,
+                        tileX: fetchTile.x,
+                        tileY: fetchTile.y,
                         facet,
-                    );
-                }
-                await tx.$executeRawUnsafe(
-                    `INSERT OR REPLACE INTO "TileCoverage"
-                     ("dogType","zoom","tileX","tileY","facet","fetchedAt","expiresAt")
-                     VALUES ${result.facets.map(() =>
-                         `(?,?,?,?,?,${now.toString()},${expiresAt.toString()})`
-                     ).join(',')}`,
-                    ...covValues,
-                );
+                        fetchedAt: now,
+                        expiresAt,
+                    })),
+                });
             }
         }, {
-            // SQLite serialisiert Writes — bei mehreren parallelen Tile-Fetches
-            // kann eine Transaktion warten. 60s Timeout deckt auch grosse Batches.
             maxWait: 60_000,
             timeout: 60_000,
         });

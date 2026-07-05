@@ -22,6 +22,28 @@ export interface IClassTypeResult {
  */
 export class CompilerCache {
 
+    /** Materialisierter Cache: Pact-Source-Typname → Return-Typ-Definition. Wird in int/prod aus dist/type-defs.json geladen. */
+    private static pactReturnTypeCache: Map<string, string> = new Map();
+
+    /** Materialisierter Cache: Klassenname → IClassTypeResult. Wird in int/prod aus dist/type-defs.json geladen. */
+    private static classTypeCache: Map<string, IClassTypeResult> = new Map();
+
+    /** Wenn false (int/prod nach loadPrecomputed), wird kein ts.createProgram zur Laufzeit aufgerufen. */
+    private static useLiveCompiler: boolean = true;
+
+    /**
+     * Lädt vorbereitete Type-Definitions aus dem Build-Output und unterbindet Live-Kompilierung.
+     * Wird beim Startup von main.ts in NODE_ENV=production|integration aufgerufen.
+     */
+    public static loadPrecomputed(payload: {
+        pactReturnTypes: Record<string, string>;
+        classTypes: Record<string, IClassTypeResult>;
+    }): void {
+        this.pactReturnTypeCache = new Map(Object.entries(payload.pactReturnTypes ?? {}));
+        this.classTypeCache = new Map(Object.entries(payload.classTypes ?? {}));
+        this.useLiveCompiler = false;
+    }
+
     /**
      * Summons a TypeScript program and its type checker from the deep —
      * reading the tsconfig.json like an ancient scroll and forging a compiler
@@ -363,15 +385,34 @@ export class CompilerCache {
     }
 
     /**
-     * Löst mehrere Pact-Return-Typ-Strings in einem einzigen ts.Program auf (Performance).
+     * Löst mehrere Pact-Return-Typ-Strings auf. In int/prod aus dem vorbereiteten Cache;
+     * in dev wird ein einmaliges ts.Program gespannt.
      */
     static getPactReturnTypeDefsBatch(symbolNames: string[]): Map<string, string> {
         const result = new Map<string, string>();
         const unique = [...new Set(symbolNames)];
         if (unique.length === 0) return result;
+
+        const missing: string[] = [];
+        for (const name of unique) {
+            const cached = this.pactReturnTypeCache.get(name);
+            if (cached !== undefined) result.set(name, cached);
+            else missing.push(name);
+        }
+        if (missing.length === 0) return result;
+
+        if (!this.useLiveCompiler) {
+            throw new Error(
+                `[CompilerCache] Vorbereitete Type-Definitions fehlen für: ${missing.join(', ')}. ` +
+                `Build neu erzeugen (npm run build:prod / build:integration).`
+            );
+        }
+
         const { program, checker } = this.createProgram();
-        for (const symbolName of unique) {
-            result.set(symbolName, this.buildPactReturnTypeDef(symbolName, program, checker));
+        for (const symbolName of missing) {
+            const def = this.buildPactReturnTypeDef(symbolName, program, checker);
+            this.pactReturnTypeCache.set(symbolName, def);
+            result.set(symbolName, def);
         }
         return result;
     }
@@ -384,8 +425,17 @@ export class CompilerCache {
      * @returns The pact return type definition string, conjured from the void.
      */
     static getPactReturnTypeDef(symbolName: string): string {
+        const cached = this.pactReturnTypeCache.get(symbolName);
+        if (cached !== undefined) return cached;
+        if (!this.useLiveCompiler) {
+            throw new Error(
+                `[CompilerCache] Vorbereitete Type-Definition fehlt für "${symbolName}". Build neu erzeugen.`
+            );
+        }
         const { program, checker } = this.createProgram();
-        return this.buildPactReturnTypeDef(symbolName, program, checker);
+        const def = this.buildPactReturnTypeDef(symbolName, program, checker);
+        this.pactReturnTypeCache.set(symbolName, def);
+        return def;
     }
 
     /**
@@ -471,8 +521,30 @@ export class CompilerCache {
      * @returns The class type result with members and referenced interfaces, or null if the abyss yields nothing.
      */
     static getClassType(className: string): IClassTypeResult | null {
+        const cached = this.classTypeCache.get(className);
+        if (cached !== undefined) return cached;
+        if (!this.useLiveCompiler) return null;
         try {
             const { program, checker } = this.createProgram();
+            const result = this.computeClassType(className, program, checker);
+            if (result) this.classTypeCache.set(className, result);
+            return result;
+        } catch (e) {
+            console.error('[CompilerCache] Error extracting class type:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Extrahierter Body von getClassType — operiert auf einem von außen übergebenen Program/Checker,
+     * damit der Build-Schritt alle Klassen mit einem einzigen ts.Program berechnen kann.
+     */
+    private static computeClassType(
+        className: string,
+        program: ts.Program,
+        checker: ts.TypeChecker
+    ): IClassTypeResult | null {
+        try {
             const members: Record<string, string> = {};
             const referencedTypeNames = new Set<string>();
             let classNode: ts.ClassDeclaration | null = null;
@@ -585,5 +657,66 @@ export class CompilerCache {
             console.error('[CompilerCache] Error extracting class type:', e);
             return null;
         }
+    }
+
+    /**
+     * Build-Schritt: scannt einmalig alle Quell-Dateien nach `createPact(..., { fromSourceType: 'X' })`-Aufrufen
+     * und sammelt zusätzlich für jede Top-Level-Klasse das ClassType-Result. Verwendet ein einziges ts.Program
+     * für den gesamten Lauf — so wird die Heap-Spitze auf Buildzeit verlagert und zur Laufzeit eliminiert.
+     */
+    static computeForBuild(): {
+        pactReturnTypes: Record<string, string>;
+        classTypes: Record<string, IClassTypeResult>;
+    } {
+        const { program, checker } = this.createProgram();
+
+        const sourceTypeNames = new Set<string>();
+        for (const sourceFile of program.getSourceFiles()) {
+            if (sourceFile.isDeclarationFile) continue;
+            const visit = (node: ts.Node): void => {
+                if (
+                    ts.isCallExpression(node) &&
+                    ts.isIdentifier(node.expression) &&
+                    node.expression.text === 'createPact'
+                ) {
+                    const arg2 = node.arguments[1];
+                    if (arg2 && ts.isObjectLiteralExpression(arg2)) {
+                        for (const prop of arg2.properties) {
+                            if (
+                                ts.isPropertyAssignment(prop) &&
+                                ts.isIdentifier(prop.name) &&
+                                prop.name.text === 'fromSourceType' &&
+                                ts.isStringLiteral(prop.initializer)
+                            ) {
+                                sourceTypeNames.add(prop.initializer.text);
+                            }
+                        }
+                    }
+                }
+                ts.forEachChild(node, visit);
+            };
+            ts.forEachChild(sourceFile, visit);
+        }
+
+        const pactReturnTypes: Record<string, string> = {};
+        for (const name of sourceTypeNames) {
+            pactReturnTypes[name] = this.buildPactReturnTypeDef(name, program, checker);
+        }
+
+        const classTypes: Record<string, IClassTypeResult> = {};
+        const seen = new Set<string>();
+        for (const sourceFile of program.getSourceFiles()) {
+            if (sourceFile.isDeclarationFile) continue;
+            ts.forEachChild(sourceFile, (node) => {
+                if (ts.isClassDeclaration(node) && node.name && !seen.has(node.name.text)) {
+                    const className = node.name.text;
+                    seen.add(className);
+                    const result = this.computeClassType(className, program, checker);
+                    if (result) classTypes[className] = result;
+                }
+            });
+        }
+
+        return { pactReturnTypes, classTypes };
     }
 }

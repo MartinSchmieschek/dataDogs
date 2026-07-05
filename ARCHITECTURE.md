@@ -103,7 +103,7 @@ flowchart TB
 > *As suns and love retreat.*  
 > — **Jahu** · *Form*
 
-## Komponenten-Architektur — flesh made diagram
+## Component architecture — flesh made diagram
 
 **Jahu** speaks of **form**: layers stack whether you believe in them or not — HTTP, controllers, orchestration, VM, persistence. The diagram below is the unwritten law made visible: Express above, Prisma below, **SerializedDog** in the crucible next to **BaseDogs**. Form does not ask permission.
 
@@ -694,8 +694,12 @@ flowchart LR
 - **[packages/core/src/dogs/createPact.ts](packages/core/src/dogs/createPact.ts)** — Pact factory  
 - **[packages/core/src/dogs/MimicDog.ts](packages/core/src/dogs/MimicDog.ts)** — Shapeshifter dogs  
 - **[packages/core/src/core/entities/abstractHuntingDog.ts](packages/core/src/core/entities/abstractHuntingDog.ts)** — Dog base, dependencies, read tracking  
-- **[packages/core/src/platform/baseDogIcons.ts](packages/core/src/platform/baseDogIcons.ts)** — Icon registry for all BaseDogs  
+- **Base dog icons** — no central file: each `Dog` in `packages/dogs-*` implements `get icon()` (usually one emoji). See the README.
 - **[store/PrismaStore.ts](store/PrismaStore.ts)** — persistence, versions  
+- **[api/routes/KennelBundleHandler.ts](api/routes/KennelBundleHandler.ts)** — kennel `bundleVersion: 2` export/import, `importTarget` remapping, `suggestKennelImportTarget`  
+- **[packages/core/src/kennelImportTarget.ts](packages/core/src/kennelImportTarget.ts)** — suggested id/name for import when collisions exist  
+- **[packages/core/src/socket/WebSocketChannelRetriever.ts](packages/core/src/socket/WebSocketChannelRetriever.ts)** + **[IChannelHub](packages/core/src/socket/IChannelHub.ts)** — WebSocket lobbies (optional)  
+- **[packages/core/src/storage/JsonStorageRetriever.ts](packages/core/src/storage/JsonStorageRetriever.ts)** — per-lobby JSON key/value store  
 
 ### Dog packages
 - **[packages/dogs-demo/](packages/dogs-demo/)** — RandomRecipesRetriever, CountryFlagBlackLab, DishFlagBlackLab, RandomEveryThingRetriever  
@@ -707,7 +711,7 @@ flowchart LR
 
 ### Adding a new BaseDog package
 
-See [Creating a new BaseDog Package](README.md#creating-a-new-basedog-package) in the README for a step-by-step guide. In short: scaffold a package under `packages/`, extend `Dog<T>`, define a Pact if input is needed, register in `main.ts` + `baseDogIcons.ts`, wire the build in root `package.json` + `tsconfig.json`, run `npm install`, optionally seed a Kennel in `seed.ts`.  
+See [Creating a new BaseDog Package](README.md#creating-a-new-basedog-package) in the README. In short: scaffold under `packages/`, extend `Dog<T>`, implement `get icon()`, define a Pact if needed, register the class in `allBaseDogClasses` and the Pact in `allPacts` in `main.ts`, wire the build in root `package.json` + `tsconfig.json`, run `npm install`, optionally seed in `seed.ts`.  
 
 ---
 

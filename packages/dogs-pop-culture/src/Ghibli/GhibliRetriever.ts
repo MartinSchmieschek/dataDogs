@@ -64,7 +64,7 @@ export class GhibliRetriever extends Dog<PopCultureResult> implements ICacheable
             };
         };
 
-        const key = `ghibli:${resource}:${query.id ?? ""}:${query.search ?? ""}`;
+        const key = `ghibli:${resource}:${(query.id ?? "").toLowerCase().trim()}:${(query.search ?? "").toLowerCase().trim()}`;
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, GHIBLI_CACHE_TTL_MS, buildAndFetch);
         }

@@ -36,7 +36,10 @@ export class GutenbergRetriever extends Dog<GutenbergResult> implements ICacheab
         const queryDog = season.exhausted.find(d => this.matchesParent(GutenbergQueryPact, d));
         const query = (queryDog?.collected as GutenbergQuery | undefined) ?? ({} as GutenbergQuery);
         const page = query.page ?? 1;
-        const key = `gutenberg:${query.search ?? ""}:${query.language ?? ""}:${query.topic ?? ""}:${page}`;
+        const search = (query.search ?? "").toLowerCase().trim();
+        const language = (query.language ?? "").toLowerCase().trim();
+        const topic = (query.topic ?? "").toLowerCase().trim();
+        const key = `gutenberg:${search}:${language}:${topic}:${page}`;
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, GUTENBERG_CACHE_TTL_MS, () =>
                 searchGutenberg(query.search, query.language, query.topic, page),

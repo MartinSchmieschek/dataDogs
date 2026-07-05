@@ -84,7 +84,7 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
         try {
             const data = await this.store.load(id);
             if (!data) {
-                return { ok: false, error: `Entity mit ID ${id} nicht gefunden`, data: null };
+                return { ok: false, error: `Entity with id ${id} not found`, data: null };
             }
             const parsed = this.parseEntity(data);
             return { ok: true, data: parsed };

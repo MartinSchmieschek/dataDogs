@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { getWaterConditions } from "./waterApiClient";
 import type { WaterResult } from "./interfaces/waterTypes";
 import { WaterQueryPact, type WaterQuery } from "./pacts";
@@ -57,7 +57,7 @@ export class WaterRetriever extends Dog<WaterResult> implements ICacheable {
             throw new Error('WaterRetriever: Missing required query params (lat, lng)');
         }
 
-        const key = `water:${lat}:${lng}`;
+        const key = geoBucketKey("water", lat, lng, 1000);
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 15 * 60_000, () =>

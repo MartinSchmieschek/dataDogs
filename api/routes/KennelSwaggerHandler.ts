@@ -29,7 +29,7 @@ export class KennelSwaggerHandler {
         try {
             const config = await this.runHandler.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
-                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
 
@@ -99,7 +99,7 @@ export class KennelSwaggerHandler {
         try {
             const config = await this.runHandler.loadKennelConfig(req.params.id, req.query.version);
             if (!config) {
-                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
             // UI is rendered for everyone — the lock and "Authorize" button appear for private

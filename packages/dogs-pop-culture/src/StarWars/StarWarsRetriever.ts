@@ -64,7 +64,7 @@ export class StarWarsRetriever extends Dog<PopCultureResult> implements ICacheab
             };
         };
 
-        const key = `swapi:${resource}:${query.id ?? ""}:${query.search ?? ""}:${page}`;
+        const key = `swapi:${resource}:${(query.id ?? "").toLowerCase().trim()}:${(query.search ?? "").toLowerCase().trim()}:${page}`;
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, SW_CACHE_TTL_MS, buildAndFetch);
         }
