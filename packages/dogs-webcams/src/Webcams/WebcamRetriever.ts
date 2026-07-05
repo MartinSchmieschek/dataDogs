@@ -13,7 +13,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { fetchNearbyWebcams } from "./webcamApiClient";
 import type { WebcamResult } from "./interfaces/webcamTypes";
 import { WebcamQueryPact, type WebcamQuery } from "./pacts";
@@ -71,7 +71,9 @@ export class WebcamRetriever extends Dog<WebcamResult> implements ICacheable {
             throw new Error('WebcamRetriever: Missing required query params (lat, lng)');
         }
 
-        const key = `webcams:${lat}:${lng}:${radiusKm}:${limit}`;
+        const key = geoBucketKey("webcams", lat, lng, radiusKm * 1000, {
+            extras: { limit },
+        });
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 10 * 60_000, async () => {

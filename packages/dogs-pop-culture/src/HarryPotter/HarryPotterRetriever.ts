@@ -76,7 +76,7 @@ export class HarryPotterRetriever extends Dog<PopCultureResult> implements ICach
             };
         };
 
-        const key = `hp:${resource}:${query.id ?? ""}:${query.search ?? ""}`;
+        const key = `hp:${resource}:${(query.id ?? "").toLowerCase().trim()}:${(query.search ?? "").toLowerCase().trim()}`;
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, HP_CACHE_TTL_MS, buildAndFetch);
         }

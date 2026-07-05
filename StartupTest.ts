@@ -1928,7 +1928,9 @@ export class StartupTest {
             // (dann scheitert hier, wir fangen den Fehler im catch weiter unten).
             const { PrismaCacheHandler } = await import('./services/PrismaCacheHandler');
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { resolveCacheDatabaseUrl } = require('./scripts/dbEnv.cjs') as {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const path = require('path') as typeof import('path');
+            const { resolveCacheDatabaseUrl } = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
                 resolveCacheDatabaseUrl: () => string;
             };
             cache = new PrismaCacheHandler(resolveCacheDatabaseUrl(), 24 * 60 * 60 * 1000);

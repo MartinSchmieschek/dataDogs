@@ -2,7 +2,7 @@
 // Carrion hordes trill their profane accord with eldritch plans:
 // this class is the sole keeper of persistence, and it answers to no one but Prisma.
 // Now the lineage branches like cursed coral — lineageId binds incarnations, parentId traces ancestry.
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { IStore } from './IStore';
 import path from 'path';
 
@@ -25,6 +25,26 @@ export class PrismaStore implements IStore {
     // Migrations must be run outside this ship — we merely test the anchor holds fast.
     // Roiling, moaning: if the connection fails here, all is lost before the hunt begins.
     await this.prisma.$connect();
+    try {
+      await this.prisma.dog.findFirst({ take: 1 });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2021') {
+        const nodeEnv = (process.env.NODE_ENV || '').trim();
+        const syncHint =
+          nodeEnv === 'integration'
+            ? 'npm run prisma:sync:integration'
+            : nodeEnv === 'production'
+              ? 'npm run prisma:sync:prod'
+              : 'npm run prisma:sync';
+        throw new Error(
+          `[PrismaStore] Datenbank-Schema fehlt (Tabelle Dog nicht gefunden). ` +
+            `Zuerst ${syncHint} ausfuehren, um Tabellen anzulegen. ` +
+            `Bei gehosteter Postgres: DB-User braucht Rechte fuer CREATE/Schema. ` +
+            `(${e.message})`,
+        );
+      }
+      throw e;
+    }
   }
 
   public async save(d: any): Promise<void> {

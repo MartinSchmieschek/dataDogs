@@ -30,6 +30,14 @@ export {
     kennelLineageIdBlockedReason,
     kennelDisplayNameBlockedReason,
 } from './kennelReservedNames';
+export {
+    suggestKennelImportTarget,
+    kennelImportNeedsUserChoice,
+    isKennelIdTakenInList,
+    isKennelNameTakenInList,
+    kennelListRef,
+    type KennelIdNameListEntry,
+} from './kennelImportTarget';
 export { SeasonRunner } from './harverster';
 
 // Spirits trapped in code, running in sandboxed voids
@@ -85,7 +93,7 @@ export { QueryRetriever } from './platform/QueryRetriever';
 export { BodyRetriever } from './platform/BodyRetriever';
 export { FetchBaseDog } from './platform/FetchBaseDog';
 
-// Lobby-Hunde — eine Channel-Id oeffnet eine Lobby; Teilnehmer teilen ein eigenes shared-Objekt
+// WebSocket lobbies: one channel id opens a room; peers share a dedicated shared object
 export { WebSocketChannelRetriever } from './socket/WebSocketChannelRetriever';
 export { ChannelLiveSnippetRetriever, type LobbyLeadYield } from './socket/ChannelLiveSnippetRetriever';
 export type { ChannelPeer, ChannelState, IChannelHub } from './socket/IChannelHub';

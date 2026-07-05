@@ -1,7 +1,7 @@
 // Ahoy, ye who peer into this abyss — 'tis the beating black heart of the ship.
 // From brooding gulfs are we beheld by that which bears no name,
 // yet we set sail regardless, for the data must be plundered.
-// Umgebung: `node -r ./scripts/load-env.cjs …` (siehe package.json start / start:prod / dev).
+// Env: `node -r ./scripts/load-env.cjs …` (see package.json: start / start:prod / dev).
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {
@@ -224,6 +224,7 @@ import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { CompilerCache } from './services/CompilerCache';
 import { PrismaCacheHandler } from './services/PrismaCacheHandler';
 import { withResilientCacheInfra } from './services/resilientCacheHandler';
 
@@ -477,6 +478,24 @@ async function start() {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
     });
+    // In production/integration: vorbereitete Type-Definitions laden, damit kein
+    // ts.createProgram zur Laufzeit aufgerufen wird (Heap-Schonung auf kleinen Umgebungen).
+    const envForTypeDefs = process.env.NODE_ENV;
+    if (envForTypeDefs === 'production' || envForTypeDefs === 'integration') {
+        const typeDefsPath = path.resolve(process.cwd(), 'dist', 'type-defs.json');
+        if (fs.existsSync(typeDefsPath)) {
+            try {
+                const payload = JSON.parse(fs.readFileSync(typeDefsPath, 'utf-8'));
+                CompilerCache.loadPrecomputed(payload);
+                console.log(`[CompilerCache] Loaded precomputed type-defs from ${typeDefsPath}`);
+            } catch (e) {
+                console.error('[CompilerCache] Failed to load precomputed type-defs:', e);
+            }
+        } else {
+            console.warn(`[CompilerCache] ${typeDefsPath} not found — falling back to live TS compilation (heap-heavy).`);
+        }
+    }
+
     TypeDefBuilder.registerPacts(allPacts);
 
     const app = express();

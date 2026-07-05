@@ -26,8 +26,6 @@ import {
     Dog,
     IHuntingDog,
     IHuntingSeason,
-    type ICacheHandler,
-    type ICacheable,
     type ITileCacheable,
     type ITileFeatureCache,
     type StoredGeoFeature,
@@ -73,13 +71,8 @@ export const DEFAULT_FACET = 'default';
 export abstract class OsmFeatureRetriever<
     TResult extends OsmBaseResult,
     TQueryPact extends new (...args: any[]) => IHuntingDog<unknown>,
-> extends Dog<TResult> implements ICacheable, ITileCacheable {
-    private cacheHandler?: ICacheHandler;
+> extends Dog<TResult> implements ITileCacheable {
     private tileFeatureCache?: ITileFeatureCache;
-
-    setCacheHandler(handler: ICacheHandler): void {
-        this.cacheHandler = handler;
-    }
 
     setTileFeatureCache(cache: ITileFeatureCache): void {
         this.tileFeatureCache = cache;

@@ -5,15 +5,22 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/MartinSchmieschek/dataDogs.git",
     "directory": "packages/dogs-space"
   },
-  "engines": { "node": ">=18.19.0" },
+  "engines": {
+    "node": ">=18.19.0"
+  },
   "license": "MIT",
   "private": true,
   "peerDependencies": {
@@ -22,6 +29,10 @@
   "dependencies": {
     "@datadogs/core": "file:../core"
   },
-  "scripts": { "build": "tsc" },
-  "devDependencies": { "typescript": "^5.0.0" }
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
 }

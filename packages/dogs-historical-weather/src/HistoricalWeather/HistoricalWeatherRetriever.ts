@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { getHistoricalWeather } from "./historicalWeatherApiClient";
 import type { HistoricalWeatherResult } from "./interfaces/historicalWeatherTypes";
 import { HistoricalWeatherQueryPact, type HistoricalWeatherQuery } from "./pacts";
@@ -59,7 +59,11 @@ export class HistoricalWeatherRetriever extends Dog<HistoricalWeatherResult> imp
 
         const startDate = query['start_date'];
         const endDate = query['end_date'];
-        const key = `historical-weather:${lat}:${lng}:${startDate ?? 'default'}:${endDate ?? 'default'}`;
+        // Open-Meteo Archive hat ~10 km Aufloesung — 1 km Zelle ist sicher gross.
+        const key = geoBucketKey("historical-weather", lat, lng, 1000, {
+            bucketM: 1000,
+            extras: { start: startDate ?? 'default', end: endDate ?? 'default' },
+        });
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 6 * 60 * 60_000, () =>

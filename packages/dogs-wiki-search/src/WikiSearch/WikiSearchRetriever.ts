@@ -76,7 +76,7 @@ export class WikiSearchRetriever extends Dog<WikiSearchResult> implements ICache
         }
 
         const lang = (query.lang ?? "en").toLowerCase();
-        const key = `wikisearch:${lang}:${searchTerm}`;
+        const key = `wikisearch:${lang}:${searchTerm.toLowerCase().trim()}`;
 
         const fetchWiki = async (): Promise<WikiSearchResult> => {
             const ctrl = new AbortController();
