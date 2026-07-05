@@ -83,7 +83,10 @@ export class SeasonRunner {
 
         }
         catch (e) {
-            console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e);
+            if (v) {
+                const msg = e instanceof Error ? e.message : String(e);
+                console.warn(`Hunt failed. Name: <${dog.name}> — ${msg}`);
+            }
             // The hunt has failed -- store the horror in the dog's error brand
             (dog as any).__error = e instanceof Error ? e.message : String(e);
             // Add the dog to exhausted regardless -- even failed hunts leave their mark
@@ -118,7 +121,7 @@ export class SeasonRunner {
         // The Void's tally — one breath per wave: how many hounds returned, how many were lost.
         const failed = pack.filter(d => (d as any).__error != undefined).length;
         const ok = pack.length - failed;
-        console.log(`<wave ${currentWaveIndex + 1}> ${pack.length} dogs · ${ok} ok · ${failed} fail`);
+        if (v) console.log(`<wave ${currentWaveIndex + 1}> ${pack.length} dogs · ${ok} ok · ${failed} fail`);
 
         this.season.wave[i-1].forEach(i => {
             let baseDog = i.instance as Dog<unknown>
@@ -145,7 +148,7 @@ export class SeasonRunner {
         const firstHunt = this.dogsWithBeesInthePants.filter((dog) => { return dog.isReady(this.season) })
 
         if (firstHunt.length === 0) {
-            console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
+            if (v) console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
             throw new Error("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
         }
 

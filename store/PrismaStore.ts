@@ -99,6 +99,18 @@ export class PrismaStore implements IStore {
         ? d.edges
         : JSON.stringify(d.edges);
     }
+    if (d.visibility !== undefined) updateData.visibility = d.visibility;
+    if (d.ownerId !== undefined) updateData.ownerId = d.ownerId;
+    if (d.editors !== undefined) {
+      updateData.editors = Array.isArray(d.editors)
+        ? (d.editors.length ? d.editors.join(',') : null)
+        : d.editors;
+    }
+    if (d.viewers !== undefined) {
+      updateData.viewers = Array.isArray(d.viewers)
+        ? (d.viewers.length ? d.viewers.join(',') : null)
+        : d.viewers;
+    }
     if (d.createdAt !== undefined) updateData.createdAt = d.createdAt;
     if (d.updatedAt !== undefined) updateData.updatedAt = d.updatedAt;
 
@@ -130,6 +142,10 @@ export class PrismaStore implements IStore {
         task: row.task,
         nodes: row.nodes,
         edges: row.edges,
+        visibility: row.visibility,
+        ownerId: row.ownerId,
+        editors: row.editors,
+        viewers: row.viewers,
         lineageId: row.lineageId,
         parentId: row.parentId,
         displayName: row.displayName,
@@ -163,6 +179,10 @@ export class PrismaStore implements IStore {
           task: r.task,
           nodes: r.nodes,
           edges: r.edges,
+          visibility: r.visibility,
+          ownerId: r.ownerId,
+          editors: r.editors,
+          viewers: r.viewers,
           lineageId: r.lineageId,
           parentId: r.parentId,
           displayName: r.displayName,
@@ -292,6 +312,10 @@ export class PrismaStore implements IStore {
       task: r.task ?? null,
       nodes: r.nodes ?? null,
       edges: r.edges ?? null,
+      visibility: r.visibility ?? null,
+      ownerId: r.ownerId ?? null,
+      editors: r.editors ?? null,
+      viewers: r.viewers ?? null,
       createdAt: r.createdAt ?? null,
       updatedAt: r.updatedAt ?? null,
       serializedDogConfig: r.serializedDogConfig
@@ -337,6 +361,10 @@ export class PrismaStore implements IStore {
           task: r.task ?? null,
           nodes: r.nodes ?? null,
           edges: r.edges ?? null,
+          visibility: r.visibility ?? null,
+          ownerId: r.ownerId ?? null,
+          editors: r.editors ?? null,
+          viewers: r.viewers ?? null,
           updatedAt: r.updatedAt ?? null,
         };
       })

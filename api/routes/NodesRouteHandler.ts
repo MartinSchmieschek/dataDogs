@@ -2,6 +2,7 @@
 // From tangent planes the dogs emerge, each bearing name and form for those who seek to know.
 import { BASE_DOG_PREFIX } from '@datadogs/core';
 import { ControllerRegistry } from './ConfigRouteHandler';
+import { filterReadable } from '../../mcp/auth/visibility';
 
 /** A lean description of a base dog — enough for the toolbar to display it. */
 interface IBaseDogInfo {
@@ -45,6 +46,9 @@ export class NodesRouteHandler {
             // listLatest() queries by entityType 'SerializedDog', so MimicDogs (type 'MimicDog') are excluded.
             const result = await controller.listLatest();
             let serializedDogs = result.ok && result.data ? result.data : [];
+            // Visibility filter: anonymous sees only public; logged-in sees public + own private.
+            // BaseDogs are always visible (they are project-wide infrastructure, no per-user concept).
+            serializedDogs = filterReadable(serializedDogs as any[], req.ctx);
 
             // If a kennel is specified, filter to only dogs that are in that kennel's dogIds.
             if (kennelId) {

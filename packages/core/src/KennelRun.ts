@@ -11,7 +11,11 @@
  */
 
 import { IHuntingDog as IDog } from './core/entities/IHuntingDog';
-import { SerializedDog, type SerializedDogVmGlobalsSupplier } from './dogs/SerializedDog';
+import {
+    SerializedDog,
+    type SerializedDogVmGlobalsSupplier,
+    type VmGlobalCapabilityContext,
+} from './dogs/SerializedDog';
 import { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 import { SeasonRunner } from './harverster';
 import { IHuntingSeason } from './core/entities/IHuntingSeason';
@@ -105,6 +109,34 @@ export class KennelRun {
     private bodyData?: any;
     private vmGlobalsSuppliers: SerializedDogVmGlobalsSupplier[];
     private cacheHandler?: ICacheHandler;
+    private capabilityCtx?: VmGlobalCapabilityContext;
+    private vmTimeoutMs?: number;
+
+    /**
+     * Set the capability context (userId/isSuperUser) that every SerializedDog in this
+     * run will use when invoking registered VM-Global-Capability factories.
+     * Welle 8: enables tenant-scoped capabilities (e.g. jsonStore key prefixing per user).
+     */
+    public setCapabilityContext(ctx: VmGlobalCapabilityContext | undefined): void {
+        this.capabilityCtx = ctx ? { ...ctx } : undefined;
+    }
+
+    /**
+     * Set the per-run VM execution timeout (milliseconds). When provided and > 0,
+     * every SerializedDog in this kennel receives the override via setVmTimeoutMs.
+     * Resolution order at run time (highest priority first):
+     *   1. `KennelRun.vmTimeoutMs` (this setter, when set + > 0)
+     *   2. `process.env.DATADOGS_VM_TIMEOUT_MS` (when numeric + > 0)
+     *   3. 10000 (10s default)
+     * Run-Time-Param (Welle 12 Korrektur): nicht mehr persistent in IKennelConfig.
+     */
+    public setVmTimeoutMs(ms: number | undefined): void {
+        if (typeof ms === 'number' && ms > 0) {
+            this.vmTimeoutMs = ms;
+        } else {
+            this.vmTimeoutMs = undefined;
+        }
+    }
 
     /**
      * Summon the captain and provision the vessel.
@@ -230,6 +262,30 @@ export class KennelRun {
             });
         }
 
+        // Per-run VM-timeout override (Welle 12 Korrektur: Run-Time-Param, nicht Persistenz)
+        // -- handed to every SerializedDog so the worker terminates after the run's
+        // configured budget instead of the global default. Falsy/<=0 leaves the dog on
+        // its default fallback chain.
+        const runTimeoutMs = this.vmTimeoutMs;
+        if (typeof runTimeoutMs === 'number' && runTimeoutMs > 0) {
+            kennel.forEach(dog => {
+                if (dog instanceof SerializedDog) {
+                    (dog as SerializedDog<unknown>).setVmTimeoutMs(runTimeoutMs);
+                }
+            });
+        }
+
+        // Welle 8: capability ctx (userId/isSuperUser) -- jeder SerializedDog
+        // bekommt den aktuellen Request-Kontext, damit tenant-scoped VM-Globals
+        // (z.B. jsonStore) ihre Keys pro User prefixen koennen.
+        if (this.capabilityCtx) {
+            kennel.forEach(dog => {
+                if (dog instanceof SerializedDog) {
+                    (dog as SerializedDog<unknown>).setCapabilityContext(this.capabilityCtx);
+                }
+            });
+        }
+
         // Cache-Injection — every hound that implements ICacheable receives the cache handler
         if (this.cacheHandler) {
             const tileFeatureCache = this.cacheHandler.getTileFeatureCache();
@@ -316,7 +372,18 @@ export class KennelRun {
             if (hasReal || hasMimic) continue;
 
             if (isPact) {
-                pactsNeedingMimic.push(depClass);
+                // Welle 10: only conjure placeholder Mimics for pacts a dog REQUIRES.
+                // Optional-only pacts have, by contract, a sensible default in their
+                // consumer (e.g. ChuckNorrisRetriever returns a random joke when the
+                // query is empty). Forging a throwing auto-mimic for them would only
+                // dirty the snapshot with a fake "error" without buying any data.
+                // The consumer's matchesParent(Pact, d) will simply find no provider
+                // and fall through to its `?? ({} as XxxQuery)` default.
+                if (requiredClasses.has(depClass)) {
+                    pactsNeedingMimic.push(depClass);
+                } else if (isRuntimeLogVerbose()) {
+                    console.log(`[KennelRun.autoMimic] Optional-only Pact '${depClass.name}' -- skip placeholder, consumer falls back to defaults.`);
+                }
             } else if (requiredClasses.has(depClass)) {
                 const BaseDogClass = this.baseDogClasses.get(depClass.name);
                 if (BaseDogClass) {
@@ -346,7 +413,8 @@ export class KennelRun {
                     adopted = await this.mimicAdopter(depClass.name, preferred);
                 } catch (err) {
                     if (isRuntimeLogVerbose()) {
-                        console.warn(`[KennelRun.autoMimic] Adoption fehlgeschlagen fuer '${depClass.name}':`, err);
+                        const msg = err instanceof Error ? err.message : String(err);
+                        console.warn(`[KennelRun.autoMimic] Adoption fehlgeschlagen fuer '${depClass.name}': ${msg}`);
                     }
                 }
                 if (adopted) {
@@ -399,7 +467,13 @@ export class KennelRun {
         const theHunt = await hunt.run();
 
         if (isRuntimeLogVerbose()) {
-            console.log(theHunt);
+            const waves = theHunt.wave?.length ?? 0;
+            const exhausted = theHunt.exhausted?.length ?? 0;
+            const pending = theHunt.withBeesInThePants?.length ?? 0;
+            const reads = theHunt.readTracking?.length ?? 0;
+            console.log(
+                `[KennelRun.runSeason] ${waves} waves, ${exhausted} exhausted, ${pending} pending, ${reads} tracked reads`,
+            );
         }
 
         return theHunt;

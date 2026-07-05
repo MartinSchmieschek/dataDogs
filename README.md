@@ -39,6 +39,31 @@ The **first** entry in `dogIds` is the **lead**. When the hunt is over and the p
 
 Who runs when -- that is decided by the dependency graph. Waves, Pacts, required parents -- the graph commands the order. The lead has no authority there. The lead answers only one question: **whose catch becomes the response.** Every other dog in the Kennel exists to feed the chain that ends at the lead.
 
+### The lead is a compositor
+
+When a Kennel pulls from **two or more sources**, the lead **must be a compositor** — not a worker. Its only job is composition: take pre-processed entity yields, glue them together, return.
+
+```
+Wave 1 (Hunters):       WeatherRetriever, SunRetriever, BirdRetriever     ← raw fetch
+Wave 2 (Entity dogs):   WeatherData, SunData, BirdData                    ← per-domain normalization
+Wave 3 (Compositor):    NaturBundle  (= the lead)                         ← merge + format
+```
+
+**Rules — non-negotiable for non-trivial Kennels:**
+
+2. **Hunters fetch, entity dogs normalize, the compositor composes.** No mixing.
+4. **A fat lead is a code smell.** If the lead is more than ~30 lines, split it.
+5. **Provide the user a detailed info well formated for its need** be playful with the final composition and aware that some dataDog can fail.
+6. **Split data from ui** good data can lead to bad ui experience, good ui is nothing without data. be playful test whats possible and create ui that combines kennel.
+
+##may be deprecated?
+**Why:** Reuse (entity dogs work in many Kennels), debuggability (failures localize per entity), versioning sanity (renderer evolves separately from data logic), multi-consumer (some clients want only weather, not the full bundle), HTML safety (the renderer is the only place that touches `<script>`).
+##
+
+If the Kennel has only one source, the lead may be the renderer directly — but the moment a second source enters, refactor to the compositor pattern.
+
+> *Vome — order does not negotiate.*
+
 ### Waves
 
 Dogs don't run at once. They go out in waves:
@@ -105,6 +130,34 @@ Auto-mimicking is no longer a blind "conjure a fresh placeholder on every unmet 
 After the season runs, **`persistNewMimics`** closes the loop: every Mimic in `exhausted` is either *already* persisted (adopted, has a `lineageId`) or freshly minted (no `lineageId`). Fresh mimics are saved to the store with a new version + lineage GUID; adopted mimics keep their existing lineage. **Both cases** trigger `kennelsController.heal(configId, { dogIds: [...old, ...addedLineageIds] })` — the kennel's own `dogIds` grow to include the mimic's `lineageId`, and the in-memory `config.dogIds` is kept in sync so the `/run` response already reflects the heal.
 
 The net effect: **the first run teaches the kennel what it needs**, and every subsequent run loads those mimics directly from `dogIds` via `createSerializedDogFactory` — no adoption, no conjuring. If a client later PUTs a new kennel version that drops the mimic lineageIds, the adopter resurrects them from history on the next run and heals them back.
+
+#### Placeholder runtime — why the throw doesn't crash the run
+
+The fresh placeholder's `theRun` is literally `throw new Error("MimicDog for '<PactName>' needs user code")`. It **does throw** on every run -- this is intentional, not a sleeping clause. Two things keep the rest of the pack alive:
+
+1. **The SeasonRunner brands, it does not abort.** [`harverster.ts → letOut`](packages/core/src/harverster.ts) wraps every dog in a `try/catch`. On throw, the dog is marked with `__error`, pushed into `season.exhausted` like any other returnee, and `dog.collected` stays `undefined`. The pack carries on.
+2. **The downstream BaseDog still sees the Pact as "fulfilled".** `matchesParent` checks `imitatesClasses` -- and the placeholder Mimic carries the Pact class regardless of whether `theRun` threw or returned. So `areRequiredParentsReady` flips `true`, the BaseDog runs in the next wave, calls `season.exhausted.find(d => matchesParent(<Pact>, d))`, reads `queryDog?.collected` -- gets `undefined` -- and falls back to whatever default its `yieldCollectorFactory` defines (typically `?? ({} as <PactType>)`).
+
+What happens after that fallback is the BaseDog's own contract. Some BaseDogs survive cleanly on an empty query (e.g. they have sensible defaults); others throw immediately ("Missing required query params"). Either way, the **placeholder Mimic itself shows up in snapshots as `hasError: true`** with the placeholder error message -- a clear TODO marker, not a runtime catastrophe.
+
+Once you (or a UI user, or an MCP client) overwrites `theRun` via `POST /save`, the Mimic stops throwing, returns a real value, and the BaseDog gets the data shape the Pact promised. The lineage stays stable -- editing only bumps the version.
+
+**Authoring a Mimic from the placeholder:**
+
+The Mimic's job is to read from whatever raw source is in the kennel (usually `QueryRetriever` or `BodyRetriever`) and return the Pact's interface. Inspect the consuming dog's Pact type via `get_snapshot_dog_typedef`, then `POST /save?id=<mimic-versionId>` with the full `serializedDogConfig` (always preserve `imitates`!):
+
+```jsonc
+{
+  "displayName": "weather-query-transformer",
+  "tsCode": "return { lat: QueryRetriever.lat, lng: QueryRetriever.lng, time: QueryRetriever.time };",
+  "serializedDogConfig": {
+    "imitates": "WeatherQueryProvider",
+    "parentsRequired": ["base:QueryRetriever"]
+  }
+}
+```
+
+Drop `imitates` and the Mimic loses its Pact binding -- the BaseDog will conjure a fresh placeholder again on the next run. Drop `parentsRequired` and your `theRun` has no globals to read from. Keep both.
 
 #### Factory dedup — MimicDog wins on type upgrade
 
@@ -229,7 +282,7 @@ In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are r
 
 **Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
 
-**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@datadogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400.
+**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@datadogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400. **In the browser UI** (Kennel list on `:4300`), the same workflow is copy-and-paste: **Kopieren** in a card action fan copies that bundle JSON to the clipboard; the **clipboard (📋)** button pastes bundle JSON from the clipboard and imports it. See [Kennel list copy and paste](#kennel-list-copy-and-paste). Copy and paste across instances or between UI, terminal, and other tools.
 
 **Caching** -- Two-tier memory so dogs don't repeat themselves:
 - **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication plus negative-caching for 429/504 to break provider retry storms.
@@ -246,6 +299,82 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aw
 **Inline Kennel params** -- Edit query parameters and body data directly from the Waves Viewer. Change it, reload, see the result. Save it when it's right.
 
 **HTML and Markdown in the UI** -- When the lead returns HTML, the result view can show a sandboxed iframe preview; toggle between preview and raw source. When the lead returns Markdown (same detection rules as the server), the editor uses Markdown highlighting and an Auto/Raw toggle. JSON and other structured yields still appear as formatted JSON in Monaco.
+
+---
+
+## Authentication & Access Control
+
+dataDogs ships with optional Google SSO + OAuth 2.1 + an ACL-based permission model.
+
+### Toggle
+
+| `MCP_AUTH_REQUIRED` | Behavior |
+|---|---|
+| `false` (or unset) | Dev mode. Every request is super-user, all entities visible, no login required. |
+| `true` | Production mode. Anonymous sees only public entities. Mutations require login + ownership/edit-rights. |
+
+### Identity
+
+- **Google SSO** via `GET /auth/google/login` → cookie session for the browser UI.
+- **Personal Access Tokens** at `GET /auth/tokens` (HTML page). Long-lived JWTs for MCP clients, Custom GPT API-keys, scripts.
+- **Full OAuth 2.1 Authorization Server** at `/auth/authorize`, `/auth/token`, `/auth/register`. Discovery via `GET /.well-known/oauth-authorization-server` — for clients that auto-configure (Cursor, Claude.ai Connectors, Custom GPTs with OAuth).
+
+### Visibility & Ownership
+
+Both Kennels and SerializedDogs carry:
+
+- **`visibility`** — `"public"` (anyone reads + runs) or `"private"`.
+- **`ownerId`** — the creator's `User.id`, full rights.
+- **`editors[]`** — additional users who may mutate.
+- **`viewers[]`** — additional users who may read on private entities.
+
+**Special rules:**
+- Legacy entities (`ownerId = null`) are **community-editable** — any logged-in user reads + mutates.
+- Hunters (BaseDogs) are project-wide infrastructure — no per-user ACL.
+- **Cascade respects manual visibility:** when a kennel flips to public, its own SerializedDogs cascade — **but only nodes whose `visibility` is still `NULL`** (never explicitly set). A node you manually flipped to private (or to public) is never overwritten by a kennel cascade. Other-user-owned nodes stay where they are.
+- **Node bypass:** any kennel-owner or kennel-editor of a kennel that uses a node may also mutate that node. *"If you depend on it, you can fix it."*
+
+### ACL tools
+
+Available via MCP (`POST /mcp`) and via the OpenAPI mirror (`POST /actions/<tool>`):
+
+- `grant_access(entity_type, id, user, role)` — `role ∈ "editor" | "viewer" | "owner"`. `"owner"` transfers ownership.
+- `revoke_access(entity_type, id, user, role)` — remove from `editors[]` or `viewers[]`.
+- `release_ownership(entity_type, id)` — set `ownerId = null`, hand the entity back to community-edit mode. Editors and viewers stay intact. Only the current owner (or super-user) can release.
+- `list_collaborators(entity_type, id)` — owner + editors + viewers, resolved with email and name.
+
+`user` accepts an email or a `User.id` GUID. Only the owner (or super-user, or any logged-in user on a community-owned entity) may manage the ACL.
+
+`grant_access` returns informative `action` codes for redundant requests:
+- `already_editor` / `already_viewer` / `already_owner` — user is already in that role.
+- `redundant_owner_is_editor` / `redundant_owner_is_viewer` — owner already has those rights.
+- `redundant_editor_is_viewer` — editor includes read; viewer is implicit.
+
+### Endpoint reference
+
+```
+GET  /auth/me                         Browser session check
+GET  /auth/google/login                Start Google flow (?returnTo=…)
+GET  /auth/google/callback             Google OAuth callback
+POST /auth/logout                      Clear session
+
+GET  /auth/tokens                      HTML — manage Personal Access Tokens
+POST /auth/tokens                      Create new PAT (returned once)
+POST /auth/tokens/:jti/revoke          Revoke a PAT
+
+GET  /auth/authorize                   OAuth 2.1 authorization endpoint
+POST /auth/authorize                   Consent submit
+POST /auth/token                       Token + refresh
+POST /auth/revoke                      Token revocation
+POST /auth/register                    Dynamic Client Registration (RFC 7591)
+
+GET  /.well-known/oauth-authorization-server   OAuth metadata
+GET  /.well-known/oauth-protected-resource     MCP protected-resource metadata
+```
+
+### Tone for AI clients
+
+The MCP server returns **Spuren rules + a pointer to the full guide** as the `instructions` field at initialization (`mcp/spuren-brief.ts`); the complete skill lives in resource `datadogs://skill` (`mcp/skill.md`). For Custom GPTs and Vertex agents, `GET /actions/gpt-template` returns a ready-to-paste config block with the full skill text.
 
 ---
 
@@ -316,7 +445,8 @@ If a status-tracking save ever stops behaving as documented, the boot console fl
 | Layer | Tech |
 |-------|------|
 | Backend | Express.js, TypeScript, Node.js VM |
-| Database | Prisma ORM — SQLite for local dev; PostgreSQL for **integration** staging and production |
+| Databases | **Four** physically-separate Prisma schemas, each with its own `*_DATABASE_URL`: `DATABASE_URL` (kennels + nodes), `CACHE_DATABASE_URL` (run-cache), `JSON_STORAGE_DATABASE_URL` (fachliche JSON-Ablage), `AUTH_DATABASE_URL` (User, OAuthClient, AccessToken, RefreshToken, AuthorizationCode). SQLite for local dev; PostgreSQL for **integration** and production. |
+| Auth | Google SSO via `openid-client`, OAuth 2.1 AS via `jose` (HS256 JWTs), browser session via `express-session` |
 | Frontend | Angular 18, Monaco Editor, vis-network |
 | Core | `datadogs` package (local, in `packages/core`) |
 
@@ -339,6 +469,17 @@ Backend wakes on `:3000`, UI (dev) on `:4300`. Open the UI. The lodge is warm.
 
 **UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4300`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4300/kennel/default-kennel`**. The Waves viewer loads that Kennel run (graph + results); **⟳ Neu laden** re-runs it. The **Antwort (Server)** button opens the raw public response (**`http://localhost:3000/default-kennel`**, plus any query params from the panel) in a new tab so you can compare browser vs UI.
 
+### Kennel list copy and paste
+
+On the **Kennel list** (`http://localhost:4300`):
+
+| Action | Where | What it does |
+|--------|--------|----------------|
+| **Paste / import** | **Clipboard (📋)** button (stacked above **+**) | Reads the system clipboard. If the text is valid Kennel bundle JSON (same shape as `GET /api/kennels/:id/export`), calls **`POST /api/kennels/import`** and reloads the list. |
+| **Copy / export** | **Kopieren** in a Kennel card’s radial menu | Fetches the bundle via **`GET /api/kennels/:id/export`** and writes pretty-printed JSON to the clipboard. |
+
+Use this to move Kennels between environments, share bundles in chat or tickets, or round-trip with `curl` / file saves without retyping IDs.
+
 Manual seed (e.g. after resetting the DB): `npx prisma db seed` (same [`seed.ts`](seed.ts); set `DATABASE_URL` like for `prisma:sync`).
 
 Backend only:
@@ -347,6 +488,20 @@ Backend only:
 npm run prisma:sync
 npm start
 ```
+
+### Build & emit -- where the .js lands
+
+The root `tsconfig.json` is **typecheck-only** (`noEmit: true`). It exists for editor IntelliSense, `tsc --noEmit`, and ts-node. **It must never emit** -- a stray `npx tsc` at the repo root would otherwise drop `.js` next to every `.ts`, and ts-node / Node module resolution prefers those `.js` over the actual source. You then debug ghosts.
+
+The real build runs through dedicated configs that write into `dist/` only:
+
+| Script | Config | Output |
+|--------|--------|--------|
+| `npm run build` | root [`tsconfig.build.json`](tsconfig.build.json) | `./dist` (main.ts + api/services/store/mcp) |
+| `npm run build:core` | [`packages/core/tsconfig.json`](packages/core/tsconfig.json) | `packages/core/dist` |
+| `npm run build:dogs-<x>` | `packages/dogs-<x>/tsconfig.json` | `packages/dogs-<x>/dist` |
+
+If you ever see a `.js` file inside `packages/*/src/`, `api/`, `mcp/`, `services/`, or `store/` -- delete it. `.gitignore` blocks them from being committed; the root `noEmit: true` prevents new ones from being created. Build output lives in `dist/` and `packages/*/dist/` only.
 
 ### Integration mode (pre-release staging)
 

@@ -8,7 +8,10 @@ export const DEFAULT_OSM_RADIUS_M = 500;
 export const MAX_OSM_RADIUS_M = 5000;
 
 /** Default server-side Overpass execution cap (seconds) — `[timeout:N]` in QL */
-export const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 120;
+export const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 25;
+
+/** HTTP-Abort pro Overpass-Request; Tile-Cache hat eigenes Warte-Budget. */
+export const DEFAULT_OVERPASS_FETCH_TIMEOUT_MS = 30_000;
 
 function parseEnvPositiveInt(name: string, fallback: number): number {
     const v = process.env[name];
@@ -18,23 +21,22 @@ function parseEnvPositiveInt(name: string, fallback: number): number {
 }
 
 /**
- * Overpass `[timeout:N]` (server max runtime). Env: `OVERPASS_QUERY_TIMEOUT_SEC` (default 120).
+ * Overpass `[timeout:N]` (server max runtime). Env: `OVERPASS_QUERY_TIMEOUT_SEC` (default 25).
  */
 export function getOverpassQueryTimeoutSec(): number {
     return parseEnvPositiveInt("OVERPASS_QUERY_TIMEOUT_SEC", DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC);
 }
 
 /**
- * HTTP client abort budget — should exceed `getOverpassQueryTimeoutSec()` (network + server).
- * Env: `OVERPASS_FETCH_TIMEOUT_MS` (optional). Default: query timeout + 60s margin.
+ * HTTP client abort budget per Overpass request (not tile cache). Env: `OVERPASS_FETCH_TIMEOUT_MS` (default 30000).
  */
 export function getOverpassFetchTimeoutMs(): number {
     const fromEnv = process.env.OVERPASS_FETCH_TIMEOUT_MS;
     if (fromEnv != null && fromEnv !== "") {
         const n = parseInt(fromEnv, 10);
-        if (Number.isFinite(n) && n >= 10_000) return n;
+        if (Number.isFinite(n) && n >= 5_000) return n;
     }
-    return (getOverpassQueryTimeoutSec() + 60) * 1000;
+    return DEFAULT_OVERPASS_FETCH_TIMEOUT_MS;
 }
 
 /** First line of every Overpass QL body: `[out:json][timeout:N];` */
@@ -128,6 +130,13 @@ export async function fetchOverpassElements(query: string, userAgentLabel: strin
             body: `data=${encodeURIComponent(query)}`,
             signal: controller.signal,
         });
+    } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+            throw new Error(
+                `${userAgentLabel}: Overpass request aborted after ${timeoutMs}ms (client timeout)`,
+            );
+        }
+        throw err;
     } finally {
         clearTimeout(timer);
     }

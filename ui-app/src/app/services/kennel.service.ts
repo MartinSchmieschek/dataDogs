@@ -39,6 +39,7 @@ export class KennelService {
     description?: string;
     emoji?: string;
     dogIds?: string[];
+    visibility?: 'public' | 'private';
   }): Observable<ApiResponse<IKennelConfig>> {
     return this.http.post<ApiResponse<IKennelConfig>>(this.baseUrl, data);
   }

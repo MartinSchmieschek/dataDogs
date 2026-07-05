@@ -5,13 +5,21 @@
  * It fetches the accursed JSON, and from it spawns a Kubrow -- our faithful hound
  * amidst the cosmic madness. To cosmic madness laws submit, though stalwart minds entreat.
  */
-import { FetchBaseDog } from '@datadogs/core';
+import { FetchBaseDog, type ICacheHandler, type ICacheable, type IHuntingSeason } from '@datadogs/core';
 import type { IWarframeWorldState } from "./interfaces/warframeWorldState";
 import { Kubrow } from "./Kubrow";
-import { IHuntingSeason } from "@datadogs/core";
+
+/** Öffentlicher World State — 5 Min. TTL für alle Runs (Reload/UI inkl.). */
+const WARFRAME_WORLD_STATE_CACHE_TTL_MS = 5 * 60 * 1000;
+const WARFRAME_WORLD_STATE_CACHE_KEY = 'warframe:worldState';
 
 /** Arr, the retriever that dives into the API abyss and returns with the World State clutched in its maw. */
-export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
+export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> implements ICacheable {
+    private cacheHandler?: ICacheHandler;
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
     /**
      * The URL of the accursed API -- the gateway to the deep.
      * @returns The Warframe World State API URL, arr
@@ -45,11 +53,22 @@ export class WarframeAlertsRetriever extends FetchBaseDog<Kubrow> {
      * Its heralds are the stars it fells, the sky and Earth aflame.
      */
     protected override yieldCollectorFactory = async (_season: IHuntingSeason): Promise<Kubrow> => {
-        const response = await fetch(this.apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const simaris = await response.json() as IWarframeWorldState;
+        const fetchWorldState = async (): Promise<IWarframeWorldState> => {
+            const response = await fetch(this.apiUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return await response.json() as IWarframeWorldState;
+        };
+
+        const simaris = this.cacheHandler
+            ? await this.cacheHandler.getOrFetch(
+                WARFRAME_WORLD_STATE_CACHE_KEY,
+                WARFRAME_WORLD_STATE_CACHE_TTL_MS,
+                fetchWorldState,
+            )
+            : await fetchWorldState();
+
         return new Kubrow(simaris);
     };
 }

@@ -23,11 +23,12 @@ export class DadJokeRetriever extends Dog<DadJokeResult> implements ICacheable {
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [DadJokeQueryPact];
+        return [];
     }
 
+    // Welle 10: Query is optional -- ohne Mimic liefert die API einen Random-Joke.
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
+        return [DadJokeQueryPact];
     }
 
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<DadJokeResult> => {

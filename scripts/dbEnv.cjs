@@ -21,6 +21,8 @@ function assertRequiredDbEnv() {
     const cachePath = (process.env.CACHE_DB_PATH || '').trim();
     const explicitJsonStorageUrl = (process.env.JSON_STORAGE_DATABASE_URL || '').trim();
     const jsonStoragePath = (process.env.JSON_STORAGE_DB_PATH || '').trim();
+    const authUrl = (process.env.AUTH_DATABASE_URL || '').trim();
+    const authPath = (process.env.AUTH_DB_PATH || '').trim();
 
     const blocks = [];
 
@@ -62,6 +64,22 @@ function assertRequiredDbEnv() {
             '    JSON_STORAGE_DATABASE_URL="file:./json-storage.db"',
             '  oder: JSON_STORAGE_DB_PATH="store/prisma-json-storage/json-storage.db"',
             '',
+        );
+    }
+
+    if (!authUrl && !authPath) {
+        blocks.push(
+            '[ENV] Auth-DB: Weder AUTH_DATABASE_URL noch AUTH_DB_PATH ist gesetzt.',
+            '',
+            '  Lokale Entwicklung (SQLite, Schema: store/prisma-auth/schema.prisma):',
+            '    AUTH_DATABASE_URL="file:./auth.db"',
+            '  oder: AUTH_DB_PATH="store/prisma-auth/auth.db"',
+            '',
+            '  Integration/Production (PostgreSQL, Schema: store/prisma-auth/schema.postgres.prisma):',
+            '    AUTH_DATABASE_URL="postgresql://BENUTZER:PASSWORT@HOSTNAME:5432/AUTH_DB?sslmode=require"',
+            '',
+            '  Auth-Daten (User, OAuth*, Tokens) sollten in eigener DB liegen — Backup, Lifecycle und',
+            '  Sicherheit profitieren von der Trennung zur Content-DB.',
         );
     }
 
@@ -197,15 +215,20 @@ function parsePostgresUrl(raw) {
  * (wurde von assertRequiredDbEnv ggf. auf DATABASE_URL gespiegelt). SQLite-Dev:
  * faellt auf CACHE_DB_PATH zurueck.
  */
+function withSqliteBusyTimeout(url) {
+    if (!url.startsWith('file:') || /busy_timeout=/i.test(url)) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}busy_timeout=60000`;
+}
+
 function resolveCacheDatabaseUrl() {
     const cacheUrl = (process.env.CACHE_DATABASE_URL || '').trim();
-    if (cacheUrl) return cacheUrl;
+    if (cacheUrl) return withSqliteBusyTimeout(cacheUrl);
     const pathOnly = (process.env.CACHE_DB_PATH || '').trim();
     if (!pathOnly) {
         throw new Error('resolveCacheDatabaseUrl: CACHE_DATABASE_URL / CACHE_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
     }
-    if (pathOnly.startsWith('file:')) return pathOnly;
-    return `file:${pathOnly.replace(/\\/g, '/')}`;
+    if (pathOnly.startsWith('file:')) return withSqliteBusyTimeout(pathOnly);
+    return withSqliteBusyTimeout(`file:${pathOnly.replace(/\\/g, '/')}`);
 }
 
 /**
@@ -223,4 +246,18 @@ function resolveJsonStorageDatabaseUrl() {
     return `file:${pathOnly.replace(/\\/g, '/')}`;
 }
 
-module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl };
+/**
+ * Setzt aus AUTH_DATABASE_URL oder AUTH_DB_PATH die finale URL fuer Prisma (Auth-Schema).
+ */
+function resolveAuthDatabaseUrl() {
+    const authUrl = (process.env.AUTH_DATABASE_URL || '').trim();
+    if (authUrl) return authUrl;
+    const pathOnly = (process.env.AUTH_DB_PATH || '').trim();
+    if (!pathOnly) {
+        throw new Error('resolveAuthDatabaseUrl: AUTH_DATABASE_URL / AUTH_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
+    }
+    if (pathOnly.startsWith('file:')) return pathOnly;
+    return `file:${pathOnly.replace(/\\/g, '/')}`;
+}
+
+module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, resolveAuthDatabaseUrl };

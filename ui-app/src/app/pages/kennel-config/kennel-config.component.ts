@@ -12,6 +12,7 @@ import { DogDisplayComponent } from '../../components/dog-display/dog-display.co
 import { KennelEmojiPickerComponent } from '../../components/kennel-emoji-picker/kennel-emoji-picker.component';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
 import { kennelDisplayNameBlockedReason } from '../../config/kennel-reserved-names';
+import { AclPanelComponent } from '../../components/acl-panel/acl-panel.component';
 
 declare const monaco: any;
 
@@ -44,6 +45,7 @@ const BASE_DOG_TYPES = [
     DogDisplayComponent,
     KennelEmojiPickerComponent,
     VersionTimelineComponent,
+    AclPanelComponent,
   ],
   templateUrl: './kennel-config.component.html',
   styleUrls: ['./kennel-config.component.scss']
@@ -69,6 +71,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   description = '';
   emoji = '';
   task = '';
+  visibility: 'public' | 'private' = 'public';
   /** Eine Liste: Reihenfolge = Ausführungsreihenfolge; Index 0 = API-Ergebnis-Hund */
   orderedDogIds = signal<string[]>([]);
   availableDogs = signal<DogInfo[]>([]);
@@ -149,6 +152,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
     this.description = cfg.description ?? '';
     this.emoji = cfg.emoji ?? '';
     this.task = cfg.task ?? '';
+    this.visibility = cfg.visibility === 'private' ? 'private' : 'public';
 
     this.orderedDogIds.set([...(cfg.dogIds ?? [])]);
 
@@ -343,6 +347,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
       name: this.name,
       description: this.description,
       emoji: this.emoji.trim(),
+      visibility: this.visibility,
       dogIds,
       defaultQuery: Object.keys(defaultQuery).length > 0 ? defaultQuery : undefined,
       defaultBody,

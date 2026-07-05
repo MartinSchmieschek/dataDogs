@@ -23,11 +23,13 @@ export class ChuckNorrisRetriever extends Dog<ChuckNorrisResult> implements ICac
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [ChuckNorrisQueryPact];
+        return [];
     }
 
+    // Welle 10: Query is optional -- ohne Mimic liefert die API einfach einen Random-Joke.
+    // So crasht der Retriever nie an einer fehlenden Provider-Mimic.
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
+        return [ChuckNorrisQueryPact];
     }
 
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<ChuckNorrisResult> => {

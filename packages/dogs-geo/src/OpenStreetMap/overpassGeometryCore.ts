@@ -4,6 +4,7 @@
 
 import osmtogeojson from "osmtogeojson";
 import type { FeatureCollection, GeometryObject } from "geojson";
+import { getOverpassFetchTimeoutMs } from "./overpassOsmShared";
 
 /** Default instance; often overloaded — see `getOverpassEndpoints()` */
 export const OVERPASS_INTERPRETER_URL = "https://overpass-api.de/api/interpreter";
@@ -120,9 +121,12 @@ export interface OverpassOsmJson {
 
 /**
  * POSTs to Overpass with retries on 502/503/504 and optional fallback mirrors.
- * `timeoutMs` is the client abort window per attempt (large queries need several minutes).
+ * `timeoutMs` is the client abort window per attempt (default: `getOverpassFetchTimeoutMs()` → 30s).
  */
-export async function fetchOverpassGeometry(query: string, timeoutMs = 240000): Promise<OverpassOsmJson> {
+export async function fetchOverpassGeometry(
+    query: string,
+    timeoutMs = getOverpassFetchTimeoutMs(),
+): Promise<OverpassOsmJson> {
     const userAgent =
         process.env.OVERPASS_USER_AGENT ??
         "jsonAggregator/OsmGeometryRetriever (contact: set OVERPASS_USER_AGENT)";

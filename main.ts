@@ -5,7 +5,8 @@
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {
-    console.error('[unhandledRejection]', reason);
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    console.error('[unhandledRejection]', msg);
 });
 
 import { QueryRetriever, BodyRetriever } from '@datadogs/core';
@@ -192,7 +193,7 @@ import {
     type ICacheHandler,
     WebSocketChannelRetriever,
     ChannelLiveSnippetRetriever,
-    JsonStorageRetriever,
+    registerVmGlobalCapability,
 } from '@datadogs/core';
 import http from 'http';
 import { ChannelHub } from './services/ChannelHub';
@@ -211,11 +212,21 @@ import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from './api/routes/ReadmeRouteHandler';
 import { SPA_FALLBACK_SKIP_PREFIXES } from './api/routes/spaRouteConstants';
+import cookieParser from 'cookie-parser';
+import { PrismaClient as AuthPrismaClient } from './store/generated/prisma-auth-client';
+import { createSessionMiddleware } from './mcp/auth/sessions';
+import { createAuthRouter } from './mcp/auth/router';
+import { createAuthContextMiddleware } from './mcp/auth/middleware';
+import { createDiscoveryRouter } from './mcp/auth/discovery';
+import { createMcpRouter } from './mcp/transports/mcp';
+import { createActionsRouter } from './mcp/transports/openapi';
+import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
 import { PrismaCacheHandler } from './services/PrismaCacheHandler';
+import { withResilientCacheInfra } from './services/resilientCacheHandler';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
@@ -268,8 +279,50 @@ async function start() {
 
     // Fachliche JSON-Ablage: eigene SQLite (JSON_STORAGE_DATABASE_URL), bewusst getrennt
     // von Nodes/Kennels (DATABASE_URL) und Run-Cache (CACHE_DATABASE_URL).
+    //
+    // Welle 7: jsonStore ist VM-Infrastruktur, kein Daten-Pakt. Statt einen BaseDog
+    // (JsonStorageRetriever) zu registrieren, legen wir die Bruecke direkt als VM-Global-
+    // Capability beim Core ab. Jeder SerializedDog sieht `jsonStore` damit automatisch im
+    // VM-Context, ohne einen Parent zu deklarieren -- so wie er auch `fetch` und `console`
+    // sieht.
     const jsonStorageService = new JsonStorageService(dbEnv.resolveJsonStorageDatabaseUrl());
-    JsonStorageRetriever.initService(jsonStorageService);
+    registerVmGlobalCapability('jsonStore', (ctx) => {
+        // Welle 8: Tenant-Scoping.
+        //
+        //   - Super-User (dev mode, MCP_AUTH_REQUIRED=false) -> raw keys
+        //     (Backwards-Compat fuer Tests + administrative Inspektion).
+        //   - Anonymer Aufruf (kein eingeloggter User, kein super-user) -> raw keys
+        //     (oeffentliche Kennels nutzen einen geteilten Namespace -- noch nicht
+        //     pro-anonymous-session getrennt; das waere Welle 9).
+        //   - Eingeloggter User -> Keys werden mit `user:<userId>:` prefixiert,
+        //     `list()` filtert + strippt das Prefix transparent.
+        const userId = ctx?.userId ?? null;
+        const isSuper = ctx?.isSuperUser === true;
+        const usePrefix = !isSuper && typeof userId === 'string' && userId.length > 0;
+        const prefix = usePrefix ? `user:${userId}:` : '';
+        const wrap = (k: string) => prefix + k;
+
+        return {
+            get: (k: string) => jsonStorageService.get(wrap(k)),
+            set: (k: string, v: unknown) => jsonStorageService.set(wrap(k), v),
+            delete: (k: string) => jsonStorageService.delete(wrap(k)),
+            has: (k: string) => jsonStorageService.has(wrap(k)),
+            list: async () => {
+                const all = await jsonStorageService.list();
+                if (!usePrefix) return all;
+                return all
+                    .filter((k) => k.startsWith(prefix))
+                    .map((k) => k.substring(prefix.length));
+            },
+            snapshot: async () => {
+                const all = await jsonStorageService.snapshot();
+                if (!usePrefix) return all;
+                return all
+                    .filter((e) => e.key.startsWith(prefix))
+                    .map((e) => ({ ...e, key: e.key.substring(prefix.length) }));
+            },
+        };
+    });
 
     // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
     const channelHub = new ChannelHub({
@@ -344,7 +397,9 @@ async function start() {
         SpaceRetriever,
         OpenLibraryRetriever,
         GitHubTrendingRetriever,
-        JsonStorageRetriever,
+        // Welle 7: JsonStorageRetriever entfaellt als BaseDog -- `jsonStore` ist jetzt eine
+        // VM-Global-Capability (siehe `registerVmGlobalCapability('jsonStore', ...)` oben)
+        // und damit fuer jeden SerializedDog automatisch verfuegbar.
         WebSocketChannelRetriever,
         ChannelLiveSnippetRetriever,
         JokeRetriever,
@@ -518,6 +573,21 @@ async function start() {
 
     app.use(express.json({ limit: '5mb' }));
 
+    // === Auth pipeline (mcp/auth/*) — cookie-session + Google login + /auth/* router ===
+    // Mounted before the SPA fallback so /auth/* is handled here, not by Angular.
+    // The auth-context middleware runs on EVERY request: it attaches req.ctx with the
+    // current user (or super-user when MCP_AUTH_REQUIRED=false) so downstream route
+    // handlers can apply visibility/ownership filters.
+    // Auth-specific Prisma client — uses AUTH_DATABASE_URL, separate from content DB.
+    const authPrisma = new AuthPrismaClient();
+    app.use(cookieParser());
+    // OAuth POST endpoints accept application/x-www-form-urlencoded as well as JSON.
+    app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+    app.use(createSessionMiddleware());
+    app.use(createAuthContextMiddleware(authPrisma));
+    app.use('/auth', createAuthRouter(authPrisma));
+    app.use('/.well-known', createDiscoveryRouter());
+
     // Static assets (Swagger UI hero, etc.) — served from /static/*
     const publicDir = resolvePublicDir();
     if (publicDir) {
@@ -555,17 +625,50 @@ async function start() {
     readmeRouteHandler.registerRoutes(app);
 
     // Raise the CRUD sails — all routes for nodes and kennels now billow in the cosmic wind.
-    const routeHandler = new ConfigRouteHandler(registry);
+    // kennelsStore is passed so node-mutation routes can apply the kennel-owner-bypass rule.
+    const routeHandler = new ConfigRouteHandler(registry, kennelsStore);
     routeHandler.registerRoutes(app, '/api');
 
     // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
-    const cacheHandler: ICacheHandler = new PrismaCacheHandler(dbEnv.resolveCacheDatabaseUrl());
+    // Zielbild: schnelle, dedizierte Cache-Anbindung (z. B. Postgres laut CACHE_DATABASE_URL in
+    // Prod) — Betreiber sollten Cache-Hits/Latenz im Blick haben. Bewusst noch nicht Priorität:
+    // lokal reicht withResilientCacheInfra, damit SQLite-Lock/Timeout die Kennel-Runs nicht killt.
+    const cacheHandler: ICacheHandler = withResilientCacheInfra(
+        new PrismaCacheHandler(dbEnv.resolveCacheDatabaseUrl()),
+    );
 
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
+
+    // === MCP + Actions BEFORE `/:kennelId` ===
+    // Otherwise POST /mcp matches KennelRunHandler's `/:kennelId` first (kennelId=mcp).
+    const baseDogsList = allBaseDogs.map((dog) => ({
+        id: 'base:' + dog.name,
+        name: dog.name,
+        description: dog.description,
+        type: 'BaseDog' as const,
+        icon: dog.icon,
+    }));
+    // Single snapshot cache shared between MCP and the OpenAPI Actions transport —
+    // a kennel refreshed via one is visible to the other.
+    const snapshotCache = new KennelSnapshotCache();
+    const toolDeps = {
+        kennelsController,
+        nodesController,
+        kennelRunHandler,
+        kennelsStore,
+        nodesStore,
+        prisma: authPrisma,
+        baseDogsList,
+        projectRoot: __dirname,
+        snapshotCache,
+    };
+    app.use('/mcp', createMcpRouter(toolDeps));
+    app.use('/actions', createActionsRouter(toolDeps));
+
     kennelSwaggerHandler.registerRoutes(app);
     kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);

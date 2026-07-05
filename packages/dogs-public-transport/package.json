@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-public-transport",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Public Transport: Nahegelegene Haltestellen und Abfahrten aus dem Void (Bus, Tram, U-Bahn, S-Bahn, Zug)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,6 +23,9 @@
   },
   "license": "MIT",
   "private": true,
+  "peerDependencies": {
+    "@datadogs/core": "file:../core"
+  },
   "dependencies": {
     "@datadogs/core": "file:../core"
   },

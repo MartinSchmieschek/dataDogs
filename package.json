@@ -1,6 +1,6 @@
 {
   "name": "dataDogs",
-  "version": "0.1.0-alpha.4",
+  "version": "0.2.0-beta.0",
   "description": "Data Hunt — dogs hunt data: Kennels, Waves, Serialized TypeScript in the void. Express, Angular, Prisma.",
   "main": "main.ts",
   "workspaces": [
@@ -48,7 +48,7 @@
     "build:dogs-space": "cd packages/dogs-space && npx tsc",
     "build:dogs-open-library": "cd packages/dogs-open-library && npx tsc",
     "build:dogs-github-trending": "cd packages/dogs-github-trending && npx tsc",
-"build:dogs-humor": "cd packages/dogs-humor && npx tsc",
+    "build:dogs-humor": "cd packages/dogs-humor && npx tsc",
     "build:dogs-animals-random": "cd packages/dogs-animals-random && npx tsc",
     "build:dogs-dictionary": "cd packages/dogs-dictionary && npx tsc",
     "build:dogs-knowledge": "cd packages/dogs-knowledge && npx tsc",
@@ -92,7 +92,9 @@
     "typecheck:core": "cd packages/core && npx tsc --noEmit",
     "typecheck:dogs": "cd packages/dogs-demo && npx tsc --noEmit && cd ../dogs-geo && npx tsc --noEmit && cd ../dogs-warframe && npx tsc --noEmit && cd ../dogs-hue && npx tsc --noEmit && cd ../dogs-talking && npx tsc --noEmit && cd ../dogs-public-transport && npx tsc --noEmit && cd ../dogs-weather && npx tsc --noEmit && cd ../dogs-air-quality && npx tsc --noEmit && cd ../dogs-geocoding && npx tsc --noEmit && cd ../dogs-wikipedia && npx tsc --noEmit && cd ../dogs-sun && npx tsc --noEmit && cd ../dogs-biodiversity && npx tsc --noEmit && cd ../dogs-birds && npx tsc --noEmit && cd ../dogs-phenology && npx tsc --noEmit && cd ../dogs-webcams && npx tsc --noEmit && cd ../dogs-regional-news && npx tsc --noEmit && cd ../dogs-transit-trips && npx tsc --noEmit",
     "typecheck": "npm run typecheck:core && npm run typecheck:dogs && tsc --noEmit -p tsconfig.build.json",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck",
+    "test:mcp:integration": "node mcp/integration/mcp-gateway.integration.cjs",
+    "test:mcp:integration:int": "cross-env NODE_ENV=integration node -r ./scripts/load-env.cjs mcp/integration/mcp-gateway.integration.cjs"
   },
   "author": "Martin",
   "license": "MIT",
@@ -152,14 +154,20 @@
     "@datadogs/dogs-wikipedia": "file:packages/dogs-wikipedia",
     "@datadogs/geo-pact": "file:packages/geo-pact",
     "@datadogs/swaggrid": "file:packages/swaggrid",
+    "@modelcontextprotocol/sdk": "^1.18.0",
     "@prisma/client": "^5.5.0",
     "@types/express": "^5.0.3",
     "@types/swagger-ui-express": "^4.1.8",
+    "cookie-parser": "^1.4.7",
     "dotenv": "^17.3.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.18.1",
     "fs": "^0.0.1-security",
+    "jose": "^5.9.6",
     "node-hue-api": "^5.0.0-beta.16",
     "nodemon": "^3.1.10",
+    "openid-client": "^5.7.1",
     "pg": "^8.10.0",
     "swagger-ui-express": "^5.0.1",
     "ts-node": "^10.9.2",
@@ -168,6 +176,8 @@
     "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.7",
+    "@types/express-session": "^1.18.0",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",

@@ -28,11 +28,16 @@ model Dog {
   task                 String?  // Kennel-Aufgaben-/Briefing-Text (markdown-fähig)
   nodes                String?  // JSON-String: [{ id, x?, y?, comment? }]
   edges                String?  // JSON-String: [{ fromId, toId, comment? }]
-  // ACL-Felder aus parallelem Branch — hier deklarieren, damit prisma db push sie nicht droppt.
-  ownerId              String?
-  visibility           String?
-  editors              String?
-  viewers              String?
+  visibility           String?  // Kennel-Visibility: "public" | "private". Null bei Nicht-Kennel-Dogs.
+  // NOTE: vmTimeoutMs ist KEIN Persistenz-Feld -- gehoert per-run-call mitgegeben (Welle 12 Korrektur).
+  // Sollte eine alte DB die Spalte noch fuehren, bleibt sie ungelesen liegen (kein Migrations-Schmerz).
+  ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
+  editors              String?  // Comma-separated User.id list — additional users with edit rights.
+  viewers              String?  // Comma-separated User.id list — additional users with read rights on private entities.
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }
+
+// Auth + OAuth tables moved to store/prisma-auth/ (own DATABASE: AUTH_DATABASE_URL).
+// Kennel.ownerId / Dog.editors / Dog.viewers stay here as plain User-ID strings —
+// the FK is logical, not enforced at DB level (cross-DB).
