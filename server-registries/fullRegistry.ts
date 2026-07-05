@@ -2,7 +2,7 @@
  * Volle Base-Dog- und Pact-Registry für development/production.
  * Nur von fullRegistry.ts importieren — nicht in main.ts bündeln, damit Integration weniger Module lädt.
  */
-import { QueryRetriever, BodyRetriever, JsonStorageRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@datadogs/core';
+import { QueryRetriever, BodyRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@datadogs/core';
 import {
     RandomRecipesRetriever,
     RandomEveryThingRetriever,
@@ -209,7 +209,6 @@ export const allBaseDogClasses = [
     SpaceRetriever,
     OpenLibraryRetriever,
     GitHubTrendingRetriever,
-    JsonStorageRetriever,
     WebSocketChannelRetriever,
     ChannelLiveSnippetRetriever,
     JokeRetriever,

@@ -4,7 +4,7 @@
  * Lokal unter NODE_ENV=development wird stattdessen fullRegistry geladen.
  * @see server-registries/fullRegistry.ts für die volle Liste.
  */
-import { QueryRetriever, BodyRetriever, JsonStorageRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@datadogs/core';
+import { QueryRetriever, BodyRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@datadogs/core';
 import {
     RandomRecipesRetriever,
     RandomEveryThingRetriever,
@@ -59,7 +59,6 @@ export const allBaseDogClasses = [
     TransitTripRetriever,
     ElevationRetriever,
     TrailRetriever,
-    JsonStorageRetriever,
     WebSocketChannelRetriever,
     ChannelLiveSnippetRetriever,
 ] as const;
