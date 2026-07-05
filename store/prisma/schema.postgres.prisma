@@ -22,10 +22,19 @@ model Dog {
   defaultQuery         String?
   defaultBody          String?
   emoji                String?
+  task                 String?
+  nodes                String?
+  edges                String?
+  visibility           String?  // "public" | "private". Null bei Nicht-Kennel-Dogs.
+  // NOTE: vmTimeoutMs ist KEIN Persistenz-Feld -- gehoert per-run-call mitgegeben (Welle 12 Korrektur).
+  ownerId              String?  // FK auf User.id. Null = community-editable (legacy / system-owned).
+  editors              String?  // Comma-separated User.id list — additional editors.
+  viewers              String?  // Comma-separated User.id list — additional viewers (private only).
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
 }
 
+// Auth + OAuth tables live in store/prisma-auth/ (separate DB: AUTH_DATABASE_URL).
 // ---------------------------------------------------------------------------
 // Postgres-Single-DB-Mode: alle Tabellen liegen in derselben physischen DB.
 // Cache- und JSON-Storage-Schemas (store/prisma-cache, store/prisma-json-storage)
@@ -64,4 +73,53 @@ model JsonEntry {
   key       String @id
   value     String
   updatedAt BigInt
+}
+
+model GeoFeature {
+  dogType      String
+  osmType      String
+  osmId        BigInt
+  primaryKey   String?
+  primaryValue String?
+  name         String?
+  hasGeom      Boolean
+  lat          Float?
+  lng          Float?
+  bboxMinLat   Float?
+  bboxMinLng   Float?
+  bboxMaxLat   Float?
+  bboxMaxLng   Float?
+  payload      String
+  updatedAt    BigInt
+
+  @@id([dogType, osmType, osmId])
+  @@index([dogType, primaryKey, primaryValue])
+  @@index([dogType, bboxMinLat, bboxMaxLat])
+}
+
+model FeatureTileMembership {
+  dogType String
+  osmType String
+  osmId   BigInt
+  zoom    Int
+  tileX   Int
+  tileY   Int
+  facet   String
+
+  @@id([dogType, osmType, osmId, zoom, tileX, tileY, facet])
+  @@index([dogType, zoom, tileX, tileY, facet])
+}
+
+model TileCoverage {
+  dogType   String
+  zoom      Int
+  tileX     Int
+  tileY     Int
+  facet     String
+  fetchedAt BigInt
+  expiresAt BigInt
+
+  @@id([dogType, zoom, tileX, tileY, facet])
+  @@index([expiresAt])
+  @@index([dogType, zoom, tileX, tileY])
 }

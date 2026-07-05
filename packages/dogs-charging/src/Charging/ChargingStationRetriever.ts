@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { ChargingQueryPact, type ChargingQuery } from "./pacts";
 
 const DEFAULT_RADIUS_KM = 5;
@@ -95,7 +95,7 @@ export class ChargingStationRetriever extends Dog<ChargingResult> implements ICa
             throw new Error("ChargingStationRetriever: Missing required query params (lat, lng)");
         }
 
-        const key = `charging:${lat}:${lng}:${radiusKm}`;
+        const key = geoBucketKey("charging", lat, lng, radiusKm * 1000);
 
         const fetchStations = async (): Promise<ChargingResult> => {
             const url =

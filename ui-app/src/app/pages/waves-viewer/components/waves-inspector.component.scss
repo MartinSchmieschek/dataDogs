@@ -1,0 +1,173 @@
+@use '../tokens' as tk;
+@use '../primitives' as pr;
+
+:host {
+  display: contents;
+  font-family: tk.$font-sans;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 22, 38, 0.45);
+  z-index: tk.$z-drawer;
+  animation: backdrop-in tk.$dur-base tk.$ease-out;
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.drawer {
+  position: fixed;
+  z-index: calc(#{tk.$z-drawer} + 1);
+  background: tk.$surface;
+  display: flex;
+  flex-direction: column;
+  box-shadow: tk.$shadow-lg;
+  font-family: tk.$font-sans;
+
+  /* Desktop / Tablet — right slide-in */
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 420px;
+  max-width: 90vw;
+  animation: drawer-in-right tk.$dur-base tk.$ease-out;
+}
+
+@keyframes drawer-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@media (max-width: tk.$breakpoint-tablet) {
+  .drawer {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 90dvh;
+    border-top-left-radius: tk.$radius-lg;
+    border-top-right-radius: tk.$radius-lg;
+    animation: drawer-in-bottom tk.$dur-base tk.$ease-out;
+  }
+}
+
+@keyframes drawer-in-bottom {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: tk.$space-3;
+  padding: tk.$space-4 tk.$space-4 tk.$space-3;
+  border-bottom: 1px solid tk.$border;
+  flex-shrink: 0;
+}
+
+.head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.head-title {
+  font-size: tk.$font-lg;
+  font-weight: tk.$weight-bold;
+  color: tk.$text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.head-sub {
+  font-size: tk.$font-sm;
+  color: tk.$text-faint;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.close {
+  @include pr.btn-icon(tk.$control-h-md);
+  background: transparent;
+  border-color: transparent;
+  color: tk.$text-muted;
+
+  &:hover { background: tk.$surface-muted; color: tk.$text; }
+}
+
+/* Mobile: drag-handle hint at top */
+@media (max-width: tk.$breakpoint-tablet) {
+  .drawer::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: tk.$neutral-200;
+    border-radius: tk.$radius-full;
+    margin: tk.$space-2 auto 0;
+    flex-shrink: 0;
+  }
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 tk.$space-3;
+  border-bottom: 1px solid tk.$border;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+.tab {
+  @include pr.tab;
+}
+
+.tab-label {
+  line-height: 1;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: tk.$font-xs;
+  font-weight: tk.$weight-bold;
+  color: tk.$text-muted;
+  background: tk.$surface-sunken;
+  border-radius: tk.$radius-full;
+}
+
+.tab.is-active .tab-badge {
+  color: tk.$accent;
+  background: tk.$accent-soft;
+}
+
+.tab-dirty {
+  width: 6px;
+  height: 6px;
+  background: tk.$warning-500;
+  border-radius: tk.$radius-full;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  @include pr.nice-scrollbar;
+}

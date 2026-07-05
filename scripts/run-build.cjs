@@ -12,3 +12,12 @@ execSync(
         shell: true,
     },
 );
+
+// Nur in production/integration die TypeDefs vorbereiten — dev nutzt weiter Live-Compilation.
+if (usePostgres) {
+    execSync('node scripts/precompile-typedefs.cjs', {
+        stdio: 'inherit',
+        env: process.env,
+        shell: true,
+    });
+}

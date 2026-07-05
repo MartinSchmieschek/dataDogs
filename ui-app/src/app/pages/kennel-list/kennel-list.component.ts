@@ -24,6 +24,8 @@ import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdr
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
+import { VisibilityBadgeComponent } from '../../components/visibility-badge/visibility-badge.component';
+import { AuthService } from '../../services/auth.service';
 
 const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v1';
 
@@ -54,6 +56,29 @@ function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: K
 
 const initialKennelListSort = readPersistedKennelListSort();
 
+type KennelDescHighlightPart = { text: string; match: boolean };
+
+/** Case-insensitive Treffer-Segmente für `<mark>` — kein HTML, nur Fließtext. */
+function splitKennelDescForHighlight(text: string, query: string): KennelDescHighlightPart[] {
+  const q = query.trim();
+  if (!q || !text) return [{ text, match: false }];
+  const lower = text.toLowerCase();
+  const qLower = q.toLowerCase();
+  const parts: KennelDescHighlightPart[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(qLower, i);
+    if (idx === -1) {
+      parts.push({ text: text.slice(i), match: false });
+      break;
+    }
+    if (idx > i) parts.push({ text: text.slice(i, idx), match: false });
+    parts.push({ text: text.slice(idx, idx + q.length), match: true });
+    i = idx + q.length;
+  }
+  return parts;
+}
+
 @Component({
   selector: 'app-kennel-list',
   standalone: true,
@@ -65,6 +90,7 @@ const initialKennelListSort = readPersistedKennelListSort();
     KennelScenicParallaxBackdropComponent,
     KennelCardMotionDirective,
     KennelActionFanComponent,
+    VisibilityBadgeComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
@@ -74,6 +100,15 @@ export class KennelListComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private errorVideoPopup = inject(ErrorVideoPopupService);
   private backdropDrive = inject(BackdropDriveService);
+  private auth = inject(AuthService);
+
+  /** Authenticated user — exposed so the template can hide owner-only filters when anonymous. */
+  readonly authUser = this.auth.user;
+  /** When true, only show kennels owned by the current user. Hidden when not logged in. */
+  readonly onlyMine = signal(false);
+
+  /** Skip the first auth-effect trigger so we don't double-load alongside ngOnInit. */
+  private skipFirstAuthEffect = true;
 
   /** iOS: Hinweis ausgeblendet ohne Erlaubnis. */
   compassPromptDismissed = signal(false);
@@ -106,6 +141,20 @@ export class KennelListComponent implements OnInit, OnDestroy {
       const host = this.kennelScrollRef()?.nativeElement;
       if (!host) return;
       this.backdropDrive.bindScrollElement(host, { scrollRangePx: 560 });
+    });
+
+    // Auth-reactive reload: when login/logout flips the user signal, refresh the list
+    // so the visibility filters on the backend kick in for the new identity.
+    effect(() => {
+      if (!this.auth.isReady()) return;
+      const _u = this.auth.user(); // tracked
+      if (this.skipFirstAuthEffect) {
+        this.skipFirstAuthEffect = false;
+        return;
+      }
+      this.loadKennels();
+      // Reset onlyMine when logging out — there's no "mine" without a user.
+      if (!_u) this.onlyMine.set(false);
     });
   }
 
@@ -150,6 +199,8 @@ export class KennelListComponent implements OnInit, OnDestroy {
 
   filteredKennels = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
+    const me = this.auth.user();
+    const mineOnly = this.onlyMine();
     let list = [...this.kennels()];
     if (q) {
       list = list.filter((k) => {
@@ -158,6 +209,9 @@ export class KennelListComponent implements OnInit, OnDestroy {
         const desc = (k.description || '').toLowerCase();
         return ref.includes(q) || name.includes(q) || desc.includes(q);
       });
+    }
+    if (mineOnly && me) {
+      list = list.filter((k) => k.ownerId === me.id);
     }
     const key = this.sortKey();
     const dir = this.sortDir() === 'asc' ? 1 : -1;
@@ -235,6 +289,17 @@ export class KennelListComponent implements OnInit, OnDestroy {
   kennelEmojiForList(k: IKennelConfig): string {
     const e = k.emoji?.trim();
     return e || '🐕';
+  }
+
+  /** Suchtext trifft die Beschreibung — Karte klappt Beschreibung auf + Highlight. */
+  descriptionMatchesSearch(k: IKennelConfig): boolean {
+    const q = this.searchQuery().trim().toLowerCase();
+    if (!q) return false;
+    return (k.description || '').toLowerCase().includes(q);
+  }
+
+  descriptionHighlightParts(k: IKennelConfig): KennelDescHighlightPart[] {
+    return splitKennelDescForHighlight(k.description || '', this.searchQuery());
   }
 
   /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */
@@ -388,6 +453,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
         name: data.name,
         description: data.description,
         emoji: data.emoji.trim() || undefined,
+        visibility: data.visibility,
         dogIds: [],
       })
       .subscribe({

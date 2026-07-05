@@ -50,7 +50,7 @@ export class SpaceRetriever extends Dog<SpaceResult> implements ICacheable {
         const query = (queryDog?.collected as SpaceQuery | undefined) ?? ({} as SpaceQuery);
 
         const bodyName = query['body'];
-        const key = `space:${bodyName ?? 'overview'}`;
+        const key = `space:${(bodyName ?? 'overview').toLowerCase().trim()}`;
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 60_000, () =>

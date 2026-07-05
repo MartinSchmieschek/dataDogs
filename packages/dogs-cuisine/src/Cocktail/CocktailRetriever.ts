@@ -25,11 +25,13 @@ export class CocktailRetriever extends Dog<RecipeResult> implements ICacheable {
     }
 
     get required(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [CocktailQueryPact];
+        return [];
     }
 
+    // Welle 10: Modus/Suchwert sind optional -- ohne Mimic faellt der Retriever auf
+    // mode="random" und liefert einen zufaelligen Cocktail.
     get optional(): (new (...args: any[]) => IHuntingDog<unknown>)[] {
-        return [];
+        return [CocktailQueryPact];
     }
 
     protected yieldCollectorFactory = async (season: IHuntingSeason): Promise<RecipeResult> => {

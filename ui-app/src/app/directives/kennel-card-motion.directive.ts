@@ -58,6 +58,11 @@ function focusBlendTarget(offCenter: number): number {
 /** Exponentielles Glätten pro Frame (Overlay statt Zustandsklasse). */
 const KENNEL_FOCUS_BLEND_LERP = 0.14;
 
+/** Kartenmitte nahe Scrollport-Mitte → Beschreibung aufklappen (siehe Kennel-Liste SCSS). */
+const KENNEL_VIEWPORT_FOCUS_OFFCENTER = 0.38;
+
+const KENNEL_MOTION_VISUAL_SELECTOR = '.kennel-card-motion-visual';
+
 /**
  * 0 = Kartenmitte liegt auf der vertikalen Mitte des sichtbaren Bereichs,
  * 1 = weit weg von der Mitte (oben/unten) → für zusätzliche Verkleinerung.
@@ -97,21 +102,39 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
   private scrollRoot: HTMLElement | null = null;
   private focusBlend = 1;
   private intersectionObserver: IntersectionObserver | null = null;
+  /** Transform/Opacity auf innerem Wrapper — Layout-Höhe der Liste bleibt stabil. */
+  private motionVisual: HTMLElement | null = null;
+  private viewportFocusClass = false;
 
   ngAfterViewInit(): void {
     const host = this.el.nativeElement;
     this.scrollRoot = host.closest('.kennel-scroll');
+    this.motionVisual = host.querySelector(KENNEL_MOTION_VISUAL_SELECTOR) as HTMLElement | null;
+
+    /** Parallax-Transform liegt auf innenliegendem Wrapper — Mitte/Sichtbarkeit am Host messen würde falsch auslösen. */
+    const measureEl = (): HTMLElement => this.motionVisual ?? host;
 
     this.zone.runOutsideAngular(() => {
       const tick = () => {
         this.raf = 0;
-        const p = scrollProgressInViewport(host, this.scrollRoot);
-        const offCenter = verticalCenterDistance(host, this.scrollRoot);
+        const el = measureEl();
+        const p = scrollProgressInViewport(el, this.scrollRoot);
+        const offCenter = verticalCenterDistance(el, this.scrollRoot);
         const targetBlend = focusBlendTarget(offCenter);
         this.focusBlend += (targetBlend - this.focusBlend) * KENNEL_FOCUS_BLEND_LERP;
         if (this.focusBlend < 0.001) this.focusBlend = 0;
         if (this.focusBlend > 0.999) this.focusBlend = 1;
         this.renderer.setStyle(host, '--kennel-focus-blend', this.focusBlend.toFixed(4));
+
+        const wantViewportFocus = offCenter <= KENNEL_VIEWPORT_FOCUS_OFFCENTER;
+        if (wantViewportFocus !== this.viewportFocusClass) {
+          this.viewportFocusClass = wantViewportFocus;
+          if (wantViewportFocus) {
+            this.renderer.addClass(host, 'kennel-card-motion--viewport-focus');
+          } else {
+            this.renderer.removeClass(host, 'kennel-card-motion--viewport-focus');
+          }
+        }
         /*
          * Bogen: von leicht unten-links (Eintritt) über Mitte nach oben-rechts (Austritt),
          * mit negativem X-Bias in der Mitte → Masse nicht in die untere rechte Ecke.
@@ -119,16 +142,16 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
          * Nur 2D (translate + rotate(Z) + scale): rotateX/rotateY + perspective erzeugen
          * in mehreren Engines eine Verschiebung zwischen sichtbarer Fläche und Klick-Hitbox.
          */
-        const xPct = piecewise(p, [0, 0.5, 1], [-14, -6, 10]);
-        const yPct = piecewise(p, [0, 0.5, 1], [10, 0, -12]);
-        const rotateY = piecewise(p, [0, 0.5, 1], [-14, 0, 12]);
-        const rotateX = piecewise(p, [0, 0.5, 1], [10, 0, -10]);
-        const pathScale = piecewise(p, [0, 0.2, 0.5, 0.8, 1], [0.82, 0.96, 1, 0.96, 0.82]);
-        /** Je weiter von der vertikalen Bildschirmmitte, desto kleiner (max. ~18 %). */
-        const centerScale = 1 - 0.18 * offCenter * offCenter;
+        const xPct = piecewise(p, [0, 0.5, 1], [-9, -4, 6]);
+        const yPct = piecewise(p, [0, 0.5, 1], [6, 0, -7]);
+        const rotateY = piecewise(p, [0, 0.5, 1], [-9, 0, 8]);
+        const rotateX = piecewise(p, [0, 0.5, 1], [6, 0, -6]);
+        const pathScale = piecewise(p, [0, 0.2, 0.5, 0.8, 1], [0.9, 0.97, 1, 0.97, 0.9]);
+        /** Je weiter von der vertikalen Bildschirmmitte, desto kleiner (max. ~11 %). */
+        const centerScale = 1 - 0.11 * offCenter * offCenter;
         const scale = pathScale * centerScale;
         /* Mindest-Deckkraft höher: Text auf goldenem Hintergrund bleibt lesbar am Listenrand */
-        const opacity = piecewise(p, [0, 0.12, 0.88, 1], [0.78, 1, 1, 0.78]);
+        const opacity = piecewise(p, [0, 0.12, 0.88, 1], [0.82, 1, 1, 0.82]);
         /** Leichte 2D-Drehung statt 3D-Kippung (vermeidet Hit-Test-Drift). */
         const twistDeg = rotateY * 0.38 + rotateX * 0.22;
 
@@ -138,8 +161,9 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
           `scale(${scale})`,
         ].join(' ');
 
-        this.renderer.setStyle(host, 'transform', transform);
-        this.renderer.setStyle(host, 'opacity', String(opacity));
+        const targetEl = this.motionVisual ?? host;
+        this.renderer.setStyle(targetEl, 'transform', transform);
+        this.renderer.setStyle(targetEl, 'opacity', String(opacity));
       };
 
       const schedule = () => {
@@ -172,7 +196,7 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
           threshold: [0, 0.02, 0.25, 0.5, 0.75, 1],
         }
       );
-      this.intersectionObserver.observe(host);
+      this.intersectionObserver.observe(measureEl());
 
       const scrollTarget: EventTarget = this.scrollRoot ?? window;
       scrollTarget.addEventListener('scroll', schedule, { passive: true });
@@ -184,6 +208,18 @@ export class KennelCardMotionDirective implements AfterViewInit, OnDestroy {
         scrollTarget.removeEventListener('scroll', schedule);
         window.removeEventListener('resize', schedule);
         if (this.raf) cancelAnimationFrame(this.raf);
+        const vis = this.motionVisual;
+        if (vis) {
+          this.renderer.removeStyle(vis, 'transform');
+          this.renderer.removeStyle(vis, 'opacity');
+        } else {
+          this.renderer.removeStyle(host, 'transform');
+          this.renderer.removeStyle(host, 'opacity');
+        }
+        if (this.viewportFocusClass) {
+          this.renderer.removeClass(host, 'kennel-card-motion--viewport-focus');
+          this.viewportFocusClass = false;
+        }
       };
     });
   }

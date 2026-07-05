@@ -11,10 +11,12 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
 import { forwardGeocode, reverseGeocode } from "./geocodingApiClient";
 import type { GeocodingResult } from "./interfaces/geocodingTypes";
 import { GeocodingQueryPact, type GeocodingQuery } from "./pacts";
+
+const GEOCODING_CACHE_TTL_MS = 24 * 60 * 60_000; // 24 h — Adressen aendern sich kaum
 
 /**
  * Arr, the GeocodingRetriever — a spectral hound that translates
@@ -22,7 +24,13 @@ import { GeocodingQueryPact, type GeocodingQuery } from "./pacts";
  * Forward: "Hauptwache Frankfurt" -> lat/lng.
  * Reverse: lat/lng -> "Braubachstrasse 41, Frankfurt am Main".
  */
-export class GeocodingRetriever extends Dog<GeocodingResult> {
+export class GeocodingRetriever extends Dog<GeocodingResult> implements ICacheable {
+    private cacheHandler?: ICacheHandler;
+
+    setCacheHandler(handler: ICacheHandler): void {
+        this.cacheHandler = handler;
+    }
+
     get name(): string { return GeocodingRetriever.name; }
     get description(): string { return 'Converts addresses to GPS coordinates (forward) or GPS coordinates to addresses (reverse) via Nominatim/OpenStreetMap.'; }
     get icon(): string | undefined { return "\uD83D\uDCCD"; }
@@ -40,12 +48,20 @@ export class GeocodingRetriever extends Dog<GeocodingResult> {
 
         // Forward geocoding has priority
         if (address) {
-            return await forwardGeocode(address, limit);
+            const key = `geocoding:fwd:${address.toLowerCase().trim()}:${limit}`;
+            if (this.cacheHandler) {
+                return this.cacheHandler.getOrFetch(key, GEOCODING_CACHE_TTL_MS, () => forwardGeocode(address, limit));
+            }
+            return forwardGeocode(address, limit);
         }
 
         // Reverse geocoding
         if (!isNaN(lat) && !isNaN(lng)) {
-            return await reverseGeocode(lat, lng);
+            const key = geoBucketKey("geocoding:rev", lat, lng, 100);
+            if (this.cacheHandler) {
+                return this.cacheHandler.getOrFetch(key, GEOCODING_CACHE_TTL_MS, () => reverseGeocode(lat, lng));
+            }
+            return reverseGeocode(lat, lng);
         }
 
         throw new Error('GeocodingRetriever: Missing query params — provide `address` or `lat`+`lng`');

@@ -14,6 +14,7 @@ import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 import { KennelRunHandler } from './KennelRunHandler';
+import { canRead } from '../../mcp/auth/visibility';
 
 /**
  * Handles kennel export and import — the rites of passage across systems.
@@ -67,6 +68,10 @@ export class KennelBundleHandler {
                 res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
+            if (!canRead(config as any, req.ctx)) {
+                res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
+                return;
+            }
 
             const seedIds = (config.dogIds ?? []).filter(id => !id.startsWith('base:'));
             const visited = new Set<string>();
@@ -112,6 +117,9 @@ export class KennelBundleHandler {
                     dogIds: config.dogIds,
                     defaultQuery: config.defaultQuery,
                     defaultBody: config.defaultBody,
+                    task: config.task,
+                    nodes: config.nodes,
+                    edges: config.edges,
                 },
                 dogs,
             };
@@ -132,6 +140,10 @@ export class KennelBundleHandler {
      */
     private async handleImport(req: any, res: any): Promise<void> {
         try {
+            if (!req.ctx?.user && !req.ctx?.isSuperUser) {
+                res.status(401).json({ error: 'unauthorized', error_description: 'Login required to import kennels' });
+                return;
+            }
             const { importTarget, ...bundle } = req.body || {};
             if (!bundle?.kennel || !Array.isArray(bundle.dogs)) {
                 res.status(400).json({ error: 'Invalid bundle: kennel and dogs[] required' });
@@ -259,14 +271,33 @@ export class KennelBundleHandler {
             }
 
             // 5. Create the kennel as a single fresh version — no history restore.
+            //    Imported kennels get ownerId from the importer; visibility defaults to private
+            //    (the bundle's visibility hint can override).
             const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
+            const importerId = req.ctx?.user?.id ?? null;
+            const importedVisibility = bundle.kennel.visibility === 'public' ? 'public' : 'private';
+            const remappedNodes = Array.isArray(bundle.kennel.nodes)
+                ? bundle.kennel.nodes.map((n: any) => ({ ...n, id: remap(n.id) }))
+                : undefined;
+            const remappedEdges = Array.isArray(bundle.kennel.edges)
+                ? bundle.kennel.edges.map((e: any) => ({
+                    ...e,
+                    fromId: remap(e.fromId),
+                    toId: remap(e.toId),
+                }))
+                : undefined;
             const createResult = await this.kennelsController.create({
                 id: kennelId,
                 name: kennelName,
                 description: bundle.kennel.description,
                 emoji: bundle.kennel.emoji,
                 dogIds: remappedDogIds,
-            });
+                task: bundle.kennel.task,
+                nodes: remappedNodes,
+                edges: remappedEdges,
+                visibility: importedVisibility,
+                ownerId: req.ctx?.isSuperUser ? null : importerId,
+            } as any);
             if (!createResult.ok) {
                 res.status(500).json({ error: createResult.error });
                 return;

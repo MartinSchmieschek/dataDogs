@@ -1,5 +1,5 @@
 import express, { type Application } from 'express';
-import path from 'path';
+import cookieParser from 'cookie-parser';
 import {
     ISerializedDogConfig,
     SerializedDog,
@@ -16,6 +16,15 @@ import { NodesRouteHandler } from '../api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from '../api/routes/ReadmeRouteHandler';
 import { StartupTest } from '../StartupTest';
 import { PrismaCacheHandler } from '../services/PrismaCacheHandler';
+import { withResilientCacheInfra } from '../services/resilientCacheHandler';
+import { PrismaClient as AuthPrismaClient } from '../store/generated/prisma-auth-client';
+import { createSessionMiddleware } from '../mcp/auth/sessions';
+import { createAuthRouter } from '../mcp/auth/router';
+import { createAuthContextMiddleware } from '../mcp/auth/middleware';
+import { createDiscoveryRouter } from '../mcp/auth/discovery';
+import { createMcpRouter } from '../mcp/transports/mcp';
+import { createActionsRouter } from '../mcp/transports/openapi';
+import { KennelSnapshotCache } from '../mcp/snapshots/KennelSnapshotCache';
 import { resolveAngularBrowserDir, resolvePublicDir } from './expressPaths';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
@@ -37,7 +46,7 @@ export type CreateHttpApplicationResult = {
 };
 
 /**
- * Baut die Express-App: CORS, JSON, /static, umgebungsabhängiges Frontend (dev vs. gebaute SPA),
+ * Baut die Express-App: CORS, JSON, Auth/MCP, /static, umgebungsabhängiges Frontend (dev vs. gebaute SPA),
  * API, Kennel-Run/Swagger/Bundle, SPA-Fallback (nur built UI).
  */
 export async function createHttpApplication(input: CreateHttpApplicationInput): Promise<CreateHttpApplicationResult> {
@@ -114,6 +123,14 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     app.use(express.json({ limit: '5mb' }));
 
+    const authPrisma = new AuthPrismaClient();
+    app.use(cookieParser());
+    app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+    app.use(createSessionMiddleware());
+    app.use(createAuthContextMiddleware(authPrisma));
+    app.use('/auth', createAuthRouter(authPrisma));
+    app.use('/.well-known', createDiscoveryRouter());
+
     const publicDir = resolvePublicDir(serverRootDir);
     if (publicDir) {
         app.use('/static', express.static(publicDir));
@@ -135,14 +152,39 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const readmeRouteHandler = new ReadmeRouteHandler(serverRootDir);
     readmeRouteHandler.registerRoutes(app);
 
-    const routeHandler = new ConfigRouteHandler(registry);
+    const routeHandler = new ConfigRouteHandler(registry, kennelsStore);
     routeHandler.registerRoutes(app, '/api');
 
-    const cacheHandler: ICacheHandler = new PrismaCacheHandler(input.resolveCacheDatabaseUrl());
+    const cacheHandler: ICacheHandler = withResilientCacheInfra(
+        new PrismaCacheHandler(input.resolveCacheDatabaseUrl()),
+    );
 
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
+
+    const baseDogsList = allBaseDogs.map((dog) => ({
+        id: 'base:' + dog.name,
+        name: dog.name,
+        description: dog.description,
+        type: 'BaseDog' as const,
+        icon: dog.icon,
+    }));
+    const snapshotCache = new KennelSnapshotCache();
+    const toolDeps = {
+        kennelsController,
+        nodesController,
+        kennelRunHandler,
+        kennelsStore,
+        nodesStore,
+        prisma: authPrisma,
+        baseDogsList,
+        projectRoot: serverRootDir,
+        snapshotCache,
+    };
+    app.use('/mcp', createMcpRouter(toolDeps));
+    app.use('/actions', createActionsRouter(toolDeps));
+
     kennelSwaggerHandler.registerRoutes(app);
     kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);

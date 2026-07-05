@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-geo",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Geodaten: Bloodhound (ORS) und OpenStreetMap/Overpass",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,10 +23,15 @@
   },
   "license": "MIT",
   "private": true,
+  "peerDependencies": {
+    "@datadogs/core": "file:../core",
+    "@datadogs/geo-pact": "file:../geo-pact"
+  },
   "dependencies": {
     "@datadogs/core": "file:../core",
     "@datadogs/geo-pact": "file:../geo-pact",
-    "osmtogeojson": "^3.0.0-beta.5"
+    "osmtogeojson": "^3.0.0-beta.5",
+    "polygon-clipping": "^0.15.7"
   },
   "scripts": {
     "build": "tsc"

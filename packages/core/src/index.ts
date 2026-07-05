@@ -16,7 +16,14 @@ export { Dog } from './core/entities/abstractHuntingDog';
 export { IHuntingSeason, IWaveEntry, IReadTrackingEntry } from './core/entities/IHuntingSeason';
 
 // The captain and the hunt -- orchestration of the abyss
-export { KennelRun, IKennelConfig, BASE_DOG_PREFIX, type MimicAdopter } from './KennelRun';
+export {
+    KennelRun,
+    IKennelConfig,
+    BASE_DOG_PREFIX,
+    type IKennelNodeAnnotation,
+    type IKennelEdgeAnnotation,
+    type MimicAdopter,
+} from './KennelRun';
 export { isRuntimeLogVerbose } from './runtimeLog';
 export {
     KENNEL_RESERVED_SLUGS,
@@ -39,6 +46,11 @@ export {
     ISerializedDogConfig,
     IUpdateInput,
     type SerializedDogVmGlobalsSupplier,
+    type VmGlobalCapabilityContext,
+    type VmGlobalCapabilityFactory,
+    registerVmGlobalCapability,
+    unregisterVmGlobalCapability,
+    buildVmGlobalCapabilities,
 } from './dogs/SerializedDog';
 
 // Eldritch contracts between hounds
@@ -86,6 +98,9 @@ export { WebSocketChannelRetriever } from './socket/WebSocketChannelRetriever';
 export { ChannelLiveSnippetRetriever, type LobbyLeadYield } from './socket/ChannelLiveSnippetRetriever';
 export type { ChannelPeer, ChannelState, IChannelHub } from './socket/IChannelHub';
 
-// Per-lobby JSON store — own SQLite; jsonStore get/set/delete/list as VM globals
-export { JsonStorageRetriever, type JsonStorageSnapshot } from './storage/JsonStorageRetriever';
+// JSON-Ablage — eigene SQLite-Truhe.
+// Welle 8: `JsonStorageRetriever` ist entfernt. `jsonStore` ist ausschliesslich
+// VM-Global-Capability (siehe `registerVmGlobalCapability('jsonStore', ...)` in
+// main.ts) und fuer jeden SerializedDog automatisch verfuegbar -- kein Parent,
+// kein BaseDog mehr.
 export type { IJsonStorage } from './storage/IJsonStorage';

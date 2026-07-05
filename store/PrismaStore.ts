@@ -88,6 +88,29 @@ export class PrismaStore implements IStore {
         : JSON.stringify(d.defaultBody);
     }
     if (d.emoji !== undefined) updateData.emoji = d.emoji;
+    if (d.task !== undefined) updateData.task = d.task;
+    if (d.nodes !== undefined) {
+      updateData.nodes = typeof d.nodes === 'string'
+        ? d.nodes
+        : JSON.stringify(d.nodes);
+    }
+    if (d.edges !== undefined) {
+      updateData.edges = typeof d.edges === 'string'
+        ? d.edges
+        : JSON.stringify(d.edges);
+    }
+    if (d.visibility !== undefined) updateData.visibility = d.visibility;
+    if (d.ownerId !== undefined) updateData.ownerId = d.ownerId;
+    if (d.editors !== undefined) {
+      updateData.editors = Array.isArray(d.editors)
+        ? (d.editors.length ? d.editors.join(',') : null)
+        : d.editors;
+    }
+    if (d.viewers !== undefined) {
+      updateData.viewers = Array.isArray(d.viewers)
+        ? (d.viewers.length ? d.viewers.join(',') : null)
+        : d.viewers;
+    }
     if (d.createdAt !== undefined) updateData.createdAt = d.createdAt;
     if (d.updatedAt !== undefined) updateData.updatedAt = d.updatedAt;
 
@@ -105,7 +128,8 @@ export class PrismaStore implements IStore {
 
     // A KennelConfig reveals itself by its named fields — name, description, dogIds, or emoji shall betray it.
     // From brooding gulfs are we beheld: the type is inferred from what the row holds.
-    if (row.name !== null || row.description !== null || row.dogIds !== null || row.emoji !== null) {
+    if (row.name !== null || row.description !== null || row.dogIds !== null || row.emoji !== null
+        || row.task !== null || row.nodes !== null || row.edges !== null) {
       return {
         id: row.id,
         type: row.type,
@@ -115,6 +139,13 @@ export class PrismaStore implements IStore {
         defaultQuery: row.defaultQuery,
         defaultBody: row.defaultBody,
         emoji: row.emoji,
+        task: row.task,
+        nodes: row.nodes,
+        edges: row.edges,
+        visibility: row.visibility,
+        ownerId: row.ownerId,
+        editors: row.editors,
+        viewers: row.viewers,
         lineageId: row.lineageId,
         parentId: row.parentId,
         displayName: row.displayName,
@@ -134,7 +165,8 @@ export class PrismaStore implements IStore {
     // In luminous space, the id is the star by which we navigate the dark.
     return rows.map((r: any) => {
       // KennelConfig betrays itself with name, description, dogIds, or emoji.
-      if (r.name !== null || r.description !== null || r.dogIds !== null || r.emoji !== null) {
+      if (r.name !== null || r.description !== null || r.dogIds !== null || r.emoji !== null
+          || r.task !== null || r.nodes !== null || r.edges !== null) {
         return {
           id: r.id,
           type: r.type,
@@ -144,6 +176,13 @@ export class PrismaStore implements IStore {
           defaultQuery: r.defaultQuery,
           defaultBody: r.defaultBody,
           emoji: r.emoji,
+          task: r.task,
+          nodes: r.nodes,
+          edges: r.edges,
+          visibility: r.visibility,
+          ownerId: r.ownerId,
+          editors: r.editors,
+          viewers: r.viewers,
           lineageId: r.lineageId,
           parentId: r.parentId,
           displayName: r.displayName,
@@ -270,6 +309,13 @@ export class PrismaStore implements IStore {
       defaultQuery: r.defaultQuery ?? null,
       defaultBody: r.defaultBody ?? null,
       emoji: r.emoji ?? null,
+      task: r.task ?? null,
+      nodes: r.nodes ?? null,
+      edges: r.edges ?? null,
+      visibility: r.visibility ?? null,
+      ownerId: r.ownerId ?? null,
+      editors: r.editors ?? null,
+      viewers: r.viewers ?? null,
       createdAt: r.createdAt ?? null,
       updatedAt: r.updatedAt ?? null,
       serializedDogConfig: r.serializedDogConfig
@@ -312,6 +358,13 @@ export class PrismaStore implements IStore {
           defaultQuery: r.defaultQuery ?? null,
           defaultBody: r.defaultBody ?? null,
           emoji: r.emoji ?? null,
+          task: r.task ?? null,
+          nodes: r.nodes ?? null,
+          edges: r.edges ?? null,
+          visibility: r.visibility ?? null,
+          ownerId: r.ownerId ?? null,
+          editors: r.editors ?? null,
+          viewers: r.viewers ?? null,
           updatedAt: r.updatedAt ?? null,
         };
       })

@@ -71,7 +71,7 @@ export class OsmLandmarksRetriever extends OsmFeatureRetriever<OsmLandmarksResul
     }
 
     get description(): string {
-        return 'Finds nearby OSM landmarks (tourism, historic, museums, peaks, cemeteries, bridges, nature, amenities, …) via Overpass — use preset "full" or list facets.';
+        return 'Finds nearby OSM landmarks (tourism, historic, museums, peaks, cemeteries, bridges, nature, amenities, …) via Overpass — use preset "full" or list facets. Each element\'s `tags` carries the full OSM record — `name`, `wikidata`, `wikipedia`, `image`, `opening_hours`, `wheelchair`, `addr:*`, `website`, `phone`, `operator`, `start_date`, `inscription`, `architect`, plus the facet-defining tag (`tourism`, `historic`, `amenity`, …).';
     }
 
     get icon(): string | undefined {

@@ -55,7 +55,7 @@ export class OpenLibraryRetriever extends Dog<OpenLibraryResult> implements ICac
         }
 
         const limit = query['limit'] ?? "10";
-        const key = `openlibrary:${q}:${limit}`;
+        const key = `openlibrary:${q.toLowerCase().trim()}:${limit}`;
 
         if (this.cacheHandler) {
             return this.cacheHandler.getOrFetch(key, 60 * 60_000, () =>

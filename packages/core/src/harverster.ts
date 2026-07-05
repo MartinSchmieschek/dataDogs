@@ -13,6 +13,7 @@
 import { Dog } from "./core/entities/abstractHuntingDog";
 import { IHuntingDog } from "./core/entities/IHuntingDog";
 import { IHuntingSeason } from "./core/entities/IHuntingSeason";
+import { isRuntimeLogVerbose } from "./runtimeLog";
 
 
 
@@ -66,8 +67,9 @@ export class SeasonRunner {
 
     // Release a single hound into the void -- let it hunt, let it collect, let it collapse exhausted
     private async letOut (dog: IHuntingDog<unknown>, season: IHuntingSeason):Promise<void> {
+        const v = isRuntimeLogVerbose();
         try {
-            console.log("<" + dog.name + ">" + " is running.")
+            if (v) console.log("<" + dog.name + ">" + " is running.")
             await dog.collectYield(season);
             season.exhausted.push(dog)
 
@@ -75,13 +77,16 @@ export class SeasonRunner {
             // Arr, one more hound spent -- strike it from the restless crew
             let dogIndex = this.dogsWithBeesInthePants.findIndex(comperrator => comperrator === dog)
             if (dogIndex >= 0) {
-                console.log("<" + dog.name + ">" + " is now exausted.")
+                if (v) console.log("<" + dog.name + ">" + " is now exausted.")
                 this.dogsWithBeesInthePants.splice(dogIndex, 1)
             }
 
         }
         catch (e) {
-            console.warn("Hunt failed. Name:" + "<" + dog.name + ">", e);
+            if (v) {
+                const msg = e instanceof Error ? e.message : String(e);
+                console.warn(`Hunt failed. Name: <${dog.name}> — ${msg}`);
+            }
             // The hunt has failed -- store the horror in the dog's error brand
             (dog as any).__error = e instanceof Error ? e.message : String(e);
             // Add the dog to exhausted regardless -- even failed hunts leave their mark
@@ -96,11 +101,12 @@ export class SeasonRunner {
 
     // Release the whole pack at once -- a wave crashing into the unknown
     private async letOutThePack (pack: IHuntingDog<unknown>[], season: IHuntingSeason):Promise<void> {
+        const v = isRuntimeLogVerbose();
         // Mark the current wave index based on how many waves have already crashed upon the void
         const currentWaveIndex = season.wave.length;
         season.currentWaveIndex = currentWaveIndex;
 
-        console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
+        if (v) console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
         await Promise.all(pack.map(dog => this.letOut(dog, season)));
 
         // Record every hound that returned from the deep -- even those bearing eldritch errors
@@ -111,6 +117,11 @@ export class SeasonRunner {
             optionalRequiresFrom:null,
             requiresFrom:null
         }}))
+
+        // The Void's tally — one breath per wave: how many hounds returned, how many were lost.
+        const failed = pack.filter(d => (d as any).__error != undefined).length;
+        const ok = pack.length - failed;
+        if (v) console.log(`<wave ${currentWaveIndex + 1}> ${pack.length} dogs · ${ok} ok · ${failed} fail`);
 
         this.season.wave[i-1].forEach(i => {
             let baseDog = i.instance as Dog<unknown>
@@ -129,20 +140,15 @@ export class SeasonRunner {
      * though stalwart minds entreat.
      */
     public async run():Promise<IHuntingSeason> {
+        const v = isRuntimeLogVerbose();
 
-
-
-
-        console.log("dog with bees in the pants:" + this.dogsWithBeesInthePants.map(dog => "<" + dog.name + ">").join(", "))
-
-
-
+        if (v) console.log("dog with bees in the pants:" + this.dogsWithBeesInthePants.map(dog => "<" + dog.name + ">").join(", "))
 
         // The first wave -- only hounds that be ready may venture forth
         const firstHunt = this.dogsWithBeesInthePants.filter((dog) => { return dog.isReady(this.season) })
 
         if (firstHunt.length === 0) {
-            console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
+            if (v) console.warn("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
             throw new Error("Nothing to harvest, check your kennel! You need more dogs to be prepared to get your yield.");
         }
 
@@ -163,7 +169,7 @@ export class SeasonRunner {
                             await this.letOutThePack(nextPack, this.season)
                         }
                         else {
-                            console.log("no more dogs withe bees int the pants.")
+                            if (v) console.log("no more dogs withe bees int the pants.")
                             i = this.maxWaves;
                         }
                     }
@@ -175,10 +181,8 @@ export class SeasonRunner {
                 await run();
             }
 
-            // The hunt is done -- report what each exhausted hound has plundered
-            this.season.exhausted.forEach(dog => {
-                console.log(dog.collected)
-            })
+            // The hunt is done -- the spoils stay sealed in the season log
+            // (season.exhausted[i].collected) fer those who wish to read; no soul cares to see them spilled.
 
             return (this.season)
         })

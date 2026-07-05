@@ -140,6 +140,12 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
                 if (lineageId) (parsed as any).lineageId = lineageId;
                 const displayName = r.displayName || (parsed as any).displayName;
                 if (displayName) (parsed as any).displayName = displayName;
+                // ACL fields live on the outer row, not in serializedDogConfig. Inject them so
+                // route handlers / MCP tools can apply visibility / editor / viewer checks.
+                if (r.visibility !== undefined && r.visibility !== null) (parsed as any).visibility = r.visibility;
+                if (r.ownerId !== undefined && r.ownerId !== null) (parsed as any).ownerId = r.ownerId;
+                if (r.editors !== undefined && r.editors !== null) (parsed as any).editors = r.editors;
+                if (r.viewers !== undefined && r.viewers !== null) (parsed as any).viewers = r.viewers;
                 (parsed as any)._createdAt = r.createdAt;
                 return parsed;
             });

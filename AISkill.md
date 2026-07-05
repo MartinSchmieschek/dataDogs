@@ -113,6 +113,67 @@ The Requiem verses carry meaning — use sparingly and only where the vibe fits:
 
 Default `http://localhost:3000`. If the user names a different URL, use that.
 
+## Authentication & Access Control
+
+The dataDogs server has an optional auth layer toggled by the env var `MCP_AUTH_REQUIRED`:
+
+- `false` (default for local dev) — every request is super-user; visibility/ownership are not enforced.
+- `true` — anonymous sees only public entities; mutations require login + ownership/edit-rights.
+
+### Identity for API calls
+
+Three ways to authenticate:
+
+1. **Cookie session** — `GET /auth/google/login` redirects through Google. The browser then carries `datadogs.sid` for subsequent calls.
+2. **Personal Access Token** — open `GET /auth/tokens` in the browser (after login), generate a token, send as `Authorization: Bearer <jwt>` on subsequent API requests. Long-lived (1 year), revocable, simplest for scripts and direct curl.
+3. **OAuth 2.1 Authorization Code + PKCE** — for clients that auto-discover via `GET /.well-known/oauth-authorization-server`. Endpoints: `/auth/authorize`, `/auth/token`, `/auth/revoke`, `/auth/register` (Dynamic Client Registration).
+
+### ACL fields
+
+Both Kennels and SerializedDogs have:
+
+- `visibility` — `"public"` (anyone reads + runs) or `"private"`.
+- `ownerId` — the creator's `User.id`. Has full rights.
+- `editors[]` — additional users who may mutate.
+- `viewers[]` — additional users who may read on private entities.
+
+Special:
+- Legacy entities with `ownerId = null` are **community-editable** (any logged-in user reads + mutates).
+- **Cascade respects manual visibility:** when a kennel flips to public, only nodes whose `visibility IS NULL` (never explicitly set) cascade to public. A node you manually set to private (or public) is **never overwritten** by a kennel cascade. Other-user-owned nodes stay where they are.
+- **Node bypass:** any kennel-owner/editor of a kennel that uses a node may also mutate that node — *"if you depend on it, you can fix it."*
+
+### ACL operations
+
+Use these endpoints (or the corresponding MCP tools `grant_access` / `revoke_access` / `release_ownership` / `list_collaborators`):
+
+```
+POST /actions/grant_access
+  { "entity_type": "kennel" | "node", "id": "<id>", "user": "email-or-id", "role": "editor" | "viewer" | "owner" }
+
+POST /actions/revoke_access
+  { "entity_type": "kennel" | "node", "id": "<id>", "user": "email-or-id", "role": "editor" | "viewer" }
+
+POST /actions/release_ownership
+  { "entity_type": "kennel" | "node", "id": "<id>" }
+  // Sets ownerId = null. Editors/viewers kept. Only the current owner can call.
+
+POST /actions/list_collaborators
+  { "entity_type": "kennel" | "node", "id": "<id>" }
+```
+
+`grant_access` returns informative `action` codes for redundant requests — surface them to the user as gentle confirmations, not failures:
+- `already_editor` / `already_viewer` / `already_owner`
+- `redundant_owner_is_editor` / `redundant_owner_is_viewer` (owner already has those rights)
+- `redundant_editor_is_viewer` (editor includes read)
+
+Only the owner (or super-user, or any logged-in user on a community-owned entity) may manage the ACL.
+
+### What this means for the workflow
+
+- When you create a kennel/node and the user is logged in, default `visibility` is `"private"` and `ownerId` is the user. Tell the user explicitly when this happens — they may want public.
+- When inspecting another user's kennel and you can read it, you may **not** be able to mutate it. Check `ownerId` and `editors` before assuming you can save.
+- When working in dev mode (`MCP_AUTH_REQUIRED=false`), all of this collapses to "you can do anything." Don't write workflows that depend on the dev-mode bypass — they break in prod.
+
 ## Architecture
 
 Two breeds hunt:
@@ -262,7 +323,25 @@ POST /save?id=<lead-versionId>
 ```
 Parents are available as global variables in the code — CamelCase of the name (e.g. `WeatherRetriever`, `QueryRetriever`).
 
-### Step 7b — Split logic per data entity (MANDATORY for non-trivial kennels)
+### Step 7b — The lead is a compositor (MANDATORY for any kennel with 2+ sources)
+
+**The single most important rule.** When 2 or more external sources feed a kennel, the lead **must be a compositor** — not a worker. Its only job is composition.
+
+```
+Wave 1 (Hunters):     Weather, Sun, Bird               ← raw fetch
+Wave 2 (Entity dogs): WeatherData, SunData, BirdData   ← per-domain normalize
+Wave 3 (Compositor):  NaturBundle  (= the lead)        ← merge + format
+```
+
+**Hard rules — apply before saving:**
+
+- **One entity per dog.** Weather OR species OR routes. Never two in the same dog.
+- **Hunters fetch. Entity dogs normalize. The compositor composes.** No mixing.
+- **The compositor does no fetching, no per-source filtering, no domain logic.** It reads entity yields and stitches them.
+- **HTML lives in a separate renderer dog**, never blended with data logic.
+- **A fat lead is a code smell.** If the lead exceeds ~30 lines of domain code, split it before the next save.
+
+**Single-source kennels** may have a renderer-as-lead (no compositor needed). But the **moment a second source enters, refactor immediately** to the compositor pattern. Don't defer — entity dogs are reusable across kennels, while a fat lead is locked to its first context.
 
 **Core rule:** A single SerializedDog must **never** become the dumping ground for all logic. One fat dog that normalizes weather, filters species, joins trips and renders HTML is wrong. Split the work **per data entity** — each entity gets its own breed.
 

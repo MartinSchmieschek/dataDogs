@@ -32,9 +32,38 @@
       </div>
 
       <div class="form-group">
+        <label>Aufgabe / Briefing:</label>
+        <textarea [(ngModel)]="task" rows="5"
+          placeholder="Was soll dieser Kennel tun? (markdown-fähig)"></textarea>
+        <p class="hint">Längere Mission-Beschreibung — wird auch im Wave-Viewer angezeigt.</p>
+      </div>
+
+      <div class="form-group">
         <label>Emoji (optional):</label>
         <app-kennel-emoji-picker [(emoji)]="emoji" />
         <p class="hint">Wird in der Kennel-Liste groß neben dem Namen angezeigt.</p>
+      </div>
+
+      <div class="form-group">
+        <label>Sichtbarkeit:</label>
+        <div class="visibility-toggle">
+          <label class="vis-option">
+            <input type="radio" name="visibility" value="public" [(ngModel)]="visibility" />
+            <span class="vis-chip vis-chip--public">🌐 Public</span>
+          </label>
+          <label class="vis-option">
+            <input type="radio" name="visibility" value="private" [(ngModel)]="visibility" />
+            <span class="vis-chip vis-chip--private">🔒 Private</span>
+          </label>
+        </div>
+        <p class="hint">
+          Public — jeder darf den Kennel lesen und ausführen. Private — nur Owner, Editors und Viewers.
+          Wer mit-editieren oder mit-lesen darf, wird unten verwaltet.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <app-acl-panel entityType="kennel" [id]="kennelId" />
       </div>
 
       <div class="form-group">

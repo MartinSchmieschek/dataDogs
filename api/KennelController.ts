@@ -4,6 +4,8 @@ import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } f
 import { IStore } from '../store/IStore';
 import {
     IKennelConfig,
+    IKennelNodeAnnotation,
+    IKennelEdgeAnnotation,
     isRuntimeLogVerbose,
     kennelDisplayNameBlockedReason,
     kennelLineageIdBlockedReason,
@@ -20,6 +22,15 @@ export interface ICreateKennelInput extends ICreateInput {
     description?: string;
     emoji?: string;
     dogIds?: string[];
+    defaultQuery?: Record<string, string>;
+    defaultBody?: any;
+    task?: string;
+    nodes?: IKennelNodeAnnotation[];
+    edges?: IKennelEdgeAnnotation[];
+    visibility?: 'public' | 'private';
+    ownerId?: string | null;
+    editors?: string[] | string | null;
+    viewers?: string[] | string | null;
 }
 
 /**
@@ -33,6 +44,13 @@ export interface ISaveKennelInput extends IUpdateInput {
     dogIds?: string[];
     defaultQuery?: Record<string, string>;
     defaultBody?: any;
+    task?: string;
+    nodes?: IKennelNodeAnnotation[];
+    edges?: IKennelEdgeAnnotation[];
+    visibility?: 'public' | 'private';
+    ownerId?: string | null;
+    editors?: string[] | string | null;
+    viewers?: string[] | string | null;
 }
 
 /**
@@ -71,12 +89,27 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 description: input.description || undefined,
                 emoji: input.emoji?.trim() || undefined,
                 dogIds: input.dogIds || [],
+                // Welle 11: defaultQuery / defaultBody must round-trip into the
+                // stored row -- the previous shape dropped them silently, so a
+                // create_kennel with defaultQuery never actually persisted and
+                // every later run saw `freshConfig.defaultQuery === undefined`.
+                defaultQuery: input.defaultQuery,
+                defaultBody: input.defaultBody,
+                task: input.task || undefined,
+                nodes: input.nodes,
+                edges: input.edges,
+                // vmTimeoutMs gehoert NICHT in die Persistenz -- ist ein Run-Time-Param,
+                // der pro runKennel-Aufruf uebergeben wird (Welle 12 Korrektur).
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
+            const visibility = input.visibility === 'private' ? 'private' : 'public';
+            const ownerId = input.ownerId ?? null;
+            const editors = input.editors ?? undefined;
+            const viewers = input.viewers ?? undefined;
 
             if (isRuntimeLogVerbose()) {
-                console.log(`[KennelController.create] Creating kennel config: lineageId=${lineageId}, versionId=${versionId}`);
+                console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}, visibility=${visibility}, ownerId=${ownerId}`);
             }
 
             await this.store.save({
@@ -90,12 +123,22 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                task: config.task,
+                nodes: config.nodes ? JSON.stringify(config.nodes) : undefined,
+                edges: config.edges ? JSON.stringify(config.edges) : undefined,
+                visibility,
+                ownerId,
+                ...(editors !== undefined ? { editors } : {}),
+                ...(viewers !== undefined ? { viewers } : {}),
                 createdAt: config.createdAt?.toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
 
-            // Attach lineageId to the returned config so callers can reference the kennel stably.
-            const result = { ...config, lineageId } as any;
+            // Cascade: a public kennel needs its own nodes to be public too.
+            await this.cascadeVisibilityToOwnedNodes(config.dogIds, visibility, ownerId);
+
+            // Attach ACL fields to the returned config.
+            const result = { ...config, lineageId, visibility, ownerId, ...(editors !== undefined ? { editors } : {}), ...(viewers !== undefined ? { viewers } : {}) } as any;
 
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelController.create] Erfolgreich gespeichert: lineageId=${lineageId}`);
@@ -132,6 +175,19 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 return { ok: false, error: `Kennel with id ${input.id} not found` };
             }
 
+            // ACL fields: resolve early so they participate in the change-detection.
+            const existingVisibility = (existing as any).visibility;
+            const existingOwnerId = (existing as any).ownerId;
+            const existingEditors = (existing as any).editors;
+            const existingViewers = (existing as any).viewers;
+            const nextVisibility =
+                input.visibility === 'public' || input.visibility === 'private'
+                    ? input.visibility
+                    : existingVisibility ?? 'public';
+            const nextOwnerId = input.ownerId !== undefined ? input.ownerId : existingOwnerId ?? null;
+            const nextEditors = input.editors !== undefined ? input.editors : existingEditors ?? undefined;
+            const nextViewers = input.viewers !== undefined ? input.viewers : existingViewers ?? undefined;
+
             // Merge new cargo with what was already in the hold.
             const config: IKennelConfig = {
                 id: existing.id, // will be replaced by new versionId
@@ -144,14 +200,29 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: input.dogIds !== undefined ? input.dogIds : (existing.dogIds || []),
                 defaultQuery: input.defaultQuery !== undefined ? input.defaultQuery : (existing.defaultQuery || undefined),
                 defaultBody: input.defaultBody !== undefined ? input.defaultBody : (existing.defaultBody || undefined),
+                task: input.task !== undefined ? (input.task || undefined) : (existing.task || undefined),
+                nodes: input.nodes !== undefined ? input.nodes : (existing.nodes),
+                edges: input.edges !== undefined ? input.edges : (existing.edges),
                 createdAt: existing.createdAt || new Date(),
                 updatedAt: new Date()
             };
 
             const contentChanged = this.hasContentChanged(existing, config);
+            // Normalize visibility: null/undefined are equivalent to the default 'public'
+            // — a DB-stored null must not look "different" from a freshly-resolved 'public'.
+            const visibilityChanged =
+                (nextVisibility ?? 'public') !== (existingVisibility ?? 'public');
+            const ownerChanged = (nextOwnerId ?? null) !== (existingOwnerId ?? null);
+            const aclNorm = (v: unknown): string => {
+                if (v === null || v === undefined) return 'null';
+                if (Array.isArray(v) && v.length === 0) return 'null';
+                return JSON.stringify(v);
+            };
+            const editorsChanged = aclNorm(existingEditors) !== aclNorm(nextEditors);
+            const viewersChanged = aclNorm(existingViewers) !== aclNorm(nextViewers);
 
-            // Check if content actually changed — spare the deep from phantom versions.
-            if (!contentChanged) {
+            // Check if anything changed — spare the deep from phantom versions.
+            if (!contentChanged && !visibilityChanged && !ownerChanged && !editorsChanged && !viewersChanged) {
                 return {
                     ok: true,
                     id: (existing as any).lineageId || input.id,
@@ -165,7 +236,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const parentId = existing.id; // The ancestor from which this incarnation was born
 
             if (isRuntimeLogVerbose()) {
-                console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}`);
+                console.log(`[KennelController.save] Neue Version: ${newVersionId}, parentId=${parentId}, lineageId=${lineageId}, visibility=${nextVisibility}, ownerId=${nextOwnerId}`);
             }
 
             await this.store.save({
@@ -179,11 +250,31 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 dogIds: config.dogIds,
                 defaultQuery: config.defaultQuery ? JSON.stringify(config.defaultQuery) : undefined,
                 defaultBody: config.defaultBody ? JSON.stringify(config.defaultBody) : undefined,
+                task: config.task,
+                nodes: config.nodes ? JSON.stringify(config.nodes) : undefined,
+                edges: config.edges ? JSON.stringify(config.edges) : undefined,
+                visibility: nextVisibility,
+                ownerId: nextOwnerId,
+                ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
+                ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
                 createdAt: new Date().toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
 
-            const result = { ...config, id: newVersionId, lineageId } as any;
+            // Cascade only on public-direction transitions: private/null → public.
+            if (nextVisibility === 'public' && existingVisibility !== 'public') {
+                await this.cascadeVisibilityToOwnedNodes(config.dogIds, 'public', nextOwnerId);
+            }
+
+            const result = {
+                ...config,
+                id: newVersionId,
+                lineageId,
+                visibility: nextVisibility,
+                ownerId: nextOwnerId,
+                ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
+                ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+            } as any;
 
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelController.save] Erfolgreich gespeichert: ${newVersionId}`);
@@ -200,12 +291,73 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * When a kennel flips to public, cascade the visibility flag to all SerializedDog/MimicDog
+     * rows referenced in dogIds that are owned by the same user. Other-user-owned nodes stay
+     * private (don't trespass on someone else's visibility decisions). Hunters (base:*) are
+     * always visible, no cascade needed.
+     *
+     * Direction is one-way: only public-cascade, never private-cascade. Reason: making a kennel
+     * private shouldn't blindly hide nodes that other public kennels might still reference.
+     */
+    private async cascadeVisibilityToOwnedNodes(
+        dogIds: string[] | undefined,
+        targetVisibility: 'public' | 'private',
+        ownerForCascade: string | null,
+    ): Promise<void> {
+        if (targetVisibility !== 'public') return;
+        if (!ownerForCascade) return; // super-user create has no owner anchor — skip cascade
+        if (!Array.isArray(dogIds) || dogIds.length === 0) return;
+
+        const refs = dogIds.filter((ref) => typeof ref === 'string' && !ref.startsWith('base:'));
+        if (refs.length === 0) return;
+
+        // Try both SerializedDog and MimicDog tables (same Dog table, different type).
+        const fromSerialized = await this.store.findLatestVersionsByType('SerializedDog', refs);
+        const fromMimic = await this.store.findLatestVersionsByType('MimicDog', refs);
+        const rows = [...fromSerialized, ...fromMimic] as any[];
+
+        for (const row of rows) {
+            if (row.ownerId !== ownerForCascade) continue;
+            // Respect explicit settings — only cascade nodes that have NEVER had a visibility
+            // chosen (visibility IS NULL). If the user (or a previous cascade) ever wrote a
+            // value, leave it alone. This prevents "I set it private manually, the next kennel
+            // flip overrode my choice" — see test report Bug 4.
+            if (row.visibility !== null && row.visibility !== undefined) continue;
+            // Heal in place — same id, full row data, only visibility flips. No version bump.
+            await this.store.save({
+                id: row.id,
+                type: row.type,
+                lineageId: row.lineageId,
+                parentId: row.parentId,
+                displayName: row.displayName,
+                serializedDogConfig: row.serializedDogConfig,
+                visibility: 'public',
+                ownerId: row.ownerId,
+                createdAt: row.createdAt,
+                updatedAt: row.updatedAt,
+            });
+        }
+    }
+
+    /**
      * Compare kennel configs — if content is identical, no new version shall be born.
+     * `null` and `undefined` collapse to the same emptiness so a DB-stored null
+     * never haunts a freshly merged undefined as a phantom change.
      */
     private hasContentChanged(old: IKennelConfig, next: IKennelConfig): boolean {
-        const contentKeys: (keyof IKennelConfig)[] = ['name', 'description', 'emoji', 'dogIds', 'defaultQuery', 'defaultBody'];
+        const contentKeys: (keyof IKennelConfig)[] = [
+            'name', 'description', 'emoji', 'dogIds',
+            'defaultQuery', 'defaultBody',
+            'task', 'nodes', 'edges',
+        ];
+        const normalize = (v: unknown): string => {
+            if (v === null || v === undefined) return 'null';
+            if (typeof v === 'string' && v === '') return 'null';
+            if (Array.isArray(v) && v.length === 0) return 'null';
+            return JSON.stringify(v);
+        };
         for (const key of contentKeys) {
-            if (JSON.stringify(old[key]) !== JSON.stringify(next[key])) return true;
+            if (normalize(old[key]) !== normalize(next[key])) return true;
         }
         return false;
     }
@@ -230,6 +382,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const versionId = existing.id;
             const lineageId = (existing as any).lineageId || id;
 
+            const nextTask = patch.task !== undefined ? patch.task : existing.task;
+            const nextNodes = patch.nodes !== undefined ? patch.nodes : existing.nodes;
+            const nextEdges = patch.edges !== undefined ? patch.edges : existing.edges;
+
             await this.store.save({
                 id: versionId,
                 type: this.KENNEL_TYPE,
@@ -243,6 +399,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
                     ? JSON.stringify(patch.defaultQuery !== undefined ? patch.defaultQuery : existing.defaultQuery) : undefined,
                 defaultBody: (patch.defaultBody !== undefined ? patch.defaultBody : existing.defaultBody)
                     ? JSON.stringify(patch.defaultBody !== undefined ? patch.defaultBody : existing.defaultBody) : undefined,
+                task: nextTask || undefined,
+                nodes: nextNodes ? JSON.stringify(nextNodes) : undefined,
+                edges: nextEdges ? JSON.stringify(nextEdges) : undefined,
                 createdAt: existing.createdAt?.toISOString(),
                 updatedAt: new Date().toISOString(),
             });
@@ -477,7 +636,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 try {
                     defaultQuery = JSON.parse(data.defaultQuery);
                 } catch (e) {
-                    console.warn('[parseEntity] Fehler beim Parsen von defaultQuery:', e);
+                    if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von defaultQuery:', e);
                 }
             } else if (typeof data.defaultQuery === 'object') {
                 defaultQuery = data.defaultQuery;
@@ -491,7 +650,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 try {
                     defaultBody = JSON.parse(data.defaultBody);
                 } catch (e) {
-                    console.warn('[parseEntity] Fehler beim Parsen von defaultBody:', e);
+                    if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von defaultBody:', e);
                 }
             } else {
                 defaultBody = data.defaultBody;
@@ -502,6 +661,42 @@ export class KennelController extends AbstractController<IKennelConfig> {
             dogIds = [];
         }
 
+        // Unshackle nodes (layout + comments) and edges (transition comments).
+        let nodes: IKennelNodeAnnotation[] | undefined = undefined;
+        if (data.nodes !== null && data.nodes !== undefined) {
+            if (typeof data.nodes === 'string') {
+                if (data.nodes.trim() !== '') {
+                    try {
+                        const parsed = JSON.parse(data.nodes);
+                        nodes = Array.isArray(parsed) ? parsed : undefined;
+                    } catch (e) {
+                        if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von nodes:', e);
+                    }
+                }
+            } else if (Array.isArray(data.nodes)) {
+                nodes = data.nodes;
+            }
+        }
+
+        let edges: IKennelEdgeAnnotation[] | undefined = undefined;
+        if (data.edges !== null && data.edges !== undefined) {
+            if (typeof data.edges === 'string') {
+                if (data.edges.trim() !== '') {
+                    try {
+                        const parsed = JSON.parse(data.edges);
+                        edges = Array.isArray(parsed) ? parsed : undefined;
+                    } catch (e) {
+                        if (isRuntimeLogVerbose()) console.warn('[parseEntity] Fehler beim Parsen von edges:', e);
+                    }
+                }
+            } else if (Array.isArray(data.edges)) {
+                edges = data.edges;
+            }
+        }
+
+        const task: string | undefined =
+            typeof data.task === 'string' && data.task.length > 0 ? data.task : undefined;
+
         const result: any = {
             id: data.id,
             name: data.name,
@@ -510,6 +705,9 @@ export class KennelController extends AbstractController<IKennelConfig> {
             dogIds: dogIds,
             defaultQuery,
             defaultBody,
+            task,
+            nodes,
+            edges,
             createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined
         };
@@ -517,6 +715,12 @@ export class KennelController extends AbstractController<IKennelConfig> {
         // Preserve lineageId and parentId for version tracking.
         if (data.lineageId) result.lineageId = data.lineageId;
         if (data.parentId !== undefined) result.parentId = data.parentId;
+
+        // ACL fields — null/undefined treated as "public" / no-extras downstream.
+        if (data.visibility !== undefined) result.visibility = data.visibility;
+        if (data.ownerId !== undefined) result.ownerId = data.ownerId;
+        if (data.editors !== undefined) result.editors = data.editors;
+        if (data.viewers !== undefined) result.viewers = data.viewers;
 
         return result as IKennelConfig;
     }

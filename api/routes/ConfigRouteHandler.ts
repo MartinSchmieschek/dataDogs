@@ -1,7 +1,28 @@
 // The ConfigRouteHandler — the ship's navigator, mapping all HTTP requests to their captains.
 // In luminous space, blackened stars: each subpath is a star, each controller its light.
 import { Request, Response } from 'express';
+import { isRuntimeLogVerbose } from '@datadogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
+import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../mcp/auth/visibility';
+import { canMutateNode } from '../../mcp/auth/permissions';
+import { IStore } from '../../store/IStore';
+
+/**
+ * Returns true when the request has a logged-in user OR is in super-user dev mode.
+ * Sends 401 + WWW-Authenticate when not — so MCP/Action clients know to start OAuth.
+ */
+function requireLogin(req: Request, res: Response): boolean {
+    if (req.ctx?.user || req.ctx?.isSuperUser) return true;
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
+    const host = (req.get('x-forwarded-host') || req.get('host') || 'localhost:3000').split(',')[0].trim();
+    const base = process.env.MCP_BASE_URL?.replace(/\/$/, '') || `${proto}://${host}`;
+    res.setHeader(
+        'WWW-Authenticate',
+        `Bearer realm="dataDogs", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+    );
+    res.status(401).json({ error: 'unauthorized', error_description: 'Login required for this operation.' });
+    return false;
+}
 
 /**
  * The ControllerRegistry — a chart of all captains aboard, indexed by subpath.
@@ -18,7 +39,9 @@ export class ControllerRegistry {
      */
     register<T extends IEntity = IEntity>(subpath: string, controller: AbstractController<T>): void {
         this.controllers.set(subpath, controller as AbstractController<any>);
-        console.log(`[ControllerRegistry] Controller registered for subpath '${subpath}'`);
+        if (isRuntimeLogVerbose()) {
+            console.log(`[ControllerRegistry] Controller für Subpath '${subpath}' registriert`);
+        }
     }
 
     /**
@@ -43,9 +66,24 @@ export class ControllerRegistry {
  */
 export class ConfigRouteHandler {
     private registry: ControllerRegistry;
+    /** Used by node-mutation routes to check the kennel-owner-bypass rule. */
+    private kennelStore?: IStore;
 
-    constructor(registry: ControllerRegistry) {
+    constructor(registry: ControllerRegistry, kennelStore?: IStore) {
         this.registry = registry;
+        this.kennelStore = kennelStore;
+    }
+
+    /** True if subpath==='nodes' and the user can mutate this node (owner / editor / community / kennel-owner-bypass). */
+    private async canMutateForSubpath(
+        subpath: string,
+        entity: any,
+        req: Request,
+    ): Promise<boolean> {
+        if (subpath === 'nodes' && this.kennelStore) {
+            return await canMutateNode(entity, req.ctx, this.kennelStore);
+        }
+        return canMutate(entity, req.ctx);
     }
 
     /**
@@ -95,7 +133,9 @@ export class ConfigRouteHandler {
             await this.handleDelete(req, res);
         });
 
-        console.log(`[ConfigRouteHandler] Routes registriert unter ${basePath}/:subpath`);
+        if (isRuntimeLogVerbose()) {
+            console.log(`[ConfigRouteHandler] Routes registriert unter ${basePath}/:subpath`);
+        }
     }
 
     /**
@@ -113,10 +153,13 @@ export class ConfigRouteHandler {
             }
 
             // For versioned entities (nodes), return only the latest incarnation per lineageId.
-            console.log(`[ConfigRouteHandler.handleList] subpath=${subpath}, calling listLatest()`);
             const result = await controller.listLatest();
             if (result.ok) {
-                res.status(200).json({ ok: true, data: result.data });
+                // Filter both nodes and kennels by visibility/ownership.
+                const data = Array.isArray(result.data)
+                    ? filterReadable(result.data, req.ctx)
+                    : result.data;
+                res.status(200).json({ ok: true, data });
             } else {
                 res.status(500).json({ error: result.error });
             }
@@ -143,6 +186,11 @@ export class ConfigRouteHandler {
 
             const result = await controller.getById(id);
             if (result.ok) {
+                // Hide private entities the caller can't see (404, not 403 — leak nothing).
+                if (result.data && !canRead(result.data, req.ctx)) {
+                    res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
+                    return;
+                }
                 res.status(200).json({ ok: true, data: result.data });
             } else {
                 res.status(404).json({ error: result.error });
@@ -184,6 +232,13 @@ export class ConfigRouteHandler {
                 };
             }
 
+            // Both kennels and nodes: require login + apply visibility/ownerId defaults.
+            if (!canMutate(null, req.ctx)) {
+                res.status(401).json({ error: `Login required to create ${subpath}` });
+                return;
+            }
+            input = applyCreateDefaults(input, req.ctx);
+
             const result = await controller.create(input);
             if (result.ok) {
                 res.status(200).json({ ok: true, id: result.id, data: result.data });
@@ -209,6 +264,7 @@ export class ConfigRouteHandler {
                 res.status(404).json({ error: 'Node controller not found' });
                 return;
             }
+            if (!requireLogin(req, res)) return;
 
             const id = req.query.id || req.body.id;
             const tsCode = req.body.tsCode || req.body.code;
@@ -216,6 +272,22 @@ export class ConfigRouteHandler {
             if (!id || !tsCode) {
                 res.status(400).json({ error: 'id and tsCode are required' });
                 return;
+            }
+
+            // Edit-rights check — owner / editors / community / kennel-owner-bypass.
+            const existing = await controller.getById(String(id));
+            if (existing.ok && existing.data) {
+                const allowed = this.kennelStore
+                    ? await canMutateNode(existing.data, req.ctx, this.kennelStore)
+                    : canMutate(existing.data, req.ctx);
+                if (!allowed) {
+                    res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
+                        error: canRead(existing.data, req.ctx)
+                            ? 'Nicht berechtigt, diese Node zu ändern'
+                            : `Node mit ID ${id} nicht gefunden`,
+                    });
+                    return;
+                }
             }
 
             const existingConfig = req.body.serializedDogConfig || {};
@@ -263,6 +335,22 @@ export class ConfigRouteHandler {
                 return;
             }
 
+            // Both kennels and nodes: must own (or have edit rights) the entity to update.
+            const existing = await controller.getById(id);
+            if (!existing.ok || !existing.data) {
+                res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
+                return;
+            }
+            const allowed = await this.canMutateForSubpath(subpath, existing.data, req);
+            if (!allowed) {
+                res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
+                    error: canRead(existing.data, req.ctx)
+                        ? `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} zu ändern`
+                        : `Entity mit ID ${id} nicht gefunden`,
+                });
+                return;
+            }
+
             const result = await controller.save({ ...req.body, id });
             if (result.ok) {
                 res.status(200).json({ ok: true, id: result.id, data: result.data });
@@ -287,6 +375,22 @@ export class ConfigRouteHandler {
 
             if (!controller) {
                 res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
+                return;
+            }
+
+            // Both kennels and nodes: must own (or have edit rights) the entity to delete.
+            const existing = await controller.getById(id);
+            if (!existing.ok || !existing.data) {
+                res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
+                return;
+            }
+            const allowed = await this.canMutateForSubpath(subpath, existing.data, req);
+            if (!allowed) {
+                res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
+                    error: canRead(existing.data, req.ctx)
+                        ? `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} zu löschen`
+                        : `Entity mit ID ${id} nicht gefunden`,
+                });
                 return;
             }
 
@@ -319,6 +423,22 @@ export class ConfigRouteHandler {
             }
             if (!displayName || typeof displayName !== 'string') {
                 res.status(400).json({ error: 'displayName is required' });
+                return;
+            }
+
+            // Both kennels and nodes: edit-rights check (with kennel-owner-bypass for nodes).
+            const existing = await controller.getById(id);
+            if (!existing.ok || !existing.data) {
+                res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
+                return;
+            }
+            const allowed = await this.canMutateForSubpath(subpath, existing.data, req);
+            if (!allowed) {
+                res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
+                    error: canRead(existing.data, req.ctx)
+                        ? `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} umzubenennen`
+                        : `Entity mit ID ${id} nicht gefunden`,
+                });
                 return;
             }
 

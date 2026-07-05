@@ -1,6 +1,6 @@
 {
   "name": "@datadogs/dogs-open-library",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-beta.0",
   "description": "Open Library: Book search across the literary Void",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,6 +23,9 @@
   },
   "license": "MIT",
   "private": true,
+  "peerDependencies": {
+    "@datadogs/core": "file:../core"
+  },
   "dependencies": {
     "@datadogs/core": "file:../core"
   },

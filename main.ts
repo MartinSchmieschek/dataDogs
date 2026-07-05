@@ -6,11 +6,13 @@
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {
-    console.error('[unhandledRejection]', reason);
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    console.error('[unhandledRejection]', msg);
 });
 
-import { WebSocketChannelRetriever, JsonStorageRetriever } from '@datadogs/core';
+import { WebSocketChannelRetriever, registerVmGlobalCapability } from '@datadogs/core';
 import http from 'http';
+import fs from 'fs';
 import { ChannelHub } from './services/ChannelHub';
 import { IStore } from './store/IStore';
 import { PrismaStore } from './store/PrismaStore';
@@ -18,6 +20,7 @@ import { JsonStorageService } from './services/JsonStorageService';
 import path from 'path';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { CompilerCache } from './services/CompilerCache';
 import { createHttpApplication } from './server-app/createHttpApplication';
 import {
     assertSlimRegistryCoversKennelDbRefs,
@@ -54,8 +57,41 @@ async function start() {
 
     // Fachliche JSON-Ablage: eigene SQLite (JSON_STORAGE_DATABASE_URL), bewusst getrennt
     // von Nodes/Kennels (DATABASE_URL) und Run-Cache (CACHE_DATABASE_URL).
+    //
+    // Welle 7: jsonStore ist VM-Infrastruktur, kein Daten-Pakt. Statt einen BaseDog
+    // (JsonStorageRetriever) zu registrieren, legen wir die Bruecke direkt als VM-Global-
+    // Capability beim Core ab. Jeder SerializedDog sieht `jsonStore` damit automatisch im
+    // VM-Context, ohne einen Parent zu deklarieren -- so wie er auch `fetch` und `console`
+    // sieht.
     const jsonStorageService = new JsonStorageService(dbEnv.resolveJsonStorageDatabaseUrl());
-    JsonStorageRetriever.initService(jsonStorageService);
+    registerVmGlobalCapability('jsonStore', (ctx) => {
+        const userId = ctx?.userId ?? null;
+        const isSuper = ctx?.isSuperUser === true;
+        const usePrefix = !isSuper && typeof userId === 'string' && userId.length > 0;
+        const prefix = usePrefix ? `user:${userId}:` : '';
+        const wrap = (k: string) => prefix + k;
+
+        return {
+            get: (k: string) => jsonStorageService.get(wrap(k)),
+            set: (k: string, v: unknown) => jsonStorageService.set(wrap(k), v),
+            delete: (k: string) => jsonStorageService.delete(wrap(k)),
+            has: (k: string) => jsonStorageService.has(wrap(k)),
+            list: async () => {
+                const all = await jsonStorageService.list();
+                if (!usePrefix) return all;
+                return all
+                    .filter((k) => k.startsWith(prefix))
+                    .map((k) => k.substring(prefix.length));
+            },
+            snapshot: async () => {
+                const all = await jsonStorageService.snapshot();
+                if (!usePrefix) return all;
+                return all
+                    .filter((e) => e.key.startsWith(prefix))
+                    .map((e) => ({ ...e, key: e.key.substring(prefix.length) }));
+            },
+        };
+    });
 
     // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
     const channelHub = new ChannelHub({
@@ -95,6 +131,23 @@ async function start() {
         const instance = new PactClass();
         baseDogsMap.set(instance.name, PactClass);
     });
+
+    const envForTypeDefs = process.env.NODE_ENV;
+    if (envForTypeDefs === 'production' || envForTypeDefs === 'integration') {
+        const typeDefsPath = path.resolve(process.cwd(), 'dist', 'type-defs.json');
+        if (fs.existsSync(typeDefsPath)) {
+            try {
+                const payload = JSON.parse(fs.readFileSync(typeDefsPath, 'utf-8'));
+                CompilerCache.loadPrecomputed(payload);
+                console.log(`[CompilerCache] Loaded precomputed type-defs from ${typeDefsPath}`);
+            } catch (e) {
+                console.error('[CompilerCache] Failed to load precomputed type-defs:', e);
+            }
+        } else {
+            console.warn(`[CompilerCache] ${typeDefsPath} not found — falling back to live TS compilation (heap-heavy).`);
+        }
+    }
+
     TypeDefBuilder.registerPacts([...allPacts]);
 
     if (useSlimBaseDogRegistry) {
