@@ -6,7 +6,7 @@
 // the OpenAI Responses API's "mcp" tool type.
 
 import { Router, type Request, type Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -24,6 +24,7 @@ import { getAclTools } from '../tools/acl';
 import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
 import type { AuthCtx } from '../auth/middleware';
+import { buildMcpInitializeInstructions } from '../spuren-brief';
 
 /**
  * Welle 11: tools/list token diet. The full long-form description is kept on
@@ -71,9 +72,7 @@ function buildServer(
     // Welle 8 (P6): skill.md zusaetzlich als MCP-Resource exponieren. Wir behalten
     // die kurze `instructions`-Variante fuer MCP-Clients ohne Resource-Support;
     // der volle Inhalt ist ueber Resource `datadogs://skill` abrufbar.
-    const shortInstructions = skillContent
-        ? 'See resource `datadogs://skill` for the full dataDogs MCP usage guide.'
-        : '';
+    const shortInstructions = buildMcpInitializeInstructions(Boolean(skillContent));
     const server = new Server(
         { name: 'datadogs', version: '0.2.0-beta.0' },
         {
@@ -170,7 +169,11 @@ export function createMcpRouter(deps: ToolDeps): Router {
         limit: rateLimitMax,
         standardHeaders: 'draft-7',
         legacyHeaders: false,
-        keyGenerator: (req: Request) => req.ctx?.user?.id || req.ip || 'anon',
+        keyGenerator: (req: Request) => {
+            if (req.ctx?.user?.id) return req.ctx.user.id;
+            if (req.ip) return ipKeyGenerator(req.ip);
+            return 'anon';
+        },
         message: {
             error: 'rate_limit_exceeded',
             error_description: `Too many MCP calls -- max ${rateLimitMax}/min per identity.`,

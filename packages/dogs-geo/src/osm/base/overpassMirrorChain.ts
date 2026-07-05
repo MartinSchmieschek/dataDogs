@@ -18,8 +18,11 @@
  * mehr in jeden einzelnen Retriever.
  */
 
-const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 120;
-const MIN_OVERPASS_FETCH_TIMEOUT_MS = 10_000;
+/** Overpass `[timeout:N]` — Server bricht die Query ab (leicht unter Client-Cap). */
+const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 25;
+/** HTTP-Abort pro Overpass-Request; Cache-Reads/Writes haben eigenes Budget (Prisma/SQLite). */
+const DEFAULT_OVERPASS_FETCH_TIMEOUT_MS = 30_000;
+const MIN_OVERPASS_FETCH_TIMEOUT_MS = 5_000;
 
 // Rate-Limit pro Overpass-Endpoint. Overpass-Policy: max ~2 parallele Requests,
 // minimaler Abstand zwischen Requests, damit kein 429 kassiert wird.
@@ -116,14 +119,14 @@ export function getOverpassQueryTimeoutSec(): number {
     return parseEnvPositiveInt("OVERPASS_QUERY_TIMEOUT_SEC", DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC);
 }
 
-/** HTTP-Client-Abort-Budget. Muss den Server-Timeout uebersteigen. */
+/** HTTP-Client-Abort-Budget pro Overpass-Request (nicht Tile-Cache). Env: OVERPASS_FETCH_TIMEOUT_MS. */
 export function getOverpassFetchTimeoutMs(): number {
     const fromEnv = process.env.OVERPASS_FETCH_TIMEOUT_MS;
     if (fromEnv != null && fromEnv !== "") {
         const n = parseInt(fromEnv, 10);
         if (Number.isFinite(n) && n >= MIN_OVERPASS_FETCH_TIMEOUT_MS) return n;
     }
-    return (getOverpassQueryTimeoutSec() + 60) * 1000;
+    return DEFAULT_OVERPASS_FETCH_TIMEOUT_MS;
 }
 
 /** Gebaute Mirror-Kette: Env-Overrides vorn, hardcoded Fallbacks hinten, dedupliziert. */
@@ -201,6 +204,13 @@ async function fetchOverpassOnce(
             body: `data=${encodeURIComponent(overpassQuery)}`,
             signal: controller.signal,
         });
+    } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+            throw new Error(
+                `${userAgentLabel}: Overpass request aborted after ${fetchTimeoutMs}ms (client timeout)`,
+            );
+        }
+        throw err;
     } finally {
         clearTimeout(timer);
     }

@@ -413,7 +413,8 @@ export class KennelRun {
                     adopted = await this.mimicAdopter(depClass.name, preferred);
                 } catch (err) {
                     if (isRuntimeLogVerbose()) {
-                        console.warn(`[KennelRun.autoMimic] Adoption fehlgeschlagen fuer '${depClass.name}':`, err);
+                        const msg = err instanceof Error ? err.message : String(err);
+                        console.warn(`[KennelRun.autoMimic] Adoption fehlgeschlagen fuer '${depClass.name}': ${msg}`);
                     }
                 }
                 if (adopted) {
@@ -466,7 +467,13 @@ export class KennelRun {
         const theHunt = await hunt.run();
 
         if (isRuntimeLogVerbose()) {
-            console.log(theHunt);
+            const waves = theHunt.wave?.length ?? 0;
+            const exhausted = theHunt.exhausted?.length ?? 0;
+            const pending = theHunt.withBeesInThePants?.length ?? 0;
+            const reads = theHunt.readTracking?.length ?? 0;
+            console.log(
+                `[KennelRun.runSeason] ${waves} waves, ${exhausted} exhausted, ${pending} pending, ${reads} tracked reads`,
+            );
         }
 
         return theHunt;

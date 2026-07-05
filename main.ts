@@ -5,7 +5,8 @@
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
 process.on('unhandledRejection', (reason) => {
-    console.error('[unhandledRejection]', reason);
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    console.error('[unhandledRejection]', msg);
 });
 
 import { QueryRetriever, BodyRetriever } from '@datadogs/core';
@@ -224,6 +225,7 @@ import { StartupTest } from './StartupTest';
 import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { PrismaCacheHandler } from './services/PrismaCacheHandler';
+import { withResilientCacheInfra } from './services/resilientCacheHandler';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
@@ -609,7 +611,12 @@ async function start() {
     routeHandler.registerRoutes(app, '/api');
 
     // The cache — eigenes SQLite via Prisma (store/prisma-cache), nicht der Node-Store.
-    const cacheHandler: ICacheHandler = new PrismaCacheHandler(dbEnv.resolveCacheDatabaseUrl());
+    // Zielbild: schnelle, dedizierte Cache-Anbindung (z. B. Postgres laut CACHE_DATABASE_URL in
+    // Prod) — Betreiber sollten Cache-Hits/Latenz im Blick haben. Bewusst noch nicht Priorität:
+    // lokal reicht withResilientCacheInfra, damit SQLite-Lock/Timeout die Kennel-Runs nicht killt.
+    const cacheHandler: ICacheHandler = withResilientCacheInfra(
+        new PrismaCacheHandler(dbEnv.resolveCacheDatabaseUrl()),
+    );
 
     // Loose the kennel hounds upon the sea — run, execute, and public endpoints all set aflame.
     // Roiling, moaning, this realm of ours: the kennels run and data flows from the eldritch deep.

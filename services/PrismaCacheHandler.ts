@@ -18,6 +18,7 @@ import path from 'path';
 import type { PrismaClient } from '../store/generated/prisma-cache-client';
 import { ICacheHandler, isRuntimeLogVerbose, type ITileFeatureCache } from '@datadogs/core';
 import { PrismaTileFeatureCache } from './PrismaTileFeatureCache';
+import { isCacheInfraError } from './resilientCacheHandler';
 
 function createPrismaCacheClient(dbUrl: string): PrismaClient {
     const mod = require(path.join(process.cwd(), 'store/generated/prisma-cache-client')) as typeof import('../store/generated/prisma-cache-client');
@@ -53,7 +54,13 @@ export class PrismaCacheHandler implements ICacheHandler {
         this.tileFeatureCache = new PrismaTileFeatureCache(this.prisma);
 
         this.pruneTimer = setInterval(() => {
-            void this.prune().catch((e) => console.error('[PrismaCacheHandler] prune', e));
+            void this.prune().catch((e) => {
+                if (isCacheInfraError(e)) {
+                    console.warn('[cache-infra] background prune skipped (SQLite busy/timeout)');
+                    return;
+                }
+                console.error('[PrismaCacheHandler] prune', e);
+            });
         }, pruneIntervalMs);
         if (this.pruneTimer && typeof this.pruneTimer === 'object' && 'unref' in this.pruneTimer) {
             this.pruneTimer.unref();
