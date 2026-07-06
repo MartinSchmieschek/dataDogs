@@ -138,6 +138,19 @@ function assertRequiredDbEnv() {
     }
 
     /**
+     * Auth-DB darf NIEMALS denselben Postgres-Namespace wie der Store teilen.
+     * Store und Auth sind getrennte Prisma-Schemas mit je eigenem
+     * `db push --accept-data-loss`. Zeigen beide auf (host, port, db, schema),
+     * droppt der Auth-Push (kennt nur User/OAuth/Token) die Store-Tabellen
+     * (Dog, CacheEntry, TileCoverage, …) — und umgekehrt. Es gibt KEINE gueltige
+     * Config, in der sie sich ein Schema teilen. Analog zur Cache/JSON-Spiegelung
+     * oben leiten wir Auth automatisch auf ein eigenes Schema (`auth`) um.
+     * Greift zur Push- UND Laufzeit, weil load-env.cjs assertRequiredDbEnv()
+     * an jedem Entrypoint aufruft.
+     */
+    separateAuthNamespaceFromStore();
+
+    /**
      * Konflikt-Check: nur zwischen URLs, die der Nutzer EXPLIZIT gesetzt hat.
      * Wenn jemand bewusst zwei eigene Postgres-URLs eintraegt, die auf denselben
      * (host, db, schema)-Namespace zeigen, ist das ein Konfigurationsfehler —
@@ -208,6 +221,47 @@ function parsePostgresUrl(raw) {
     } catch {
         return null;
     }
+}
+
+/** Setzt/ersetzt den ?schema=-Parameter einer Postgres-URL (behaelt sslmode etc.). */
+function withPostgresSchema(rawUrl, schema) {
+    try {
+        const u = new URL(rawUrl);
+        u.searchParams.set('schema', schema);
+        return u.toString();
+    } catch {
+        // Fallback, falls URL-Parsing scheitert (z. B. nicht-encodete Sonderzeichen im PW).
+        const base = rawUrl.replace(/[?&]schema=[^&]*/i, '').replace(/[?&]$/, '');
+        const sep = base.includes('?') ? '&' : '?';
+        return `${base}${sep}schema=${schema}`;
+    }
+}
+
+/**
+ * Verhindert, dass der Auth-`db push` die Store-Tabellen droppt: zeigt
+ * AUTH_DATABASE_URL auf denselben (host, port, db, schema) wie DATABASE_URL,
+ * wird Auth auf schema=auth umgeleitet. Idempotent — bei bereits getrenntem
+ * Schema (oder SQLite-Auth) passiert nichts.
+ */
+function separateAuthNamespaceFromStore() {
+    const store = (process.env.DATABASE_URL || '').trim();
+    const auth = (process.env.AUTH_DATABASE_URL || '').trim();
+    if (!isPostgresUrl(store) || !isPostgresUrl(auth)) return;
+    const s = parsePostgresUrl(store);
+    const a = parsePostgresUrl(auth);
+    if (!s || !a) return;
+    if (s.host !== a.host || s.port !== a.port || s.db !== a.db || s.schema !== a.schema) return;
+
+    process.env.AUTH_DATABASE_URL = withPostgresSchema(auth, 'auth');
+    console.warn(
+        [
+            '[dbEnv] AUTH_DATABASE_URL zeigte auf denselben Postgres-Namespace wie DATABASE_URL',
+            `        (host=${a.host} port=${a.port} db=${a.db} schema=${a.schema}).`,
+            '        Der Auth-`db push --accept-data-loss` haette sonst die Store-Tabellen',
+            '        (Dog, CacheEntry, TileCoverage, …) gedroppt. Auth wird automatisch auf',
+            '        schema=auth umgeleitet — eigener Namespace, gleiche physische DB.',
+        ].join('\n'),
+    );
 }
 
 /**
