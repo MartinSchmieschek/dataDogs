@@ -115,6 +115,11 @@ async function start() {
     // The survivors form the pack; the fallen are mourned in the logs.
     const allBaseDogs: InstanceType<typeof allBaseDogClasses[number]>[] = [];
     const baseDogsMap = new Map<string, new () => any>();
+    // Dogs, deren Konstruktor wirft (z. B. fehlender API-Key), landen NICHT in
+    // baseDogsMap. Ihren Klassennamen merken wir uns, damit der Coverage-Guard
+    // sie als "registriert, aber env-bedingt nicht verfuegbar" behandelt und den
+    // Start nicht killt — statt sie mit einer echten Registry-Luecke zu verwechseln.
+    const unavailableBaseDogNames = new Set<string>();
 
     for (const DogClass of allBaseDogClasses) {
         try {
@@ -122,6 +127,7 @@ async function start() {
             allBaseDogs.push(instance);
             baseDogsMap.set(instance.name, DogClass);
         } catch (err: any) {
+            unavailableBaseDogNames.add(DogClass.name);
             console.warn(`  ✗ ${DogClass.name} could not rise — ${err.message}`);
         }
     }
@@ -152,7 +158,7 @@ async function start() {
 
     if (useSlimBaseDogRegistry) {
         const requiredFromDb = await collectBaseDogNamesFromLatestKennels(kennelsStore);
-        assertSlimRegistryCoversKennelDbRefs(requiredFromDb, baseDogsMap, nodeEnvForRegistry);
+        assertSlimRegistryCoversKennelDbRefs(requiredFromDb, baseDogsMap, nodeEnvForRegistry, unavailableBaseDogNames);
     }
 
     const nodeEnv = process.env.NODE_ENV || 'development';

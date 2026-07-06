@@ -42,15 +42,30 @@ export async function collectBaseDogNamesFromLatestKennels(kennelsStore: IStore)
 }
 
 /**
- * Wirft, wenn ein Kennel in der DB einen Base-Dog referenziert, der in der schlanken Registry fehlt.
- * So bleibt RAM minimal, ohne bestehende Kennel-Manifeste still zu brechen.
+ * Wirft, wenn ein Kennel in der DB einen Base-Dog referenziert, den die schlanke
+ * Registry gar nicht KENNT (echte Luecke). Dogs, die zwar registriert sind, aber
+ * env-bedingt nicht konstruieren konnten (fehlende API-Keys, siehe
+ * `unavailableDogNames`), fuehren NUR zu einer Warnung — sie sollen nicht die
+ * ganze Deployment mitnehmen. Der betroffene Kennel schlaegt erst beim
+ * tatsaechlichen Lauf fehl; alles andere (inkl. MCP) laeuft weiter.
  */
 export function assertSlimRegistryCoversKennelDbRefs(
     requiredDogNames: Set<string>,
     baseDogsMap: Map<string, unknown>,
     envLabel: string,
+    unavailableDogNames: Set<string> = new Set(),
 ): void {
-    const missing = [...requiredDogNames].filter((n) => !baseDogsMap.has(n)).sort();
+    const notCovered = [...requiredDogNames].filter((n) => !baseDogsMap.has(n)).sort();
+    const degraded = notCovered.filter((n) => unavailableDogNames.has(n));
+    const missing = notCovered.filter((n) => !unavailableDogNames.has(n));
+
+    if (degraded.length > 0) {
+        console.warn(
+            `[${envLabel}] Kennels referenzieren Base-Dogs, die env-bedingt nicht starten konnten ` +
+                `(fehlende API-Keys o. ae.): ${degraded.join(', ')}. Diese Kennels bleiben degradiert, ` +
+                'bis die noetigen Env-Variablen gesetzt sind; der Rest der App laeuft normal.',
+        );
+    }
     if (missing.length === 0) return;
     throw new Error(
         `[${envLabel}] Schlanke Base-Dog-Registry deckt Kennels in der DB nicht. Fehlend im baseDogsMap: ${missing.join(', ')}. ` +
