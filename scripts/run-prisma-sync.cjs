@@ -5,7 +5,7 @@
 require('./load-env.cjs');
 
 const { execSync } = require('child_process');
-const { resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl } = require('./dbEnv.cjs');
+const { resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, authSharesStoreDatabase } = require('./dbEnv.cjs');
 
 function redactedConn(url) {
     if (!url || typeof url !== 'string') return '(nicht gesetzt)';
@@ -45,10 +45,13 @@ const storePushExtra = forceResetIntegration ? ' --force-reset' : '';
 /**
  * Push-Strategie:
  *   - Dev (SQLite): Store, Cache, JSON-Storage und Auth pushen in getrennte DBs.
- *   - Postgres (integration/production): EINE physische DB fuer Store+Cache+JSON.
- *     Das Haupt-Schema definiert alle Tabellen; Cache/JSON werden nur generiert.
- *     Auth bleibt in AUTH_DATABASE_URL (store/prisma-auth).
+ *   - Postgres (integration/production): EINE physische DB fuer Store+Cache+JSON
+ *     (+Auth, wenn Auth dieselbe DB teilt). Das Haupt-Schema definiert alle
+ *     Tabellen; Cache/JSON/Auth werden dann nur generiert, nicht gepusht.
+ *     Eine bewusst GETRENNTE Auth-DB (eigener host/db) wird weiterhin gepusht.
  */
+const authInMainSchema = usePostgres && authSharesStoreDatabase();
+
 const cmds = [
     `npx prisma generate --schema ${storeSchemaFile}`,
     `node scripts/prisma-cache.cjs generate${cacheSuffix}`,
@@ -59,9 +62,15 @@ const cmds = [
 if (!usePostgres) {
     cmds.push(`node scripts/prisma-cache.cjs push${cacheSuffix}`);
     cmds.push(`node scripts/prisma-json-storage.cjs push${cacheSuffix}`);
+    cmds.push(`node scripts/prisma-auth.cjs push${cacheSuffix}`);
 } else {
     console.log('[prisma-sync] Postgres-Mode: Cache/JSON-Storage db push uebersprungen — Tabellen liegen im Haupt-Schema.');
+    if (authInMainSchema) {
+        console.log('[prisma-sync] Postgres-Single-DB: Auth db push uebersprungen — Auth-Tabellen liegen im Haupt-Schema (public).');
+    } else {
+        // Getrennte Auth-DB (eigener host/db) — dort hat der User Rechte, also pushen.
+        cmds.push(`node scripts/prisma-auth.cjs push${cacheSuffix}`);
+    }
 }
-cmds.push(`node scripts/prisma-auth.cjs push${cacheSuffix}`);
 
 execSync(cmds.join(' && '), { stdio: 'inherit', env: process.env, shell: true });

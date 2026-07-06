@@ -138,17 +138,23 @@ function assertRequiredDbEnv() {
     }
 
     /**
-     * Auth-DB darf NIEMALS denselben Postgres-Namespace wie der Store teilen.
-     * Store und Auth sind getrennte Prisma-Schemas mit je eigenem
-     * `db push --accept-data-loss`. Zeigen beide auf (host, port, db, schema),
-     * droppt der Auth-Push (kennt nur User/OAuth/Token) die Store-Tabellen
-     * (Dog, CacheEntry, TileCoverage, …) — und umgekehrt. Es gibt KEINE gueltige
-     * Config, in der sie sich ein Schema teilen. Analog zur Cache/JSON-Spiegelung
-     * oben leiten wir Auth automatisch auf ein eigenes Schema (`auth`) um.
-     * Greift zur Push- UND Laufzeit, weil load-env.cjs assertRequiredDbEnv()
-     * an jedem Entrypoint aufruft.
+     * Postgres-Single-DB: teilt sich Auth die physische Store-DB, liegen die
+     * Auth-Tabellen (User, OAuth*, Tokens) im Haupt-Schema (public) — angelegt
+     * vom Store-Push, GENAU wie Cache/JSON (siehe store/prisma/schema.postgres.prisma
+     * + run-prisma-sync.cjs). KEIN eigenes Schema und kein separater Auth-Push:
+     *   - ein eigenes Postgres-Schema braeuchte CREATE-Recht auf der Datenbank,
+     *     das gehostete Postgres (dbaas) oft verweigert;
+     *   - zwei getrennte `db push --accept-data-loss` in dieselbe DB clobbern sich.
+     * Also AUTH_DATABASE_URL auf die Store-URL (public) spiegeln, damit der
+     * Auth-Client die Tabellen im Haupt-Schema findet. Greift zur Push- UND
+     * Laufzeit (load-env.cjs ruft assertRequiredDbEnv an jedem Entrypoint).
+     * Eine bewusst GETRENNTE Auth-DB (anderer host/db) bleibt unangetastet und
+     * wird weiterhin separat gepusht.
      */
-    separateAuthNamespaceFromStore();
+    if (authSharesStoreDatabase()) {
+        process.env.AUTH_DATABASE_URL = store;
+        delete process.env.AUTH_DB_PATH;
+    }
 
     /**
      * Konflikt-Check: nur zwischen URLs, die der Nutzer EXPLIZIT gesetzt hat.
@@ -223,45 +229,21 @@ function parsePostgresUrl(raw) {
     }
 }
 
-/** Setzt/ersetzt den ?schema=-Parameter einer Postgres-URL (behaelt sslmode etc.). */
-function withPostgresSchema(rawUrl, schema) {
-    try {
-        const u = new URL(rawUrl);
-        u.searchParams.set('schema', schema);
-        return u.toString();
-    } catch {
-        // Fallback, falls URL-Parsing scheitert (z. B. nicht-encodete Sonderzeichen im PW).
-        const base = rawUrl.replace(/[?&]schema=[^&]*/i, '').replace(/[?&]$/, '');
-        const sep = base.includes('?') ? '&' : '?';
-        return `${base}${sep}schema=${schema}`;
-    }
-}
-
 /**
- * Verhindert, dass der Auth-`db push` die Store-Tabellen droppt: zeigt
- * AUTH_DATABASE_URL auf denselben (host, port, db, schema) wie DATABASE_URL,
- * wird Auth auf schema=auth umgeleitet. Idempotent — bei bereits getrenntem
- * Schema (oder SQLite-Auth) passiert nichts.
+ * True, wenn Auth in Postgres-Mode dieselbe physische DB wie der Store nutzt
+ * (gleicher host/port/db, unabhaengig vom ?schema=). Dann liegen die Auth-Tabellen
+ * im Haupt-Schema (public) und es gibt keinen separaten Auth-Push. Getrennte
+ * Auth-DB (anderer host/db) oder SQLite-Auth → false. Wird auch von
+ * run-prisma-sync.cjs genutzt, um den Auth-Push zu ueberspringen.
  */
-function separateAuthNamespaceFromStore() {
+function authSharesStoreDatabase() {
     const store = (process.env.DATABASE_URL || '').trim();
     const auth = (process.env.AUTH_DATABASE_URL || '').trim();
-    if (!isPostgresUrl(store) || !isPostgresUrl(auth)) return;
+    if (!isPostgresUrl(store) || !isPostgresUrl(auth)) return false;
     const s = parsePostgresUrl(store);
     const a = parsePostgresUrl(auth);
-    if (!s || !a) return;
-    if (s.host !== a.host || s.port !== a.port || s.db !== a.db || s.schema !== a.schema) return;
-
-    process.env.AUTH_DATABASE_URL = withPostgresSchema(auth, 'auth');
-    console.warn(
-        [
-            '[dbEnv] AUTH_DATABASE_URL zeigte auf denselben Postgres-Namespace wie DATABASE_URL',
-            `        (host=${a.host} port=${a.port} db=${a.db} schema=${a.schema}).`,
-            '        Der Auth-`db push --accept-data-loss` haette sonst die Store-Tabellen',
-            '        (Dog, CacheEntry, TileCoverage, …) gedroppt. Auth wird automatisch auf',
-            '        schema=auth umgeleitet — eigener Namespace, gleiche physische DB.',
-        ].join('\n'),
-    );
+    if (!s || !a) return false;
+    return s.host === a.host && s.port === a.port && s.db === a.db;
 }
 
 /**
@@ -314,4 +296,4 @@ function resolveAuthDatabaseUrl() {
     return `file:${pathOnly.replace(/\\/g, '/')}`;
 }
 
-module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, resolveAuthDatabaseUrl };
+module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, resolveAuthDatabaseUrl, authSharesStoreDatabase };

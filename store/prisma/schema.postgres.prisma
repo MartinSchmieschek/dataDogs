@@ -34,14 +34,22 @@ model Dog {
   updatedAt            DateTime?
 }
 
-// Auth + OAuth tables live in store/prisma-auth/ (separate DB: AUTH_DATABASE_URL).
 // ---------------------------------------------------------------------------
 // Postgres-Single-DB-Mode: alle Tabellen liegen in derselben physischen DB.
-// Cache- und JSON-Storage-Schemas (store/prisma-cache, store/prisma-json-storage)
-// erzeugen eigene typisierte Clients, werden aber NICHT mehr gepusht
-// (siehe scripts/run-prisma-sync.cjs). Das hier ist die einzige Wahrheit
-// fuer die DB-Struktur in Postgres-Mode. Definitionen muessen 1:1 mit den
-// jeweiligen Cache-/JSON-Schemas uebereinstimmen.
+// Cache-, JSON-Storage- UND Auth-Schemas (store/prisma-cache,
+// store/prisma-json-storage, store/prisma-auth) erzeugen eigene typisierte
+// Clients, werden aber NICHT mehr separat gepusht (siehe run-prisma-sync.cjs).
+// Das hier ist die einzige Wahrheit fuer die DB-Struktur in Postgres-Mode.
+// Definitionen muessen 1:1 mit den jeweiligen Cache-/JSON-/Auth-Schemas
+// uebereinstimmen.
+//
+// Auth liegt hier mit, weil ein eigenes Postgres-Schema CREATE-Recht auf der
+// Datenbank braeuchte (gehostete Postgres/dbaas verweigert das oft) und zwei
+// getrennte `db push` in dieselbe DB sich gegenseitig Tabellen droppen wuerden.
+// Wer eine bewusst getrennte Auth-DB betreibt (eigener host/db mit vollen
+// Rechten), setzt AUTH_DATABASE_URL dorthin — dann wird Auth wieder separat
+// gepusht (dbEnv.authSharesStoreDatabase() == false). Dev (SQLite) bleibt eh
+// getrennt (store/prisma-auth/schema.prisma, eigene auth.db).
 // ---------------------------------------------------------------------------
 
 model CacheEntry {
@@ -122,4 +130,63 @@ model TileCoverage {
   @@id([dogType, zoom, tileX, tileY, facet])
   @@index([expiresAt])
   @@index([dogType, zoom, tileX, tileY])
+}
+
+// ---------------------------------------------------------------------------
+// Auth / OAuth — 1:1 mit store/prisma-auth/schema.postgres.prisma.
+// In Postgres-Single-DB (Auth teilt die Store-DB) liegen diese Tabellen hier in
+// `public` und werden vom Store-Push angelegt; der prisma-auth-Client wird nur
+// generiert (kein eigener Push). Aenderungen hier UND in store/prisma-auth
+// gleich halten. Getrennte Auth-DB: siehe run-prisma-sync.cjs / dbEnv.cjs.
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(uuid())
+  googleSub String   @unique
+  email     String   @unique
+  name      String?
+  picture   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OAuthClient {
+  id           String   @id @default(uuid())
+  clientId     String   @unique
+  clientSecret String?
+  name         String
+  redirectUris String
+  createdAt    DateTime @default(now())
+}
+
+model AuthorizationCode {
+  code                String   @id
+  clientId            String
+  userId              String
+  redirectUri         String
+  codeChallenge       String?
+  codeChallengeMethod String?
+  scope               String
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
+}
+
+model AccessToken {
+  jti       String    @id
+  userId    String
+  clientId  String
+  scope     String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model RefreshToken {
+  token     String    @id
+  userId    String
+  clientId  String
+  scope     String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 }
