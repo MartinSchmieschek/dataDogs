@@ -22,7 +22,18 @@ export function createSessionMiddleware(): RequestHandler {
         throw new Error('SESSION_SECRET must be set in .env (32+ random chars)');
     }
 
-    const secure = process.env.SESSION_COOKIE_SECURE === 'true';
+    // Deployed (Render, hinter TLS-Proxy) braucht das Session-Cookie secure:true --
+    // zusammen mit `trust proxy` (siehe createHttpApplication) wird es dann korrekt
+    // gesetzt. Lokal (development, http://localhost) MUSS secure:false sein, sonst
+    // liefert der Browser das Cookie nie aus -> kein Login noetig, aber Flows testbar.
+    // Default nach NODE_ENV; SESSION_COOKIE_SECURE ueberschreibt explizit.
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    const isDeployed = nodeEnv === 'production' || nodeEnv === 'integration';
+    const secureOverride = process.env.SESSION_COOKIE_SECURE;
+    const secure =
+        secureOverride != null && secureOverride.trim() !== ''
+            ? secureOverride === 'true'
+            : isDeployed;
 
     return session({
         secret,

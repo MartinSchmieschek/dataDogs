@@ -63,6 +63,15 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     const app = express();
 
+    // Hinter Renders TLS-Proxy terminiert HTTPS am Proxy; die App sieht intern HTTP.
+    // Ohne `trust proxy` haelt express req.secure fuer false und express-session
+    // verweigert das Secure-Cookie -> kein Set-Cookie -> OAuth/PKCE- und
+    // Personal-Token-Flow tot. Nur deployed setzen; lokal (development) laeuft
+    // alles unveraendert ueber http://localhost ohne Proxy und ohne Login.
+    if (nodeEnv === 'production' || nodeEnv === 'integration') {
+        app.set('trust proxy', 1);
+    }
+
     const isLocalDevOrigin = (origin: string): boolean => {
         try {
             const u = new URL(origin);
