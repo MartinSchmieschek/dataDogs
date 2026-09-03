@@ -96,6 +96,11 @@ export class ChannelHub implements IChannelHub {
         return this.opts.heartbeatSec;
     }
 
+    /** Der Pfad, auf dem dieser Hub lauscht — derselbe, den `attach` prueft. */
+    wsPath(): string {
+        return this.opts.path;
+    }
+
     // ---------- HTTP/WS attach ----------
 
     /**

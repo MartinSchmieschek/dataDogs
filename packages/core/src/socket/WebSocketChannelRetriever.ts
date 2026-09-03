@@ -39,7 +39,8 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
         'Bau NIEMALS einen eigenen WebSocket in den tsCode (kein `new WebSocket(...)`, keine ws://- oder wss://-Adresse von Hand). '
         + 'Dieser Dog ist die Lobby. Verdrahtung: `extraDogIds: ["base:WebSocketChannelRetriever"]` MIT base:-Praefix, '
         + 'im `parentsRequired` des Lead-Dogs dagegen OHNE Praefix als blanker Klassenname "WebSocketChannelRetriever". '
-        + 'Im Dog-Code steht er dann als Global bereit und liefert `wsUrl` (Form wss://…/api/channels?channelId=…), `channelId`, `shareUrl` und `heartbeatSec`. '
+        + 'Im Dog-Code steht er dann als Global bereit und liefert `channelId`, `wsUrl` (Form wss://…/api/channels?channelId=…), `heartbeatSec`, `created` und `peers`. '
+        + 'Einen Teilen-Link erzeugt er NICHT — den baut die Seite selbst aus location.origin + location.pathname + "?channelId=" + channelId, damit jeder Kennel seinen eigenen Pfad teilt. '
         + 'Die channelId kommt aus dem ?channelId=-Query oder wird neu erzeugt — erfinde keinen eigenen room-Parameter.';
 
     constructor() {
@@ -56,7 +57,7 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
     }
 
     get description(): string {
-        return "Lobby-Pfoertner: legt Lobby an oder tritt einer bei (channelId aus Query). Liefert shareUrl, wsUrl und aktuelle Teilnehmer mit shared-Objekten.";
+        return "Lobby-Pfoertner: legt eine Lobby an oder tritt einer bei (channelId aus der Query). Liefert channelId, wsUrl, heartbeatSec und die aktuellen Teilnehmer mit ihren shared-Objekten.";
     }
 
     get icon(): string | undefined {
@@ -83,9 +84,11 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
         const join = hub.joinOrCreate(channelId);
 
         // wsUrl: absolut wenn PUBLIC_API_BASE_URL gesetzt ist, sonst relativ (Client setzt
-        // Protokoll/Host aus location davor). Der WS-Pfad wird ueber WS_PATH konfiguriert
-        // (Default in ChannelHub: /api/channels) — wir spiegeln den hier per ENV.
-        const wsPath = (process.env.WS_PATH || "/api/channels").replace(/\/$/, "") || "/api/channels";
+        // Protokoll/Host aus location davor). Den Pfad besitzt der Hub und sonst niemand.
+        // Frueher hat der Dog ihn aus WS_PATH nachgebaut — dieselbe Wahrheit an zwei Orten:
+        // wer den Hub per Option auf einen anderen Pfad setzt, bekam vom Dog eine tote Adresse,
+        // und gemerkt haette man es erst an der fehlschlagenden Live-Verbindung.
+        const wsPath = (hub.wsPath() || "/api/channels").replace(/\/$/, "") || "/api/channels";
         const publicBase = (process.env.PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
         const wsUrl = publicBase
             ? publicBase.replace(/^http/, "ws") + `${wsPath}?channelId=${encodeURIComponent(channelId)}`

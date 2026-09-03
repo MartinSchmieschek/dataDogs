@@ -54,4 +54,10 @@ export interface IChannelHub {
     snapshot(channelId: string): ChannelPeer[];
     /** Empfohlenes Heartbeat-Intervall in Sekunden. */
     heartbeatSec(): number;
+    /**
+     * Der Pfad, auf dem der Hub den Upgrade annimmt (z. B. "/api/channels").
+     * EINZIGE Quelle der Wahrheit: der Dog baut seine wsUrl daraus, statt den Pfad
+     * ein zweites Mal aus der Umgebung zu erraten.
+     */
+    wsPath(): string;
 }

@@ -125,7 +125,8 @@ export function codeHinweise(
             + 'du baust dir gerade eine eigene Lobby. Nimm die vorhandene: '
             + 'extraDogIds: ["base:WebSocketChannelRetriever"] (MIT base:) und '
             + 'parentsRequired: ["WebSocketChannelRetriever"] (OHNE base:). '
-            + 'Sie liefert wsUrl, channelId, shareUrl und heartbeatSec — erfinde keine eigene Adresse und keinen eigenen room-Parameter.',
+            + 'Sie liefert channelId, wsUrl, heartbeatSec und peers — erfinde keine eigene Adresse und keinen eigenen room-Parameter. '
+            + 'Den Teilen-Link baut die Seite selbst aus location.origin + location.pathname + "?channelId=" + channelId.',
         );
     }
 
