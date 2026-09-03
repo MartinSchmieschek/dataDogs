@@ -5,9 +5,18 @@
 // Express-App und umgebungsabhängiges Frontend: `server-app/createHttpApplication.ts`.
 
 // Should the void swallow a promise whole and leave no trace, at least we shall log its dying scream.
+// Den GANZEN Fehler ausgeben, nicht nur die Nachricht: ohne Stacktrace ist im Log-Stream einer
+// Plattform nicht zu erkennen, wo die Zusage gestorben ist.
 process.on('unhandledRejection', (reason) => {
-    const msg = reason instanceof Error ? reason.message : String(reason);
-    console.error('[unhandledRejection]', msg);
+    console.error('[unhandledRejection]', reason instanceof Error ? reason.stack || reason.message : reason);
+});
+
+// Ohne diesen Handler stirbt der Prozess bei einem synchronen Fehler zwar mit Stacktrace, aber ohne
+// erkennbare Marke im Log. Mit ihm steht im Stream eine eindeutige Zeile -- und der Prozess geht
+// danach kontrolliert und mit klarem Exit-Code, statt in undefiniertem Zustand weiterzulaufen.
+process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException]', err instanceof Error ? err.stack || err.message : err);
+    process.exit(1);
 });
 
 import { WebSocketChannelRetriever, registerVmGlobalCapability } from '@datadogs/core';
@@ -164,7 +173,7 @@ async function start() {
     const nodeEnv = process.env.NODE_ENV || 'development';
     const devUiOrigin = (process.env.DEV_UI_ORIGIN || 'http://localhost:4300').replace(/\/$/, '');
 
-    const { app, serveBuiltAngular } = await createHttpApplication({
+    const { app, serveBuiltAngular, runStartupTests } = await createHttpApplication({
         nodeEnv,
         devUiOrigin,
         serverRootDir: __dirname,
@@ -189,5 +198,8 @@ async function start() {
             console.log(`API ${base} — Dev-UI-Redirect: ${base}/ → ${devUiOrigin}/`);
         }
         console.log(`Server läuft auf Port ${port}`);
+        // ERST JETZT die Selbsttests: der Port ist offen, die Plattform sieht einen gesunden Dienst.
+        // runStartupTests faengt intern alles ab und wirft nie.
+        void runStartupTests();
     });
 }

@@ -100,8 +100,8 @@ export class StartupTest {
             await this.testMimicDogImitatesPact(baseDogsMap);
             await this.testMatchesParentRecognizesMimic(baseDogsMap);
             await this.testFillKennelAutoMimicForPact(baseDogsMap);
-            await this.testFillKennelAutoMimicForOptionalPact(baseDogsMap);
-            await this.testFillKennelAutoMimicForRequiredAndOptionalPacts(baseDogsMap);
+            await this.testFillKennelNoAutoMimicForOptionalOnlyPact(baseDogsMap);
+            await this.testFillKennelAutoMimicOnlyForRequiredPact(baseDogsMap);
             await this.testFillKennelRealBaseDogInsteadOfMimic(baseDogsMap);
             await this.testFillKennelMimicRemovedWhenRealDogPresent(baseDogsMap);
             await this.testRunSeasonWithMimicConsumerRuns(baseDogsMap);
@@ -1391,10 +1391,14 @@ export class StartupTest {
     }
 
     /**
-     * Test: fillKennel erstellt Auto-Mimic fuer optional Pact-Requirement
+     * Test: fillKennel erzeugt fuer einen NUR optionalen Pact bewusst KEINEN Mimic.
+     * Vertrag seit "Welle 10" (KennelRun.autoMimic): Platzhalter-Mimics entstehen ausschliesslich
+     * fuer Pacts, die ein Dog WIRKLICH BRAUCHT. Ein optional-only Pact hat im Consumer einen
+     * sinnvollen Default -- ein werfender Auto-Mimic wuerde nur einen Schein-Fehler in den Snapshot
+     * schreiben, ohne dafuer Daten zu liefern.
      */
-    private async testFillKennelAutoMimicForOptionalPact(baseDogsMap: Map<string, any>): Promise<void> {
-        const testName = 'fillKennel: Auto-Mimic bei optional Pact';
+    private async testFillKennelNoAutoMimicForOptionalOnlyPact(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: optional-only Pact bekommt KEINEN Mimic';
         try {
             const OptionalPact = createPact<string>('OptionalMimicTestPact');
 
@@ -1421,8 +1425,8 @@ export class StartupTest {
                 d instanceof MimicDog && (d as MimicDog<unknown>).imitatesName === 'OptionalMimicTestPact'
             );
 
-            if (!hasMimic) {
-                throw new Error('MimicDog wurde nicht automatisch fuer optional Pact erstellt');
+            if (hasMimic) {
+                throw new Error('Fuer einen optional-only Pact wurde ein Mimic erzeugt -- verletzt den Welle-10-Vertrag');
             }
 
             this.addResult(testName, true);
@@ -1432,10 +1436,11 @@ export class StartupTest {
     }
 
     /**
-     * Test: fillKennel erstellt Auto-Mimics fuer required UND optional Pacts gleichzeitig
+     * Test: haengen an EINEM Dog ein required und ein optionaler Pact, entsteht GENAU EIN Mimic --
+     * der fuer den required Pact. Der optionale bleibt bewusst unbesetzt (Welle-10-Vertrag, siehe oben).
      */
-    private async testFillKennelAutoMimicForRequiredAndOptionalPacts(baseDogsMap: Map<string, any>): Promise<void> {
-        const testName = 'fillKennel: Auto-Mimic bei required + optional Pacts';
+    private async testFillKennelAutoMimicOnlyForRequiredPact(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'fillKennel: Mimic nur fuer required, nicht fuer optional';
         try {
             const ReqPact = createPact<number>('ReqMimicTestPact');
             const OptPact = createPact<string>('OptMimicTestPact2');
@@ -1470,13 +1475,13 @@ export class StartupTest {
             if (!hasReqMimic) {
                 throw new Error('MimicDog fuer required Pact fehlt');
             }
-            if (!hasOptMimic) {
-                throw new Error('MimicDog fuer optional Pact fehlt');
+            if (hasOptMimic) {
+                throw new Error('Fuer den optional-only Pact wurde ein Mimic erzeugt -- verletzt den Welle-10-Vertrag');
             }
 
             const mimicCount = kennel.filter(d => d instanceof MimicDog).length;
-            if (mimicCount < 2) {
-                throw new Error(`Erwartet: mindestens 2 Mimics, gefunden: ${mimicCount}`);
+            if (mimicCount !== 1) {
+                throw new Error(`Erwartet: genau 1 Mimic (nur der required), gefunden: ${mimicCount}`);
             }
 
             this.addResult(testName, true);

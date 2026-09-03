@@ -43,7 +43,24 @@ export type CreateHttpApplicationInput = {
 export type CreateHttpApplicationResult = {
     app: Application;
     serveBuiltAngular: boolean;
+    /**
+     * Startet die Selbsttest-Suite. Bewusst NICHT waehrend des Aufbaus ausgefuehrt, sondern als
+     * Rueckruf gereicht: main.ts ruft ihn ERST NACH httpServer.listen auf. Wirft nie.
+     */
+    runStartupTests: () => Promise<void>;
 };
+
+/**
+ * Selbsttests laufen standardmaessig NUR lokal (development): in integration/production schreiben
+ * sie Testdaten in die echte Datenbank. Dort nur auf ausdrueckliche Anforderung -- RUN_STARTUP_TESTS=1
+ * schaltet sie ueberall ein, RUN_STARTUP_TESTS=0 ueberall aus.
+ */
+function shouldRunStartupTests(nodeEnv: string): boolean {
+    const flag = (process.env.RUN_STARTUP_TESTS || '').trim().toLowerCase();
+    if (flag === '1' || flag === 'true') return true;
+    if (flag === '0' || flag === 'false') return false;
+    return nodeEnv === 'development';
+}
 
 /**
  * Baut die Express-App: CORS, JSON, Auth/MCP, /static, umgebungsabhängiges Frontend (dev vs. gebaute SPA),
@@ -153,8 +170,24 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     registry.register('nodes', nodesController);
     registry.register('kennels', kennelsController);
 
-    const startupTest = new StartupTest();
-    await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap);
+    // Die Selbsttest-Suite lief frueher GENAU HIER -- vor dem Montieren aller Routen und vor
+    // httpServer.listen. Ein Fehlschlag, ein stiller Kill oder auch nur eine lange Laufzeit hat
+    // damit den ganzen Dienst am Hochkommen gehindert: die Plattform sah keinen offenen Port und
+    // startete in einer Schleife neu. Ein Selbsttest darf einen Dienst niemals am Start hindern.
+    // Deshalb wird er nur noch als Rueckruf gereicht und von main.ts NACH dem Port-Bind gestartet.
+    const runStartupTests = async (): Promise<void> => {
+        if (!shouldRunStartupTests(input.nodeEnv)) {
+            console.log(`[StartupTest] uebersprungen (NODE_ENV=${input.nodeEnv}) -- mit RUN_STARTUP_TESTS=1 erzwingbar.`);
+            return;
+        }
+        try {
+            const startupTest = new StartupTest();
+            await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap);
+        } catch (err) {
+            // Laut scheitern, aber weiterlaufen -- der Dienst ist wichtiger als seine Selbstpruefung.
+            console.error('[StartupTest] Suite abgebrochen -- der Dienst laeuft weiter:', err);
+        }
+    };
 
     const nodesRouteHandler = new NodesRouteHandler(registry, allBaseDogs);
     nodesRouteHandler.registerRoutes(app);
@@ -200,5 +233,5 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     frontBinder.afterKennelRoutes(app, frontCtx);
 
-    return { app, serveBuiltAngular };
+    return { app, serveBuiltAngular, runStartupTests };
 }
