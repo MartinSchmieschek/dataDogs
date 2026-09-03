@@ -6,14 +6,14 @@
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
-import { type ToolDef, ok, fail, resolveTsCode } from './types';
+import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
 
 export function getNodeTools(): ToolDef[] {
     return [
         {
             name: 'list_nodes',
             description:
-                'Lists nodes visible to the current user. Returns a paged window with metadata only (no tsCode). Hunters (BaseDogs) and Breeds (SerializedDogs/MimicDogs) share the same listing. Default limit=50, cap=200. Filter via type, search by name/displayName substring (case-insensitive).',
+                'Lists nodes visible to the current user — the discovery surface: start here to find out what exists. Returns a paged window with metadata only (no tsCode), including each entry\'s `description` and its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax build_kennel expects). Hunters (BaseDogs), Pacts and Breeds (SerializedDogs/MimicDogs) share the same listing; Pacts are flagged `isPact: true` and carry `pactTypeDef` when they declare a shape — a Pact is a contract, fulfil it with a MimicDog (dogs[].imitates) or a providing dog, never call it directly. Default limit=50, cap=200. Filter via type, search by name/displayName/description substring (case-insensitive).',
             inputSchema: {
                 type: 'object',
                 additionalProperties: false,
@@ -53,13 +53,21 @@ export function getNodeTools(): ToolDef[] {
                         lineageId: undefined as string | undefined,
                         displayName: b.name,
                         name: b.name,
+                        // Frueher fielen description UND der Vertrag hier unter den Tisch (leere
+                        // Arrays waren hartcodiert) -- ein Agent sah nur Name und Icon.
+                        description: b.description ?? null,
                         icon: b.icon,
                         type: 'BaseDog' as const,
+                        isPact: b.isPact === true,
+                        pactTypeDef: b.pactTypeDef ?? null,
+                        // Verdrahtungs-Anweisung fuer Infrastruktur-Dogs (z.B. die Lobby) --
+                        // damit niemand sie nachbaut, weil er sie nicht gefunden hat.
+                        guidance: b.guidance ?? null,
                         visibility: 'public',
                         ownerId: null as string | null,
                         tsCodePreview: null as string | null,
-                        parentsRequired: [] as string[],
-                        parentsOptional: [] as string[],
+                        parentsRequired: b.parentsRequired ?? [],
+                        parentsOptional: b.parentsOptional ?? [],
                         updatedAt: null as string | null,
                     })),
                     ...visibleSerialized.map((s: any) => {
@@ -71,8 +79,11 @@ export function getNodeTools(): ToolDef[] {
                             lineageId: s.lineageId,
                             displayName: s.displayName,
                             name: s.displayName,
+                            description: s.description ?? null,
                             icon: s.icon,
                             type: classifyType(s),
+                            isPact: false,
+                            pactTypeDef: null as string | null,
                             visibility: s.visibility ?? 'public',
                             ownerId: s.ownerId ?? null,
                             tsCodePreview: preview,
@@ -92,7 +103,10 @@ export function getNodeTools(): ToolDef[] {
                     if (s) {
                         const name = (n.name ?? '').toLowerCase();
                         const display = (n.displayName ?? '').toLowerCase();
-                        if (!name.includes(s) && !display.includes(s)) return false;
+                        // Auch die Beschreibung durchsuchen: wer einen Hund fuer "websocket" oder
+                        // "wetter" sucht, kennt selten schon dessen Klassennamen.
+                        const desc = (n.description ?? '').toLowerCase();
+                        if (!name.includes(s) && !display.includes(s) && !desc.includes(s)) return false;
                     }
                     return true;
                 });
@@ -154,15 +168,21 @@ export function getNodeTools(): ToolDef[] {
                     (b) => b.id === id || b.name === id || `base:${b.name}` === id,
                 );
                 if (base) {
+                    // Die echten Werte -- vorher standen hier leere Arrays, ausgerechnet in dem
+                    // Werkzeug, dessen Zweck das Binden an die Form eines Nodes ist.
                     return ok({
                         id: base.id,
                         lineageId: undefined,
                         displayName: base.name,
                         name: base.name,
+                        description: base.description ?? null,
                         icon: base.icon,
                         type: 'BaseDog',
-                        parentsRequired: [],
-                        parentsOptional: [],
+                        isPact: base.isPact === true,
+                        pactTypeDef: base.pactTypeDef ?? null,
+                        guidance: base.guidance ?? null,
+                        parentsRequired: base.parentsRequired ?? [],
+                        parentsOptional: base.parentsOptional ?? [],
                     });
                 }
                 const result = await deps.nodesController.getById(id);
@@ -223,10 +243,12 @@ export function getNodeTools(): ToolDef[] {
                 const input = applyCreateDefaults(baseInput, ctx);
                 const result = await deps.nodesController.create(input);
                 if (!result.ok) return fail(result.error ?? 'create failed');
+                const hinweise = codeHinweise(theRun, baseInput);
                 return ok({
                     id: result.id,
                     lineageId: (result.data as any)?.lineageId,
                     displayName: (result.data as any)?.displayName,
+                    ...(hinweise.length ? { hinweise } : {}),
                 });
             },
         },

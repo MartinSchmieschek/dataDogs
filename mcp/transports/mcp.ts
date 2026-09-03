@@ -25,6 +25,7 @@ import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
 import type { AuthCtx } from '../auth/middleware';
 import { buildMcpInitializeInstructions } from '../spuren-brief';
+import { buildWerkzeugkasten } from '../werkzeugkasten';
 
 /**
  * Welle 11: tools/list token diet. The full long-form description is kept on
@@ -72,7 +73,10 @@ function buildServer(
     // Welle 8 (P6): skill.md zusaetzlich als MCP-Resource exponieren. Wir behalten
     // die kurze `instructions`-Variante fuer MCP-Clients ohne Resource-Support;
     // der volle Inhalt ist ueber Resource `datadogs://skill` abrufbar.
-    const shortInstructions = buildMcpInitializeInstructions(Boolean(skillContent));
+    const shortInstructions = buildMcpInitializeInstructions(
+        Boolean(skillContent),
+        buildWerkzeugkasten(deps.baseDogsList),
+    );
     const server = new Server(
         { name: 'datadogs', version: '0.2.0-beta.0' },
         {

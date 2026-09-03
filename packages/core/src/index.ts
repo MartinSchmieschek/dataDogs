@@ -50,6 +50,7 @@ export {
     type VmGlobalCapabilityFactory,
     registerVmGlobalCapability,
     unregisterVmGlobalCapability,
+    listVmGlobalCapabilities,
     buildVmGlobalCapabilities,
 } from './dogs/SerializedDog';
 

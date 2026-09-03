@@ -62,6 +62,14 @@ export type VmGlobalCapabilityFactory = (
 ) => Record<string, any>;
 
 const vmGlobalCapabilities: Map<string, VmGlobalCapabilityFactory> = new Map();
+/**
+ * Kurzdoku je Capability -- eine Zeile, was das Global im Dog-Code kann.
+ * Warum hier und nicht in einer Markdown-Datei: eine VM-Global ist im MCP sonst
+ * voellig unsichtbar (sie ist kein Dog, kein Node, kein Tool). Wer sie registriert,
+ * beschreibt sie im selben Atemzug -- so kann der MCP sie ungefragt ankuendigen,
+ * statt dass ein Agent sie erraten oder sich einen Ersatz bauen muss.
+ */
+const vmGlobalCapabilityDocs: Map<string, string> = new Map();
 
 /**
  * Eine VM-Global-Capability registrieren. Idempotent unter gleichem Namen --
@@ -74,8 +82,24 @@ const vmGlobalCapabilities: Map<string, VmGlobalCapabilityFactory> = new Map();
 export function registerVmGlobalCapability(
     name: string,
     factory: VmGlobalCapabilityFactory,
+    doc?: string,
 ): void {
     vmGlobalCapabilities.set(name, factory);
+    if (typeof doc === 'string' && doc.trim().length > 0) {
+        vmGlobalCapabilityDocs.set(name, doc.trim());
+    }
+}
+
+/**
+ * Was im VM-Sandkasten neben `fetch` und `console` bereitsteht -- Name plus
+ * Kurzdoku. Der MCP rendert daraus seinen Werkzeugkasten-Brief, damit eine neue
+ * Capability automatisch angekuendigt wird statt in einer Doku zu verrotten.
+ */
+export function listVmGlobalCapabilities(): Array<{ name: string; doc: string | null }> {
+    return [...vmGlobalCapabilities.keys()].map((name) => ({
+        name,
+        doc: vmGlobalCapabilityDocs.get(name) ?? null,
+    }));
 }
 
 /**
@@ -83,6 +107,7 @@ export function registerVmGlobalCapability(
  * Liefert true, wenn etwas geloescht wurde.
  */
 export function unregisterVmGlobalCapability(name: string): boolean {
+    vmGlobalCapabilityDocs.delete(name);
     return vmGlobalCapabilities.delete(name);
 }
 

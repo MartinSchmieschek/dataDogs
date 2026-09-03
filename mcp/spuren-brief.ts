@@ -30,9 +30,14 @@ export const SPUREN_TASK_FIELD_HINT =
 export const SPUREN_NODES_FIELD_HINT =
     'Pro dogIds-Eintrag ein kurzer comment — ein Satz, warum dieser Hund für den Wunsch (nicht JSON-Vertrag).';
 
-export function buildMcpInitializeInstructions(hasFullSkill: boolean): string {
+export function buildMcpInitializeInstructions(hasFullSkill: boolean, werkzeugkasten?: string): string {
     const tail = hasFullSkill
         ? '\n\n---\nVollständiger MCP-Guide (Ton, Workflows, Sandbox, Beispiele): Resource `datadogs://skill`.'
         : '';
-    return SPUREN_AGENTEN_ANWEISUNG_KURZ + tail;
+    // Der Werkzeugkasten steht VOR der Spuren-Pflicht: er wird gebraucht, bevor gebaut wird,
+    // die Spuren erst danach.
+    const kasten = typeof werkzeugkasten === 'string' && werkzeugkasten.length > 0
+        ? werkzeugkasten + '\n\n---\n\n'
+        : '';
+    return kasten + SPUREN_AGENTEN_ANWEISUNG_KURZ + tail;
 }

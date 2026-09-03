@@ -3,7 +3,7 @@
 // Each respects the visibility/ownership rules; super-user (dev mode) bypasses.
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
-import { type ToolDef, type ToolDeps, ok, fail, resolveTsCode } from './types';
+import { type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
 
@@ -13,7 +13,11 @@ const KENNEL_TRACE_NODE_SCHEMA = {
     required: ['id'],
     additionalProperties: false,
     properties: {
-        id: { type: 'string', description: 'dogIds entry: lineageId, version GUID, or base:Name' },
+        id: {
+            type: 'string',
+            description:
+                'dogIds entry: lineageId, version GUID, or base:Name. In build_kennel the dogs are created in the very same call, so use the sibling syntax "@DisplayName" (or the bare displayName) — it is resolved to the fresh lineageId for you.',
+        },
         x: { type: 'number', description: 'Wave-View canvas X (optional)' },
         y: { type: 'number', description: 'Wave-View canvas Y (optional)' },
         comment: {
@@ -50,6 +54,45 @@ const KENNEL_TRACE_FIELDS = {
         items: KENNEL_TRACE_EDGE_SCHEMA,
     },
 } as const;
+
+/**
+ * Was an Spuren wirklich haengengeblieben ist -- und was fehlt.
+ *
+ * Die Spuren-Pflicht stand bisher nur in Prosa (MCP-`initialize`, Tool-Beschreibungen), waehrend
+ * das Schema `task`/`nodes` als optional auswies. Prosa, die ein Agent einmal beim Verbinden
+ * sieht, verliert gegen ein Schema, das "kannst du weglassen" sagt -- also wurde sie weggelassen.
+ * Ein Werkzeug-ERGEBNIS liest der Agent dagegen jedes Mal. Darum meldet jede Pack-Aenderung
+ * zurueck, was fehlt, und nennt die ids gleich so, wie sie fuer update_kennel gebraucht werden.
+ *
+ * Bewusst KEIN harter Zwang ueber `required`: ein erzwungenes, leeres Pflichtfeld ist schlechter
+ * als eine ehrliche Luecke -- und wuerde jeden bestehenden Aufrufer brechen.
+ */
+function spurenReport(task: unknown, nodes: unknown, dogIds: unknown) {
+    const ids: string[] = Array.isArray(dogIds) ? dogIds.filter((d): d is string => typeof d === 'string') : [];
+    const hasTask = typeof task === 'string' && task.trim().length > 0;
+    const list: any[] = Array.isArray(nodes) ? nodes : [];
+    const commented = new Set(
+        list
+            .filter((n) => n && typeof n.comment === 'string' && n.comment.trim().length > 0)
+            .map((n) => String(n.id)),
+    );
+    const missingComments = ids.filter((id) => !commented.has(id));
+    const complete = hasTask && missingComments.length === 0;
+    return {
+        complete,
+        task: hasTask ? 'gesetzt' : 'FEHLT',
+        commentedDogs: `${ids.length - missingComments.length}/${ids.length}`,
+        missingComments,
+        ...(complete
+            ? {}
+            : {
+                  hint:
+                      'Spuren unvollstaendig. Bevor du "fertig" meldest: update_kennel mit ' +
+                      (hasTask ? '' : 'task (Wunsch in vier Bloecken) und ') +
+                      'nodes:[{id, comment}] fuer die oben genannten ids nachreichen.',
+              }),
+    };
+}
 
 /**
  * Inline MCP-AuthCtx -> VmGlobalCapabilityContext adapter.
@@ -261,6 +304,7 @@ export function getKennelTools(): ToolDef[] {
                     name: d?.name,
                     dogCount: Array.isArray(d?.dogIds) ? d.dogIds.length : 0,
                     visibility: d?.visibility ?? 'public',
+                    spuren: spurenReport(d?.task, d?.nodes, d?.dogIds),
                 });
             },
         },
@@ -377,6 +421,7 @@ export function getKennelTools(): ToolDef[] {
                     name: d?.name,
                     dogCount: Array.isArray(d?.dogIds) ? d.dogIds.length : 0,
                     visibility: d?.visibility ?? 'public',
+                    spuren: spurenReport(d?.task, d?.nodes, d?.dogIds),
                 });
             },
         },
@@ -739,8 +784,28 @@ async function buildKennel(
             kennelInput.defaultBody = args.defaultBody;
         }
         if (typeof args.task === 'string') kennelInput.task = args.task;
-        if (Array.isArray(args.nodes)) kennelInput.nodes = args.nodes;
-        if (Array.isArray(args.edges)) kennelInput.edges = args.edges;
+        // Spuren-ids aufloesen: bei build_kennel entstehen die Hunde ERST in diesem Aufruf -- der
+        // Agent kann ihre lineageIds unmoeglich kennen, sein einziger Griff ist der displayName
+        // (wie bei parentsRequired auch, dort per "@Name"). Ohne diese Aufloesung landen die
+        // Kommentare an ids, die in dogIds nie vorkommen: gespeichert, aber an nichts gehaengt.
+        // Alles Unbekannte bleibt unveraendert (lineageId, Version-GUID, base:Name).
+        const resolveTraceId = (rawId: unknown): unknown => {
+            if (typeof rawId !== 'string' || rawId.length === 0) return rawId;
+            const key = rawId.startsWith('@') ? rawId.slice(1) : rawId;
+            return siblingMap.get(key) ?? rawId;
+        };
+        if (Array.isArray(args.nodes)) {
+            kennelInput.nodes = args.nodes.map((n: any) =>
+                n && typeof n === 'object' ? { ...n, id: resolveTraceId(n.id) } : n,
+            );
+        }
+        if (Array.isArray(args.edges)) {
+            kennelInput.edges = args.edges.map((e: any) =>
+                e && typeof e === 'object'
+                    ? { ...e, fromId: resolveTraceId(e.fromId), toId: resolveTraceId(e.toId) }
+                    : e,
+            );
+        }
         const kennelWithDefaults = applyCreateDefaults(kennelInput, ctx);
         const kennelResult = await deps.kennelsController.create(kennelWithDefaults);
         if (!kennelResult.ok) {
@@ -857,12 +922,24 @@ async function buildKennel(
             }
         }
 
+        // Waechter: build_kennel legt die Dogs selbst an (nicht ueber das create_node-Tool),
+        // also wird hier geprueft. Rein beratend -- der Bau laeuft, der Hinweis steht in der Antwort.
+        const hinweise: string[] = [];
+        for (const spec of rawDogs) {
+            const code = resolvedCode.get(spec.displayName);
+            for (const h of codeHinweise(code, spec)) {
+                hinweise.push(`${spec.displayName}: ${h}`);
+            }
+        }
+
         return ok({
             kennelId,
             kennelLineageId,
             publicUrl: `/${kennelId}`,
             runUrl: `/api/kennels/${kennelId}/run`,
             dogs: builtDogs,
+            ...(hinweise.length ? { hinweise } : {}),
+            spuren: spurenReport(kennelInput.task, kennelInput.nodes, dogIds),
             ...(firstRun ? { firstRun } : {}),
         });
     } catch (err: any) {

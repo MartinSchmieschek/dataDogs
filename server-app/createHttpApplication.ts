@@ -26,6 +26,7 @@ import { createMcpRouter } from '../mcp/transports/mcp';
 import { createActionsRouter } from '../mcp/transports/openapi';
 import { KennelSnapshotCache } from '../mcp/snapshots/KennelSnapshotCache';
 import { resolveAngularBrowserDir, resolvePublicDir } from './expressPaths';
+import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
 export type CreateHttpApplicationInput = {
@@ -205,13 +206,58 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
 
-    const baseDogsList = allBaseDogs.map((dog) => ({
-        id: 'base:' + dog.name,
-        name: dog.name,
-        description: dog.description,
-        type: 'BaseDog' as const,
-        icon: dog.icon,
-    }));
+    // Abhaengigkeits-Klassen -> blanke Namen. Pacts tragen ihren wahren Namen am Konstruktor
+    // (createPact setzt ihn per defineProperty), Dog-Klassen ohnehin -- es muss also nichts
+    // instanziiert werden und nichts kann dabei werfen.
+    const dependencyNames = (list: unknown): string[] => {
+        if (!Array.isArray(list)) return [];
+        const out: string[] = [];
+        for (const dep of list) {
+            const depName = (dep as any)?.name;
+            if (typeof depName === 'string' && depName) out.push(depName);
+        }
+        return out;
+    };
+
+    // Der Vertrag muss mit: ohne parentsRequired/-Optional sieht ein Agent zwar die Namen der
+    // Hunde, kann sie aber nicht verdrahten (frueher standen hier hartcodiert leere Arrays).
+    const baseDogsList: BaseDogInfo[] = allBaseDogs.map((dog) => {
+        // Infrastruktur-Dogs tragen ihre Verdrahtungs-Anweisung als statisches Feld an der
+        // Klasse (siehe WebSocketChannelRetriever.mcpGuidance). Von dort reist sie bis in
+        // list_nodes und in den initialize-Brief -- eine Quelle, kein zweiter Ort zum Verrotten.
+        const guidance = (dog as any)?.constructor?.mcpGuidance;
+        return {
+            id: 'base:' + dog.name,
+            name: dog.name,
+            description: dog.description,
+            type: 'BaseDog' as const,
+            icon: dog.icon,
+            parentsRequired: dependencyNames((dog as any).required),
+            parentsOptional: dependencyNames((dog as any).optional),
+            ...(typeof guidance === 'string' && guidance ? { guidance } : {}),
+        };
+    });
+
+    // Pacts leben NUR in baseDogsMap, nie in allBaseDogs -- ohne sie kann ein Agent nicht
+    // erkennen, welcher Vertrag hinter einem parentsRequired-Eintrag steckt und wie er zu
+    // erfuellen ist. Deshalb wandern sie hier mit in die Entdeckungs-Liste.
+    const knownBaseDogNames = new Set(baseDogsList.map((b) => b.name));
+    for (const [dogName, DogClass] of baseDogsMap.entries()) {
+        if (knownBaseDogNames.has(dogName)) continue;
+        if ((DogClass as any)?.__isPact !== true) continue;
+        const typeDef = (DogClass as any).__pactReturnTypeDef ?? (DogClass as any).__pactSourceTypeName;
+        const shape = typeof typeDef === 'string' && typeDef ? ` Expected shape: ${typeDef}` : '';
+        baseDogsList.push({
+            id: 'base:' + dogName,
+            name: dogName,
+            description: `Pact -- a contract, not a data source. Fulfil it with a MimicDog (dogs[].imitates) or a dog that provides it.${shape}`,
+            type: 'BaseDog' as const,
+            parentsRequired: [],
+            parentsOptional: [],
+            isPact: true,
+            ...(typeof typeDef === 'string' && typeDef ? { pactTypeDef: typeDef } : {}),
+        });
+    }
     const snapshotCache = new KennelSnapshotCache();
     const toolDeps = {
         kennelsController,

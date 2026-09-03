@@ -73,6 +73,9 @@ async function start() {
     // VM-Context, ohne einen Parent zu deklarieren -- so wie er auch `fetch` und `console`
     // sieht.
     const jsonStorageService = new JsonStorageService(dbEnv.resolveJsonStorageDatabaseUrl());
+    // Die Doku reist mit der Registrierung: der MCP kuendigt jsonStore dadurch von
+    // selbst an. Ohne das ist er im MCP unsichtbar (kein Dog, kein Node, kein Tool)
+    // und ein Agent bastelt sich stattdessen eine eigene Ablage.
     registerVmGlobalCapability('jsonStore', (ctx) => {
         const userId = ctx?.userId ?? null;
         const isSuper = ctx?.isSuperUser === true;
@@ -100,7 +103,10 @@ async function start() {
                     .map((e) => ({ ...e, key: e.key.substring(prefix.length) }));
             },
         };
-    });
+    },
+        'jsonStore.get(key) / .set(key, value) / .delete(key) / .has(key) / .list() / .snapshot() — '
+        + 'persistente JSON-Ablage, direkt als Global im Dog-Code verfuegbar (kein Parent noetig, alle Methoden async). '
+        + 'Keys sind pro eingeloggtem User isoliert. Nutze sie fuer Caches und Zustand, statt dir eine eigene Ablage zu bauen.');
 
     // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
     const channelHub = new ChannelHub({

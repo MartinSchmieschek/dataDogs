@@ -27,6 +27,21 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
         WebSocketChannelRetriever.hub = hub;
     }
 
+    /**
+     * Anweisung an jeden Agenten, der ueber den MCP baut. Der MCP kuendigt sie
+     * ungefragt an (initialize) und reicht sie in list_nodes/get_node_schema mit.
+     *
+     * Warum am Dog und nicht in einer Doku-Datei: genau dieses Wissen fehlte, und
+     * Agenten haben sich daraufhin einen eigenen WebSocket in den tsCode gebaut.
+     * Am Dog kann es nicht auseinanderlaufen -- wer den Dog aendert, sieht es.
+     */
+    static readonly mcpGuidance: string =
+        'Bau NIEMALS einen eigenen WebSocket in den tsCode (kein `new WebSocket(...)`, keine ws://- oder wss://-Adresse von Hand). '
+        + 'Dieser Dog ist die Lobby. Verdrahtung: `extraDogIds: ["base:WebSocketChannelRetriever"]` MIT base:-Praefix, '
+        + 'im `parentsRequired` des Lead-Dogs dagegen OHNE Praefix als blanker Klassenname "WebSocketChannelRetriever". '
+        + 'Im Dog-Code steht er dann als Global bereit und liefert `wsUrl` (Form wss://…/api/channels?channelId=…), `channelId`, `shareUrl` und `heartbeatSec`. '
+        + 'Die channelId kommt aus dem ?channelId=-Query oder wird neu erzeugt — erfinde keinen eigenen room-Parameter.';
+
     constructor() {
         super();
         if (!WebSocketChannelRetriever.hub) {

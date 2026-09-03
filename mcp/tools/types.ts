@@ -16,6 +16,23 @@ export interface BaseDogInfo {
     description: string;
     type: 'BaseDog';
     icon?: string;
+    /**
+     * Class names this dog needs / can use. Exactly the syntax build_kennel expects in
+     * `dogs[].parentsRequired` / `parentsOptional` (bare names, no `base:` prefix).
+     * Without these an agent can list the pack but never wire it.
+     */
+    parentsRequired?: string[];
+    parentsOptional?: string[];
+    /** True when this entry is a Pact -- a contract a MimicDog or a providing dog must fulfil. */
+    isPact?: boolean;
+    /** For Pacts: the demanded shape, when the pact declares one. */
+    pactTypeDef?: string;
+    /**
+     * Binding instruction straight from the dog class (`static mcpGuidance`). Present only for
+     * infrastructure dogs an agent must NOT re-implement — it travels with the dog so it cannot
+     * drift out of sync with a separate document.
+     */
+    guidance?: string;
 }
 
 export interface ToolDeps {
@@ -77,6 +94,51 @@ export function fail(message: string): ToolResult {
  * - Both → error.
  * - Neither → error (when tsCode is required by the tool).
  */
+/**
+ * Waechter gegen die zwei Selbstbau-Fallen. Bewusst SEHR eng gefasst — eine Warnung, die
+ * auf korrektem Code losgeht, bringt nur bei, Warnungen zu ignorieren.
+ *
+ * Der Renderer-Dog DARF `new WebSocket(wsUrl)` in das HTML schreiben, das er ausliefert —
+ * die Seite im Browser muss den Socket ja oeffnen. Falsch ist es erst, wenn dabei KEIN
+ * WebSocketChannelRetriever verdrahtet ist: dann hat sich der Agent seine eigene Lobby
+ * gebaut, statt die vorhandene zu nehmen. Genau darauf und auf nichts anderes wird geprueft.
+ */
+export function codeHinweise(
+    tsCode: unknown,
+    parents: { parentsRequired?: unknown; parentsOptional?: unknown },
+): string[] {
+    if (typeof tsCode !== 'string' || tsCode.length === 0) return [];
+    const out: string[] = [];
+
+    const parentNames = [
+        ...(Array.isArray(parents.parentsRequired) ? parents.parentsRequired : []),
+        ...(Array.isArray(parents.parentsOptional) ? parents.parentsOptional : []),
+    ]
+        .filter((p): p is string => typeof p === 'string')
+        .map((p) => p.replace(/^base:/, '').replace(/^@/, ''));
+    const hasLobby = parentNames.includes('WebSocketChannelRetriever');
+
+    const usesSocket = /new\s+WebSocket\s*\(/.test(tsCode) || /\bwss?:\/\//.test(tsCode);
+    if (usesSocket && !hasLobby) {
+        out.push(
+            'Dieser Dog benutzt einen WebSocket, hat aber keinen WebSocketChannelRetriever als Parent — '
+            + 'du baust dir gerade eine eigene Lobby. Nimm die vorhandene: '
+            + 'extraDogIds: ["base:WebSocketChannelRetriever"] (MIT base:) und '
+            + 'parentsRequired: ["WebSocketChannelRetriever"] (OHNE base:). '
+            + 'Sie liefert wsUrl, channelId, shareUrl und heartbeatSec — erfinde keine eigene Adresse und keinen eigenen room-Parameter.',
+        );
+    }
+
+    if (/require\s*\(\s*['"]fs['"]\s*\)/.test(tsCode) || /\bfs\.(writeFile|readFile|appendFile)/.test(tsCode)) {
+        out.push(
+            'Dateisystem-Zugriff im Dog-Code — der VM-Sandkasten hat keins. '
+            + 'Fuer Zustand und Caches steht `jsonStore` global bereit (get/set/delete/has/list/snapshot, alle async).',
+        );
+    }
+
+    return out;
+}
+
 export function resolveTsCode(args: { tsCode?: unknown; tsCodeBase64?: unknown }): string {
     const hasRaw = typeof args.tsCode === 'string';
     const hasB64 = typeof args.tsCodeBase64 === 'string';
