@@ -51,6 +51,8 @@ export {
     registerVmGlobalCapability,
     unregisterVmGlobalCapability,
     listVmGlobalCapabilities,
+    checkSerializedDogCode,
+    describeTranspileError,
     buildVmGlobalCapabilities,
 } from './dogs/SerializedDog';
 

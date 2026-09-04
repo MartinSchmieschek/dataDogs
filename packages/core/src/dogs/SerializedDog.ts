@@ -131,6 +131,46 @@ export function buildVmGlobalCapabilities(
 }
 
 /**
+ * Aus einem Transpile-Fehler einen machen, mit dem man etwas anfangen kann.
+ *
+ * sucrase liefert "Unexpected token (1:6982)". Bei einem Dog, dessen Code eine einzige
+ * 9000-Zeichen-Zeile ist -- und genau so entsteht generierter Code --, ist das wertlos:
+ * niemand findet Zeichen 6982 durch Hinsehen. Wir schneiden die Stelle heraus und markieren
+ * sie, damit der Aufrufer den Fehler sieht statt ihn zu suchen.
+ */
+export function describeTranspileError(source: string, err: any): string {
+    const roh = err?.message ?? String(err);
+    const m = /\((\d+):(\d+)\)/.exec(roh);
+    if (!m) return roh;
+    const zeile = Number(m[1]), spalte = Number(m[2]);
+    const zeilen = (source || '').split('\n');
+    let offset = 0;
+    for (let i = 0; i < zeile - 1 && i < zeilen.length; i++) offset += zeilen[i].length + 1;
+    offset += spalte;
+    if (offset < 0 || offset > (source || '').length) return roh;
+    const von = Math.max(0, offset - 80);
+    const bis = Math.min(source.length, offset + 80);
+    const vor = source.slice(von, offset);
+    const nach = source.slice(offset, bis);
+    return `${roh}\n  Stelle (Zeichen ${offset}): ${von > 0 ? '…' : ''}${vor}⟪HIER⟫${nach}${bis < source.length ? '…' : ''}`;
+}
+
+/**
+ * Prueft Dog-Code, OHNE ihn zu speichern oder auszufuehren -- damit kaputter Code gar nicht
+ * erst zu einem Dog wird. Frueher fiel das erst im Lauf auf: das Kennel war da, der Lead tot,
+ * die oeffentliche Seite lieferte HTTP 200 mit leerem Rumpf. Wer den Dienst benutzt, soll den
+ * Fehler beim Schreiben bekommen, nicht als Raetsel danach.
+ */
+export function checkSerializedDogCode(source: string): { ok: true } | { ok: false; message: string } {
+    try {
+        sucraseTransform(source || '', { transforms: ['typescript'] });
+        return { ok: true };
+    } catch (err: any) {
+        return { ok: false, message: describeTranspileError(source || '', err) };
+    }
+}
+
+/**
  * Worker source -- a tiny script inlined via `new Worker(code, { eval: true })`.
  * Runs the spirit's incantation inside its own isolate, far from the captain's heart.
  * Native fetch/console live in the worker realm naturally; only structured-clone-safe
@@ -390,7 +430,7 @@ export class SerializedDog<T> extends Dog<T> {
             }).code;
         } catch (err: any) {
             throw new Error(
-                `SerializedDog ${this.storageId}: TypeScript transpile failed: ${err?.message ?? err}`
+                `SerializedDog ${this.storageId}: TypeScript transpile failed: ${describeTranspileError(source, err)}`
             );
         }
         return this._strippedCode;

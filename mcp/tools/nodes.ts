@@ -7,6 +7,7 @@
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
+import { checkSerializedDogCode } from '@datadogs/core';
 
 export function getNodeTools(): ToolDef[] {
     return [
@@ -232,6 +233,14 @@ export function getNodeTools(): ToolDef[] {
                 } else {
                     theRun = 'return {}';
                 }
+                // Kaputter Code wird gar nicht erst ein Dog. Frueher fiel ein Syntaxfehler erst
+                // im Lauf auf -- der Node war da, das Kennel gebaut, der Lead tot und die
+                // oeffentliche Seite lieferte HTTP 200 mit leerem Rumpf. Der Fehler gehoert
+                // hierhin, an die Schreibstelle, mit der Stelle im Code.
+                {
+                    const pruefung = checkSerializedDogCode(theRun);
+                    if (!pruefung.ok) return fail('tsCode laesst sich nicht uebersetzen: ' + pruefung.message);
+                }
                 const baseInput = {
                     displayName: String(args.displayName),
                     theRun,
@@ -284,6 +293,11 @@ export function getNodeTools(): ToolDef[] {
                     theRun = resolveTsCode(args as any);
                 } catch (err: any) {
                     return fail(err?.message ?? String(err));
+                }
+                // Auch beim Ueberschreiben: kaputter Code darf keine neue Version werden.
+                {
+                    const pruefung = checkSerializedDogCode(theRun);
+                    if (!pruefung.ok) return fail('tsCode laesst sich nicht uebersetzen: ' + pruefung.message);
                 }
                 const existingConfig = (args.serializedDogConfig as Record<string, any>) ?? {};
                 const input = {

@@ -4,6 +4,7 @@
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
+import { checkSerializedDogCode } from '@datadogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
 
@@ -647,7 +648,14 @@ async function buildKennel(
         }
         seenNames.add(dog.displayName);
         try {
-            resolvedCode.set(dog.displayName, resolveTsCode({ tsCode: dog.tsCode, tsCodeBase64: dog.tsCodeBase64 }));
+            const code = resolveTsCode({ tsCode: dog.tsCode, tsCodeBase64: dog.tsCodeBase64 });
+            // VOR dem ersten create_node pruefen -- sonst legen wir Nodes an, rollen sie gleich
+            // wieder zurueck und der Aufrufer sucht den Fehler in einem 9000-Zeichen-Einzeiler.
+            const pruefung = checkSerializedDogCode(code);
+            if (!pruefung.ok) {
+                return fail(`dogs[].tsCode von "${dog.displayName}" laesst sich nicht uebersetzen: ${pruefung.message}`);
+            }
+            resolvedCode.set(dog.displayName, code);
         } catch (err: any) {
             return fail(`dog "${dog.displayName}": ${err?.message ?? String(err)}`);
         }
