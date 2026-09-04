@@ -793,46 +793,7 @@ There is **no `shareUrl`** — the page builds the invite link itself from `loca
 3. **React to others** — `{"type":"peer-joined",peerId,shared}` / `{"type":"peer-patch",peerId,shared}` / `{"type":"peer-left",peerId}`.
 4. **Heartbeat** — send `{"type":"ping"}` every `heartbeatSec` (answer is `{"type":"pong"}`). Without a sign of life a peer is evicted after roughly three missed intervals.
 
-**Limits** (server defaults): `shared` at most **16 KB** per message, **50 peers** per channel, and an empty room is swept after **300 s**. A peer id may be up to 64 characters.
-
-### The game master — a peer that does not play
-
-A peer whose `shared.role === "gamemaster"` is **not a player**. It is the host: the character
-that started the game and handed out the invitation. It joins the channel like anyone else and
-speaks the same protocol — the only difference is what your game does with it.
-
-**Every game with a lobby must handle it:**
-
-- **Never count it.** Not in the score, not in the ranking, not in the participant counter
-  ("2 here", not "3 here"), not in the win condition, not when deciding who won. A game that
-  lets the host win by standing still is broken.
-- **Show it as the host**, not as a game piece: a banner, a small avatar bar, a speech line.
-  Fields it may carry — all optional: `name` (e.g. "Apollo"), `emoji` (e.g. "🍎"), `says`
-  (one short sentence to display while it is there).
-- **`says` is ephemeral.** Render the latest one; no history, no scrollback. It changes often.
-- **It may be absent.** Without a game master the game runs exactly as before. Never build a
-  rule, a screen or a start condition that requires one — it is a guest, not a dependency.
-- Its `patch` messages arrive like any other peer's. Treat them normally, just keep them out
-  of the scoring.
-
-**The world lives in the game master's `shared`.** Level layout, current round, the question
-being asked, the rules, a countdown — everything that belongs to no single player — goes into
-`shared.world` of the game-master peer. Players **read** it and follow; they never write it.
-That is what lets the host change the world instead of only talking about it: one `patch` from
-the game master and every client sees the new level.
-
-- **Player peers keep only what is theirs**: own score, own position, own name. Nothing global.
-- **Find the world by role, not by id.** Read it from the peer whose `shared.role` is
-  `"gamemaster"` — its `peerId` is not something you can hardcode.
-- **No game master, no world.** Fall back to your own default so the game still runs alone.
-- **Watch the size.** `shared` is capped at 16 KB, and the cap is enforced by **closing the
-  connection**, not by dropping the message — an oversized world kicks the host out of its own
-  lobby, and a reconnecting host loops. Keep the world compact: a seed and a rule set, not a
-  rendered board; one question with four options, not the whole catalogue. Per-frame data never
-  belongs in there.
-
-Build this in whenever the game has a lobby, without being asked. The host is the reason the
-players are there: it minted the `channelId`, it showed the QR code, and it is watching.
+**Limits** (server defaults): `shared` at most **16 KB** per message, **50 peers** per channel, and an empty room is swept after **300 s**. A peer id may be up to 64 characters. **The size limit is enforced by closing the connection, not by dropping the message** (`maxPayload` in the hub): send one oversized frame and you are disconnected with 1009 — a client that reconnects and resends the same payload loops. Measure before you send.
 
 Use it for group navigation ("where are the others?"), scavenger hunts, shared quizzes, live meetups — anything where "together" is the point. Button reads like an invitation ("invite friends"), shows a live counter ("3 here").
 
