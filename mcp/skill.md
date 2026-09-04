@@ -70,15 +70,32 @@ End with one line: *"What shall we hunt?"* or similar.
 
 The greeting is for the **opening**, not every turn.
 
-## What you can do — 17 tools
+## What you can do — 47 tools
 
-**The pack (kennels):** `list_kennels`, `get_kennel`, `create_kennel`, `update_kennel`, `delete_kennel`, `run_kennel`, `execute_kennel`. A kennel is a reusable API endpoint — same hounds, different game depending on query parameters or body.
+**Start here — discovery, not guessing.** `list_nodes` is the inventory: every entry carries its `description`, its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax `build_kennel` wants) and, for Pacts, `isPact: true` plus the demanded shape in `pactTypeDef`. Some entries also carry a `guidance` field — a binding instruction straight from the dog class, for infrastructure you must **not** re-implement. Search it by keyword (name, displayName and description are matched) instead of inventing class names. `describe_tool` gives you any tool's full schema.
 
-**The dogs (nodes):** `list_nodes`, `create_node`, `save_node`, `get_node_versions`. Two breeds hunt: **Hunters** (BaseDogs, hardcoded) and **Breeds** (SerializedDogs, code-defined, versioned, sandboxed).
+**Building the pack:** `build_kennel` is the primary path — it creates a fresh set of Breeds **and** assembles the kennel in one atomic call, with rollback on failure. Prefer it over hand-wiring `create_node` + `create_kennel`. Then `update_kennel`, `delete_kennel`, `run_kennel`, `execute_kennel`, `refresh_kennel_snapshot`, `wait_for_kennel_snapshot`, `list_kennels`, `get_kennel`, `create_kennel`. A kennel is a reusable API endpoint — same hounds, different game depending on query parameters or body.
+
+**Kennel detail accessors** (the header stays small, the heavy fields are fetched on demand): `get_kennel_default_body`, `get_kennel_default_query`, `get_kennel_task`, `get_kennel_layout`, `get_kennel_versions`.
+
+**The dogs (nodes):** `list_nodes`, `get_node`, `get_node_schema`, `create_node`, `save_node`, `get_node_versions`. Two breeds hunt: **Hunters** (BaseDogs, hardcoded) and **Breeds** (SerializedDogs, code-defined, versioned, sandboxed). Pacts appear in the listing too — a Pact is a contract, never called directly: fulfil it with a MimicDog (`dogs[].imitates`) or a dog that provides it.
+
+**Inspecting a run (cheap, focused):** `get_kennel_snapshot`, `get_kennel_snapshot_summary`, `get_kennel_snapshot_lead_result`, `get_snapshot_graph`, `get_snapshot_layout`, `get_snapshot_errors`, `list_snapshot_waves`, `find_snapshot_dogs`, `get_snapshot_lead_dependency_path` and the per-dog readers `get_snapshot_dog`, `_result`, `_code`, `_error`, `_chain`, `_parents`, `_typedef`, `_vmcontext`, `_read_by`, `_read_from`.
 
 **Access (ACL):** `grant_access`, `revoke_access`, `release_ownership`, `list_collaborators`. See the visibility section below for who can call what.
 
-**Meta:** `get_readme` (call once at start), `health_check`.
+**Meta:** `get_readme` (call once at start), `health_check`, `describe_tool`.
+
+## Cold start — the machine sleeps (MANDATORY handling)
+
+The service runs on **Render and sleeps when idle**. The first call after a pause can take **30–60 s or time out** while it spins up. That is warm-up, not a broken pack:
+
+1. **Wake it first.** Open every session with a cheap `health_check` before real work. A slow first response *is* the warm-up.
+2. **A first-call timeout is NOT a failure.** If `build_kennel` / `run_kennel` / `execute_kennel` / `delete_kennel` times out on the first try, wait a moment and **retry once**.
+3. **The operation may have completed anyway.** A timeout often means the server finished but the response was lost on the way. **Re-check with `list_kennels` / `get_kennel` before assuming failure** — never blindly re-create or re-delete.
+4. **Say so.** Tell the user you are waiting on a cold start, so a slow first hunt does not read as an error.
+
+**Checking a public kennel URL: read the body, not the status code.** A kennel whose lead failed still answers **HTTP 200 with an empty body**. A bare status check reports "live" for a broken pen. Fetch `…/api/kennels/<id>/run` instead — the failing dog's error is in there in plain text.
 
 ## Visibility & access
 
@@ -694,6 +711,91 @@ const tsCodeBase64 = Buffer.from(myCode, 'utf8').toString('base64');
 ```
 
 Pflicht: genau eins von `tsCode` ODER `tsCodeBase64` -- beide ist ein Fehler, keins ist ein Fehler (ausser bei `create_node` wo es per Default `return {}` gibt).
+
+## Slop mode — the world is the game (live, shareable experiences)
+
+Some hunts should not end in a JSON blob or a table — they should end in **a place the user's friends can visit**. When the user wants to *experience* the data (weather, transit, a nature walk, a city, a game) rather than read it, build the lead as a live, shareable app, not a dashboard.
+
+- **Don't show data — show experience.** They don't want a weather table, they want to know if they'll get wet. Not departure times — a bus moving on a map. Not species counts — a walk with discoveries.
+- **Share is king.** Every kennel is a URL. A share button is mandatory (Web Share API + clipboard fallback). Whoever opens the link sees the same live data — no login, no setup.
+- **Less text, more signal.** A green dot IS the start. A bus emoji IS the bus. A rain bar speaks for itself. Show, don't explain.
+- **Pitch before you build.** Describe the experience in two or three visual sentences and get a yes first — a rebuild is expensive.
+- **Entity dogs COMPUTE, they don't just map.** Interpolate a bus position from the current time, score "chill" from weather+air+trails, find the rain windows in an hourly forecast, filter departures by direction. Real logic per dog; snapshot each one (`get_snapshot_dog_result`) before wiring the lead.
+- **The lead is a full single-page app** (vanilla JS, no frameworks): Leaflet with dark tiles (`cartocdn/dark_all`), animated markers via `setInterval`, live GPS via `navigator.geolocation.watchPosition` (`maximumAge: 5000` — don't drain the battery), timelines/progress bars, share button always thumb-reachable, entity-dog data embedded via `JSON.stringify()`.
+
+### Target device — a phone in your hand
+
+Built for a phone held vertically while walking. The map fills the screen; a thin bottom bar (≤80 px) carries status. No sidebars, no desktop splits, no settings panels — **parameters live in the URL**. Touch targets ≥44 px, body font ≥14 px, **dark by default** so it doesn't blind you when you pull it from your pocket. Tap a marker → popup; pinch to zoom — that's the whole UI. Cap markers to what matters (50 buildings, not 500); refresh moving things every ~5 s, not every 100 ms.
+
+### Visual language
+
+| Element | Rendering |
+|---|---|
+| Start | green glowing circle, no label |
+| Destination | red circle |
+| Route | white dashed polyline |
+| Bus / tram | 🚌/🚇 as `L.divIcon`, animated along the route |
+| Building | small subtle gray circle |
+| POI | small yellow circle |
+| Your position | green pulsing GPS dot |
+| Rain | timeline bar: green=dry, blue=light, indigo=medium, purple=heavy |
+| Share | fixed pill, top-right |
+
+### What NOT to build in slop mode
+
+Dashboards with cards and numbers · text answers where a map would do · Markdown reports (unless explicitly asked) · desktop-first layouts · scrollable content below the map · filter dropdowns and settings panels. Build things people open with one thumb while walking.
+
+### HTML escaping — the VM eats your quotes
+
+Interactive leads push the VM's string handling hardest. Beyond the base rule (always split `<script>`/`</script>` as `"<" + "script>"`):
+
+- **Double quotes in attributes** are safe inside single-quoted JS strings: `html += '<div class="card">';`
+- **Nested JS strings** (inside `onclick`, or `L.divIcon({html:"…"})`) need escaped double quotes: `var icon = L.divIcon({html: "<div style=\"color:red\">X</div>"});`
+- **Inject dog data** via `'var busData=' + JSON.stringify(busData) + ';'` — `JSON.stringify` escapes internal quotes correctly.
+- **Sanitize foreign text** (OSM/Wiki names) before dropping it into raw HTML. Leaflet's `.bindPopup()` / `.bindTooltip()` escape text for you — the danger is raw string building.
+- `°` and emoji are UTF-8 safe. `&` in a URL must be `&amp;` **only** inside an HTML attribute, never in a JS string.
+
+## Together in one session — the lobby and its protocol
+
+Two share modes; the lead picks one.
+
+**Link-share (default)** — everyone sees the same live data. The URL *is* the experience. `navigator.share()` with clipboard fallback.
+
+**Session-share** — the visitors see *each other*. This is what `WebSocketChannelRetriever` is for. **Never hand-roll a WebSocket and never invent a room parameter** — the lobby already exists, and a dog that opens its own socket without it is a bug the server will point out in the tool response.
+
+**Wiring** (note the asymmetry, it is easy to get wrong):
+
+```json
+{
+  "extraDogIds": ["base:WebSocketChannelRetriever"],
+  "dogs": [{ "displayName": "Renderer", "parentsRequired": ["WebSocketChannelRetriever"] }]
+}
+```
+
+`extraDogIds` takes the **`base:`-prefixed** id; `parentsRequired` takes the **bare class name**. Inside the dog it is then available as a global and yields:
+
+| Field | Meaning |
+|---|---|
+| `channelId` | the room. From `?channelId=` in the query, or freshly minted |
+| `wsUrl` | `"/api/channels?channelId=…"` — relative unless `PUBLIC_API_BASE_URL` is set, then an absolute `ws(s)://` URL |
+| `heartbeatSec` | recommended ping interval, currently 20 |
+| `created` | true when this call minted the room |
+| `peers` | the current participants with their `shared` objects |
+
+There is **no `shareUrl`** — the page builds the invite link itself from `location.origin + location.pathname + "?channelId=" + channelId`, so every kennel shares its own path.
+
+**Wire protocol.** Every message is a JSON object with a `type` field. Embed `wsUrl` and `channelId` into the HTML, then in the browser:
+
+1. **Connect** — `new WebSocket(wsUrl)` (prefix protocol/host from `location` when `wsUrl` is relative). Immediately on `onopen` send
+   `{"type":"join","peerId":"<own random id>","shared":{…initial state as an OBJECT…}}`.
+   You receive `{"type":"snapshot","peers":[{peerId,lastSeen,shared},…]}` — only to you. Build your view of the room from it.
+2. **Change your own state** — `{"type":"patch","peerId":"<your own>","shared":{…the COMPLETE new state…}}`. `shared` is always **replace**, never a per-key merge. Objects only, no arrays or primitives at the top level.
+3. **React to others** — `{"type":"peer-joined",peerId,shared}` / `{"type":"peer-patch",peerId,shared}` / `{"type":"peer-left",peerId}`.
+4. **Heartbeat** — send `{"type":"ping"}` every `heartbeatSec` (answer is `{"type":"pong"}`). Without a sign of life a peer is evicted after roughly three missed intervals.
+
+**Limits** (server defaults): `shared` at most **16 KB** per message, **50 peers** per channel, and an empty room is swept after **300 s**. A peer id may be up to 64 characters.
+
+Use it for group navigation ("where are the others?"), scavenger hunts, shared quizzes, live meetups — anything where "together" is the point. Button reads like an invitation ("invite friends"), shows a live counter ("3 here").
 
 ## Workflows
 
