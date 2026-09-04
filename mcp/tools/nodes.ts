@@ -205,7 +205,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'create_node',
             description:
-                'Creates a new Breed (SerializedDog). Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to share. Parents are referenced as either "ClassName" for Hunters or a lineageId GUID for Breeds. Use refresh_kennel_snapshot afterwards to see the run state. Provide EITHER tsCode (raw string) OR tsCodeBase64 (utf8 base64) — the base64 form avoids JSON-escape hell for code with backticks, newlines, template literals or PowerShell-hostile quoting.',
+                'Creates a new Breed (SerializedDog). **Keep a dog small** — one dog does one nameable thing; HTML fragments, the script block, data preparation and composition each get their own dog and the lead puts them together. The response tells you when a dog has grown too large. Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to share. Parents are referenced as either "ClassName" for Hunters or a lineageId GUID for Breeds. Use refresh_kennel_snapshot afterwards to see the run state. Provide EITHER tsCode (raw string) OR tsCodeBase64 (utf8 base64) — the base64 form avoids JSON-escape hell for code with backticks, newlines, template literals or PowerShell-hostile quoting.',
             inputSchema: {
                 type: 'object',
                 required: ['displayName'],

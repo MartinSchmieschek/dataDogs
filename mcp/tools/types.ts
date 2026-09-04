@@ -103,12 +103,36 @@ export function fail(message: string): ToolResult {
  * WebSocketChannelRetriever verdrahtet ist: dann hat sich der Agent seine eigene Lobby
  * gebaut, statt die vorhandene zu nehmen. Genau darauf und auf nichts anderes wird geprueft.
  */
+/**
+ * Ab wann ein Dog zu gross ist. Erfahrungswerte aus echten Bauten: unter ~4000 Zeichen
+ * macht ein Dog verlaesslich eine benennbare Sache; darueber sind es fast immer mehrere,
+ * und ab ~8000 wird jeder Fehler zum Totalschaden -- ein einziges falsches Zeichen toetet
+ * die ganze Ausgabe, und jede Korrektur heisst "den ganzen Block neu erzeugen".
+ */
+const DOG_GROSS = 4000;
+const DOG_ZU_GROSS = 8000;
+
 export function codeHinweise(
     tsCode: unknown,
     parents: { parentsRequired?: unknown; parentsOptional?: unknown },
 ): string[] {
     if (typeof tsCode !== 'string' || tsCode.length === 0) return [];
     const out: string[] = [];
+
+    // Groesse zuerst -- das ist der Hinweis, der am meisten spart.
+    if (tsCode.length >= DOG_GROSS) {
+        const dringend = tsCode.length >= DOG_ZU_GROSS;
+        out.push(
+            `Dieser Dog ist ${tsCode.length} Zeichen gross${dringend ? ' -- das ist zu viel' : ''}. `
+            + 'Ein Dog tut EINE benennbare Sache; ab dieser Groesse sind es fast immer mehrere. '
+            + 'Teile ihn auf: HTML-Fragmente (Kopf, Liste, Legende), der Script-Block, die '
+            + 'Datenaufbereitung und das Zusammensetzen sind je ein eigener Dog -- der Lead setzt sie '
+            + 'zusammen. Das ist keine Kosmetik: in einem grossen Dog toetet ein einziges falsches '
+            + 'Zeichen die ganze Ausgabe, du kannst die Beute der Teile nicht einzeln ansehen, und '
+            + 'jede Korrektur bedeutet, den kompletten Block neu zu erzeugen.'
+            + (dringend ? ' Bei dieser Groesse: aufteilen, bevor du weitermachst.' : ''),
+        );
+    }
 
     const parentNames = [
         ...(Array.isArray(parents.parentsRequired) ? parents.parentsRequired : []),

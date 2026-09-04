@@ -41,6 +41,15 @@ export function buildWerkzeugkasten(baseDogsList: BaseDogInfo[]): string {
     }
 
     lines.push(
+        '### Ein Dog bleibt klein',
+        'Ein Dog tut EINE benennbare Sache. Kannst du nicht in einem Satz sagen, was er liefert, sind es zwei Dogs. '
+        + 'Baue niemals alles in einen grossen Dog: HTML-Fragmente, der Script-Block, die Datenaufbereitung und das '
+        + 'Zusammensetzen gehoeren getrennt, der Lead fuegt sie zusammen. In einem grossen Dog toetet ein einziges '
+        + 'falsches Zeichen die ganze Ausgabe, die Teile lassen sich nicht einzeln pruefen, und jede Korrektur heisst '
+        + '"den kompletten Block neu erzeugen". Der Dienst sagt dir in seiner Antwort, wenn ein Dog zu gross geworden ist.',
+        '',
+    );
+    lines.push(
         'Alles Weitere: `list_nodes` fragen — dort steht zu jedem Eintrag die `description`, '
         + 'der Vertrag `parentsRequired`/`parentsOptional` (blanke Klassennamen, genau die Syntax von `build_kennel`) '
         + 'und bei Pacts (`isPact: true`) die geforderte Form. Suche dort nach Stichworten statt zu raten; '
