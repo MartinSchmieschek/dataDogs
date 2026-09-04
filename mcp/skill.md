@@ -167,6 +167,50 @@ If a single-source pen exists, the lead may render directly. But the **moment a 
 
 **Why:** entity dogs are reusable across pens (one fat lead is locked to its context); failures localize per entity (you grep `WeatherData` and find it instantly); versioning evolves separately for data and renderer; multi-consumer (one client wants only the weather slice, another wants the full bundle).
 
+### Aggregation is staged — the lead is only the last step
+
+Three waves is the **minimum** shape, not the maximum. Whenever a domain needs more than one
+transformation, give each step its own dog and chain them. Intermediate aggregates are dogs
+like any other; they just happen to sit between the entity layer and the lead.
+
+```
+Wave 1  RouteFetch  StopFetch  WeatherFetch      ← hunters, raw
+Wave 2  RouteData   StopData   WeatherData       ← one entity per domain
+Wave 3  TripPlan                                 ← intermediate: route + stops -> a journey
+Wave 4  TripView (lead)                          ← composes journey + weather, formats
+```
+
+`TripPlan` is not a lead and not a hunter. It is the answer to one question ("what is the
+journey?"), and it exists so that neither the entity dogs nor the lead have to know the whole
+picture. Split whenever a step answers a question you could name out loud.
+
+### A renderer may be split too
+
+"HTML belongs in a renderer dog" does not mean *one* renderer dog. A page is made of parts, and
+parts are dogs:
+
+- an **HTML fragment** — header, card list, legend — each returning a string
+- a **vector/SVG block** — a chart, a map overlay, an icon set, computed from data
+- a **script blob** — the client-side logic as one string, kept away from the markup
+- the **lead** — takes the fragments and puts the page together
+
+The gain is the same as everywhere else: a broken legend is one dog, not one line inside 400.
+You can look at the legend's spoils on its own and see immediately whether the fault is in the
+data or in the markup.
+
+### Every dog is slim, and the hierarchy is the documentation
+
+- **Slim applies to all of them, not only the lead.** A dog does one nameable thing. If you
+  cannot say in one sentence what it yields, it is two dogs.
+- **The dependency graph must read like an assembly instruction.** Someone who only looks at the
+  `parentsRequired` chains should be able to say how the result comes together, without opening
+  a single dog's code. If the graph does not tell that story, the split is wrong — usually
+  because one dog quietly does two jobs, or because a step that has a name has no dog.
+- **Name after the answer, not after the mechanics.** `TripPlan`, `LegendSvg`, `WeatherData` —
+  not `Helper2`, `Transform`, `Final`. The name is half the hierarchy.
+- `get_snapshot_graph` and `get_snapshot_dog_chain` show you the shape you actually built. If it
+  surprises you, it will surprise the next reader too.
+
 ## Datenaggregation getrennt von Ansicht
 
 **Gute Daten und gute UI sind zwei Jagden.** Sammle und normalisiere in einem Pen; rendere in anderen. Ein Aggregat, viele Darstellungen — jede Ansicht liest dieselbe Beute, nicht ihre eigene Pipeline.
