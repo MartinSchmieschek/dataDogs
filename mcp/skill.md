@@ -189,10 +189,20 @@ picture. Split whenever a step answers a question you could name out loud.
 "HTML belongs in a renderer dog" does not mean *one* renderer dog. A page is made of parts, and
 parts are dogs:
 
-- an **HTML fragment** — header, card list, legend — each returning a string
+- **HTML fragments** — header, card list, legend — each returning a string
 - a **vector/SVG block** — a chart, a map overlay, an icon set, computed from data
-- a **script blob** — the client-side logic as one string, kept away from the markup
-- the **lead** — takes the fragments and puts the page together
+- **the client logic, split by responsibility** — the network glue (connect, join, patch), the
+  rules (rounds, scoring, win condition) and the view (rendering, DOM) answer three different
+  questions, so they are three dogs. Each returns its piece of the source; the lead concatenates
+  them into one `<script>`.
+- the **lead** — takes the parts and puts the page together
+
+**Split by responsibility, not by file type.** Markup-here / script-there is a *mechanical* cut:
+it moves characters around without reducing how many jobs a dog does. A 5000-character "script
+dog" holding the socket, the rules, the timer and the rendering is the same monolith as before,
+only with the HTML peeled off. The test never changes — say in one sentence what this dog
+answers. *"It is the script"* is not an answer; *"it keeps the connection and publishes my state"*
+is.
 
 The gain is the same as everywhere else: a broken legend is one dog, not one line inside 400.
 You can look at the legend's spoils on its own and see immediately whether the fault is in the
