@@ -112,6 +112,28 @@ export function fail(message: string): ToolResult {
 const DOG_GROSS = 4000;
 const DOG_ZU_GROSS = 8000;
 
+/**
+ * Welche Zustaendigkeiten in einem Dog stecken.
+ *
+ * Kein Parser, sondern grobe Spuren -- aber sie genuegen fuer die Frage, die zaehlt: haelt
+ * dieser Dog EINEN Zweck, oder sind mehrere Klassen darin verklebt? Ein realer Fall aus der
+ * Praxis: ein Dog mit 5508 Zeichen und 14 Funktionen trug Socket, Spielregeln, Rendering,
+ * Rollenlogik und einen Timer -- unter jeder Groessenschwelle unauffaellig und trotzdem
+ * fuenf Dogs. Nur starke, eindeutige Marker, damit sauberer Code nicht angemeckert wird.
+ */
+function erkannteZustaendigkeiten(code: string): string[] {
+    const treffer = (rx: RegExp) => (code.match(rx) || []).length;
+    const bereiche: Array<[string, number, number]> = [
+        ['Netz/Kanal', treffer(/new\s+WebSocket|"join"|"patch"|"peer-|\bwss?:\/\//g), 1],
+        ['Persistenz', treffer(/jsonStore\s*\./g), 1],
+        ['Ansicht/DOM', treffer(/getElementById|querySelector|innerHTML|createElement|addEventListener/g), 2],
+        ['Markup-Bau', treffer(/["'`]<(div|html|button|span|section|canvas|svg)\b/g), 3],
+        ['Zeit/Takt', treffer(/setInterval|setTimeout|requestAnimationFrame/g), 1],
+        ['Spielstand/Regeln', treffer(/\b(score|punkte|runde|round|gewinn|winner|sieger)\b/gi), 3],
+    ];
+    return bereiche.filter(([, n, min]) => n >= min).map(([name]) => name);
+}
+
 export function codeHinweise(
     tsCode: unknown,
     parents: { parentsRequired?: unknown; parentsOptional?: unknown },
@@ -119,7 +141,22 @@ export function codeHinweise(
     if (typeof tsCode !== 'string' || tsCode.length === 0) return [];
     const out: string[] = [];
 
-    // Groesse zuerst -- das ist der Hinweis, der am meisten spart.
+    // Zustaendigkeiten zuerst -- das ist das eigentliche Mass. Die Zeichenzahl ist nur ein
+    // Symptom: ein Dog von 5500 Zeichen kann sauber sein, und einer von 2000 kann drei Klassen
+    // enthalten. Was zaehlt, ist ob er EINE Frage beantwortet.
+    const bereiche = erkannteZustaendigkeiten(tsCode);
+    if (bereiche.length >= 3 || (bereiche.length === 2 && tsCode.length >= 2500)) {
+        out.push(
+            `Dieser Dog beantwortet mehrere Fragen: ${bereiche.join(', ')}. `
+            + 'Ein Dog ist wie eine Klasse -- zusammengehoerige Funktionen um EINEN Zweck. Mehrere '
+            + 'Funktionsgruppen ohne gemeinsamen Zweck sind mehrere Klassen in einer Datei, und '
+            + 'genau das sind hier mehrere Dogs. Trenn nach Zustaendigkeit, nicht nach Dateityp: '
+            + 'Markup hierhin und Script dorthin verschiebt nur Zeichen. '
+            + 'Die Probe: sag in EINEM Satz, was dieser Dog beantwortet. Gelingt es nicht, teile ihn.',
+        );
+    }
+
+    // Groesse als zweites -- ein Symptom, kein Mass.
     if (tsCode.length >= DOG_GROSS) {
         const dringend = tsCode.length >= DOG_ZU_GROSS;
         out.push(
