@@ -940,13 +940,16 @@ async function buildKennel(
             }
         }
 
+        // Hinweise ZUERST. Sie standen bisher hinter der dogs-Liste und gingen damit in jeder
+        // gekuerzten Ansicht unter -- ein Log, das Tool-Antworten beschneidet, zeigte nur noch
+        // lineageIds. Was gelesen werden soll, gehoert nach oben.
         return ok({
+            ...(hinweise.length ? { hinweise } : {}),
             kennelId,
             kennelLineageId,
             publicUrl: `/${kennelId}`,
             runUrl: `/api/kennels/${kennelId}/run`,
             dogs: builtDogs,
-            ...(hinweise.length ? { hinweise } : {}),
             spuren: spurenReport(kennelInput.task, kennelInput.nodes, dogIds),
             ...(firstRun ? { firstRun } : {}),
         });
