@@ -31,10 +31,17 @@ export interface ChannelState {
      *   der Client setzt Protokoll/Host aus `location` davor.
      * - Mit PUBLIC_API_BASE_URL: absolute ws(s)://-URL.
      * Der Share-Link wird NICHT vom Dog erzeugt — der Client baut ihn aus
-     * `location.origin + location.pathname + "?channelId=" + channelId`,
+     * `location.origin + location.pathname + channelQuery`,
      * damit jeder Kennel der den Dog einbindet, seinen eigenen Pfad teilen kann.
      */
     wsUrl: string;
+    /** Name des Query-Parameters, der die Einladung in eine Lobby traegt. */
+    channelParam: "channelId";
+    /**
+     * Fertiger Einladungs-Query: `"?channelId=" + encodeURIComponent(channelId)`.
+     * Immer gefuellt — auch wenn die Lobby mit diesem Aufruf frisch und zufaellig entstanden ist.
+     */
+    channelQuery: string;
     /** Aktuelle Teilnehmer inkl. ihrer shared-Objekte (zum Snapshot-Zeitpunkt). */
     peers: ChannelPeer[];
     /** Empfohlenes Heartbeat-Intervall in Sekunden fuer Clients. */

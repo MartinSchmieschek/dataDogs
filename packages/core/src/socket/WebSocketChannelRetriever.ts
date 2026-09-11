@@ -19,6 +19,9 @@ import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import { QueryRetriever } from "../platform/QueryRetriever";
 import type { ChannelState, IChannelHub } from "./IChannelHub";
 
+/** Der Query-Parameter der Einladung — derselbe, den der Hub beim Upgrade liest. */
+const CHANNEL_PARAM = "channelId";
+
 export class WebSocketChannelRetriever extends Dog<ChannelState> {
     private static hub: IChannelHub | undefined;
 
@@ -37,10 +40,12 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
      */
     static readonly mcpGuidance: string =
         'Bau NIEMALS einen eigenen WebSocket in den tsCode (kein `new WebSocket(...)`, keine ws://- oder wss://-Adresse von Hand). '
-        + 'Dieser Dog ist die Lobby. Verdrahtung: `extraDogIds: ["base:WebSocketChannelRetriever"]` MIT base:-Praefix, '
-        + 'im `parentsRequired` des Lead-Dogs dagegen OHNE Praefix als blanker Klassenname "WebSocketChannelRetriever". '
-        + 'Im Dog-Code steht er dann als Global bereit und liefert `channelId`, `wsUrl` (Form wss://…/api/channels?channelId=…), `heartbeatSec`, `created` und `peers`. '
-        + 'Einen Teilen-Link erzeugt er NICHT — den baut die Seite selbst aus location.origin + location.pathname + "?channelId=" + channelId, damit jeder Kennel seinen eigenen Pfad teilt. '
+        + 'Dieser Dog ist die Lobby. Verdrahtung: `extraDogIds: ["base:WebSocketChannelRetriever", "base:QueryRetriever"]` MIT base:-Praefix — '
+        + 'der QueryRetriever gehoert dazu, er traegt die Einladung (?channelId=) herein; fehlt er, ergaenzt ihn der Dienst. '
+        + 'Im `parentsRequired` des Lead-Dogs dagegen OHNE Praefix als blanker Klassenname "WebSocketChannelRetriever". '
+        + 'Im Dog-Code steht er dann als Global bereit und liefert `channelId`, `wsUrl` (Form wss://…/api/channels?channelId=…), `heartbeatSec`, `created`, `peers`, '
+        + '`channelParam` ("channelId") und `channelQuery` ("?channelId=…", immer gefuellt, auch bei frisch erzeugter Lobby). '
+        + 'Einen fertigen Teilen-Link erzeugt er NICHT — den baut die Seite aus location.origin + location.pathname + channelQuery, damit jeder Kennel seinen eigenen Pfad teilt. '
         + 'Die channelId kommt aus dem ?channelId=-Query oder wird neu erzeugt — erfinde keinen eigenen room-Parameter.';
 
     constructor() {
@@ -57,7 +62,7 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
     }
 
     get description(): string {
-        return "Lobby-Pfoertner: legt eine Lobby an oder tritt einer bei (channelId aus der Query). Liefert channelId, wsUrl, heartbeatSec und die aktuellen Teilnehmer mit ihren shared-Objekten.";
+        return "Lobby-Pfoertner: legt eine Lobby an oder tritt einer bei (channelId aus der Query — dafuer gehoert base:QueryRetriever in den Kennel, der Dienst ergaenzt ihn). Liefert channelId, wsUrl, heartbeatSec, channelParam, channelQuery (Teilen-Link: location.origin + location.pathname + channelQuery) und die aktuellen Teilnehmer mit ihren shared-Objekten.";
     }
 
     get icon(): string | undefined {
@@ -78,10 +83,11 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
         // Channel-Id aus QueryRetriever lesen (bereits lowercased durch QueryRetriever).
         const queryDog = season.exhausted.find(d => d.name === QueryRetriever.name);
         const query = (queryDog?.collected ?? {}) as Record<string, string>;
-        const incomingId = (query["channelid"] ?? "").trim();
+        const incomingId = (query[CHANNEL_PARAM.toLowerCase()] ?? "").trim();
 
         const channelId = incomingId || hub.newChannelId();
         const join = hub.joinOrCreate(channelId);
+        const channelQuery = `?${CHANNEL_PARAM}=${encodeURIComponent(channelId)}`;
 
         // wsUrl: absolut wenn PUBLIC_API_BASE_URL gesetzt ist, sonst relativ (Client setzt
         // Protokoll/Host aus location davor). Den Pfad besitzt der Hub und sonst niemand.
@@ -91,8 +97,8 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
         const wsPath = (hub.wsPath() || "/api/channels").replace(/\/$/, "") || "/api/channels";
         const publicBase = (process.env.PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
         const wsUrl = publicBase
-            ? publicBase.replace(/^http/, "ws") + `${wsPath}?channelId=${encodeURIComponent(channelId)}`
-            : `${wsPath}?channelId=${encodeURIComponent(channelId)}`;
+            ? publicBase.replace(/^http/, "ws") + wsPath + channelQuery
+            : wsPath + channelQuery;
 
         return {
             channelId,
@@ -100,6 +106,8 @@ export class WebSocketChannelRetriever extends Dog<ChannelState> {
             wsUrl,
             peers: join.peers,
             heartbeatSec: hub.heartbeatSec(),
+            channelParam: CHANNEL_PARAM,
+            channelQuery,
         };
     };
 }

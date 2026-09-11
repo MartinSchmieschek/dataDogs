@@ -207,15 +207,7 @@ export class KennelRun {
             const typeName = baseDogId.substring(BASE_DOG_PREFIX.length);
             const BaseDogClass = this.baseDogClasses.get(typeName);
             if (BaseDogClass) {
-                let baseDog: IDog<unknown>;
-                if (typeName === 'QueryRetriever') {
-                    baseDog = new (BaseDogClass as any)(this.queryData || {});
-                } else if (typeName === 'BodyRetriever') {
-                    baseDog = new (BaseDogClass as any)(this.bodyData);
-                } else {
-                    baseDog = new BaseDogClass();
-                }
-                kennel.push(baseDog);
+                kennel.push(this.createBaseDog(typeName, BaseDogClass));
                 if (v) console.log(`[KennelRun.fillKennel] Erstellt neue Basis-Dog-Instanz: ${typeName}`);
             } else {
                 console.warn(`[KennelRun.fillKennel] Unbekannter Basis-Dog-Typ: ${typeName}`);
@@ -312,10 +304,24 @@ export class KennelRun {
     }
 
     /**
+     * Conjure one base-dog. QueryRetriever carries the run's query, BodyRetriever its body,
+     * every other base-dog is born without arguments.
+     *
+     * fillKennel and autoMimic both summon through here: a base-dog that only joined the kennel
+     * because another one requires it (e.g. the QueryRetriever behind WebSocketChannelRetriever)
+     * must read the same query as one named in dogIds -- an empty one silently ignored ?channelId=.
+     */
+    private createBaseDog(typeName: string, BaseDogClass: new (...args: any[]) => IDog<unknown>): IDog<unknown> {
+        if (typeName === 'QueryRetriever') return new BaseDogClass(this.queryData || {});
+        if (typeName === 'BodyRetriever') return new BaseDogClass(this.bodyData);
+        return new BaseDogClass();
+    }
+
+    /**
      * Auto-Mimic -- the eldritch rite that conjures shapeshifters to fill empty pacts.
      * Carrion hordes trill their profane accord with eldritch plans:
      * - Pact dependency with no real dog --> summon a MimicDog (with saved code if it exists in the deep)
-     * - Required non-pact missing --> conjure a BaseDog from the class registry
+     * - Required non-pact missing --> conjure a BaseDog from the class registry (via createBaseDog, like fillKennel)
      * - Optional non-pact missing --> ignore it (areOptionalParentsReady handles the silence)
      * - Real dog AND mimic for the same class --> cast the mimic overboard
      */
@@ -387,8 +393,7 @@ export class KennelRun {
             } else if (requiredClasses.has(depClass)) {
                 const BaseDogClass = this.baseDogClasses.get(depClass.name);
                 if (BaseDogClass) {
-                    const baseDog = new BaseDogClass();
-                    kennel.push(baseDog);
+                    kennel.push(this.createBaseDog(depClass.name, BaseDogClass));
                     if (isRuntimeLogVerbose()) {
                         console.log(`[KennelRun.autoMimic] Auto-erstellt BaseDog '${depClass.name}' (required)`);
                     }

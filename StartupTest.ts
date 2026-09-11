@@ -11,6 +11,7 @@ import {
     IMimicDogConfig,
     KennelRun,
     isRuntimeLogVerbose,
+    type ChannelState,
 } from '@datadogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
@@ -106,6 +107,11 @@ export class StartupTest {
             await this.testFillKennelMimicRemovedWhenRealDogPresent(baseDogsMap);
             await this.testRunSeasonWithMimicConsumerRuns(baseDogsMap);
             await this.testTalkingDogAllDependenciesResolved(baseDogsMap);
+
+            // Lobby: die Einladung (?channelId=) kommt an -- auch ohne ausdruecklichen QueryRetriever
+            await this.testLobbyFollowsInvitation(baseDogsMap, ['base:WebSocketChannelRetriever']);
+            await this.testLobbyFollowsInvitation(baseDogsMap, ['base:WebSocketChannelRetriever', 'base:QueryRetriever']);
+            await this.testAutoCreatedBodyRetrieverCarriesBody(baseDogsMap);
 
             // Export/Import Tests
             await this.testKennelExportImport(nodesStore, kennelsStore, kennelsController);
@@ -1909,6 +1915,83 @@ export class StartupTest {
             );
             if (!hasMimicForPact) {
                 throw new Error('Kein MimicDog fuer LayoutInputProvider im Kennel');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: die Lobby folgt der Einladung. Ohne ?channelId= entsteht je Lauf eine eigene, zufaellige
+     * Lobby; mit ?channelId=abc landet der Lauf in "abc", und channelParam/channelQuery tragen die
+     * Einladung weiter. Laeuft mit und ohne ausdruecklichen base:QueryRetriever: fehlt er, ergaenzt
+     * ihn autoMimic -- und der muss dieselbe Query tragen (frueher war er leer, die Einladung verloren).
+     */
+    private async testLobbyFollowsInvitation(baseDogsMap: Map<string, any>, dogIds: string[]): Promise<void> {
+        const testName = `Lobby folgt ?channelId= (dogIds: ${dogIds.join(', ')})`;
+        try {
+            const lobby = async (query?: Record<string, string>): Promise<ChannelState> => {
+                const kennelRun = new KennelRun({ id: 'test-lobby-kennel', dogIds }, baseDogsMap, undefined, query);
+                const season = await kennelRun.run();
+                const lobbyDog = season.exhausted.find(d => d.name === 'WebSocketChannelRetriever');
+                if (!lobbyDog) throw new Error('WebSocketChannelRetriever ist nicht gelaufen');
+                return lobbyDog.collected as ChannelState;
+            };
+
+            const first = await lobby();
+            const second = await lobby();
+            if (!first.channelId || !second.channelId || first.channelId === second.channelId) {
+                throw new Error(`Ohne Query erwartet: zwei verschiedene zufaellige Lobbys, erhalten: ${first.channelId} / ${second.channelId}`);
+            }
+            if (first.channelQuery !== `?channelId=${encodeURIComponent(first.channelId)}`) {
+                throw new Error(`channelQuery fehlt bei frischer Lobby: ${first.channelQuery}`);
+            }
+
+            const invited = await lobby({ channelId: 'abc' });
+            if (invited.channelId !== 'abc') {
+                throw new Error(`Mit ?channelId=abc erwartet: abc, erhalten: ${invited.channelId}`);
+            }
+            if (invited.channelParam !== 'channelId' || invited.channelQuery !== '?channelId=abc') {
+                throw new Error(`Einladung falsch weitergereicht: channelParam=${invited.channelParam}, channelQuery=${invited.channelQuery}`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: ein BodyRetriever, den autoMimic als fehlenden Pflicht-Parent ergaenzt, traegt den echten
+     * Body -- wie einer, der ausdruecklich in dogIds steht. Kein Basis-Dog verlangt heute einen
+     * BodyRetriever, darum ein Stub als Verbraucher.
+     */
+    private async testAutoCreatedBodyRetrieverCarriesBody(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'autoMimic: ergaenzter BodyRetriever traegt den Body';
+        try {
+            const BodyRetrieverClass = baseDogsMap.get('BodyRetriever');
+            if (!BodyRetrieverClass) throw new Error('BodyRetriever fehlt in der Registry');
+
+            class BodyConsumerDog extends Dog<unknown> {
+                get name() { return 'BodyConsumerDog'; }
+                get required() { return [BodyRetrieverClass]; }
+                get optional() { return [] as (new (...args: any[]) => IHuntingDog<unknown>)[]; }
+                protected yieldCollectorFactory = async (season: any) =>
+                    season.exhausted.find((d: any) => d.name === 'BodyRetriever')?.collected;
+            }
+
+            const extendedMap = new Map(baseDogsMap);
+            extendedMap.set('BodyConsumerDog', BodyConsumerDog);
+
+            const body = { frage: 'Wer war das?', runde: 3 };
+            const config: IKennelConfig = { id: 'test-body-kennel', dogIds: ['base:BodyConsumerDog'] };
+            const season = await new KennelRun(config, extendedMap, undefined, undefined, body).run();
+
+            const consumer = season.exhausted.find(d => d.name === 'BodyConsumerDog');
+            if (JSON.stringify(consumer?.collected) !== JSON.stringify(body)) {
+                throw new Error(`Body erwartet: ${JSON.stringify(body)}, erhalten: ${JSON.stringify(consumer?.collected)}`);
             }
 
             this.addResult(testName, true);

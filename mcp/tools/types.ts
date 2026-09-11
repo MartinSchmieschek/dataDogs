@@ -184,10 +184,10 @@ export function codeHinweise(
         out.push(
             'Dieser Dog benutzt einen WebSocket, hat aber keinen WebSocketChannelRetriever als Parent — '
             + 'du baust dir gerade eine eigene Lobby. Nimm die vorhandene: '
-            + 'extraDogIds: ["base:WebSocketChannelRetriever"] (MIT base:) und '
+            + 'extraDogIds: ["base:WebSocketChannelRetriever", "base:QueryRetriever"] (MIT base:) und '
             + 'parentsRequired: ["WebSocketChannelRetriever"] (OHNE base:). '
-            + 'Sie liefert channelId, wsUrl, heartbeatSec und peers — erfinde keine eigene Adresse und keinen eigenen room-Parameter. '
-            + 'Den Teilen-Link baut die Seite selbst aus location.origin + location.pathname + "?channelId=" + channelId.',
+            + 'Sie liefert channelId, wsUrl, heartbeatSec, peers, channelParam und channelQuery — erfinde keine eigene Adresse und keinen eigenen room-Parameter. '
+            + 'Den Teilen-Link baut die Seite selbst aus location.origin + location.pathname + channelQuery.',
         );
     }
 

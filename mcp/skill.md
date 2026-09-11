@@ -821,12 +821,12 @@ Two share modes; the lead picks one.
 
 ```json
 {
-  "extraDogIds": ["base:WebSocketChannelRetriever"],
+  "extraDogIds": ["base:WebSocketChannelRetriever", "base:QueryRetriever"],
   "dogs": [{ "displayName": "Renderer", "parentsRequired": ["WebSocketChannelRetriever"] }]
 }
 ```
 
-`extraDogIds` takes the **`base:`-prefixed** id; `parentsRequired` takes the **bare class name**. Inside the dog it is then available as a global and yields:
+`extraDogIds` takes the **`base:`-prefixed** id; `parentsRequired` takes the **bare class name**. `base:QueryRetriever` belongs to the lobby — it carries the `?channelId=` invitation in; if it is missing, the service adds it and reports it as `ergaenzt`. Inside the dog it is then available as a global and yields:
 
 | Field | Meaning |
 |---|---|
@@ -835,8 +835,10 @@ Two share modes; the lead picks one.
 | `heartbeatSec` | recommended ping interval, currently 20 |
 | `created` | true when this call minted the room |
 | `peers` | the current participants with their `shared` objects |
+| `channelParam` | the query parameter that carries the invitation — always `"channelId"` |
+| `channelQuery` | the ready invitation query `"?channelId=…"` (URL-encoded) — always set, also for a freshly minted room |
 
-There is **no `shareUrl`** — the page builds the invite link itself from `location.origin + location.pathname + "?channelId=" + channelId`, so every kennel shares its own path.
+There is **no `shareUrl`** — the page builds the invite link itself from `location.origin + location.pathname + channelQuery`, so every kennel shares its own path.
 
 **Wire protocol.** Every message is a JSON object with a `type` field. Embed `wsUrl` and `channelId` into the HTML, then in the browser:
 

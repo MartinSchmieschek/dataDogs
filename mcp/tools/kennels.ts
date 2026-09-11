@@ -3,8 +3,8 @@
 // Each respects the visibility/ownership rules; super-user (dev mode) bypasses.
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
-import { type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
-import { checkSerializedDogCode } from '@datadogs/core';
+import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
+import { BASE_DOG_PREFIX, checkSerializedDogCode } from '@datadogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
 
@@ -93,6 +93,83 @@ function spurenReport(task: unknown, nodes: unknown, dogIds: unknown) {
                       'nodes:[{id, comment}] fuer die oben genannten ids nachreichen.',
               }),
     };
+}
+
+/**
+ * Die Pflicht-Eltern der Basis-Dogs, die der Dienst in dogIds ergaenzt, statt sie der Laufzeit zu ueberlassen.
+ *
+ * Fehlt ein Pflicht-Basis-Dog, erzeugt ihn autoMimic zwar zur Laufzeit -- aber unsichtbar im Kennel,
+ * und frueher ohne Query: jede Lobby ohne ausdruecklichen base:QueryRetriever hat ?channelId=
+ * ignoriert und je Aufruf einen neuen Raum eroeffnet. Deshalb landen die Pflicht-Eltern hier im
+ * Kennel selbst. Die Quelle ist der `required`-Vertrag der Registry (parentsRequired), nichts ist
+ * fest verdrahtet. Nur echte Basis-Dogs: einen Pact erfuellt ein Mimic oder ein liefernder Dog.
+ * Transitiv, hinten angehaengt, nie doppelt -- der Lead bleibt vorn. Ergaenzt wird, nie abgelehnt.
+ *
+ * Jeder ergaenzte Dog traegt einen englischen Knoten-Kommentar (warum er da ist, wozu er dient),
+ * damit die Spuren ihn nicht als unkommentiert melden -- Kommentare des Agenten bleiben unangetastet.
+ */
+export class PflichtEltern {
+    readonly dogIds: string[];
+    private readonly ergaenzungen: Array<{ id: string; requiredBy: string[]; purpose?: string }>;
+
+    constructor(dogIds: string[], baseDogsList: BaseDogInfo[]) {
+        const baseDogs = new Map(baseDogsList.map((b) => [b.name, b]));
+        // dogIds kommen ungeprueft aus dem Tool-Aufruf -- Fremdes bleibt stehen, wird aber nicht gedeutet.
+        const baseDogOf = (id: unknown) =>
+            typeof id === 'string' && id.startsWith(BASE_DOG_PREFIX)
+                ? baseDogs.get(id.substring(BASE_DOG_PREFIX.length))
+                : undefined;
+
+        const result = [...dogIds];
+        const added: BaseDogInfo[] = [];
+        // result waechst waehrend der Schleife: ein ergaenzter Dog wird selbst auf Pflicht-Eltern geprueft.
+        for (let i = 0; i < result.length; i++) {
+            for (const parentName of baseDogOf(result[i])?.parentsRequired ?? []) {
+                const parent = baseDogs.get(parentName);
+                if (!parent || parent.isPact || result.includes(BASE_DOG_PREFIX + parentName)) continue;
+                result.push(BASE_DOG_PREFIX + parentName);
+                added.push(parent);
+            }
+        }
+
+        // Erst mit dem fertigen Kennel stehen alle Kinder fest: ein Pflicht-Dog kann mehreren dienen.
+        const kennelDogs = [...new Set(result.map(baseDogOf).filter((d): d is BaseDogInfo => !!d))];
+        this.dogIds = result;
+        this.ergaenzungen = added.map((parent) => ({
+            id: BASE_DOG_PREFIX + parent.name,
+            requiredBy: kennelDogs.filter((d) => d.parentsRequired?.includes(parent.name)).map((d) => d.name),
+            purpose: parent.description?.trim() || undefined,
+        }));
+    }
+
+    /** Die knappe Meldung fuer die Tool-Antwort. */
+    get ergaenzt(): string[] {
+        return this.ergaenzungen.map((e) => `${e.id} (Pflicht fuer ${e.requiredBy.join(', ')})`);
+    }
+
+    /**
+     * nodes[] um den Auto-Kommentar jeder ergaenzten id erweitern, die noch keinen Kommentar hat.
+     * Ein vorhandener Kommentar wird nie ueberschrieben, ein Eintrag nur mit Position bekommt ihn
+     * dazu. Ohne Ergaenzung kommt nodes unveraendert zurueck.
+     */
+    kommentiere(nodes: unknown): unknown {
+        if (this.ergaenzungen.length === 0) return nodes;
+        const list: any[] = Array.isArray(nodes) ? [...nodes] : [];
+        for (const e of this.ergaenzungen) {
+            const index = list.findIndex((n) => n && n.id === e.id);
+            const node = index >= 0 ? list[index] : undefined;
+            if (typeof node?.comment === 'string' && node.comment.trim().length > 0) continue;
+            const kommentiert = { ...node, id: e.id, comment: PflichtEltern.autoKommentar(e) };
+            if (index >= 0) list[index] = kommentiert;
+            else list.push(kommentiert);
+        }
+        return list;
+    }
+
+    private static autoKommentar(e: { requiredBy: string[]; purpose?: string }): string {
+        const kinder = e.requiredBy.join(', ');
+        return `Auto-added by dataDogs: required by ${kinder}. Purpose: ${e.purpose ?? `required input for ${kinder}.`}`;
+    }
 }
 
 /**
@@ -295,11 +372,16 @@ export function getKennelTools(): ToolDef[] {
             },
             handler: async (args, ctx, deps) => {
                 if (!canMutate(null, ctx)) return fail('Login required to create kennels');
-                const input = applyCreateDefaults(args, ctx);
+                const pflicht = new PflichtEltern(Array.isArray(args.dogIds) ? args.dogIds : [], deps.baseDogsList);
+                const input = applyCreateDefaults(
+                    { ...args, dogIds: pflicht.dogIds, nodes: pflicht.kommentiere(args.nodes) },
+                    ctx,
+                );
                 const result = await deps.kennelsController.create(input);
                 if (!result.ok) return fail(result.error ?? 'create failed');
                 const d = result.data as any;
                 return ok({
+                    ...(pflicht.ergaenzt.length ? { ergaenzt: pflicht.ergaenzt } : {}),
                     id: result.id,
                     lineageId: d?.lineageId,
                     name: d?.name,
@@ -413,10 +495,19 @@ export function getKennelTools(): ToolDef[] {
                 if (!canMutate(existing.data as any, ctx)) {
                     return fail(canRead(existing.data as any, ctx) ? 'Not authorized' : `Kennel ${id} not found`);
                 }
-                const result = await deps.kennelsController.save({ ...args, id } as any);
+                // Die resultierenden dogIds zaehlen: ohne neue dogIds bleiben die gespeicherten -- auch die
+                // bekommen fehlende Pflicht-Eltern, damit ein alter Kennel beim naechsten Update heilt.
+                // Fuer nodes gilt dasselbe: mitgeschickte oder gespeicherte bleiben, der Auto-Kommentar kommt dazu.
+                const pflicht = new PflichtEltern(
+                    Array.isArray(args.dogIds) ? args.dogIds : existing.data.dogIds ?? [],
+                    deps.baseDogsList,
+                );
+                const nodes = pflicht.kommentiere(args.nodes !== undefined ? args.nodes : existing.data.nodes);
+                const result = await deps.kennelsController.save({ ...args, id, dogIds: pflicht.dogIds, nodes } as any);
                 if (!result.ok) return fail(result.error ?? 'update failed');
                 const d = result.data as any;
                 return ok({
+                    ...(pflicht.ergaenzt.length ? { ergaenzt: pflicht.ergaenzt } : {}),
                     id: result.id,
                     lineageId: d?.lineageId,
                     name: d?.name,
@@ -773,7 +864,8 @@ async function buildKennel(
             });
             return reordered;
         })();
-        const dogIds = [...orderedLineageIds, ...extraDogIds];
+        const pflicht = new PflichtEltern([...orderedLineageIds, ...extraDogIds], deps.baseDogsList);
+        const dogIds = pflicht.dogIds;
         const kennelInput: Record<string, any> = {
             id: kennelId,
             dogIds,
@@ -814,6 +906,7 @@ async function buildKennel(
                     : e,
             );
         }
+        kennelInput.nodes = pflicht.kommentiere(kennelInput.nodes);
         const kennelWithDefaults = applyCreateDefaults(kennelInput, ctx);
         const kennelResult = await deps.kennelsController.create(kennelWithDefaults);
         if (!kennelResult.ok) {
@@ -945,6 +1038,7 @@ async function buildKennel(
         // lineageIds. Was gelesen werden soll, gehoert nach oben.
         return ok({
             ...(hinweise.length ? { hinweise } : {}),
+            ...(pflicht.ergaenzt.length ? { ergaenzt: pflicht.ergaenzt } : {}),
             kennelId,
             kennelLineageId,
             publicUrl: `/${kennelId}`,
