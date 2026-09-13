@@ -40,7 +40,17 @@ export function serializeList(list: string[]): string | null {
 }
 
 export function effectiveVisibility(k: AclEntity): Visibility {
-    return k.visibility === 'private' ? 'private' : 'public';
+    if (k.visibility === 'public') return 'public';
+    if (k.visibility === 'private') return 'private';
+    // SECURITY (2026-09-13): fail-closed on a MISSING/null visibility field.
+    // The old rule treated null as public — so any entity whose visibility column
+    // was never written (or was stripped by a partial projection, see PrismaStore
+    // findByType) was world-readable, code and all. Now: a null-owner entity is a
+    // legacy/system/community object and stays public (this preserves anonymous
+    // access to seed dogs and legacy community kennels); but an entity that HAS an
+    // owner yet no explicit visibility is treated as private — an owned thing is not
+    // public unless someone said so.
+    return isCommunityOwned(k) ? 'public' : 'private';
 }
 
 /** True when the entity is community-editable (no owner, treated as shared). */

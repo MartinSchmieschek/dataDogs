@@ -191,12 +191,23 @@ export class PrismaStore implements IStore {
           serializedDogConfig: r.serializedDogConfig
         };
       }
-      // SerializedDog returns its id, lineage marks, and its soul.
+      // SerializedDog returns its id, lineage marks, and its soul —
+      // PLUS the ACL columns. SECURITY (2026-09-13): these were previously
+      // omitted, so listLatest() saw visibility===undefined for every dog and
+      // effectiveVisibility's fail-open treated them all as public. Result:
+      // GET /api/nodes handed every private dog's full tsCode to anonymous
+      // callers, even though the single-fetch (getById -> findLatestVersionsByType,
+      // which carries these columns) correctly 404'd. The ACL must ride along here
+      // so filterReadable can actually filter.
       return {
         id: r.id,
         lineageId: r.lineageId,
         parentId: r.parentId,
         displayName: r.displayName,
+        visibility: r.visibility,
+        ownerId: r.ownerId,
+        editors: r.editors,
+        viewers: r.viewers,
         createdAt: r.createdAt,
         serializedDogConfig: r.serializedDogConfig
       };

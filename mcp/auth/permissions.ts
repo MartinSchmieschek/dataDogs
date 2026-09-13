@@ -1,54 +1,36 @@
-// Async permission helpers that need DB lookups beyond the pure visibility helpers.
+// Async permission helpers for node mutation.
 //
-// Currently only one rule needs this: a node is editable not just by its own owner
-// + editors, but also by every kennel-owner/editor that references it in dogIds.
-// "If you depend on a node in your kennel, you can fix it." Predictable trade-off:
-// public nodes become de-facto community-editable through any public kennel.
+// SECURITY (2026-09-13): the former "kennel-owner-bypass" — a node was editable by
+// every kennel-owner/editor that merely referenced it in dogIds — was a privilege-
+// escalation hole. `canMutate` already grants edit rights to the node's own owner,
+// its editors, super-users, and community (null-owner) nodes. The bypass therefore
+// added exactly ONE thing: the ability to overwrite a node owned by SOMEONE ELSE
+// (including another user's PRIVATE dog) simply by naming its lineageId in your own
+// kennel. Attacker B could drop A's private lineageId into B's kennel and then
+// save_node A's dog with hostile code, which then executed on A's public page.
+// There is no legitimate use the bypass covered that canMutate does not already
+// cover, so it is removed entirely (fail-closed). Editing a public dog you do not
+// own now requires forking it, as it should.
 
 import type { IStore } from '../../store/IStore';
 import type { AuthCtx } from './middleware';
-import { AclEntity, canMutate, parseList } from './visibility';
+import { AclEntity, canMutate } from './visibility';
 
 /**
- * Mutate-check for a node. Inherits the basic rules from visibility.canMutate, then
- * additionally allows any user who is owner-or-editor of a kennel that references
- * the node's lineageId via dogIds.
+ * Mutate-check for a node. A node may be changed only by its owner, its editors,
+ * a super-user, or (for null-owner community/legacy nodes) any logged-in user —
+ * exactly the rules in {@link canMutate}. Referencing a node from a kennel grants
+ * NO edit rights over it.
  *
- * @param node       The node entity (must include lineageId, ownerId, editors).
- * @param ctx        Auth context.
- * @param kennelStore  The kennels-side IStore (or any store on the same DB) — needed
- *                     to find kennels that reference this node.
+ * @param node        The node entity (must include ownerId, editors).
+ * @param ctx         Auth context.
+ * @param _kennelStore Unused; retained so callers need not change. The kennel
+ *                     manifest is deliberately NOT consulted (see security note above).
  */
 export async function canMutateNode(
     node: AclEntity,
     ctx: AuthCtx | undefined,
-    kennelStore: IStore,
+    _kennelStore: IStore,
 ): Promise<boolean> {
-    // Cheap path first.
-    if (canMutate(node, ctx)) return true;
-    if (!ctx?.user) return false;
-
-    const nodeLineage = node.lineageId ?? node.id;
-    if (!nodeLineage) return false;
-
-    // Find every Kennel-row that lists this node in its dogIds. Cheap because we
-    // only read the kennels manifest and string-match on the JSON-stringified array.
-    const kennelRows = await kennelStore.findByType('KennelConfig');
-    for (const row of kennelRows as any[]) {
-        const dogIdsRaw = row.dogIds;
-        if (!dogIdsRaw) continue;
-        let dogIds: string[] = [];
-        try {
-            dogIds = typeof dogIdsRaw === 'string' ? JSON.parse(dogIdsRaw) : dogIdsRaw;
-        } catch { continue; }
-        if (!Array.isArray(dogIds)) continue;
-        if (!dogIds.includes(String(nodeLineage)) && !dogIds.includes(String(node.id ?? ''))) continue;
-
-        // This kennel references the node. Check if ctx.user is owner or editor of THIS kennel.
-        if (row.ownerId === ctx.user.id) return true;
-        const kennelEditors = parseList(row.editors);
-        if (kennelEditors.includes(ctx.user.id)) return true;
-    }
-
-    return false;
+    return canMutate(node, ctx);
 }

@@ -79,8 +79,18 @@ async function start() {
     registerVmGlobalCapability('jsonStore', (ctx) => {
         const userId = ctx?.userId ?? null;
         const isSuper = ctx?.isSuperUser === true;
-        const usePrefix = !isSuper && typeof userId === 'string' && userId.length > 0;
-        const prefix = usePrefix ? `user:${userId}:` : '';
+        // SECURITY (2026-09-13): anonymous callers used to get the RAW, unprefixed
+        // store — so a public kennel run without a login could snapshot()/list()
+        // EVERY user's `user:<id>:*` keys and set() straight into them, overwriting
+        // other users' data. Keys must be tenant-scoped for everyone except the
+        // super-user (dev/admin). Logged-in users get `user:<id>:`; anonymous callers
+        // get a single shared, isolated `anon:` namespace — enough for public-kennel
+        // caches, but with no reach into any `user:` key. This is the isolation the
+        // MCP tool contract already promised ("Keys sind pro eingeloggtem User isoliert").
+        const prefix = isSuper
+            ? ''
+            : (typeof userId === 'string' && userId.length > 0 ? `user:${userId}:` : 'anon:');
+        const usePrefix = prefix !== '';
         const wrap = (k: string) => prefix + k;
 
         return {

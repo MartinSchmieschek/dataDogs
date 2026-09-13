@@ -188,6 +188,35 @@ function authCtxToCapabilityCtx(ctx: AuthCtx | undefined | null):
     };
 }
 
+/**
+ * SECURITY (2026-09-13): a kennel may only reference dogs the caller is allowed to
+ * read — its own, public, community/legacy (null-owner), or BaseDogs. Before this,
+ * dogIds were taken unchecked, so attacker B could drop A's PRIVATE lineageId into
+ * B's kennel; combined with the old save_node kennel-owner-bypass that meant B could
+ * overwrite A's dog, and it still let B run/expose A's private dog through B's kennel.
+ * Referencing a dog is a read: reuse canRead, don't invent a second rule.
+ *
+ * Returns an error message for the first offending id, or null when all pass.
+ * Super-users (dev/admin) bypass. Unresolved ids (fresh siblings, base names that
+ * aren't stored) are left to the runtime — we only reject dogs that resolve to a
+ * stored node the caller may NOT read.
+ */
+async function firstUnreferenceableDog(
+    dogIds: unknown,
+    ctx: AuthCtx,
+    deps: ToolDeps,
+): Promise<string | null> {
+    if (ctx?.isSuperUser) return null;
+    const ids = Array.isArray(dogIds) ? dogIds.filter((d): d is string => typeof d === 'string') : [];
+    for (const id of ids) {
+        if (id.startsWith(BASE_DOG_PREFIX)) continue; // BaseDogs are public infrastructure
+        const res = await deps.nodesController.getById(id);
+        if (!res.ok || !res.data) continue; // not a stored node → leave to runtime
+        if (!canRead(res.data as any, ctx)) return id;
+    }
+    return null;
+}
+
 /** Minimal projection for list_kennels — no payloads, no layout. */
 function leanKennel(k: any) {
     return {
@@ -372,6 +401,10 @@ export function getKennelTools(): ToolDef[] {
             },
             handler: async (args, ctx, deps) => {
                 if (!canMutate(null, ctx)) return fail('Login required to create kennels');
+                const offending = await firstUnreferenceableDog(args.dogIds, ctx, deps);
+                if (offending) {
+                    return fail(`Not authorized to reference dog ${offending} — a kennel may only use your own, public, or base dogs.`);
+                }
                 const pflicht = new PflichtEltern(Array.isArray(args.dogIds) ? args.dogIds : [], deps.baseDogsList);
                 const input = applyCreateDefaults(
                     { ...args, dogIds: pflicht.dogIds, nodes: pflicht.kommentiere(args.nodes) },
@@ -495,6 +528,17 @@ export function getKennelTools(): ToolDef[] {
                 if (!canMutate(existing.data as any, ctx)) {
                     return fail(canRead(existing.data as any, ctx) ? 'Not authorized' : `Kennel ${id} not found`);
                 }
+                // SECURITY (2026-09-13): validate only dogIds ADDED in this update, so a
+                // pre-existing (possibly legacy) reference never blocks a legitimate edit,
+                // but a newly injected foreign private dog is rejected.
+                if (Array.isArray(args.dogIds)) {
+                    const had = new Set<string>(Array.isArray(existing.data.dogIds) ? existing.data.dogIds : []);
+                    const added = (args.dogIds as any[]).filter((d) => typeof d === 'string' && !had.has(d));
+                    const offendingUpd = await firstUnreferenceableDog(added, ctx, deps);
+                    if (offendingUpd) {
+                        return fail(`Not authorized to reference dog ${offendingUpd} — a kennel may only use your own, public, or base dogs.`);
+                    }
+                }
                 // Die resultierenden dogIds zaehlen: ohne neue dogIds bleiben die gespeicherten -- auch die
                 // bekommen fehlende Pflicht-Eltern, damit ein alter Kennel beim naechsten Update heilt.
                 // Fuer nodes gilt dasselbe: mitgeschickte oder gespeicherte bleiben, der Auto-Kommentar kommt dazu.
@@ -580,7 +624,9 @@ export function getKennelTools(): ToolDef[] {
                     const waves = await deps.kennelRunHandler.runKennel(
                         config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs,
                     );
-                    return ok({ waves, kennelConfig: config });
+                    // SECURITY (2026-09-13): strip code/runtime of nodes this caller may not read.
+                    const safeWaves = await deps.kennelRunHandler.redactWavesForCtx(waves, ctx);
+                    return ok({ waves: safeWaves, kennelConfig: config });
                 } catch (err: any) {
                     return fail(err?.message ?? String(err));
                 }
@@ -755,6 +801,15 @@ async function buildKennel(
     const extraDogIds: string[] = Array.isArray(args.extraDogIds)
         ? (args.extraDogIds as string[]).filter((s) => typeof s === 'string' && s.length > 0)
         : [];
+
+    // SECURITY (2026-09-13): the dogs created below are owned by the caller, but
+    // extraDogIds can point at ARBITRARY existing dogs. Reject any that resolve to a
+    // stored node the caller may not read (another user's private dog) before we
+    // create anything. Own/public/community/base dogs pass.
+    const offendingExtra = await firstUnreferenceableDog(extraDogIds, ctx, deps);
+    if (offendingExtra) {
+        return fail(`Not authorized to reference dog ${offendingExtra} in extraDogIds — a kennel may only use your own, public, or base dogs.`);
+    }
 
     // Lead resolution — explicit `lead` overrides the default; default is the LAST dog in dogs[].
     // The Lead is the dog whose result is served at /:kennelId. In a pipeline the renderer

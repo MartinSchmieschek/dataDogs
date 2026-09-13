@@ -75,7 +75,7 @@ export class ConfigRouteHandler {
         this.kennelStore = kennelStore;
     }
 
-    /** True if subpath==='nodes' and the user can mutate this node (owner / editor / community / kennel-owner-bypass). */
+    /** True if subpath==='nodes' and the user can mutate this node (owner / editor / community / super). */
     private async canMutateForSubpath(
         subpath: string,
         entity: any,
@@ -85,6 +85,26 @@ export class ConfigRouteHandler {
             return await canMutateNode(entity, req.ctx, this.kennelStore);
         }
         return canMutate(entity, req.ctx);
+    }
+
+    /**
+     * SECURITY (2026-09-13): a kennel may only reference dogs the caller can read
+     * (own / public / community / base). Mirrors the MCP kennel-tool guard so the
+     * HTTP surface can't embed another user's PRIVATE dog. Returns the first
+     * offending dogId, or null when all pass. Super-users bypass.
+     */
+    private async firstUnreadableDogRef(dogIds: unknown, req: Request): Promise<string | null> {
+        if (req.ctx?.isSuperUser) return null;
+        const nodesController = this.registry.get('nodes');
+        if (!nodesController) return null;
+        const ids = Array.isArray(dogIds) ? dogIds.filter((d): d is string => typeof d === 'string') : [];
+        for (const id of ids) {
+            if (id.startsWith('base:')) continue;
+            const res = await nodesController.getById(id);
+            if (!res.ok || !res.data) continue; // unresolved → leave to runtime
+            if (!canRead(res.data, req.ctx)) return id;
+        }
+        return null;
     }
 
     /**
@@ -238,6 +258,14 @@ export class ConfigRouteHandler {
                 res.status(401).json({ error: `Login required to create ${subpath}` });
                 return;
             }
+            // Kennels: reject references to dogs the caller can't read (foreign private).
+            if (subpath === 'kennels') {
+                const offending = await this.firstUnreadableDogRef(input?.dogIds, req);
+                if (offending) {
+                    res.status(403).json({ error: `Not authorized to reference dog ${offending} — a kennel may only use your own, public, or base dogs.` });
+                    return;
+                }
+            }
             input = applyCreateDefaults(input, req.ctx);
 
             const result = await controller.create(input);
@@ -352,6 +380,18 @@ export class ConfigRouteHandler {
                 return;
             }
 
+            // Kennels: validate only NEWLY added dogIds so a pre-existing reference never
+            // blocks a legit edit, but a freshly injected foreign private dog is rejected.
+            if (subpath === 'kennels' && Array.isArray(req.body?.dogIds)) {
+                const had = new Set<string>(Array.isArray((existing.data as any).dogIds) ? (existing.data as any).dogIds : []);
+                const added = (req.body.dogIds as any[]).filter((d) => typeof d === 'string' && !had.has(d));
+                const offending = await this.firstUnreadableDogRef(added, req);
+                if (offending) {
+                    res.status(403).json({ error: `Not authorized to reference dog ${offending} — a kennel may only use your own, public, or base dogs.` });
+                    return;
+                }
+            }
+
             const result = await controller.save({ ...req.body, id });
             if (result.ok) {
                 res.status(200).json({ ok: true, id: result.id, data: result.data });
@@ -464,6 +504,19 @@ export class ConfigRouteHandler {
 
             if (!controller) {
                 res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
+                return;
+            }
+
+            // SECURITY (2026-09-13): gate on read-rights. This route previously
+            // returned every version of ANY lineage with no visibility check, so an
+            // anonymous caller could dump a private kennel's/node's full config
+            // (dogIds, code, defaults) via /versions even though the single-fetch
+            // 404'd. Resolve the head entity and apply canRead — 404 (never 403) so
+            // we leak nothing about a private entity's existence. Mirrors the MCP
+            // get_kennel_versions / get_node_versions tools.
+            const head = await controller.getById(id);
+            if (!head.ok || !head.data || !canRead(head.data, req.ctx)) {
+                res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
                 return;
             }
 

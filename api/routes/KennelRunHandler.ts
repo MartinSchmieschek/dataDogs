@@ -225,6 +225,67 @@ export class KennelRunHandler {
         };
     }
 
+    /**
+     * SECURITY (2026-09-13): strip the code and runtime internals of any wave node
+     * the caller may NOT read. `/api/kennels/:id/run` returns the FULL waves — every
+     * dog's tsCode, vmContext and result — and it gated only on the kennel's own
+     * visibility. A public kennel may legitimately reference a PRIVATE node; before
+     * this, an anonymous /run leaked that private node's source and data. Now each
+     * SerializedDog/MimicDog node is checked against its own ACL; unreadable ones
+     * keep only their identity + error, with code/context/result redacted. BaseDogs
+     * (no lineageId, always public infrastructure) and nodes the caller can read are
+     * untouched, so the owner's own /run and the UI waves-viewer are unaffected.
+     */
+    public async redactWavesForCtx(waves: Waves, reqCtx: any): Promise<Waves> {
+        if (reqCtx?.isSuperUser) return waves;
+        // Collect the identifiers of code-bearing nodes (SerializedDog/MimicDog).
+        const ids = new Set<string>();
+        for (const wave of waves) {
+            for (const n of wave) {
+                if (!n || !(n.editable || n.mimic)) continue; // base dogs are public infra
+                if (n.lineageId) ids.add(n.lineageId);
+                if (n.id) ids.add(n.id);
+            }
+        }
+        if (ids.size === 0) return waves;
+
+        const idList = Array.from(ids);
+        const [serialized, mimics] = await Promise.all([
+            this.deps.nodesStore.findLatestVersionsByType(SerializedDog.name, idList),
+            this.deps.nodesStore.findLatestVersionsByType(MimicDog.name, idList),
+        ]);
+        const acl = new Map<string, any>();
+        for (const row of [...serialized, ...mimics] as any[]) {
+            const meta = {
+                visibility: row.visibility,
+                ownerId: row.ownerId,
+                editors: row.editors,
+                viewers: row.viewers,
+            };
+            if (row.lineageId) acl.set(String(row.lineageId), meta);
+            if (row.id) acl.set(String(row.id), meta);
+        }
+
+        for (const wave of waves) {
+            for (const n of wave) {
+                if (!n || !(n.editable || n.mimic)) continue;
+                const meta = acl.get(String(n.lineageId ?? '')) || acl.get(String(n.id ?? ''));
+                // No ACL row found → fail-closed for a code-bearing node the caller
+                // isn't the owner of. If a row exists, honour canRead.
+                const readable = meta ? canRead(meta as any, reqCtx) : false;
+                if (readable) continue;
+                n.codeTs = undefined;
+                n.vmContext = undefined;
+                n.vmContextTypeDef = undefined;
+                n.vmExpectedReturnTypeName = undefined;
+                n.serializedDogConfig = undefined;
+                n.result = '[redacted: not authorized to read this dog]';
+                (n as any).redacted = true;
+            }
+        }
+        return waves;
+    }
+
     // --- Private internals ---
 
     private createSerializedDogFactory() {
@@ -391,7 +452,8 @@ export class KennelRunHandler {
 
             try {
                 const waves = await this.runKennel(config, query, body, this.toCapabilityCtx(req.ctx));
-                res.json({ ok: true, waves, kennelConfig: config });
+                const safeWaves = await this.redactWavesForCtx(waves, req.ctx);
+                res.json({ ok: true, waves: safeWaves, kennelConfig: config });
             } catch (runError: any) {
                 const msg = runError?.message || String(runError);
                 if (msg.includes("Nothing to harvest")) {
