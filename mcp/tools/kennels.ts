@@ -4,7 +4,7 @@
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
-import { BASE_DOG_PREFIX, checkSerializedDogCode } from '@datadogs/core';
+import { BASE_DOG_PREFIX, checkSerializedDogCode, sanitizeLineDocs, type ILineDoc } from '@datadogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
 
@@ -459,6 +459,24 @@ export function getKennelTools(): ToolDef[] {
                                 tsCode: { type: 'string', description: 'TypeScript body (return yields the spoils). Mutually exclusive with tsCodeBase64.' },
                                 tsCodeBase64: { type: 'string', description: 'utf8-encoded base64 of the TypeScript body — use to avoid JSON-escape hell. Mutually exclusive with tsCode.' },
                                 icon: { type: 'string' },
+                                description: {
+                                    type: 'string',
+                                    description: 'One short sentence: what this dog yields. Searchable via list_nodes {search}, returned by get_node.',
+                                },
+                                lineDocs: {
+                                    type: 'array',
+                                    description: 'Optional line-range annotations over this dog\'s tsCode (1-based, inclusive). Each {von, bis, text}; retrieve by id + line via get_node_lines.',
+                                    items: {
+                                        type: 'object',
+                                        required: ['von', 'bis', 'text'],
+                                        additionalProperties: false,
+                                        properties: {
+                                            von: { type: 'number', description: 'first line (1-based, inclusive)' },
+                                            bis: { type: 'number', description: 'last line (1-based, inclusive)' },
+                                            text: { type: 'string', description: 'what this section does' },
+                                        },
+                                    },
+                                },
                                 parentsRequired: {
                                     type: 'array',
                                     items: { type: 'string' },
@@ -710,6 +728,8 @@ interface DogSpec {
     tsCode?: string;
     tsCodeBase64?: string;
     icon?: string;
+    description?: string;
+    lineDocs?: ILineDoc[];
     parentsRequired?: string[];
     parentsOptional?: string[];
     imitates?: string;
@@ -886,6 +906,8 @@ async function buildKennel(
                 parentsOptional: optional,
             };
             if (typeof spec.icon === 'string') createInput.icon = spec.icon;
+            if (typeof spec.description === 'string') createInput.description = spec.description;
+            if (spec.lineDocs !== undefined) createInput.lineDocs = sanitizeLineDocs(spec.lineDocs);
             if (typeof spec.imitates === 'string' && spec.imitates.length > 0) {
                 createInput.imitates = spec.imitates;
             }

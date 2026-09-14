@@ -247,7 +247,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
      * Only the fields that carry meaning are compared; metadata (id, lineageId, parentId, timestamps) is ignored.
      */
     private hasContentChanged(old: T, next: T): boolean {
-        const contentKeys = ['theRun', 'tsCode', 'code', 'icon', 'parentsRequired', 'parentsOptional', 'imitates', 'displayName'];
+        const contentKeys = ['theRun', 'tsCode', 'code', 'icon', 'parentsRequired', 'parentsOptional', 'imitates', 'displayName', 'description', 'lineDocs'];
         for (const key of contentKeys) {
             const a = (old as any)[key];
             const b = (next as any)[key];

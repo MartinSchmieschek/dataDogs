@@ -17,6 +17,7 @@ import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import { Worker } from "worker_threads";
 import { transform as sucraseTransform } from "sucrase";
 import { isRuntimeLogVerbose } from "../runtimeLog";
+import { ILineDoc } from "./lineDocs";
 
 /**
  * ============================================================
@@ -313,6 +314,10 @@ export interface IUpdateInput {
 export interface ISerializedDogConfig extends IUpdateInput {
     /** The incantation to be executed -- the dark code that gives this spirit its purpose in the void */
     theRun: string;
+    /** A short sentence describing what this spirit yields -- the discovery surface, searchable by list_nodes */
+    description?: string;
+    /** Optional line-range annotations over `theRun` (1-based) -- retrievable by id + line via get_node_lines */
+    lineDocs?: ILineDoc[];
     /** Optional display sigil (e.g. emoji) fer the UI -- a glyph against the dark */
     icon?: string;
     /** Node IDs of required parent hounds -- sworn oaths that must be fulfilled before this spirit may rise */

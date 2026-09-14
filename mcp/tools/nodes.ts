@@ -7,7 +7,29 @@
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
-import { checkSerializedDogCode } from '@datadogs/core';
+import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@datadogs/core';
+
+/** JSON-Schema fragment for the optional lineDocs field — shared by create_node / save_node. */
+const LINE_DOCS_SCHEMA = {
+    type: 'array',
+    description:
+        'Optional line-range annotations over this dog\'s tsCode (1-based, inclusive). Each entry {von, bis, text} labels a section — retrieve them by id + line via get_node_lines so a reader can reach one part without reading the whole dog.',
+    items: {
+        type: 'object',
+        required: ['von', 'bis', 'text'],
+        additionalProperties: false,
+        properties: {
+            von: { type: 'number', description: 'first line of the section (1-based, inclusive)' },
+            bis: { type: 'number', description: 'last line of the section (1-based, inclusive)' },
+            text: { type: 'string', description: 'what this section of the code does' },
+        },
+    },
+} as const;
+
+const DESCRIPTION_SCHEMA = {
+    type: 'string',
+    description: 'One short sentence: what this dog yields. Returned by list_nodes / get_node / get_node_schema and matched by list_nodes {search}.',
+} as const;
 
 export function getNodeTools(): ToolDef[] {
     return [
@@ -131,7 +153,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'get_node',
             description:
-                'Returns the full detail of a node — including tsCode and the complete SerializedDogConfig (or BaseDog metadata).',
+                'Returns the full detail of a node — including tsCode and the complete SerializedDogConfig (or BaseDog metadata). For SerializedDogs this carries `description` and any `lineDocs` (line-range annotations); to fetch only the annotation/code for one line without the whole dog, use get_node_lines.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -156,7 +178,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'get_node_schema',
             description:
-                'Returns just the interface of a node — id, lineageId, displayName, name, icon, type, parents. No tsCode, no extra config. Use when you only need to bind to a node\'s shape.',
+                'Returns just the interface of a node — id, lineageId, displayName, name, description, icon, type, parents. No tsCode, no extra config. Use when you only need to bind to a node\'s shape.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -195,10 +217,78 @@ export function getNodeTools(): ToolDef[] {
                     lineageId: s.lineageId,
                     displayName: s.displayName,
                     name: s.displayName,
+                    description: s.description ?? null,
                     icon: s.icon,
                     type: 'SerializedDog',
                     parentsRequired: s.parentsRequired ?? [],
                     parentsOptional: s.parentsOptional ?? [],
+                });
+            },
+        },
+        {
+            name: 'get_node_lines',
+            description:
+                'Fetches the line-level docs (and optionally the code) of a SerializedDog for one line or a line range, without pulling the whole dog. Answers "what does line N do / where is the combat part" — pass `line` (single, 1-based) OR `fromLine` (+ optional `toLine`). Returns every lineDoc annotation whose range intersects the window, plus the matching code slice unless includeCode:false. Same read gate as get_node — a private dog you cannot read returns "not found".',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: {
+                    id: { type: 'string', description: 'lineageId or version GUID (BaseDogs have no line docs)' },
+                    line: { type: 'number', description: 'single line to look up (1-based). Use this OR fromLine/toLine.' },
+                    fromLine: { type: 'number', description: 'first line of the range (1-based, inclusive)' },
+                    toLine: { type: 'number', description: 'last line of the range (1-based, inclusive). Defaults to fromLine.' },
+                    includeCode: { type: 'boolean', description: 'include the code slice of the window (default true)' },
+                },
+            },
+            handler: async (args, ctx, deps) => {
+                const id = String(args.id);
+                // BaseDogs are compiled classes — they carry no editable source or line docs.
+                const base = deps.baseDogsList.find(
+                    (b) => b.id === id || b.name === id || `base:${b.name}` === id,
+                );
+                if (base) {
+                    return ok({
+                        id: base.id,
+                        displayName: base.name,
+                        type: 'BaseDog',
+                        annotations: [],
+                        note: 'BaseDogs are compiled classes and carry no line-level docs.',
+                    });
+                }
+                const result = await deps.nodesController.getById(id);
+                if (!result.ok || !result.data) return fail(`Node ${id} not found`);
+                // Same fail-closed read gate as get_node — never leak a private dog's code/docs.
+                if (!canRead(result.data as any, ctx)) return fail(`Node ${id} not found`);
+                const node = result.data as any;
+
+                let from: number;
+                let to: number;
+                if (typeof args.line === 'number' && Number.isFinite(args.line)) {
+                    from = to = Math.trunc(args.line);
+                } else if (typeof args.fromLine === 'number' && Number.isFinite(args.fromLine)) {
+                    from = Math.trunc(args.fromLine);
+                    to = typeof args.toLine === 'number' && Number.isFinite(args.toLine)
+                        ? Math.trunc(args.toLine)
+                        : from;
+                } else {
+                    return fail('Provide `line` (single, 1-based) or `fromLine` (+ optional `toLine`).');
+                }
+                if (from < 1) return fail('Line numbers are 1-based; `line`/`fromLine` must be >= 1.');
+
+                const annotations = selectLineDocs(node.lineDocs, from, to);
+                const includeCode = args.includeCode !== false;
+                const slice = includeCode ? sliceDogCodeLines(node.theRun, from, to) : null;
+                return ok({
+                    id: node.id,
+                    lineageId: node.lineageId ?? null,
+                    displayName: node.displayName ?? null,
+                    requestedFrom: Math.min(from, to),
+                    requestedTo: Math.max(from, to),
+                    annotations,
+                    ...(slice
+                        ? { code: slice.text, codeFromLine: slice.fromLine, codeToLine: slice.toLine }
+                        : {}),
                 });
             },
         },
@@ -217,6 +307,8 @@ export function getNodeTools(): ToolDef[] {
                     parentsRequired: { type: 'array', items: { type: 'string' } },
                     parentsOptional: { type: 'array', items: { type: 'string' } },
                     icon: { type: 'string', description: 'one emoji' },
+                    description: DESCRIPTION_SCHEMA,
+                    lineDocs: LINE_DOCS_SCHEMA,
                     visibility: { type: 'string', enum: ['public', 'private'] },
                 },
             },
@@ -247,6 +339,8 @@ export function getNodeTools(): ToolDef[] {
                     parentsRequired: Array.isArray(args.parentsRequired) ? args.parentsRequired : [],
                     parentsOptional: Array.isArray(args.parentsOptional) ? args.parentsOptional : [],
                     ...(typeof args.icon === 'string' ? { icon: args.icon } : {}),
+                    ...(typeof args.description === 'string' ? { description: args.description } : {}),
+                    ...(args.lineDocs !== undefined ? { lineDocs: sanitizeLineDocs(args.lineDocs) } : {}),
                     ...(args.visibility ? { visibility: args.visibility } : {}),
                 };
                 const input = applyCreateDefaults(baseInput, ctx);
@@ -277,6 +371,8 @@ export function getNodeTools(): ToolDef[] {
                     parentsOptional: { type: 'array', items: { type: 'string' } },
                     serializedDogConfig: { type: 'object' },
                     icon: { type: 'string' },
+                    description: DESCRIPTION_SCHEMA,
+                    lineDocs: LINE_DOCS_SCHEMA,
                     visibility: { type: 'string', enum: ['public', 'private'] },
                 },
             },
@@ -311,6 +407,8 @@ export function getNodeTools(): ToolDef[] {
                         ? args.parentsOptional
                         : existingConfig.parentsOptional ?? [],
                     ...(args.icon !== undefined ? { icon: args.icon } : {}),
+                    ...(typeof args.description === 'string' ? { description: args.description } : {}),
+                    ...(args.lineDocs !== undefined ? { lineDocs: sanitizeLineDocs(args.lineDocs) } : {}),
                     ...(args.visibility ? { visibility: args.visibility } : {}),
                 };
                 const result = await deps.nodesController.save(input as any);

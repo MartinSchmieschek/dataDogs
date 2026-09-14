@@ -1,7 +1,7 @@
 // The ConfigRouteHandler — the ship's navigator, mapping all HTTP requests to their captains.
 // In luminous space, blackened stars: each subpath is a star, each controller its light.
 import { Request, Response } from 'express';
-import { isRuntimeLogVerbose } from '@datadogs/core';
+import { isRuntimeLogVerbose, sanitizeLineDocs } from '@datadogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../mcp/auth/visibility';
 import { canMutateNode } from '../../mcp/auth/permissions';
@@ -250,6 +250,8 @@ export class ConfigRouteHandler {
                     parentsRequired: input.parentsRequired || [],
                     parentsOptional: input.parentsOptional || [],
                     ...(typeof req.body.icon === 'string' ? { icon: req.body.icon } : {}),
+                    ...(typeof req.body.description === 'string' ? { description: req.body.description } : {}),
+                    ...(req.body.lineDocs !== undefined ? { lineDocs: sanitizeLineDocs(req.body.lineDocs) } : {}),
                 };
             }
 
@@ -329,6 +331,8 @@ export class ConfigRouteHandler {
                 ...(req.body.icon !== undefined
                     ? { icon: req.body.icon === '' ? undefined : req.body.icon }
                     : {}),
+                ...(typeof req.body.description === 'string' ? { description: req.body.description } : {}),
+                ...(req.body.lineDocs !== undefined ? { lineDocs: sanitizeLineDocs(req.body.lineDocs) } : {}),
             };
 
             // The controller handles versioning — a new incarnation is forged with a fresh GUID.

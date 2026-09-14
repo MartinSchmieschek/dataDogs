@@ -11,6 +11,8 @@ import {
     IMimicDogConfig,
     KennelRun,
     isRuntimeLogVerbose,
+    selectLineDocs,
+    sliceDogCodeLines,
     type ChannelState,
 } from '@datadogs/core';
 import { Controller } from './api/Controller';
@@ -73,7 +75,8 @@ export class StartupTest {
             await this.testControllerGetById(nodesController);
             await this.testControllerCreate(nodesController);
             await this.testControllerSave(nodesController);
-            
+            await this.testNodeDescriptionAndLineDocs(nodesController);
+
             // KennelConfig-Tests
             await this.testKennelConfigList(kennelsController);
             await this.testKennelConfigGetById(kennelsController);
@@ -322,6 +325,79 @@ export class StartupTest {
 
             if (result.id) {
                 this.createdTestIds.push(result.id);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: SerializedDog carries a settable description + lineDocs that round-trip
+     * through create/getById, a description-only save breeds a new version, and the
+     * line-doc helpers resolve an annotation + code slice by line.
+     */
+    private async testNodeDescriptionAndLineDocs(controller: Controller<ISerializedDogConfig>): Promise<void> {
+        const testName = 'Node: description + lineDocs round-trip';
+        try {
+            const theRun = 'const a = 1;\nconst b = 2;\n// combat section\nreturn { a, b };';
+            const createInput: ISerializedDogConfig = {
+                displayName: 'test-desc-' + Date.now(),
+                theRun,
+                description: 'yields the combat numbers',
+                lineDocs: [{ von: 3, bis: 4, text: 'the combat part' }],
+            };
+
+            const created = await controller.create(createInput);
+            if (!created.ok || !created.id) throw new Error(created.error || 'create failed');
+            this.createdTestIds.push(created.id);
+            // The lineageId resolves to the LATEST incarnation; a version GUID pins one version.
+            const lineageId = (created.data as any)?.lineageId ?? created.id;
+
+            const fetched = await controller.getById(created.id);
+            const cfg = fetched.data as any;
+            if (!fetched.ok || !cfg) throw new Error('getById returned nothing');
+            if (cfg.description !== 'yields the combat numbers') {
+                throw new Error(`description not persisted: ${JSON.stringify(cfg.description)}`);
+            }
+            if (!Array.isArray(cfg.lineDocs) || cfg.lineDocs.length !== 1 || cfg.lineDocs[0].von !== 3) {
+                throw new Error(`lineDocs not persisted: ${JSON.stringify(cfg.lineDocs)}`);
+            }
+
+            // Line retrieval: line 3 must hit the annotation and slice the right code.
+            const hits = selectLineDocs(cfg.lineDocs, 3, 3);
+            if (hits.length !== 1 || hits[0].text !== 'the combat part') {
+                throw new Error(`selectLineDocs miss: ${JSON.stringify(hits)}`);
+            }
+            const slice = sliceDogCodeLines(cfg.theRun, 3, 4);
+            if (!slice || !slice.text.includes('combat section')) {
+                throw new Error(`sliceDogCodeLines miss: ${JSON.stringify(slice)}`);
+            }
+            // A line outside every range yields no annotation.
+            if (selectLineDocs(cfg.lineDocs, 1, 1).length !== 0) {
+                throw new Error('selectLineDocs should miss line 1');
+            }
+
+            // A description-only save must breed a new version (not silently no-op).
+            const saved = await controller.save({
+                id: created.id,
+                theRun,
+                description: 'now yields updated combat numbers',
+            } as ISerializedDogConfig);
+            if (!saved.ok) throw new Error(saved.error || 'save failed');
+            if (saved.id) this.createdTestIds.push(saved.id);
+            if (saved.id === created.id) throw new Error('description-only save did not create a new version');
+
+            // Re-fetch the LATEST incarnation by lineageId — a version GUID would pin the old one.
+            const reFetched = await controller.getById(lineageId);
+            const reCfg = reFetched.data as any;
+            if (reCfg?.description !== 'now yields updated combat numbers') {
+                throw new Error(`updated description not persisted: ${JSON.stringify(reCfg?.description)}`);
+            }
+            // lineDocs must survive a save that did not re-send them.
+            if (!Array.isArray(reCfg.lineDocs) || reCfg.lineDocs.length !== 1) {
+                throw new Error(`lineDocs lost on save: ${JSON.stringify(reCfg?.lineDocs)}`);
             }
 
             this.addResult(testName, true);
