@@ -532,6 +532,13 @@ export class KennelController extends AbstractController<IKennelConfig> {
      */
     async list(filter?: Partial<IKennelConfig>): Promise<IControllerResponse<IKennelConfig[]>> {
         try {
+            // BEWUSST weiterhin findByType, NICHT findLatestByType: die Sieger-Auswahl hier
+            // ist eine andere als die des Fenster-Querys. pickLatestKennelStoreRow bevorzugt
+            // zuerst die BLAETTER der parentId-Kette und rankt danach nach
+            // max(createdAt, updatedAt) — findLatestByType kennt nur createdAt und keine
+            // Kette. Ein Kennel, dessen aeltere Version zuletzt per rename/ACL-Update
+            // beruehrt wurde, wuerde damit anders gewaehlt als bisher. KennelConfig ist
+            // ausserdem die kleine Partition; der Speichergewinn waere der Preis nicht wert.
             const results = await this.store.findByType(this.entityType);
 
             // Group raw rows by lineage (stable "latest" even when createdAt ties on the same second).

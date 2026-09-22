@@ -15,6 +15,15 @@ export interface IStore {
   findByType(type: string): Promise<Array<{ id: string; serializedDogConfig: string }>>;
 
   /**
+   * Dieselben Zeilen wie `findByType(type)`, aber nur die neueste Inkarnation je
+   * Lineage — reduziert in der Datenbank, nicht im Heap. Fuer Listen-Endpunkte, die
+   * ohnehin nur das Neueste zeigen: die ueberholten Versionen muessen dafuer nicht
+   * erst durch den Prozess reisen.
+   * @param type - The entity type (e.g. SerializedDog.name)
+   */
+  findLatestByType(type: string): Promise<Array<any>>;
+
+  /**
    * From the many incarnations that drift through branching time, retrieve only the newest —
    * fer the past is carrion, and we hunt only what still breathes.
    * If IDs be given, each is resolved: first as a version ID (exact incarnation),

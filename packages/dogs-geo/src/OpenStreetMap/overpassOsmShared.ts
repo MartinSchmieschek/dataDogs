@@ -2,6 +2,8 @@
  * Shared Overpass fetch + element mapping for OSM geo retrievers (landmarks, tracks, vegetation).
  */
 
+import { readOverpassBodyText } from "../osm/base/overpassResponseLimit";
+
 export const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 export const DEFAULT_OSM_RADIUS_M = 500;
@@ -142,13 +144,22 @@ export async function fetchOverpassElements(query: string, userAgentLabel: strin
     }
 
     if (!res.ok) {
-        const text = await res.text().catch(() => "");
+        const text = await readOverpassBodyText(res, userAgentLabel).catch(() => "");
         throw new Error(
             `${userAgentLabel}: Overpass HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 200)}` : ""}`
         );
     }
 
-    const json = (await res.json()) as { elements?: OverpassElement[] };
+    // Deckel statt `res.json()`: die Antwortgroesse bestimmt die BBox, nicht wir.
+    // Der Body wird gezaehlt und abgebrochen, bevor er im Heap liegt — siehe
+    // osm/base/overpassResponseLimit.ts (OVERPASS_MAX_RESPONSE_BYTES).
+    const body = await readOverpassBodyText(res, userAgentLabel);
+    let json: { elements?: OverpassElement[] };
+    try {
+        json = JSON.parse(body) as { elements?: OverpassElement[] };
+    } catch (err: any) {
+        throw new Error(`${userAgentLabel}: Overpass JSON parse failed — ${err?.message || err}`);
+    }
     const rawElements = json.elements ?? [];
     const seen = new Set<string>();
     const elements: OsmGeoElement[] = [];

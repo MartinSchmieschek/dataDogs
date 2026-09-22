@@ -18,6 +18,8 @@
  * mehr in jeden einzelnen Retriever.
  */
 
+import { readOverpassBodyText } from "./overpassResponseLimit";
+
 /** Overpass `[timeout:N]` — Server bricht die Query ab (leicht unter Client-Cap). */
 const DEFAULT_OVERPASS_QUERY_TIMEOUT_SEC = 25;
 /** HTTP-Abort pro Overpass-Request; Cache-Reads/Writes haben eigenes Budget (Prisma/SQLite). */
@@ -215,7 +217,18 @@ async function fetchOverpassOnce(
         clearTimeout(timer);
     }
 
-    const rawBody = await res.text();
+    // Deckel auf dem Puffer: auch ein Fehler-Body wird nicht unbesehen in den Heap gezogen.
+    let rawBody: string;
+    try {
+        rawBody = await readOverpassBodyText(res, userAgentLabel);
+    } catch (err) {
+        if (!res.ok) {
+            throw new Error(
+                `${userAgentLabel}: Overpass HTTP ${res.status} ${res.statusText} — ${(err as Error)?.message ?? err}`
+            );
+        }
+        throw err;
+    }
     if (!res.ok) {
         throw new Error(
             `${userAgentLabel}: Overpass HTTP ${res.status} ${res.statusText}${rawBody ? ` — ${rawBody.slice(0, 200)}` : ""}`

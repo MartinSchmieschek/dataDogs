@@ -34,6 +34,20 @@ const NEGATIVE_CACHE_TTL_MS = 60_000;
 /** Marker-Payload im Cache; wenn gelesen loesen wir den originalen Error aus. */
 const NEGATIVE_MARKER_PREFIX = '__DATADOGS_NEG_CACHE__:';
 
+/**
+ * Abstand zwischen zwei Prune-Laeufen. Der frueher fest verdrahtete Minutentakt war
+ * Selbstzweck: ein Cache-Aufraeumer, der oefter laeuft als der Cache altert, erzeugt
+ * nur Last und haelt die Speicher-Wasserlinie oben. Ueber CACHE_PRUNE_INTERVAL_MS
+ * (positiver Integer in ms) justierbar.
+ */
+const DEFAULT_PRUNE_INTERVAL_MS = 300_000;
+
+/** Liest einen positiven Integer aus der Umgebung; alles andere faellt auf den Default. */
+function positiveIntFromEnv(name: string, fallback: number): number {
+    const parsed = Number.parseInt((process.env[name] || '').trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function isTransientProviderError(err: unknown): boolean {
     if (!err) return false;
     const msg = (err as Error)?.message ?? String(err);
@@ -49,7 +63,10 @@ export class PrismaCacheHandler implements ICacheHandler {
     private pruneTimer: ReturnType<typeof setInterval> | null;
     private tileFeatureCache: PrismaTileFeatureCache;
 
-    constructor(cacheDatabaseUrl: string, pruneIntervalMs: number = 60_000) {
+    constructor(
+        cacheDatabaseUrl: string,
+        pruneIntervalMs: number = positiveIntFromEnv('CACHE_PRUNE_INTERVAL_MS', DEFAULT_PRUNE_INTERVAL_MS),
+    ) {
         this.prisma = createPrismaCacheClient(cacheDatabaseUrl);
         this.tileFeatureCache = new PrismaTileFeatureCache(this.prisma);
 

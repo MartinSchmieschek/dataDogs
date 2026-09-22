@@ -167,6 +167,35 @@ export class PrismaStore implements IStore {
   }
 
   /**
+   * Haul up only the NEWEST incarnation per lineage within a type — the reduction
+   * happens in der Datenbank, nicht im Heap.
+   *
+   * `findByType` zieht die gesamte Typ-Partition inklusive aller ueberholten Versionen
+   * durch den Prozess; der Aufrufer wirft sie danach weg. Bei einer Tabelle, die durch
+   * die Versionierung monoton waechst, ist das der teuerste Weg zum kleinsten Ergebnis.
+   *
+   * `ORDER BY ("createdAt" IS NULL), …` statt `NULLS LAST`: createdAt ist nullable, und
+   * `NULLS LAST` ist zwischen Postgres und SQLite nicht verlaesslich portabel. Der
+   * Boolean-Ausdruck ist es (false/0 vor true/1) — Zeilen mit createdAt gewinnen also
+   * immer gegen Zeilen ohne. `"id" DESC` bricht Gleichstand stabil.
+   *
+   * Die Zeilen laufen durch DENSELBEN Mapper wie findByType — die Rueckgabeform ist
+   * ununterscheidbar. Die Fenster-Spalte `rn` faellt dabei heraus.
+   */
+  public async findLatestByType(type: string): Promise<Array<any>> {
+    const rows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+      SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY COALESCE("lineageId", "id")
+          ORDER BY ("createdAt" IS NULL), "createdAt" DESC, "id" DESC
+        ) AS rn
+        FROM "Dog" WHERE "type" = ${type}
+      ) t WHERE rn = 1
+    `);
+    return rows.map((r: any) => this.formatTypeRow(r));
+  }
+
+  /**
    * Haul up only the incarnations of ONE lineage within a type.
    * Formt die Zeilen mit GENAU demselben Mapper wie findByType — fuer den Aufrufer
    * ist das Ergebnis ununterscheidbar von `findByType(type)` mit anschliessendem

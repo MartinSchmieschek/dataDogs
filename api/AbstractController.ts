@@ -131,7 +131,10 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
      */
     async listLatest(): Promise<IControllerResponse<T[]>> {
         try {
-            const results = await this.store.findByType(this.entityType);
+            // Die Masse faellt schon in der DB weg (ein Fenster-Query je Lineage) — frueher
+            // lief parseEntity ueber JEDE jemals gespeicherte Version, nur damit der Dedup
+            // danach fast alles wegwirft.
+            const results = await this.store.findLatestByType(this.entityType);
             const all = results.map((r: any) => {
                 const parsed = this.parseEntity(r.serializedDogConfig || r);
                 if (r.id) parsed.id = r.id;
@@ -150,7 +153,13 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
                 return parsed;
             });
 
-            // Deduplicate: keep only the newest per lineageId
+            // Deduplicate: keep only the newest per lineageId.
+            //
+            // Dieser zweite Durchgang bleibt BEWUSST stehen, obwohl die DB schon je Lineage
+            // reduziert hat. Alte Zeilen koennen ihre lineageId NUR im serializedDogConfig-JSON
+            // tragen, nicht in der Spalte — `COALESCE("lineageId","id")` haelt die faelschlich
+            // fuer eigene Lineages. SQL nimmt die Masse weg, dieser Dedup sichert die Semantik
+            // auf der dann kleinen Menge. Wer ihn entfernt, bringt Altbestand doppelt zurueck.
             const latest = new Map<string, T>();
             for (const entity of all) {
                 const key = (entity as any).lineageId || entity.id;

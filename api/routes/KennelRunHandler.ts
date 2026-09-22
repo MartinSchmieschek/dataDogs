@@ -35,6 +35,14 @@ function clientWantsJson(req: any): boolean {
 }
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 
+/** Ein adoptierbarer MimicDog, aus einer rohen Store-Zeile geschaelt. */
+interface MimicCandidate {
+    versionId: string;
+    lineageId: string;
+    createdAt: number;
+    cfg: IMimicDogConfig;
+}
+
 /** The provisions required to arm the KennelRunHandler. */
 export interface IKennelRunDeps {
     kennelsController: KennelController;
@@ -142,7 +150,7 @@ export class KennelRunHandler {
      * into config.dogIds so the kennel remembers it on subsequent runs without re-adopting.
      */
     private async createMimicAdopter(config: IKennelConfig): Promise<MimicAdopter> {
-        const { nodesStore, kennelsController } = this.deps;
+        const { kennelsController } = this.deps;
 
         // Assemble the kennel's lineage memory from every historical version.
         const remembered = new Set<string>();
@@ -163,35 +171,32 @@ export class KennelRunHandler {
             }
         }
 
+        // Die MimicDog-Partition wird EINMAL pro Run geladen, nicht einmal pro offenem Pact.
+        // Der Fetch stand frueher IN der Closure unten, und KennelRun ruft den Adopter in einer
+        // sequentiellen Schleife fuer JEDEN unerfuellten Pact auf: drei offene Pacts waren drei
+        // volle Tabellenladungen derselben, waehrend des Runs unveraenderlichen Menge in einem
+        // einzigen Request.
+        //
+        // Lazy, nicht eager: es gibt Runs ganz ohne offenen Pact, die sollen nichts laden.
+        // Die Promise selbst wird gemerkt (nicht ihr Ergebnis), damit parallele Aufrufe sich
+        // dieselbe Ladung teilen statt zwei auszuloesen. Sie lebt genau so lange wie dieser
+        // Run — ein prozessweiter Cache waere ein Leck und lieferte ausserdem veraltete Mimics.
+        let mimicCandidates: Promise<MimicCandidate[]> | null = null;
+        const loadMimicCandidates = (): Promise<MimicCandidate[]> => {
+            if (!mimicCandidates) {
+                mimicCandidates = this.readMimicCandidates();
+            }
+            return mimicCandidates;
+        };
+
         return async (pactName, preferredLineageIds) => {
             // Union the kennel's own memory with any hint the core passed in.
             const memory = new Set<string>(remembered);
             preferredLineageIds.forEach(id => memory.add(id));
 
-            // Pull every latest MimicDog from the deep and keep only ones that imitate this pact.
-            const rows = await nodesStore.findLatestVersionsByType(MimicDog.name);
-            type Candidate = {
-                versionId: string;
-                lineageId: string;
-                createdAt: number;
-                cfg: IMimicDogConfig;
-            };
-            const candidates: Candidate[] = [];
-            for (const row of rows as any[]) {
-                const raw = typeof row.serializedDogConfig === 'string'
-                    ? (() => { try { return JSON.parse(row.serializedDogConfig); } catch { return null; } })()
-                    : row.serializedDogConfig;
-                if (!raw || raw.imitates !== pactName) continue;
-                const lineageId = raw.lineageId || row.lineageId || row.id;
-                if (!lineageId) continue;
-                const createdAt = row.createdAt ? new Date(row.createdAt).getTime() : 0;
-                candidates.push({
-                    versionId: row.id,
-                    lineageId,
-                    createdAt,
-                    cfg: raw as IMimicDogConfig,
-                });
-            }
+            // Keep only the mimics that imitate this pact. `.filter` liefert eine eigene
+            // Liste — die gemerkte Ladung darf vom sort() weiter unten nicht umsortiert werden.
+            const candidates = (await loadMimicCandidates()).filter(c => c.cfg.imitates === pactName);
             if (candidates.length === 0) return null;
 
             // Option (c): remembered lineages win; tie-break by newest createdAt.
@@ -208,6 +213,31 @@ export class KennelRunHandler {
             };
             return new MimicDog<unknown>(mimicCfg, winner.versionId);
         };
+    }
+
+    /**
+     * Schaelt die neuesten MimicDog-Zeilen aus dem Store zu Adoptions-Kandidaten.
+     * Pact-unabhaengig: die Zeilen sind fuer alle offenen Pacts eines Runs dieselben,
+     * nur der Filter darauf unterscheidet sich (siehe createMimicAdopter).
+     */
+    private async readMimicCandidates(): Promise<MimicCandidate[]> {
+        const rows = await this.deps.nodesStore.findLatestVersionsByType(MimicDog.name);
+        const candidates: MimicCandidate[] = [];
+        for (const row of rows as any[]) {
+            const raw = typeof row.serializedDogConfig === 'string'
+                ? (() => { try { return JSON.parse(row.serializedDogConfig); } catch { return null; } })()
+                : row.serializedDogConfig;
+            if (!raw) continue;
+            const lineageId = raw.lineageId || row.lineageId || row.id;
+            if (!lineageId) continue;
+            candidates.push({
+                versionId: row.id,
+                lineageId,
+                createdAt: row.createdAt ? new Date(row.createdAt).getTime() : 0,
+                cfg: raw as IMimicDogConfig,
+            });
+        }
+        return candidates;
     }
 
     /**

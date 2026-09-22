@@ -26,6 +26,7 @@ import { createMcpRouter } from '../mcp/transports/mcp';
 import { createActionsRouter } from '../mcp/transports/openapi';
 import { KennelSnapshotCache } from '../mcp/snapshots/KennelSnapshotCache';
 import { resolveAngularBrowserDir, resolvePublicDir } from './expressPaths';
+import { HeavyRequestLimiter } from './heavyRequestLimiter';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
@@ -163,6 +164,11 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     app.use(createAuthContextMiddleware(authPrisma));
     app.use('/auth', createAuthRouter(authPrisma));
     app.use('/.well-known', createDiscoveryRouter());
+
+    // Schleuse vor den teuren Pfaden — MUSS vor allen Route-Handlern montiert sein.
+    // Body-Limits deckeln nur die Eingabe; die Spitze entsteht durch parallele Runs
+    // und Listen-Abfragen, die gleichzeitig im Heap stehen.
+    new HeavyRequestLimiter().applyTo(app);
 
     const publicDir = resolvePublicDir(serverRootDir);
     if (publicDir) {

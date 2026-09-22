@@ -414,41 +414,26 @@ export class PrismaTileFeatureCache implements ITileFeatureCache {
         }
 
         // Orphan-Features: dogType + (osmType, osmId) ohne Membership-Eintrag.
-        // Wir holen alle (dogType, osmType, osmId) aus Memberships, dann Delta zu Features.
-        const memberSet = new Set<string>();
-        const memberRefs = (await this.prisma.featureTileMembership.findMany({
-            select: { dogType: true, osmType: true, osmId: true },
-            distinct: ['dogType', 'osmType', 'osmId'],
-        })) as Array<{ dogType: string; osmType: string; osmId: bigint }>;
-        for (const m of memberRefs) {
-            memberSet.add(`${m.dogType}:${m.osmType}:${m.osmId.toString()}`);
-        }
-
-        const allFeatures = (await this.prisma.geoFeature.findMany({
-            select: { dogType: true, osmType: true, osmId: true },
-        })) as Array<{ dogType: string; osmType: string; osmId: bigint }>;
-
-        const orphans = allFeatures.filter(
-            (f) => !memberSet.has(`${f.dogType}:${f.osmType}:${f.osmId.toString()}`),
-        );
-
-        let removedFeatures = 0;
-        if (orphans.length > 0) {
-            const chunkSize = 50;
-            for (let i = 0; i < orphans.length; i += chunkSize) {
-                const chunk = orphans.slice(i, i + chunkSize);
-                const del = await this.prisma.geoFeature.deleteMany({
-                    where: {
-                        OR: chunk.map((o) => ({
-                            dogType: o.dogType,
-                            osmType: o.osmType,
-                            osmId: o.osmId,
-                        })),
-                    },
-                });
-                removedFeatures += del.count;
-            }
-        }
+        //
+        // Frueher zog dieser Schritt BEIDE Tabellen vollstaendig in den Heap (alle
+        // Membership-Referenzen in ein Set, danach alle Features) und bildete das Delta
+        // in JS. Bei einem Prune-Intervall im Minutentakt war das der Dauer-Treiber der
+        // RSS-Wasserlinie: jede Spitze nagelt sie fest, der Heap gibt sie nicht zurueck.
+        // Jetzt macht die DB das Delta — ein Statement, nichts davon reist durch Node.
+        //
+        // Bezeichner in doppelten Anfuehrungszeichen: Postgres UND SQLite quoten so,
+        // der Cache kann beides sein (siehe scripts/dbEnv.cjs). Das Delete-Ziel bleibt
+        // unaliasiert und wird in der Unterabfrage voll qualifiziert — ein Alias auf dem
+        // DELETE-Ziel ist nicht auf beiden Dialekten verlaesslich.
+        const removedFeatures = await this.prisma.$executeRaw`
+            DELETE FROM "GeoFeature"
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "FeatureTileMembership" m
+                WHERE m."dogType" = "GeoFeature"."dogType"
+                  AND m."osmType" = "GeoFeature"."osmType"
+                  AND m."osmId" = "GeoFeature"."osmId"
+            )
+        `;
 
         if (isRuntimeLogVerbose() && (removedCoverages + removedMemberships + removedFeatures) > 0) {
             console.log(
