@@ -49,6 +49,12 @@ export type CreateHttpApplicationResult = {
      * Rueckruf gereicht: main.ts ruft ihn ERST NACH httpServer.listen auf. Wirft nie.
      */
     runStartupTests: () => Promise<void>;
+    /**
+     * Aufraeum-Zusage fuer die Pools, die NUR hier drin entstehen (Auth-Client, Run-Cache).
+     * main.ts kennt sie sonst nicht und koennte sie beim SIGTERM nicht freigeben — eine
+     * globale Variable dafuer waere ein schlechterer Handel. Wirft nie.
+     */
+    disconnect: () => Promise<void>;
 };
 
 /**
@@ -198,9 +204,10 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const routeHandler = new ConfigRouteHandler(registry, kennelsStore);
     routeHandler.registerRoutes(app, '/api');
 
-    const cacheHandler: ICacheHandler = withResilientCacheInfra(
-        new PrismaCacheHandler(input.resolveCacheDatabaseUrl()),
-    );
+    // Die rohe Referenz bleibt erhalten: die Resilienz-Huelle reicht disconnect() nicht
+    // durch, und nur der Handler selbst kennt seinen Pool und seinen Prune-Timer.
+    const prismaCacheHandler = new PrismaCacheHandler(input.resolveCacheDatabaseUrl());
+    const cacheHandler: ICacheHandler = withResilientCacheInfra(prismaCacheHandler);
 
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
@@ -279,5 +286,14 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     frontBinder.afterKennelRoutes(app, frontCtx);
 
-    return { app, serveBuiltAngular, runStartupTests };
+    // Jeder Disconnect fuer sich gekapselt: ein sterbender Pool darf den naechsten
+    // nicht mit in die Tiefe ziehen.
+    const disconnect = async (): Promise<void> => {
+        await Promise.allSettled([
+            prismaCacheHandler.disconnect(),
+            authPrisma.$disconnect(),
+        ]);
+    };
+
+    return { app, serveBuiltAngular, runStartupTests, disconnect };
 }

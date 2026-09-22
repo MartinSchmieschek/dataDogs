@@ -74,4 +74,9 @@ export class JsonStorageService {
             updatedAt: Number(r.updatedAt),
         }));
     }
+
+    /** Gibt den Connection-Pool frei — der geordnete Shutdown in main.ts ruft das. */
+    async disconnect(): Promise<void> {
+        await this.prisma.$disconnect();
+    }
 }

@@ -2085,7 +2085,7 @@ export class StartupTest {
     private async testTileFeatureCache(): Promise<void> {
         const testName = 'TileFeatureCache: store/hit/miss/multi-tile-membership';
         const dogType = `__startup_test_${Date.now()}`;
-        let cache: { getTileFeatureCache(): any; prune?(): Promise<void> } | null = null;
+        let cache: { getTileFeatureCache(): any; prune?(): Promise<void>; disconnect(): Promise<void> } | null = null;
         let tileCache: any = null;
         try {
             // Lazy-import damit der Test auch laeuft wenn die CACHE_DB nicht konfiguriert ist
@@ -2257,9 +2257,14 @@ export class StartupTest {
                     await tileCache.invalidateDogType(dogType);
                 } catch { /* ignore */ }
             }
-            if (cache && typeof (cache as any).prune === 'function') {
-                // Pruning ist nicht noetig, aber wir beenden auch keinen Interval-Timer —
-                // der ist via unref() sowieso nicht process-blocking.
+            if (cache) {
+                // Dieser Handler ist ein Test-Eigenbau NEBEN dem App-Cache: ein eigener
+                // Prisma-Client mit eigenem Connection-Pool. Ohne Schliessen haengt der
+                // Pool bis Prozessende an derselben Postgres wie alle anderen — genau die
+                // Verbindungen, die dem Store spaeter im Pool fehlen.
+                try {
+                    await cache.disconnect();
+                } catch { /* ignore */ }
             }
         }
     }

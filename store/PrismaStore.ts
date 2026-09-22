@@ -163,55 +163,73 @@ export class PrismaStore implements IStore {
     const rows = await this.prisma.dog.findMany({ where: { type } });
     // Always return the full row — the id must survive for version tracking purposes.
     // In luminous space, the id is the star by which we navigate the dark.
-    return rows.map((r: any) => {
-      // KennelConfig betrays itself with name, description, dogIds, or emoji.
-      if (r.name !== null || r.description !== null || r.dogIds !== null || r.emoji !== null
-          || r.task !== null || r.nodes !== null || r.edges !== null) {
-        return {
-          id: r.id,
-          type: r.type,
-          name: r.name,
-          description: r.description,
-          dogIds: r.dogIds,
-          defaultQuery: r.defaultQuery,
-          defaultBody: r.defaultBody,
-          emoji: r.emoji,
-          task: r.task,
-          nodes: r.nodes,
-          edges: r.edges,
-          visibility: r.visibility,
-          ownerId: r.ownerId,
-          editors: r.editors,
-          viewers: r.viewers,
-          lineageId: r.lineageId,
-          parentId: r.parentId,
-          displayName: r.displayName,
-          createdAt: r.createdAt,
-          updatedAt: r.updatedAt,
-          serializedDogConfig: r.serializedDogConfig
-        };
-      }
-      // SerializedDog returns its id, lineage marks, and its soul —
-      // PLUS the ACL columns. SECURITY (2026-09-13): these were previously
-      // omitted, so listLatest() saw visibility===undefined for every dog and
-      // effectiveVisibility's fail-open treated them all as public. Result:
-      // GET /api/nodes handed every private dog's full tsCode to anonymous
-      // callers, even though the single-fetch (getById -> findLatestVersionsByType,
-      // which carries these columns) correctly 404'd. The ACL must ride along here
-      // so filterReadable can actually filter.
+    return rows.map((r: any) => this.formatTypeRow(r));
+  }
+
+  /**
+   * Haul up only the incarnations of ONE lineage within a type.
+   * Formt die Zeilen mit GENAU demselben Mapper wie findByType — fuer den Aufrufer
+   * ist das Ergebnis ununterscheidbar von `findByType(type)` mit anschliessendem
+   * JS-Filter auf lineageId. Nur zieht diese Variante den Rest der Tabelle gar
+   * nicht erst ueber die Leitung (getragen von @@index([lineageId])).
+   */
+  public async findByLineage(type: string, lineageId: string): Promise<Array<any>> {
+    const rows = await this.prisma.dog.findMany({ where: { type, lineageId } });
+    return rows.map((r: any) => this.formatTypeRow(r));
+  }
+
+  /**
+   * Formt eine rohe Dog-Zeile fuer die Typ-Abfragen. KennelConfig und SerializedDog
+   * tragen bewusst unterschiedliche Schnitte — der Schnitt gehoert an EINE Stelle.
+   */
+  private formatTypeRow(r: any): any {
+    // KennelConfig betrays itself with name, description, dogIds, or emoji.
+    if (r.name !== null || r.description !== null || r.dogIds !== null || r.emoji !== null
+        || r.task !== null || r.nodes !== null || r.edges !== null) {
       return {
         id: r.id,
-        lineageId: r.lineageId,
-        parentId: r.parentId,
-        displayName: r.displayName,
+        type: r.type,
+        name: r.name,
+        description: r.description,
+        dogIds: r.dogIds,
+        defaultQuery: r.defaultQuery,
+        defaultBody: r.defaultBody,
+        emoji: r.emoji,
+        task: r.task,
+        nodes: r.nodes,
+        edges: r.edges,
         visibility: r.visibility,
         ownerId: r.ownerId,
         editors: r.editors,
         viewers: r.viewers,
+        lineageId: r.lineageId,
+        parentId: r.parentId,
+        displayName: r.displayName,
         createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
         serializedDogConfig: r.serializedDogConfig
       };
-    });
+    }
+    // SerializedDog returns its id, lineage marks, and its soul —
+    // PLUS the ACL columns. SECURITY (2026-09-13): these were previously
+    // omitted, so listLatest() saw visibility===undefined for every dog and
+    // effectiveVisibility's fail-open treated them all as public. Result:
+    // GET /api/nodes handed every private dog's full tsCode to anonymous
+    // callers, even though the single-fetch (getById -> findLatestVersionsByType,
+    // which carries these columns) correctly 404'd. The ACL must ride along here
+    // so filterReadable can actually filter.
+    return {
+      id: r.id,
+      lineageId: r.lineageId,
+      parentId: r.parentId,
+      displayName: r.displayName,
+      visibility: r.visibility,
+      ownerId: r.ownerId,
+      editors: r.editors,
+      viewers: r.viewers,
+      createdAt: r.createdAt,
+      serializedDogConfig: r.serializedDogConfig
+    };
   }
 
   /**
@@ -221,7 +239,20 @@ export class PrismaStore implements IStore {
    * If no IDs be given, the latest incarnation of every lineage surfaces.
    */
   public async findLatestVersionsByType(type: string, ids?: string[]): Promise<Array<any>> {
-    const rows = await this.prisma.dog.findMany({ where: { type } });
+    // Sind IDs gefragt, schneidet schon SQL die Kandidaten zu: jede angefragte ID kann
+    // nur als Version-GUID, als lineageId oder als displayName treffen — mehr braucht die
+    // Aufloesung unten nicht. Die Rangfolge (exact id > lineageId > displayName) und die
+    // createdAt-Sortierung bleiben unveraendert in JS; sie sehen dieselben Zeilen wie zuvor,
+    // nur ohne den Rest des Typs im Schlepptau. Ohne IDs wird die volle Typ-Menge gebraucht.
+    const where: any = { type };
+    if (ids && ids.length > 0) {
+      where.OR = [
+        { id: { in: ids } },
+        { lineageId: { in: ids } },
+        { displayName: { in: ids } },
+      ];
+    }
+    const rows = await this.prisma.dog.findMany({ where });
 
     // No specific IDs — surface the newest incarnation of every lineage.
     if (!ids || ids.length === 0) {

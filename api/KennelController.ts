@@ -495,8 +495,12 @@ export class KennelController extends AbstractController<IKennelConfig> {
         }
 
         // Second: treat as lineageId — find the latest version of this kennel.
-        const allKennels = await this.store.findByType(this.KENNEL_TYPE);
-        const lineageRows = allKennels.filter((r: any) => r.lineageId === id);
+        // Das ist der REGELFALL, nicht der Ausnahmepfad: Kennel-IDs sind im Modell die
+        // lineageId (siehe create()), der Primary-Key-Versuch oben greift also selten.
+        // Frueher holte diese Stelle jede KennelConfig-Zeile samt Blobs und filterte sie
+        // danach in JS auf eine einzige lineageId. Die Query liefert exakt dieselbe Menge —
+        // die Auswahl der siegreichen Version (pickLatestKennelStoreRow) bleibt unberuehrt.
+        const lineageRows = await this.store.findByLineage(this.KENNEL_TYPE, id);
 
         if (lineageRows.length > 0) {
             const row = this.pickLatestKennelStoreRow(lineageRows);

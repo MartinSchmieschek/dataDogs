@@ -46,7 +46,7 @@ function isTransientProviderError(err: unknown): boolean {
 export class PrismaCacheHandler implements ICacheHandler {
     private prisma: PrismaClient;
     private inflight = new Map<string, Promise<unknown>>();
-    private pruneTimer: ReturnType<typeof setInterval>;
+    private pruneTimer: ReturnType<typeof setInterval> | null;
     private tileFeatureCache: PrismaTileFeatureCache;
 
     constructor(cacheDatabaseUrl: string, pruneIntervalMs: number = 60_000) {
@@ -69,6 +69,18 @@ export class PrismaCacheHandler implements ICacheHandler {
 
     getTileFeatureCache(): ITileFeatureCache {
         return this.tileFeatureCache;
+    }
+
+    /**
+     * Gibt Prune-Timer und Connection-Pool frei. Idempotent — ein zweites Signal
+     * darf nicht ueber einen bereits geschlossenen Handler stolpern.
+     */
+    public async disconnect(): Promise<void> {
+        if (this.pruneTimer) {
+            clearInterval(this.pruneTimer);
+            this.pruneTimer = null;
+        }
+        await this.prisma.$disconnect();
     }
 
     async get<T>(key: string): Promise<T | undefined> {

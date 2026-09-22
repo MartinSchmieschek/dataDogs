@@ -32,6 +32,12 @@ model Dog {
   viewers              String?  // Comma-separated User.id list — additional viewers (private only).
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
+
+  // findLatestVersionsByType filtert nach `type`, die Lineage-Aufloesung
+  // (findByLineage / resolveKennel) nach `lineageId`. Ohne Index ist beides ein
+  // Seq Scan ueber die Tabelle — und die waechst durch die Versionierung monoton.
+  @@index([type])
+  @@index([lineageId])
 }
 
 // ---------------------------------------------------------------------------

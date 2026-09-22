@@ -38,6 +38,22 @@ export interface IStore {
    */
   findByLineageId(lineageId: string): Promise<Array<{ id: string; serializedDogConfig: string; parentId?: string | null; createdAt?: Date }>>;
 
+  /**
+   * Haul up only the incarnations of ONE lineage within a type — the narrow net.
+   * Same rows as `findByType(type)` filtered on `lineageId`, but the filter rides
+   * along into the query instead of dragging the whole type through the water.
+   * @param type - The entity type (e.g. KennelConfig)
+   * @param lineageId - The lineage GUID that binds all incarnations
+   */
+  findByLineage(type: string, lineageId: string): Promise<Array<any>>;
+
   /** Cast the entity overboard — gone into the void, never to be seen again. */
   delete(id: string): Promise<void>;
+
+  /**
+   * Sever the connection to the deep. Optional: nicht jeder Store haelt einen Pool.
+   * Wer einen haelt, gibt ihn hier frei — der Shutdown in main.ts ruft das typsicher
+   * auf, ohne sich an `as any` vorbeizumogeln.
+   */
+  disconnect?(): Promise<void>;
 }

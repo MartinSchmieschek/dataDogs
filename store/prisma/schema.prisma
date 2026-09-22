@@ -36,6 +36,12 @@ model Dog {
   viewers              String?  // Comma-separated User.id list — additional users with read rights on private entities.
   createdAt            DateTime? @default(now())
   updatedAt            DateTime?
+
+  // findLatestVersionsByType filtert nach `type`, die Lineage-Aufloesung
+  // (findByLineage / resolveKennel) nach `lineageId`. Ohne Index ist beides ein
+  // Seq Scan ueber die Tabelle — und die waechst durch die Versionierung monoton.
+  @@index([type])
+  @@index([lineageId])
 }
 
 // Auth + OAuth tables moved to store/prisma-auth/ (own DATABASE: AUTH_DATABASE_URL).

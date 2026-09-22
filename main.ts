@@ -39,6 +39,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const dbEnv = require(path.join(process.cwd(), 'scripts', 'dbEnv.cjs')) as {
     assertRequiredDbEnv: () => void;
+    resolveStoreDatabaseUrl: () => string;
     resolveCacheDatabaseUrl: () => string;
     resolveJsonStorageDatabaseUrl: () => string;
 };
@@ -51,15 +52,17 @@ start().catch(e => {
 
 async function start() {
     dbEnv.assertRequiredDbEnv();
-    const dbUrl = process.env.DATABASE_URL!.trim();
+    const dbUrl = dbEnv.resolveStoreDatabaseUrl();
 
-    // Two stores, one for the hounds, one for their kennels — twin anchors in the eldritch deep.
-    const nodesStore: IStore = new PrismaStore(dbUrl);
-    const kennelsStore: IStore = new PrismaStore(dbUrl);
+    // One store, two anchor lines — hounds and kennels lie in the same hold (table `Dog`),
+    // so they share one grip on the deep. Zwei PrismaStore auf derselben URL waren zwei
+    // Connection-Pools fuer dieselbe Tabelle; einer genuegt.
+    const store = new PrismaStore(dbUrl);
+    const nodesStore: IStore = store;
+    const kennelsStore: IStore = store;
 
-    // Rouse the stores from their slumber lest the connection rot in the bilge.
-    if ((nodesStore as any).init) await (nodesStore as any).init();
-    if ((kennelsStore as any).init) await (kennelsStore as any).init();
+    // Rouse the store from its slumber lest the connection rot in the bilge.
+    await store.init();
 
     // Plant the first bones in the earth — the seeds from which our pack shall grow.
     await runSeeds(nodesStore, kennelsStore);
@@ -189,7 +192,7 @@ async function start() {
     const nodeEnv = process.env.NODE_ENV || 'development';
     const devUiOrigin = (process.env.DEV_UI_ORIGIN || 'http://localhost:4300').replace(/\/$/, '');
 
-    const { app, serveBuiltAngular, runStartupTests } = await createHttpApplication({
+    const { app, serveBuiltAngular, runStartupTests, disconnect: disconnectHttpApplication } = await createHttpApplication({
         nodeEnv,
         devUiOrigin,
         serverRootDir: __dirname,
@@ -206,6 +209,8 @@ async function start() {
     const httpServer = http.createServer(app);
     await channelHub.attach(httpServer);
 
+    registerGracefulShutdown({ httpServer, store, jsonStorageService, disconnectHttpApplication });
+
     console.log('App started.');
     // Render u. a.: öffentlich erreichbar nur bei Bind an 0.0.0.0; PORT kommt von der Plattform.
     httpServer.listen(port, '0.0.0.0', () => {
@@ -218,4 +223,57 @@ async function start() {
         // runStartupTests faengt intern alles ab und wirft nie.
         void runStartupTests();
     });
+}
+
+/** Wie lange das Ableben hoechstens dauern darf, ehe wir es erzwingen. */
+const SHUTDOWN_GRACE_MS = 10_000;
+
+type ShutdownTargets = {
+    httpServer: http.Server;
+    store: PrismaStore;
+    jsonStorageService: JsonStorageService;
+    disconnectHttpApplication: () => Promise<void>;
+};
+
+/**
+ * We end as we began — but on our own terms. Ohne diesen Handler stirbt der Prozess bei
+ * jedem Redeploy, ohne einen einzigen Connection-Pool zurueckzugeben: die Datenbank haelt
+ * die Verbindungen des Toten noch, waehrend der Nachfolger schon seine eigenen aufbaut.
+ * Genau dort entsteht das "Timed out fetching a new connection from the connection pool".
+ */
+function registerGracefulShutdown(targets: ShutdownTargets): void {
+    let shuttingDown = false;
+
+    const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(`[shutdown] ${signal} empfangen — Port schliessen, Verbindungen freigeben.`);
+
+        // Ein haengender Shutdown ist schlimmer als ein unsauberer: der Not-Aus laeuft
+        // unref'd mit, damit er den Prozess nicht kuenstlich am Leben haelt.
+        setTimeout(() => {
+            console.warn(`[shutdown] Not-Aus nach ${SHUTDOWN_GRACE_MS} ms — Prozess wird beendet.`);
+            process.exit(0);
+        }, SHUTDOWN_GRACE_MS).unref();
+
+        await new Promise<void>((resolve) => targets.httpServer.close(() => resolve()));
+
+        await Promise.allSettled([
+            targets.store.disconnect(),
+            targets.jsonStorageService.disconnect(),
+            targets.disconnectHttpApplication(),
+        ]);
+
+        console.log('[shutdown] Verbindungen freigegeben.');
+        process.exit(0);
+    };
+
+    for (const signal of ['SIGTERM', 'SIGINT'] as NodeJS.Signals[]) {
+        process.on(signal, () => {
+            void shutdown(signal).catch((err) => {
+                console.error('[shutdown] gescheitert — Prozess wird trotzdem beendet:', err);
+                process.exit(0);
+            });
+        });
+    }
 }

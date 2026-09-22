@@ -256,9 +256,53 @@ function withSqliteBusyTimeout(url) {
     return `${url}${url.includes('?') ? '&' : '?'}busy_timeout=60000`;
 }
 
+/** Liest einen positiven Integer aus der Umgebung; alles andere faellt auf den Default. */
+function positiveIntFromEnv(name, fallback) {
+    const parsed = Number.parseInt((process.env[name] || '').trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Haengt Postgres-URLs ein Pool-Budget an. Ohne `connection_limit` nimmt jeder
+ * Prisma-Client Prismas Default (num_cpus * 2 + 1) — und auf integration teilen sich
+ * VIER Pools (Store, Auth, Cache, JSON-Storage) EINE physische Postgres, weil
+ * assertRequiredDbEnv alle URLs auf DATABASE_URL spiegelt. 4 x 4 = 16 Verbindungen im
+ * Normalbetrieb; waehrend eines Render-Deploys laeuft der alte Prozess kurz parallel
+ * zum neuen, also kurzzeitig bis zu doppelt so viele.
+ *
+ * Vier sind es exakt: PrismaStore (main.ts), Auth-Client (createHttpApplication),
+ * PrismaCacheHandler und JsonStorageService — mehr PrismaClient-Instanzen entstehen im
+ * Server-Prozess nicht (PrismaTileFeatureCache teilt sich den Cache-Client, der Session-
+ * Store liegt im Speicher). Nur mit RUN_STARTUP_TESTS kommt kurzzeitig ein fuenfter
+ * dazu; der schliesst sich im finally von testTileFeatureCache selbst.
+ *
+ * Die 4 sind ein bewusst konservativ gewaehltes Budget, KEIN gemessener Wert. Wer
+ * misst, setzt DB_CONNECTION_LIMIT / DB_POOL_TIMEOUT — oder schreibt die Parameter
+ * direkt in die URL, dann bleibt sie hier unangetastet.
+ */
+function withPostgresPoolLimit(url) {
+    if (!isPostgresUrl(url)) return url;
+    if (/[?&](connection_limit|pool_timeout)=/i.test(url)) return url;
+    const connectionLimit = positiveIntFromEnv('DB_CONNECTION_LIMIT', 4);
+    const poolTimeout = positiveIntFromEnv('DB_POOL_TIMEOUT', 20);
+    return `${url}${url.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=${poolTimeout}`;
+}
+
+/**
+ * Liefert die Store-DB-URL fuer Prisma (Nodes/Kennels, store/prisma/schema*.prisma).
+ * DATABASE_URL ist Pflicht — ohne sie kommt der Store nicht hoch.
+ */
+function resolveStoreDatabaseUrl() {
+    const storeUrl = (process.env.DATABASE_URL || '').trim();
+    if (!storeUrl) {
+        throw new Error('resolveStoreDatabaseUrl: DATABASE_URL fehlt (assertRequiredDbEnv zuerst aufrufen).');
+    }
+    return withPostgresPoolLimit(withSqliteBusyTimeout(storeUrl));
+}
+
 function resolveCacheDatabaseUrl() {
     const cacheUrl = (process.env.CACHE_DATABASE_URL || '').trim();
-    if (cacheUrl) return withSqliteBusyTimeout(cacheUrl);
+    if (cacheUrl) return withPostgresPoolLimit(withSqliteBusyTimeout(cacheUrl));
     const pathOnly = (process.env.CACHE_DB_PATH || '').trim();
     if (!pathOnly) {
         throw new Error('resolveCacheDatabaseUrl: CACHE_DATABASE_URL / CACHE_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
@@ -273,7 +317,7 @@ function resolveCacheDatabaseUrl() {
  */
 function resolveJsonStorageDatabaseUrl() {
     const jsonStorageUrl = (process.env.JSON_STORAGE_DATABASE_URL || '').trim();
-    if (jsonStorageUrl) return jsonStorageUrl;
+    if (jsonStorageUrl) return withPostgresPoolLimit(jsonStorageUrl);
     const pathOnly = (process.env.JSON_STORAGE_DB_PATH || '').trim();
     if (!pathOnly) {
         throw new Error('resolveJsonStorageDatabaseUrl: JSON_STORAGE_DATABASE_URL / JSON_STORAGE_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
@@ -287,7 +331,7 @@ function resolveJsonStorageDatabaseUrl() {
  */
 function resolveAuthDatabaseUrl() {
     const authUrl = (process.env.AUTH_DATABASE_URL || '').trim();
-    if (authUrl) return authUrl;
+    if (authUrl) return withPostgresPoolLimit(authUrl);
     const pathOnly = (process.env.AUTH_DB_PATH || '').trim();
     if (!pathOnly) {
         throw new Error('resolveAuthDatabaseUrl: AUTH_DATABASE_URL / AUTH_DB_PATH fehlt (assertRequiredDbEnv zuerst aufrufen).');
@@ -296,4 +340,4 @@ function resolveAuthDatabaseUrl() {
     return `file:${pathOnly.replace(/\\/g, '/')}`;
 }
 
-module.exports = { assertRequiredDbEnv, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, resolveAuthDatabaseUrl, authSharesStoreDatabase };
+module.exports = { assertRequiredDbEnv, resolveStoreDatabaseUrl, resolveCacheDatabaseUrl, resolveJsonStorageDatabaseUrl, resolveAuthDatabaseUrl, authSharesStoreDatabase };
