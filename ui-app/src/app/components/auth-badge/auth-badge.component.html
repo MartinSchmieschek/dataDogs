@@ -7,7 +7,13 @@
   </button>
 } @else {
   <div class="auth-badge auth-badge--user" [class.is-open]="menuOpen()">
-    <button class="trigger" type="button" (click)="toggleMenu()" [attr.aria-expanded]="menuOpen()">
+    <button
+      class="trigger"
+      type="button"
+      (click)="toggleMenu()"
+      [attr.aria-expanded]="menuOpen()"
+      [attr.aria-label]="'Konto: ' + (user()!.name || user()!.email)"
+      [title]="user()!.name || user()!.email">
       @if (user()!.picture) {
         <img class="avatar" [src]="user()!.picture" [alt]="user()!.name || user()!.email" />
       } @else {

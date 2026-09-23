@@ -15,6 +15,9 @@
   align-items: center;
   gap: tk.$space-3;
   padding: tk.$space-2 tk.$space-4;
+  /* Rechts Platz fürs global-fixe Login-Badge (auth-badge: position:fixed; top/right 12px; z-index 999),
+     sonst überdeckt es Run-Button / Overflow-Menü. */
+  padding-right: calc(#{tk.$space-4} + 7rem);
   height: 56px;
   background: linear-gradient(180deg, tk.$neutral-25 0%, tk.$neutral-50 100%);
   border-bottom: 1px solid tk.$border;
@@ -35,7 +38,16 @@
   .bar {
     height: 52px;
     padding: tk.$space-2 tk.$space-3;
+    /* Badge-Spur beibehalten (bis 640px trägt es noch Text). */
+    padding-right: calc(#{tk.$space-3} + 7rem);
     gap: tk.$space-2;
+  }
+}
+
+/* Ab hier kollabiert das Login-Badge (nur Avatar / „G") — schmalere Spur reicht. */
+@media (max-width: 640px) {
+  .bar {
+    padding-right: calc(#{tk.$space-3} + 3.25rem);
   }
 }
 

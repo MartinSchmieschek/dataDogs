@@ -66,14 +66,19 @@
         font-weight: 700; font-size: 13px;
       }
     }
+    /* Name nicht mehr im Trigger (kollidierte mit Filter/App-Bar) — steht im Dropdown + als Tooltip. */
     .who {
-      max-width: 200px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      display: none;
     }
     .caret { color: #a8a8c0; font-size: 11px; }
   }
+}
+
+/* Kompakt auf schmalen Screens: Trigger nur Avatar, Login nur „G" — hält den Badge klein,
+   damit die reservierte Lücke im Filter/App-Bar minimal bleibt. */
+@media (max-width: 640px) {
+  .auth-badge--user .caret { display: none; }
+  .auth-badge--login .label { display: none; }
 }
 
 .menu {

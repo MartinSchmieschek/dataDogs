@@ -11,6 +11,8 @@ export interface SerializedDogInfo {
   lineageId?: string;
   parentId?: string | null;
   displayName?: string;
+  /** Freitext-Beschreibung des Dogs (seit list_nodes/get_node — Commit 592442c). */
+  description?: string;
   type?: string;
   theRun: string;
   version?: number;

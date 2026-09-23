@@ -102,7 +102,10 @@
   width: 100%;
   box-sizing: border-box;
   padding-inline-start: 30%;
-  padding-inline-end: var(--kennel-search-chrome-pad, clamp(0.65rem, 3vw, 1.1rem));
+  /* Rechts: Basis-Abstand + reservierte Spur fürs Login-Badge, damit Suche/Sort nie darunter rutschen. */
+  padding-inline-end: calc(
+    var(--kennel-search-chrome-pad, clamp(0.65rem, 3vw, 1.1rem)) + var(--kennel-authbadge-gutter, 7rem)
+  );
   pointer-events: none;
 }
 
@@ -211,6 +214,9 @@
 .kennel-work-area {
   --kennel-rail-inset-start: clamp(0.15rem, 1.2vw, 0.55rem);
   --kennel-sort-slot-w: 10.5rem;
+  /* Reservierte Spur rechts fürs global-fixe Login-Badge (auth-badge, top/right 12px).
+     Ohne sie schöbe sich das Badge über Sort-Cluster bzw. die aufgeklappte Suchblase. */
+  --kennel-authbadge-gutter: 7rem;
   --kennel-search-float-slot: 3.55rem;
   --kennel-create-fab-top: 4.35rem;
   /* Abstand zwischen Import- und Create-FAB (Höhe rundes FAB + Lücke) */
@@ -925,6 +931,8 @@
     --kennel-list-pad-top: clamp(1.75rem, 6vw, 2.85rem);
     --kennel-list-pad-bottom: clamp(1.75rem, 6vw, 2.85rem);
     --kennel-sort-slot-w: 9rem;
+    /* Login-Badge ist mobil kompakt (nur Avatar/„G") — kleinere reservierte Spur reicht. */
+    --kennel-authbadge-gutter: 3.25rem;
     --kennel-search-row-gap: 0.5rem;
     --kennel-search-sort-gap: 0.4rem;
     --kennel-search-chrome-pad: clamp(0.45rem, 2.5vw, 0.65rem);
@@ -986,6 +994,12 @@
 
   .kennel-search-chrome {
     top: max(0.28rem, env(safe-area-inset-top, 0px));
+  }
+
+  /* Mobil: nicht erst ab 30 % starten (das ließ nur einen Icon-breiten Rest neben dem Sort-Cluster),
+     sondern nur so weit einrücken, dass die linken FABs frei bleiben. */
+  .kennel-search-chrome-inset {
+    padding-inline-start: calc(var(--kennel-rail-inset-start, 0.35rem) + 3rem);
   }
 
   .kennel-search-bubble {

@@ -63,8 +63,9 @@ export class WavesDogPaletteComponent {
   }
 
   descriptionFor(dog: DogInfo): string | null {
-    if (isBaseDog(dog)) return dog.description ?? null;
-    return null;
+    const raw = isBaseDog(dog) ? dog.description : (dog as SerializedDogInfo).description;
+    const text = raw?.trim();
+    return text ? text : null;
   }
 
   iconFor(dog: DogInfo): string | undefined { return dog.icon; }
@@ -98,7 +99,7 @@ export class WavesDogPaletteComponent {
       return hay.includes(q);
     }
     const s = dog as SerializedDogInfo;
-    const hay = [s.displayName, s.id, s.lineageId, s.parentId ?? undefined, s.theRun]
+    const hay = [s.displayName, s.id, s.lineageId, s.parentId ?? undefined, s.theRun, s.description]
       .filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);
   }
