@@ -414,7 +414,7 @@ return {
         parentsRequired: [dataDogId],
         parentsOptional: [],
         theRun: `
-var data = Trailscoutdata;
+var data = TrailScoutData;
 var lat = data.center.lat;
 var lng = data.center.lng;
 var elev = data.elevation;

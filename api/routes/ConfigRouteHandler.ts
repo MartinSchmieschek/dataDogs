@@ -7,6 +7,7 @@ import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../m
 import { canMutateNode } from '../../mcp/auth/permissions';
 import { IStore } from '../../store/IStore';
 import { paramString } from '../utils/routeParams';
+import { ListQuery } from './ListQuery';
 
 /**
  * Returns true when the request has a logged-in user OR is in super-user dev mode.
@@ -176,11 +177,16 @@ export class ConfigRouteHandler {
             // For versioned entities (nodes), return only the latest incarnation per lineageId.
             const result = await controller.listLatest();
             if (result.ok) {
-                // Filter both nodes and kennels by visibility/ownership.
-                const data = Array.isArray(result.data)
-                    ? filterReadable(result.data, req.ctx)
-                    : result.data;
-                res.status(200).json({ ok: true, data });
+                if (!Array.isArray(result.data)) {
+                    res.status(200).json({ ok: true, data: result.data });
+                    return;
+                }
+                // ACL FIRST: visibility must be settled before `total` is counted and before the
+                // page is cut — otherwise `total` betrays how many foreign private entries exist
+                // and every page comes out with holes in it.
+                const readable = filterReadable(result.data, req.ctx);
+                const listQuery = ListQuery.from(req.query);
+                res.status(200).json(listQuery.envelope(listQuery.apply(readable, req.ctx)));
             } else {
                 res.status(500).json({ error: result.error });
             }

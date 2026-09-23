@@ -35,6 +35,13 @@ export type NodeEntry = {
     /** The spirit's true name — changeable without breaking pacts */
     displayName?: string;
     name: string;
+    /**
+     * The name this dog is bound under when it serves as a parent in a child's VM context.
+     * Same value for every dog kind — SerializedDogs report toCamelCase(displayName), base dogs
+     * their class name — so the UI never has to tell the kinds apart, and never has to compute
+     * the transformation itself.
+     */
+    contextName: string;
     /** A brief description of what this dog does */
     description?: string;
     icon?: string;
@@ -372,6 +379,10 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason, kennelConfig?: IKe
                     ? (instance as SerializedDog<unknown>).instanceConfig?.displayName
                     : undefined,
                 name: instanceName,
+                // The binding name, straight from the live instance's IHuntingDog.name getter —
+                // the very value mergeParentDogsIntoContext writes into the context. Set here in
+                // the shared literal, so SerializedDogs and base dogs carry it alike.
+                contextName: instanceName,
                 description: (instance as IHuntingDog<unknown>).description ?? undefined,
                 icon: (isSerialized
                     ? (instance as SerializedDog<unknown>).icon

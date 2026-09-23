@@ -48,7 +48,7 @@ return {
         parentsRequired: [dataLineageId],
         parentsOptional: [] as string[],
         theRun: `
-var d = Mdreportdata;
+var d = MdReportData;
 var out = "";
 out += "# " + d.title + "\\n\\n";
 out += "_Stand: " + d.generatedAt + "_\\n\\n";

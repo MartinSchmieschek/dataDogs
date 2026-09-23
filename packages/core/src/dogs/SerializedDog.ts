@@ -524,6 +524,10 @@ export class SerializedDog<T> extends Dog<T> {
         const parentsOptional = this.config.parentsOptional || [];
         const allParentIds = [...parentsRequired, ...parentsOptional];
 
+        // Two passes on purpose: every primary name is bound FIRST, aliases only fill the gaps
+        // that are left. A primary name must never lose to another dog's alias.
+        const boundParents: Array<{ dog: IHuntingDog<unknown>; value: any }> = [];
+
         allParentIds.forEach((parentId: string) => {
             const parentDog = this.findParentDog(parentId, parentSource);
 
@@ -535,10 +539,13 @@ export class SerializedDog<T> extends Dog<T> {
                     if (parentDog.collected !== undefined) {
                         contextObj[dogName] = parentDog.collected;
                         this.requiredYieldsContext.set(dogName, parentDog.collected);
+                        boundParents.push({ dog: parentDog, value: parentDog.collected });
                     }
                 } else {
                     // Type definitions: use collected or empty placeholder -- the shape matters, not the substance
-                    contextObj[dogName] = parentDog.collected || {};
+                    const placeholder = parentDog.collected || {};
+                    contextObj[dogName] = placeholder;
+                    boundParents.push({ dog: parentDog, value: placeholder });
                 }
 
                 // If the parent carries extra tools for the VM, inscribe them too
@@ -550,6 +557,8 @@ export class SerializedDog<T> extends Dog<T> {
                 }
             }
         });
+
+        this.applyContextAliases(contextObj, boundParents, useExhausted ? this.requiredYieldsContext : undefined);
     }
 
     /**
@@ -628,9 +637,9 @@ export class SerializedDog<T> extends Dog<T> {
     get name(): string {
         const cfg = this.config as ISerializedDogConfig;
         if (cfg.displayName) {
-            return this.toCamelCase(cfg.displayName);
+            return SerializedDog.toCamelCase(cfg.displayName);
         }
-        return this.toCamelCase(this.storageId);
+        return SerializedDog.toCamelCase(this.storageId);
     }
 
     /** The spirit's lineage mark — the lineageId that binds all its incarnations across branches */
@@ -644,8 +653,13 @@ export class SerializedDog<T> extends Dog<T> {
         return typeof c?.icon === 'string' ? c.icon : undefined;
     }
 
-    /** Transmute a name into CamelCase — the spirit's identity in the VM realm must be a valid identifier */
-    private toCamelCase(input: string): string {
+    /**
+     * Transmute a name into CamelCase — the spirit's identity in the VM realm must be a valid identifier.
+     *
+     * Public and static so that the HTTP surface can report the very same binding name
+     * (`contextName`) without keeping a second, drifting copy of this transformation.
+     */
+    public static toCamelCase(input: string): string {
         // Already a valid PascalCase identifier? Leave it untouched.
         if (/^[A-Z][a-zA-Z0-9_]*$/.test(input)) {
             return input;
@@ -660,6 +674,59 @@ export class SerializedDog<T> extends Dog<T> {
             .join('');
     }
 
+    /** A key may only enter the VM context when user code could actually spell it. */
+    private static readonly IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+    /** Reserved words can never serve as a binding — `declare const default` is a syntax error. */
+    private static readonly RESERVED_WORDS = new Set([
+        'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
+        'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'function',
+        'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null',
+        'package', 'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this',
+        'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+    ]);
+
+    /**
+     * Bind the readable spellings of already-bound parents as ADDITIONAL context keys.
+     *
+     * `toCamelCase` flattens inner capitals ("mdReportData" -> "Mdreportdata"). Repairing it
+     * would rename the parent inside every dog that already uses the mangled spelling, so the
+     * mangled name stays the PRIMARY binding (written by the caller before this runs) and only
+     * aliases are added on top:
+     *   1. `toCamelCase(displayName)` — the name of today, always bound by the caller,
+     *   2. the displayName with its first letter capitalized, rest untouched,
+     *   3. the raw displayName itself.
+     *
+     * Collision rule, not negotiable: a key that is already taken is NEVER overwritten. Two dogs
+     * can fall on the same alias — the first one wins, the second one keeps its primary name.
+     * Otherwise a parent would silently vanish from another dog's context.
+     *
+     * Aliases 2 and 3 are both held against {@link IDENTIFIER_PATTERN}: the type-def path turns
+     * every context key into `declare global { type <key> = ... }`, so a key carrying a space or
+     * an arrow would poison Monaco's whole library.
+     */
+    private applyContextAliases(
+        contextObj: Record<string, any>,
+        boundParents: Array<{ dog: IHuntingDog<unknown>; value: any }>,
+        yieldCache?: Map<string, any>
+    ): void {
+        for (const { dog, value } of boundParents) {
+            const displayName = dog instanceof SerializedDog
+                ? (dog.instanceConfig as ISerializedDogConfig)?.displayName
+                : undefined;
+            const source = typeof displayName === 'string' && displayName.length > 0 ? displayName : dog.name;
+            const aliases = [source.charAt(0).toUpperCase() + source.slice(1), source];
+
+            for (const alias of aliases) {
+                if (alias === dog.name) continue;
+                if (Object.prototype.hasOwnProperty.call(contextObj, alias)) continue;
+                if (!SerializedDog.IDENTIFIER_PATTERN.test(alias)) continue;
+                if (SerializedDog.RESERVED_WORDS.has(alias)) continue;
+                contextObj[alias] = value;
+                yieldCache?.set(alias, value);
+            }
+        }
+    }
 
     /** The raw config of this spirit -- its full blueprint, laid bare */
     public get instanceConfig():any{
@@ -811,6 +878,10 @@ export class SerializedDog<T> extends Dog<T> {
         const parentsOptional = this.config.parentsOptional || [];
         const allParentIds = [...parentsRequired, ...parentsOptional];
 
+        // Two passes on purpose: every primary name is bound FIRST, aliases only fill the gaps
+        // that are left. A primary name must never lose to another dog's alias.
+        const boundParents: Array<{ dog: IHuntingDog<unknown>; value: any }> = [];
+
         allParentIds.forEach((parentId: string) => {
             // Find the parent hound by ID in the exhausted crew — matches by storageId, lineageId, or name
             const parentDog = this.findParentDog(parentId, season.exhausted);
@@ -820,6 +891,7 @@ export class SerializedDog<T> extends Dog<T> {
                 // Inscribe the parent's plunder as a global variable in the context
                 contextObj[dogName] = parentDog.collected;
                 this.requiredYieldsContext.set(dogName, parentDog.collected);
+                boundParents.push({ dog: parentDog, value: parentDog.collected });
                 // Debug: log fer SerializedDog parents
                 if (parentDog instanceof SerializedDog && isRuntimeLogVerbose()) {
                     console.log(`[SerializedDog ${this.storageId}] Füge ${dogName} (storageId: ${(parentDog as SerializedDog<unknown>).storageId}) zum Context hinzu`);
@@ -839,6 +911,8 @@ export class SerializedDog<T> extends Dog<T> {
                 console.warn(`[SerializedDog ${this.storageId}] Parent ${parentId} nicht in exhausted gefunden`);
             }
         });
+
+        this.applyContextAliases(contextObj, boundParents, this.requiredYieldsContext);
 
         this.applyVmGlobalsSuppliers(contextObj, season.exhausted);
 
