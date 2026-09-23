@@ -22,7 +22,7 @@
                 autocomplete="off"
                 placeholder="Durchsuchen …"
                 [value]="searchQuery()"
-                (input)="searchQuery.set($any($event.target).value)" />
+                (input)="onSearchInput($any($event.target).value)" />
             </div>
             <div
               class="kennel-search-sort-cluster"
@@ -36,7 +36,7 @@
                   type="button"
                   class="kennel-sort-cycle kennel-sort-cycle--beside"
                   [class.is-active]="onlyMine()"
-                  (click)="onlyMine.set(!onlyMine())"
+                  (click)="onOnlyMineToggle()"
                   [attr.aria-pressed]="onlyMine()"
                   [title]="onlyMine() ? 'Filter aus: alle sichtbaren Kennels zeigen' : 'Nur eigene Kennels zeigen'">
                   {{ onlyMine() ? 'Nur meine ✓' : 'Nur meine' }}
@@ -88,6 +88,12 @@
             <header class="kennel-panel-head">
               <h1 class="kennel-panel-title">Kennels</h1>
               <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
+              <p class="kennel-panel-count" aria-live="polite">
+                {{ kennels().length }} von {{ total() }}
+                @if (showRefreshing()) {
+                  <span class="kennel-panel-count-note">· lädt …</span>
+                }
+              </p>
             </header>
 
             @if (showCreateForm()) {
@@ -97,21 +103,26 @@
             }
 
             @if (error()) {
-              <div
-                class="kennel-error comfort-error-trigger"
-                role="button"
-                tabindex="0"
-                title="Klick: Fernes Signal"
-                (click)="onComfortVideoClick()"
-                (keydown.enter)="onComfortVideoClick()"
-                (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
-                {{ error() }}
+              <div class="kennel-error-row">
+                <div
+                  class="kennel-error comfort-error-trigger"
+                  role="button"
+                  tabindex="0"
+                  title="Klick: Fernes Signal"
+                  (click)="onComfortVideoClick()"
+                  (keydown.enter)="onComfortVideoClick()"
+                  (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
+                  {{ error() }}
+                </div>
+                <button type="button" class="kennel-more-btn kennel-more-btn--retry" (click)="retry()">
+                  Nochmal versuchen
+                </button>
               </div>
             }
 
             <div class="kennel-list-wrap">
               <div class="kennel-list" role="list">
-                @for (kennel of filteredKennels(); track kennel.id + '@' + listOrderEpoch(); let i = $index) {
+                @for (kennel of kennels(); track kennel.id + '@' + listOrderEpoch(); let i = $index) {
                   <div
                     class="kennel-card-motion"
                     appKennelCardMotion
@@ -194,20 +205,38 @@
                   </div>
               } @empty {
                 @if (!loading()) {
-                  @if (kennels().length === 0) {
-                    <div class="kennel-empty">Keine Kennels vorhanden.</div>
-                  } @else {
+                  @if (isFiltered()) {
                     <div class="kennel-empty">Keine Treffer für diese Suche.</div>
+                  } @else if (!error()) {
+                    <div class="kennel-empty">Keine Kennels vorhanden.</div>
                   }
                 }
               }
             </div>
+
+            @if (hasMore() && !error()) {
+              <!-- Sentinel: löst das Nachladen beim Scrollen aus. Der Knopf bleibt die Rückfallebene. -->
+              <div #loadMoreSentinel class="kennel-more-sentinel" aria-hidden="true"></div>
+              <div class="kennel-more" aria-live="polite">
+                @if (loadingMore()) {
+                  <span class="kennel-more-hint">Lädt weitere Kennels …</span>
+                } @else {
+                  <button type="button" class="kennel-more-btn" (click)="loadMore()">
+                    Mehr laden ({{ total() - kennels().length }})
+                  </button>
+                }
+              </div>
+            } @else if (kennels().length > 0 && !error()) {
+              <div class="kennel-more">
+                <span class="kennel-more-hint">Alle {{ total() }} Kennels geladen.</span>
+              </div>
+            }
           </div>
         </main>
       </div>
       </div>
 
-      @if (loading()) {
+      @if (showInitialLoading()) {
         <div class="kennel-list-loading-shroud" aria-live="polite">
           <app-loading-indicator />
         </div>

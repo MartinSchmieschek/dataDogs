@@ -12,6 +12,8 @@ export interface DogEntry {
   name: string;
   /** A brief description of what this dog does */
   description?: string;
+  /** Bindungsname im VM-Kontext, vom Server geliefert — siehe `SerializedDogInfo.contextName`. */
+  contextName?: string;
   icon?: string;
   result: any;
   error?: string;

@@ -14,6 +14,12 @@ export interface SerializedDogInfo {
   /** Freitext-Beschreibung des Dogs (seit list_nodes/get_node — Commit 592442c). */
   description?: string;
   type?: string;
+  /**
+   * Name, unter dem dieser Dog als Elternteil im VM-Kontext gebunden wird
+   * (z. B. `mdReportData` -> `Mdreportdata`). Kommt vom Server; nie selbst ableiten.
+   * Fehlt bei aelteren Serverstaenden und bei BaseDogs.
+   */
+  contextName?: string;
   theRun: string;
   version?: number;
   icon?: string;

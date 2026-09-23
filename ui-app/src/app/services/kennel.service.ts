@@ -13,6 +13,31 @@ export interface ApiResponse<T = any> {
   id?: string;
 }
 
+/**
+ * Antwort der seitenweisen Listung. `total`/`limit`/`offset` liefert der Server nur,
+ * wenn `limit` mitgeschickt wurde — ältere Stände antworten weiter wie `ApiResponse`.
+ */
+export interface PagedApiResponse<T> extends ApiResponse<T[]> {
+  total?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export type KennelSortKey = 'name' | 'createdAt' | 'updatedAt';
+export type KennelSortDir = 'asc' | 'desc';
+
+export interface KennelPageQuery {
+  /** Seitengröße, serverseitig auf 200 gedeckelt. */
+  limit: number;
+  offset?: number;
+  /** Teilstring-Suche über name, displayName, description. */
+  q?: string;
+  /** Nur eigene Einträge; ohne Anmeldung leer. */
+  mine?: boolean;
+  sort?: KennelSortKey;
+  dir?: KennelSortDir;
+}
+
 export interface RunResponse {
   ok: boolean;
   waves: Waves;
@@ -27,6 +52,21 @@ export class KennelService {
 
   getAll(): Observable<ApiResponse<IKennelConfig[]>> {
     return this.http.get<ApiResponse<IKennelConfig[]>>(this.baseUrl);
+  }
+
+  /**
+   * Seitenweise Listung — Suche, Sortierung und „nur meine" laufen auf dem Server.
+   * Nur gesetzte Parameter werden gesendet; ohne `limit` verhielte sich die API wie `getAll()`.
+   */
+  getPage(query: KennelPageQuery): Observable<PagedApiResponse<IKennelConfig>> {
+    let params = new HttpParams().set('limit', String(query.limit));
+    if (query.offset) params = params.set('offset', String(query.offset));
+    const q = query.q?.trim();
+    if (q) params = params.set('q', q);
+    if (query.mine) params = params.set('mine', '1');
+    if (query.sort) params = params.set('sort', query.sort);
+    if (query.dir) params = params.set('dir', query.dir);
+    return this.http.get<PagedApiResponse<IKennelConfig>>(this.baseUrl, { params });
   }
 
   getById(id: string): Observable<ApiResponse<IKennelConfig>> {

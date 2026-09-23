@@ -282,6 +282,19 @@
   text-overflow: ellipsis;
 }
 
+/* Bindungsname im VM-Kontext — dezent, kopierbar, bricht nie um. */
+.card-context {
+  display: block;
+  max-width: 100%;
+  font-family: tk.$font-mono;
+  font-size: tk.$font-xs;
+  color: tk.$text-muted;
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .card-desc {
   font-size: tk.$font-sm;
   color: tk.$text-muted;

@@ -71,6 +71,16 @@ export class DogSidePanelComponent implements OnChanges {
   /** Welche Edit-Section unten sichtbar ist (Kreis-Buttons am Dog-Hub). */
   readonly activeSection = signal<DogPanelSectionId | null>(null);
 
+  /**
+   * Bindungsname im VM-Kontext, wie ihn der Server liefert — nur wenn er vom
+   * sichtbaren Titel abweicht. Fehlt er, wird nichts angezeigt und nichts geraten.
+   */
+  readonly contextName = computed(() => {
+    const d = this.dogSignal();
+    const ctx = d?.contextName?.trim();
+    return ctx && ctx !== (d?.displayName || d?.name) ? ctx : '';
+  });
+
   readonly availableSections = computed(() => {
     const d = this.dogSignal();
     return d ? buildDogPanelSections(d) : [];

@@ -95,6 +95,9 @@
             <span class="card-cat">{{ categoryFor(dog) }}</span>
           </div>
           <div class="card-name" [title]="labelFor(dog)">{{ labelFor(dog) }}</div>
+          @if (contextNameFor(dog); as ctx) {
+            <code class="card-context" [title]="'Im VM-Kontext: ' + ctx">{{ ctx }}</code>
+          }
           @if (descriptionFor(dog); as desc) {
             <div class="card-desc" [title]="desc">{{ desc }}</div>
           }

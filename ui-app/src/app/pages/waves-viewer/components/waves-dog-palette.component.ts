@@ -62,6 +62,16 @@ export class WavesDogPaletteComponent {
     return (dog as SerializedDogInfo).displayName || (dog as SerializedDogInfo).id;
   }
 
+  /**
+   * Bindungsname im VM-Kontext, wie ihn der Server liefert — nur anzeigen,
+   * wenn er vom sichtbaren Titel abweicht. Niemals selbst ableiten.
+   */
+  contextNameFor(dog: DogInfo): string | null {
+    if (isBaseDog(dog)) return null;
+    const name = (dog as SerializedDogInfo).contextName?.trim();
+    return name && name !== this.labelFor(dog) ? name : null;
+  }
+
   descriptionFor(dog: DogInfo): string | null {
     const raw = isBaseDog(dog) ? dog.description : (dog as SerializedDogInfo).description;
     const text = raw?.trim();

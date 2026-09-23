@@ -40,6 +40,9 @@ import { DogPanelSectionId } from '../../utils/dog-panel-sections';
         </div>
         <div class="node-name-under">
           <span class="node-name">{{ displayName() }}</span>
+          @if (contextName(); as ctx) {
+            <code class="node-context" [title]="'Im VM-Kontext: ' + ctx">{{ ctx }}</code>
+          }
           @if (selected && descriptionFull()) {
             <span class="node-desc-expanded">{{ descriptionFull() }}</span>
           }
@@ -184,6 +187,20 @@ import { DogPanelSectionId } from '../../utils/dog-panel-sections';
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .node-context {
+      pointer-events: auto;
+      display: block;
+      font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+      font-size: 9px;
+      line-height: 1.2;
+      color: rgba(190, 200, 215, 0.82);
+      max-width: 100%;
+      margin: 1px auto 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      user-select: all;
     }
     .graph-node-root.selected .node-name {
       color: #ffd9b8;
@@ -330,6 +347,15 @@ export class GraphDogNodeComponent implements OnChanges {
     if (d?.displayName?.trim()) return d.displayName.trim();
     if (d?.name) return d.name;
     return this.label ?? '';
+  });
+
+  /**
+   * Bindungsname im VM-Kontext, wie ihn der Server liefert — nur wenn er vom
+   * angezeigten Titel abweicht. Fehlt er, bleibt die Zeile leer; nichts wird geraten.
+   */
+  readonly contextName = computed(() => {
+    const ctx = this.dogRef()?.contextName?.trim();
+    return ctx && ctx !== this.displayName() ? ctx : '';
   });
 
   readonly descriptionFull = computed(() => this.dogRef()?.description?.trim() ?? '');

@@ -66,6 +66,19 @@
   }
 }
 
+/* Bindungsname im VM-Kontext — dezent, kopierbar, bricht nicht um. */
+.panel-context {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  color: #9aa4b2;
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dog-type {
   font-size: 11px;
   color: #999;

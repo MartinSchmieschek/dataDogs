@@ -12,8 +12,16 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { KennelService } from '../../services/kennel.service';
+import { Subject, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap, tap } from 'rxjs/operators';
+import {
+  KennelService,
+  type KennelSortDir,
+  type KennelSortKey,
+  type PagedApiResponse,
+} from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
 import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
@@ -27,10 +35,14 @@ import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.d
 import { VisibilityBadgeComponent } from '../../components/visibility-badge/visibility-badge.component';
 import { AuthService } from '../../services/auth.service';
 
-const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v1';
+/** v2: Sortierschlüssel folgen dem Server-Vertrag (`name` | `createdAt` | `updatedAt`). */
+const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v2';
 
-type KennelListSortKey = 'name' | 'id' | 'updated';
-type KennelListSortDir = 'asc' | 'desc';
+/** Seitengröße der Nachlade-Liste. */
+const KENNEL_PAGE_SIZE = 20;
+
+type KennelListSortKey = KennelSortKey;
+type KennelListSortDir = KennelSortDir;
 
 function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: KennelListSortDir } {
   const fallback: { sortKey: KennelListSortKey; sortDir: KennelListSortDir } = {
@@ -42,7 +54,7 @@ function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: K
     const raw = localStorage.getItem(KENNEL_LIST_SORT_STORAGE_KEY);
     if (!raw) return fallback;
     const o = JSON.parse(raw) as { sortKey?: unknown; sortDir?: unknown };
-    const keys: KennelListSortKey[] = ['name', 'id', 'updated'];
+    const keys: KennelListSortKey[] = ['name', 'createdAt', 'updatedAt'];
     const dirs: KennelListSortDir[] = ['asc', 'desc'];
     const sortKey = o.sortKey;
     const sortDir = o.sortDir;
@@ -55,6 +67,12 @@ function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: K
 }
 
 const initialKennelListSort = readPersistedKennelListSort();
+
+/** Grenzen verschieben sich, wenn sich der Bestand zwischen zwei Seiten ändert — erste Fassung gewinnt. */
+function dedupeKennelsById(list: IKennelConfig[]): IKennelConfig[] {
+  const seen = new Set<string>();
+  return list.filter((k) => (seen.has(k.id) ? false : (seen.add(k.id), true)));
+}
 
 type KennelDescHighlightPart = { text: string; match: boolean };
 
@@ -121,6 +139,15 @@ export class KennelListComponent implements OnInit, OnDestroy {
   );
 
   private kennelScrollRef = viewChild<ElementRef<HTMLElement>>('kennelScroll');
+  private loadMoreSentinel = viewChild<ElementRef<HTMLElement>>('loadMoreSentinel');
+
+  /** Rohe Tastatureingaben der Suche — entprellt, bevor daraus eine Abfrage wird. */
+  private readonly searchInput = new Subject<string>();
+  /** Seitenabrufe; `switchMap` verwirft eine laufende Antwort, sobald eine neue startet. */
+  private readonly pageRequests = new Subject<{ offset: number; append: boolean }>();
+  private sentinelObserver: IntersectionObserver | null = null;
+  /** Letzter abgeschickter Seitenabruf — Grundlage für „Nochmal versuchen". */
+  private lastRequest: { offset: number; append: boolean } = { offset: 0, append: false };
 
   constructor() {
     effect(() => {
@@ -152,14 +179,76 @@ export class KennelListComponent implements OnInit, OnDestroy {
         this.skipFirstAuthEffect = false;
         return;
       }
-      this.loadKennels();
       // Reset onlyMine when logging out — there's no "mine" without a user.
       if (!_u) this.onlyMine.set(false);
+      this.reload();
+    }, { allowSignalWrites: true });
+
+    // Sentinel am Listenende beobachten. Läuft neu, sobald das Element erscheint
+    // oder verschwindet (alles geladen / Fehler); die Registrierung endet mit der Komponente.
+    effect((onCleanup) => {
+      const sentinel = this.loadMoreSentinel()?.nativeElement;
+      if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+      const root = this.kennelScrollRef()?.nativeElement ?? null;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) this.loadMore();
+        },
+        { root, rootMargin: '240px' }
+      );
+      observer.observe(sentinel);
+      this.sentinelObserver = observer;
+      onCleanup(() => {
+        observer.disconnect();
+        if (this.sentinelObserver === observer) this.sentinelObserver = null;
+      });
     });
+
+    this.searchInput
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
+      .subscribe((value) => {
+        this.appliedQuery.set(value.trim());
+        this.reload();
+      });
+
+    this.pageRequests
+      .pipe(
+        tap((req) => {
+          this.lastRequest = req;
+          this.error.set(null);
+          if (req.append) this.loadingMore.set(true);
+          else this.loading.set(true);
+        }),
+        switchMap((req) =>
+          this.kennelService
+            .getPage({
+              limit: KENNEL_PAGE_SIZE,
+              offset: req.offset,
+              q: this.appliedQuery(),
+              mine: this.onlyMine(),
+              sort: this.sortKey(),
+              dir: this.sortDir(),
+            })
+            .pipe(
+              map((res) => ({ req, res, failure: null as string | null })),
+              catchError((err) =>
+                of({
+                  req,
+                  res: null as PagedApiResponse<IKennelConfig> | null,
+                  failure: (err?.error?.error ?? err?.message ?? 'Laden fehlgeschlagen') as string,
+                })
+              )
+            )
+        ),
+        takeUntilDestroyed()
+      )
+      .subscribe(({ req, res, failure }) => this.applyPage(req, res, failure));
   }
 
   ngOnDestroy(): void {
     this.backdropDrive.detachScrollElement();
+    this.sentinelObserver?.disconnect();
+    this.sentinelObserver = null;
   }
 
   async onCompassAllow(): Promise<void> {
@@ -182,12 +271,21 @@ export class KennelListComponent implements OnInit, OnDestroy {
    */
   mirrorExecutePath = input(false);
 
+  /** Die bereits geladenen Seiten, in Serverreihenfolge. */
   kennels = signal<IKennelConfig[]>([]);
+  /** Treffer insgesamt (nach `q`/`mine`, vor der Seitenbildung) — Quelle für „n von m". */
+  total = signal(0);
+  /** Offset der nächsten Seite; zählt die tatsächlich gelieferten Einträge, nicht die entdoppelten. */
+  private nextOffset = signal(0);
   loading = signal(false);
+  loadingMore = signal(false);
   showCreateForm = signal(false);
   error = signal<string | null>(null);
 
+  /** Rohwert des Eingabefelds (sofortige Anzeige). */
   searchQuery = signal('');
+  /** Der entprellte Suchtext, mit dem der Server tatsächlich gefragt wurde. */
+  appliedQuery = signal('');
   sortKey = signal<KennelListSortKey>(initialKennelListSort.sortKey);
   sortDir = signal<KennelListSortDir>(initialKennelListSort.sortDir);
 
@@ -197,66 +295,95 @@ export class KennelListComponent implements OnInit, OnDestroy {
   /** Erhöhen bei Sortwechsel → @for-Track ändert sich, Karten-Animationen laufen erneut. */
   listOrderEpoch = signal(0);
 
-  filteredKennels = computed(() => {
-    const q = this.searchQuery().trim().toLowerCase();
-    const me = this.auth.user();
-    const mineOnly = this.onlyMine();
-    let list = [...this.kennels()];
-    if (q) {
-      list = list.filter((k) => {
-        const ref = this.kennelRef(k).toLowerCase();
-        const name = (k.name || '').toLowerCase();
-        const desc = (k.description || '').toLowerCase();
-        return ref.includes(q) || name.includes(q) || desc.includes(q);
-      });
-    }
-    if (mineOnly && me) {
-      list = list.filter((k) => k.ownerId === me.id);
-    }
-    const key = this.sortKey();
-    const dir = this.sortDir() === 'asc' ? 1 : -1;
-    list.sort((a, b) => {
-      let cmp = 0;
-      if (key === 'name') {
-        const na = (a.name || this.kennelRef(a)).toLowerCase();
-        const nb = (b.name || this.kennelRef(b)).toLowerCase();
-        cmp = na.localeCompare(nb, 'de');
-      } else if (key === 'id') {
-        cmp = this.kennelRef(a).localeCompare(this.kennelRef(b), undefined, {
-          numeric: true,
-          sensitivity: 'base',
-        });
-      } else {
-        const ta = a.updatedAt || a.createdAt || '';
-        const tb = b.updatedAt || b.createdAt || '';
-        cmp = ta.localeCompare(tb);
-      }
-      return cmp * dir;
-    });
-    return list;
-  });
+  /** Volllast-Schleier nur beim allerersten Laden — sonst flackert jede Suche. */
+  showInitialLoading = computed(() => this.loading() && this.kennels().length === 0);
+  /** Ersetzender Ladevorgang über einer schon gefüllten Liste. */
+  showRefreshing = computed(() => this.loading() && this.kennels().length > 0);
+  hasMore = computed(() => this.nextOffset() < this.total());
+  /** Suche oder „nur meine" ist aktiv — unterscheidet „keine Treffer" von „gar nichts da". */
+  isFiltered = computed(() => this.appliedQuery().length > 0 || this.onlyMine());
 
   ngOnInit() {
-    this.loadKennels();
+    this.reload();
+  }
+
+  /** Erste Seite neu holen und die Liste ersetzen. */
+  reload(): void {
+    this.pageRequests.next({ offset: 0, append: false });
+  }
+
+  /** Nächste Seite anhängen — no-op, solange etwas läuft oder alles geladen ist. */
+  loadMore(): void {
+    if (this.loading() || this.loadingMore() || !this.hasMore()) return;
+    this.pageRequests.next({ offset: this.nextOffset(), append: true });
+  }
+
+  /** Nach einem Fehler genau den gescheiterten Abruf wiederholen. */
+  retry(): void {
+    this.pageRequests.next(this.lastRequest);
+  }
+
+  onSearchInput(value: string): void {
+    this.searchQuery.set(value);
+    this.searchInput.next(value);
+  }
+
+  onOnlyMineToggle(): void {
+    this.onlyMine.set(!this.onlyMine());
+    this.reload();
+  }
+
+  private applyPage(
+    req: { offset: number; append: boolean },
+    res: PagedApiResponse<IKennelConfig> | null,
+    failure: string | null
+  ): void {
+    this.loading.set(false);
+    this.loadingMore.set(false);
+    if (failure !== null || !res) {
+      this.error.set(failure ?? 'Laden fehlgeschlagen');
+      return;
+    }
+    const page = res.data ?? [];
+    if (req.append && page.length === 0) {
+      // Nichts mehr da, obwohl `total` mehr versprach (Bestand hat sich verschoben):
+      // Liste als vollständig markieren, sonst feuert das Sentinel endlos.
+      this.total.set(this.nextOffset());
+      return;
+    }
+    // Ohne `total` hat der Server die Seitenparameter ignoriert (älterer Stand):
+    // dann ist die Antwort bereits die vollständige Liste.
+    const total = res.total ?? (req.append ? this.total() : page.length);
+    this.kennels.update((current) =>
+      req.append ? dedupeKennelsById([...current, ...page]) : dedupeKennelsById(page)
+    );
+    this.total.set(total);
+    this.nextOffset.set(req.offset + page.length);
+    if (!req.append) {
+      // Nach oben, sonst steht das Sentinel sofort wieder im Bild und zieht ungefragt Seite 2.
+      this.kennelScrollRef()?.nativeElement.scrollTo({ top: 0 });
+      /* Track-Fragment ändern → @for neu aufbauen, Karten-Animation erneut */
+      this.listOrderEpoch.update((n) => n + 1);
+    }
   }
 
   onComfortVideoClick(): void {
     this.errorVideoPopup.openPopup(this.error());
   }
 
-  /** Sortierfeld per Klick durchschalten: Name → ID → Zuletzt geändert. */
+  /** Sortierfeld per Klick durchschalten: Name → Erstellt → Geändert (Server-Vertrag). */
   cycleSortKey(): void {
-    const order: Array<'name' | 'id' | 'updated'> = ['name', 'id', 'updated'];
+    const order: KennelListSortKey[] = ['name', 'createdAt', 'updatedAt'];
     const i = order.indexOf(this.sortKey());
     this.sortKey.set(order[(i + 1) % order.length]);
-    this.listOrderEpoch.update((n) => n + 1);
+    this.reload();
   }
 
   sortKeyLabel(): string {
     switch (this.sortKey()) {
-      case 'id':
-        return 'ID';
-      case 'updated':
+      case 'createdAt':
+        return 'Erstellt';
+      case 'updatedAt':
         return 'Geändert';
       default:
         return 'Name';
@@ -265,24 +392,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
 
   toggleSortDir(): void {
     this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
-    this.listOrderEpoch.update((n) => n + 1);
-  }
-
-  loadKennels() {
-    this.loading.set(true);
-    this.error.set(null);
-    this.kennelService.getAll().subscribe({
-      next: (res) => {
-        this.kennels.set(res.data ?? []);
-        this.loading.set(false);
-        /* Track-Fragment ändern → @for neu aufbauen, Karten-Animation erneut */
-        this.listOrderEpoch.update((n) => n + 1);
-      },
-      error: (err) => {
-        this.error.set(err.message);
-        this.loading.set(false);
-      }
-    });
+    this.reload();
   }
 
   /** Anzeige-Emoji; ohne DB-Wert: 🐕 (nur UI, nicht gespeichert). */
@@ -293,13 +403,13 @@ export class KennelListComponent implements OnInit, OnDestroy {
 
   /** Suchtext trifft die Beschreibung — Karte klappt Beschreibung auf + Highlight. */
   descriptionMatchesSearch(k: IKennelConfig): boolean {
-    const q = this.searchQuery().trim().toLowerCase();
+    const q = this.appliedQuery().toLowerCase();
     if (!q) return false;
     return (k.description || '').toLowerCase().includes(q);
   }
 
   descriptionHighlightParts(k: IKennelConfig): KennelDescHighlightPart[] {
-    return splitKennelDescForHighlight(k.description || '', this.searchQuery());
+    return splitKennelDescForHighlight(k.description || '', this.appliedQuery());
   }
 
   /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */
@@ -386,7 +496,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
       this.kennelService.delete(ref).subscribe({
         next: (res) => {
           if (res.ok) {
-            this.loadKennels();
+            this.reload();
           } else {
             this.error.set(res.error ?? 'Löschen fehlgeschlagen');
           }
@@ -431,7 +541,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
         this.kennelService.importBundle(bundle).subscribe({
           next: (res) => {
             if (res.ok) {
-              this.loadKennels();
+              this.reload();
             } else {
               this.error.set(res.error ?? 'Import fehlgeschlagen');
             }
