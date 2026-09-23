@@ -1,19 +1,23 @@
 import {
-  Component, Input,
+  Component, Input, inject, signal,
   ElementRef, ViewChild, OnChanges, OnDestroy, SimpleChanges
 } from '@angular/core';
 import { DogEntry } from '../../models/dog-entry.model';
-
-declare const monaco: any;
+import { MonacoLoaderService } from '../../services/monaco-loader.service';
+import { LoadingIndicatorComponent } from '../loading-indicator/loading-indicator.component';
 
 @Component({
   selector: 'app-dog-editor',
   standalone: true,
+  imports: [LoadingIndicatorComponent],
   template: `
     <div
       class="editor-wrapper dog-node-card"
       [class.dog-node-card--serialized]="!!dog.codeTs">
       <div #editorContainer class="editor-container"></div>
+      @if (monacoLoading()) {
+        <app-loading-indicator />
+      }
     </div>
   `,
   styleUrls: ['../../styles/dog-node-card.scss', './dog-editor.component.scss'],
@@ -23,16 +27,21 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
 
   @Input() dog!: DogEntry;
 
+  readonly monacoLoading = signal(false);
+
+  private readonly monacoLoader = inject(MonacoLoaderService);
   private editor: any = null;
   private extraLib: any = null;
+  private destroyed = false;
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['dog'] && this.dog) {
-      this.initOrUpdateEditor();
+      void this.initOrUpdateEditor();
     }
   }
 
   ngOnDestroy() {
+    this.destroyed = true;
     this.editor?.dispose();
     this.extraLib?.dispose();
   }
@@ -73,9 +82,7 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
     return trimmed;
   }
 
-  private initOrUpdateEditor() {
-    if (typeof monaco === 'undefined') return;
-
+  private async initOrUpdateEditor(): Promise<void> {
     if (!this.dog.codeTs) {
       this.editor?.dispose();
       this.editor = null;
@@ -83,6 +90,11 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
       this.extraLib = null;
       return;
     }
+
+    const monaco = await this.loadMonaco();
+    if (!monaco || this.destroyed || !this.dog.codeTs) return;
+
+    const container = this.containerRef.nativeElement as HTMLElement;
 
     const content = this.wrapCode(this.dog.codeTs);
 
@@ -102,7 +114,7 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
         model.setValue(content);
       }
     } else {
-      this.editor = monaco.editor.create(this.containerRef.nativeElement, {
+      this.editor = monaco.editor.create(container, {
         value: content,
         language: 'typescript',
         theme: 'vs-dark',
@@ -115,5 +127,16 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
     }
 
     this.editor.updateOptions({ readOnly: false });
+  }
+
+  private async loadMonaco(): Promise<any> {
+    this.monacoLoading.set(true);
+    try {
+      return await this.monacoLoader.ensureMonaco();
+    } catch {
+      return null;
+    } finally {
+      this.monacoLoading.set(false);
+    }
   }
 }

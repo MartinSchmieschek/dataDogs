@@ -1,9 +1,9 @@
 import {
   AfterViewInit, Component, ElementRef, EventEmitter,
-  Input, OnDestroy, Output, signal, ViewChild,
+  inject, Input, OnDestroy, Output, signal, ViewChild,
 } from '@angular/core';
-
-declare const monaco: any;
+import { LoadingIndicatorComponent } from '../../../components/loading-indicator/loading-indicator.component';
+import { MonacoLoaderService } from '../../../services/monaco-loader.service';
 
 /**
  * Monaco-based JSON editor with explicit format & validate actions.
@@ -15,6 +15,7 @@ declare const monaco: any;
 @Component({
   selector: 'app-waves-json-editor',
   standalone: true,
+  imports: [LoadingIndicatorComponent],
   templateUrl: './waves-json-editor.component.html',
   styleUrls: ['./waves-json-editor.component.scss'],
 })
@@ -39,25 +40,20 @@ export class WavesJsonEditorComponent implements AfterViewInit, OnDestroy {
 
   readonly lintStatus = signal<'valid' | 'invalid' | 'empty'>('valid');
   readonly lintMessage = signal<string | null>(null);
+  readonly monacoLoading = signal(false);
 
+  private readonly monacoLoader = inject(MonacoLoaderService);
   private editor: any = null;
   private _initialValue = '';
-  private monacoReadyHandler: (() => void) | null = null;
   private suppressChange = false;
+  private destroyed = false;
 
   ngAfterViewInit(): void {
-    if (typeof monaco !== 'undefined') {
-      this.mountEditor();
-    } else {
-      this.monacoReadyHandler = () => this.mountEditor();
-      window.addEventListener('monaco-ready', this.monacoReadyHandler);
-    }
+    void this.mountEditor();
   }
 
   ngOnDestroy(): void {
-    if (this.monacoReadyHandler) {
-      window.removeEventListener('monaco-ready', this.monacoReadyHandler);
-    }
+    this.destroyed = true;
     this.editor?.dispose();
     this.editor = null;
   }
@@ -106,9 +102,22 @@ export class WavesJsonEditorComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private mountEditor(): void {
-    if (!this.container?.nativeElement) return;
-    this.editor = monaco.editor.create(this.container.nativeElement, {
+  private async mountEditor(): Promise<void> {
+    const container = this.container?.nativeElement;
+    if (!container) return;
+
+    this.monacoLoading.set(true);
+    let monaco: any = null;
+    try {
+      monaco = await this.monacoLoader.ensureMonaco();
+    } catch {
+      monaco = null;
+    } finally {
+      this.monacoLoading.set(false);
+    }
+    if (!monaco || this.destroyed) return;
+
+    this.editor = monaco.editor.create(container, {
       value: this._initialValue || this.placeholder,
       language: 'json',
       theme: 'vs',

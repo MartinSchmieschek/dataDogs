@@ -1,6 +1,7 @@
 import {
   Component,
   Input,
+  inject,
   signal,
   ViewChild,
   ElementRef,
@@ -10,14 +11,14 @@ import {
   OnChanges,
 } from '@angular/core';
 import { EditSectionComponent } from '../../edit-section/edit-section.component';
+import { LoadingIndicatorComponent } from '../../loading-indicator/loading-indicator.component';
+import { MonacoLoaderService } from '../../../services/monaco-loader.service';
 import { isHtmlResultString, isMarkdownResultString } from '../../../utils/lead-result-string-format';
-
-declare const monaco: any;
 
 @Component({
   selector: 'app-dog-side-panel-result-artifact',
   standalone: true,
-  imports: [EditSectionComponent],
+  imports: [EditSectionComponent, LoadingIndicatorComponent],
   template: `
     <app-edit-section title="Result" [hideHeader]="hideHeader">
       @if (resultIsHtml || resultIsMarkdown) {
@@ -31,7 +32,12 @@ declare const monaco: any;
           sandbox="allow-scripts"
           referrerpolicy="no-referrer"></iframe>
       } @else {
-        <div #monacoHost class="result-monaco-host dog-node-card"></div>
+        <div class="result-monaco-wrap">
+          <div #monacoHost class="result-monaco-host dog-node-card"></div>
+          @if (monacoLoading()) {
+            <app-loading-indicator />
+          }
+        </div>
       }
     </app-edit-section>
   `,
@@ -47,8 +53,11 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
   @ViewChild('monacoHost') monacoHost?: ElementRef<HTMLDivElement>;
 
   resultViewMode = signal<'auto' | 'html' | 'raw'>('auto');
+  readonly monacoLoading = signal(false);
 
+  private readonly monacoLoader = inject(MonacoLoaderService);
   private editor: any = null;
+  private destroyed = false;
 
   private readonly onMonacoReady = () => this.scheduleSyncMonaco();
 
@@ -64,6 +73,7 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
   }
 
   ngOnDestroy() {
+    this.destroyed = true;
     window.removeEventListener('monaco-ready', this.onMonacoReady);
     this.disposeEditor();
   }
@@ -118,7 +128,7 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
 
   private scheduleSyncMonaco() {
     queueMicrotask(() => {
-      setTimeout(() => this.syncMonaco(), 0);
+      setTimeout(() => void this.syncMonaco(), 0);
     });
   }
 
@@ -127,8 +137,8 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
     this.editor = null;
   }
 
-  private syncMonaco() {
-    if (typeof monaco === 'undefined') return;
+  private async syncMonaco(): Promise<void> {
+    if (this.destroyed) return;
 
     if (this.showHtmlPreview()) {
       this.disposeEditor();
@@ -137,6 +147,13 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
 
     const host = this.monacoHost?.nativeElement;
     if (!host) return;
+
+    const monaco = await this.loadMonaco();
+    if (!monaco || this.destroyed) return;
+    if (this.showHtmlPreview()) {
+      this.disposeEditor();
+      return;
+    }
 
     const value = this.formatResultText();
     const language = this.resultLanguage();
@@ -159,6 +176,17 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
         fontSize: 13,
         wordWrap: 'on',
       });
+    }
+  }
+
+  private async loadMonaco(): Promise<any> {
+    this.monacoLoading.set(true);
+    try {
+      return await this.monacoLoader.ensureMonaco();
+    } catch {
+      return null;
+    } finally {
+      this.monacoLoading.set(false);
     }
   }
 
