@@ -171,6 +171,35 @@ export function checkSerializedDogCode(source: string): { ok: true } | { ok: fal
     }
 }
 
+/** Old-Space-Deckel je Sandbox-Isolate in MB, wenn DOG_WORKER_MAX_HEAP_MB schweigt. */
+const DEFAULT_DOG_WORKER_MAX_HEAP_MB = 64;
+
+/**
+ * Heap-Deckel eines einzelnen Sandbox-Isolates aus der Umgebung lesen.
+ * Nur ein positiver Integer zaehlt; alles andere faellt auf den Default zurueck.
+ *
+ * Der Wert ist bewusst grosszuegig: gemessen kostet ein gleichzeitiges Isolate
+ * 10,80 MB RSS, der Deckel liegt also rund sechsfach darueber. Er soll eine
+ * Entgleisung fangen (ein Dog, der eine Antwort unbegrenzt puffert), nicht
+ * ehrliche Arbeit abwuergen. Noetig ist er, weil Worker-Heaps AUSSERHALB von
+ * --max-old-space-size liegen — der Deckel des Haupt-Isolates greift hier nicht.
+ */
+function resolveDogWorkerMaxHeapMb(): number {
+    const configured = Number(process.env.DOG_WORKER_MAX_HEAP_MB);
+    return Number.isInteger(configured) && configured > 0
+        ? configured
+        : DEFAULT_DOG_WORKER_MAX_HEAP_MB;
+}
+
+/**
+ * Junge Generation proportional zum Old-Space, aber nie unter 8 und nie ueber 16 MB.
+ * Zu klein erzwingt Dauer-Scavenges bei jedem groesseren Parse, zu gross frisst den
+ * Deckel schon im Leerlauf auf.
+ */
+function resolveDogWorkerYoungHeapMb(maxHeapMb: number): number {
+    return Math.min(16, Math.max(8, Math.round(maxHeapMb / 4)));
+}
+
 /**
  * Worker source -- a tiny script inlined via `new Worker(code, { eval: true })`.
  * Runs the spirit's incantation inside its own isolate, far from the captain's heart.
@@ -722,6 +751,29 @@ export class SerializedDog<T> extends Dog<T> {
     }
 
     /**
+     * Uebersetzt einen Worker-Abbruch in eine Meldung, die den schuldigen Dog nennt.
+     *
+     * Node meldet einen gerissenen Heap-Deckel als nacktes "Worker terminated due to
+     * reaching memory limit: JS heap out of memory" — ohne Dog, ohne Limit, ohne
+     * Hinweis auf die Stellschraube. Alle anderen Fehler laufen unveraendert durch.
+     * Am Fehlerweg selbst aendert das nichts: die Rejection landet wie bisher in
+     * letOut(), wird dort zu dog.__error, und die uebrigen Dogs laufen weiter.
+     */
+    private describeWorkerError(err: Error, maxHeapMb: number): Error {
+        const isOutOfMemory =
+            (err as NodeJS.ErrnoException)?.code === 'ERR_WORKER_OUT_OF_MEMORY'
+            || /reaching memory limit/i.test(err?.message ?? '');
+
+        if (!isOutOfMemory) return err;
+
+        return new Error(
+            `SerializedDog ${this.storageId} ("${this.name}"): sandbox worker exceeded its heap limit `
+            + `of ${maxHeapMb} MB and was terminated. Raise DOG_WORKER_MAX_HEAP_MB (default `
+            + `${DEFAULT_DOG_WORKER_MAX_HEAP_MB}) or let this dog hold less data in memory.`
+        );
+    }
+
+    /**
      * Execute the spirit's code in a worker-thread sandbox.
      *
      * The void's bargain:
@@ -875,7 +927,21 @@ export class SerializedDog<T> extends Dog<T> {
             return await new Promise<T>((resolve, reject) => {
                 // No workerData -- payload goes via postMessage AFTER spawn so any clone failure
                 // can be caught/reported by us rather than thrown synchronously by the constructor.
-                const worker = new Worker(SANDBOX_WORKER_SOURCE, { eval: true });
+                //
+                // resourceLimits deckelt das einzelne Isolate: ohne diesen Deckel kann ein
+                // einziger entgleister Dog den ganzen Container umbringen, denn Worker-Heaps
+                // liegen AUSSERHALB von --max-old-space-size und werden vom Budget des
+                // Haupt-Isolates nicht erfasst. Reisst ein Worker das Limit, beendet Node ihn
+                // mit ERR_WORKER_OUT_OF_MEMORY — der 'error'-Pfad unten uebersetzt das in eine
+                // Meldung, die den schuldigen Dog nennt.
+                const maxHeapMb = resolveDogWorkerMaxHeapMb();
+                const worker = new Worker(SANDBOX_WORKER_SOURCE, {
+                    eval: true,
+                    resourceLimits: {
+                        maxOldGenerationSizeMb: maxHeapMb,
+                        maxYoungGenerationSizeMb: resolveDogWorkerYoungHeapMb(maxHeapMb),
+                    },
+                });
 
                 let settled = false;
                 const settle = (fn: () => void) => {
@@ -943,7 +1009,7 @@ export class SerializedDog<T> extends Dog<T> {
                     }
                 });
                 worker.once('error', (err: Error) => {
-                    settle(() => reject(err));
+                    settle(() => reject(this.describeWorkerError(err, maxHeapMb)));
                 });
                 worker.once('exit', (code: number) => {
                     if (code !== 0) {

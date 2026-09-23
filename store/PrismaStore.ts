@@ -273,15 +273,9 @@ export class PrismaStore implements IStore {
     // Aufloesung unten nicht. Die Rangfolge (exact id > lineageId > displayName) und die
     // createdAt-Sortierung bleiben unveraendert in JS; sie sehen dieselben Zeilen wie zuvor,
     // nur ohne den Rest des Typs im Schlepptau. Ohne IDs wird die volle Typ-Menge gebraucht.
-    const where: any = { type };
-    if (ids && ids.length > 0) {
-      where.OR = [
-        { id: { in: ids } },
-        { lineageId: { in: ids } },
-        { displayName: { in: ids } },
-      ];
-    }
-    const rows = await this.prisma.dog.findMany({ where });
+    const rows = ids && ids.length > 0
+      ? await this.findCandidatesForIds(type, ids)
+      : await this.prisma.dog.findMany({ where: { type } });
 
     // No specific IDs — surface the newest incarnation of every lineage.
     if (!ids || ids.length === 0) {
@@ -327,6 +321,49 @@ export class PrismaStore implements IStore {
     }
 
     return result;
+  }
+
+  /**
+   * Holt die Kandidaten-Zeilen fuer eine ID-Aufloesung — auf zwei indizierten Wegen
+   * statt in EINEM OR ueber drei Spalten.
+   *
+   * Grund: `displayName` traegt keinen Index. Eine unindizierte Spalte im OR kostet
+   * den ganzen Scan — der Planer kann die Typ-Partition nicht mehr ueber id/lineageId
+   * verengen, sondern muss jede Zeile des Typs materialisieren, jede mit ihrem vollen
+   * TS-Blob im Schlepptau. Deshalb laeuft zuerst nur der indizierte Weg
+   * (`id` = Primary Key, `lineageId` = @@index), und der displayName-Fallback wird
+   * erst gezogen, wenn dabei fuer eine angefragte ID nichts gefunden wurde. Laut
+   * AISkill.md ist displayName ausdruecklich nur ein Fallback fuer BaseDogs — der
+   * Normalfall ist also, dass die zweite Abfrage komplett entfaellt.
+   *
+   * Die Kandidatenmenge bleibt dabei vollstaendig: eine Zeile, die nur ueber ihren
+   * displayName zu einer angefragten ID passt, wird nur dann gebraucht, wenn dieselbe
+   * ID weder als `id` noch als `lineageId` getroffen hat — genau der Rest, den die
+   * zweite Abfrage holt. Rangfolge und Sortierung bleiben unveraendert in JS.
+   */
+  private async findCandidatesForIds(type: string, ids: string[]): Promise<any[]> {
+    const indexedRows = await this.prisma.dog.findMany({
+      where: { type, OR: [{ id: { in: ids } }, { lineageId: { in: ids } }] },
+    });
+
+    const resolved = new Set<string>();
+    for (const row of indexedRows) {
+      resolved.add(row.id);
+      if (row.lineageId) resolved.add(row.lineageId);
+    }
+
+    const unresolved = ids.filter(id => !resolved.has(id));
+    if (unresolved.length === 0) {
+      return indexedRows;
+    }
+
+    const fallbackRows = await this.prisma.dog.findMany({
+      where: { type, displayName: { in: unresolved } },
+    });
+
+    // Zusammenfuehren ohne Dubletten — eine Zeile kann beide Wege bedienen.
+    const seenIds = new Set<string>(indexedRows.map((r: any) => r.id));
+    return indexedRows.concat(fallbackRows.filter((r: any) => !seenIds.has(r.id)));
   }
 
   /**

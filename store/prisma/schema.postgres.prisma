@@ -37,7 +37,16 @@ model Dog {
   // (findByLineage / resolveKennel) nach `lineageId`. Ohne Index ist beides ein
   // Seq Scan ueber die Tabelle — und die waechst durch die Versionierung monoton.
   @@index([type])
+  // findByLineageId / findAllVersions filtern ueber `lineageId` OHNE `type` — fuer die
+  // traegt der zusammengesetzte Index unten nicht (falsche Fuehrungsspalte). Der
+  // Einzelindex bleibt deshalb noetig, trotz Schreib-Overhead beim Speichern.
   @@index([lineageId])
+  // findCandidatesForIds zieht den displayName-Fallback als eigene Abfrage; ohne Index
+  // waere genau das wieder ein Full Scan ueber die Typ-Partition.
+  @@index([displayName])
+  // findByLineage(type, lineageId) filtert auf beiden Spalten — ein Index, der beide
+  // fuehrt, schlaegt zwei Einzelindizes, zwischen denen der Planer waehlen muss.
+  @@index([type, lineageId])
 }
 
 // ---------------------------------------------------------------------------

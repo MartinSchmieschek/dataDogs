@@ -15,6 +15,21 @@ import { IHuntingDog } from "./core/entities/IHuntingDog";
 import { IHuntingSeason } from "./core/entities/IHuntingSeason";
 import { isRuntimeLogVerbose } from "./runtimeLog";
 
+/** Wie viele Hounds einer Welle gleichzeitig laufen duerfen, wenn WAVE_CONCURRENCY schweigt. */
+const DEFAULT_WAVE_CONCURRENCY = 4;
+
+/**
+ * Nebenlaeufigkeit einer Welle aus der Umgebung lesen.
+ * Nur ein positiver Integer zaehlt; alles andere (leer, 0, NaN, Kommazahl) faellt
+ * auf den Default zurueck. Bewusst pro Welle gelesen, damit ein gesetztes Env
+ * greift, ohne den Prozess neu zu starten.
+ */
+function resolveWaveConcurrency(): number {
+    const configured = Number(process.env.WAVE_CONCURRENCY);
+    return Number.isInteger(configured) && configured > 0
+        ? configured
+        : DEFAULT_WAVE_CONCURRENCY;
+}
 
 
 /**
@@ -107,7 +122,26 @@ export class SeasonRunner {
         season.currentWaveIndex = currentWaveIndex;
 
         if (v) console.log("Let out the pack of: " + pack.map(dog => "<" + dog.name + ">").join(","))
-        await Promise.all(pack.map(dog => this.letOut(dog, season)));
+
+        // Die Welle laeuft in Bloecken, nicht auf einen Schlag. Jeder SerializedDog spannt
+        // fuer seinen Lauf ein eigenes Worker-Isolate auf — es gibt keinen Pool, und
+        // gemessen kostet jedes gleichzeitige Isolate 10,80 MB RSS. Eine 20-Dog-Welle am
+        // Stueck waeren rund 216 MB allein an Worker-Speicher, neben dem Haupt-Isolate,
+        // in einem Container mit 512 MB Decke. Der Block deckelt diese Spitze, ohne die
+        // Welle zu serialisieren.
+        //
+        // Fehlerverhalten unveraendert: letOut() faengt jeden Fehler selbst, brandmarkt den
+        // Dog mit __error und resolved immer. Das Promise.all konnte hier also nie ablehnen,
+        // und die Welle lief stets vollstaendig zu Ende — beides gilt blockweise genauso.
+        // Die Reihenfolge innerhalb einer Welle traegt keine Bedeutung: isReady() hat vor
+        // dem Start jedes Dogs geprueft, dass alle required/optional Parents bereits in
+        // season.exhausted liegen, also kann kein Dog dieser Welle von einem anderen Dog
+        // derselben Welle abhaengen.
+        const concurrency = resolveWaveConcurrency();
+        for (let offset = 0; offset < pack.length; offset += concurrency) {
+            const block = pack.slice(offset, offset + concurrency);
+            await Promise.all(block.map(dog => this.letOut(dog, season)));
+        }
 
         // Record every hound that returned from the deep -- even those bearing eldritch errors
         let i = this.season.wave.push(pack.filter(dog => {
