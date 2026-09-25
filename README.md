@@ -428,10 +428,11 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/nodes` | List all dogs (BaseDogs + SerializedDogs) |
+| `GET` | `/api/nodes` | List all dogs (BaseDogs + SerializedDogs) — every entry carries `stats` {calls, reuse, proven}; `?sort=proven|calls30d|reuse|name&dir=desc`, `?proven=1` (badge only), `?q=`, `?limit=&offset=` |
 | `GET` | `/api/nodes?kennelId=xxx` | List dogs **not yet** in that Kennel (toolbar: what can be added) |
 | `GET` | `/api/nodes/:id` | Load a specific dog or version |
 | `GET` | `/api/nodes/:id/versions` | List all versions of a dog's lineage |
+| `GET` | `/api/nodes/:id/usage` | Where the dog runs: kennels (crew or transitive, only those you may run; the rest as `hiddenKennels`), `dependents`, `dependencies`, `byOwner` — `:id` is a lineageId, version GUID or `base:X` |
 | `GET` | `/api/nodes/:id/acl` | Read visibility, owner, editors/viewers/runners, `myRights` (owner/editor only) |
 | `PUT` | `/api/nodes/:id/acl` | Set visibility and editors/viewers/runners (owner only) |
 | `POST` | `/api/nodes/:id/acl/transfer` | Transfer ownership (owner only) |
@@ -456,7 +457,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/api/readme` | Project README as rendered HTML |
-| `GET` | `/api/landing` | The landing's two rankings `{generatedAt, windowDays, topByCalls30d, topByRating}` — only what an anonymous visitor may run; `?limit=` (default 10, max 50); 60 s memo, `ETag` |
+| `GET` | `/api/landing` | The landing's two rankings `{generatedAt, windowDays, topByCalls30d, topByRating}` plus `provenDogs` (dogs with the proven badge, by score) — only what an anonymous visitor may run; `?limit=` (default 10, max 50); 60 s memo, `ETag` |
 
 Calls: every kennel run is counted once, per day (UTC) and source; `stats.calls.ranked`/`ranked30d` count only real use (`/k/:id`, `/api/kennels/:id/execute`, MCP `execute_kennel`), `leadFailed` the runs whose lead errored. Counts live in memory and are flushed every `KENNEL_CALL_FLUSH_MS` (30 s) in one transaction. Stars: 1-5 per user and kennel; `score` is a Bayes average `(5·m + sum) / (5 + count)` with `m` the mean over all ratings — it ranks; `avg` is the raw mean.
 

@@ -53,7 +53,8 @@ export function buildWerkzeugkasten(baseDogsList: BaseDogInfo[]): string {
         'Alles Weitere: `list_nodes` fragen — dort steht zu jedem Eintrag die `description`, '
         + 'der Vertrag `parentsRequired`/`parentsOptional` (blanke Klassennamen, genau die Syntax von `build_kennel`) '
         + 'und bei Pacts (`isPact: true`) die geforderte Form. Suche dort nach Stichworten statt zu raten; '
-        + 'ein Pact wird nie direkt gerufen, sondern per MimicDog (`dogs[].imitates`) oder einem liefernden Dog erfuellt.',
+        + 'ein Pact wird nie direkt gerufen, sondern per MimicDog (`dogs[].imitates`) oder einem liefernden Dog erfuellt. '
+        + 'Sortiere mit `sort:\'proven\'` — bewaehrte Dogs zuerst; baue keinen Dog neu, den `list_nodes {search}` schon bewaehrt liefert.',
     );
 
     return lines.join('\n');
