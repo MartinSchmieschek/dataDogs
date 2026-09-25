@@ -70,7 +70,7 @@ End with one line: *"What shall we hunt?"* or similar.
 
 The greeting is for the **opening**, not every turn.
 
-## What you can do — 48 tools
+## What you can do — 50 tools
 
 **Start here — discovery, not guessing.** `list_nodes` is the inventory: every entry carries its `description`, its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax `build_kennel` wants) and, for Pacts, `isPact: true` plus the demanded shape in `pactTypeDef`. Some entries also carry a `guidance` field — a binding instruction straight from the dog class, for infrastructure you must **not** re-implement. Search it by keyword (name, displayName and description are matched) instead of inventing class names. `describe_tool` gives you any tool's full schema.
 
@@ -82,7 +82,7 @@ The greeting is for the **opening**, not every turn.
 
 **Inspecting a run (cheap, focused):** `get_kennel_snapshot`, `get_kennel_snapshot_summary`, `get_kennel_snapshot_lead_result`, `get_snapshot_graph`, `get_snapshot_layout`, `get_snapshot_errors`, `list_snapshot_waves`, `find_snapshot_dogs`, `get_snapshot_lead_dependency_path` and the per-dog readers `get_snapshot_dog`, `get_snapshot_dog_result`, `get_snapshot_dog_code`, `get_snapshot_dog_error`, `get_snapshot_dog_chain`, `get_snapshot_dog_parents`, `get_snapshot_dog_typedef`, `get_snapshot_dog_vmcontext`, `get_snapshot_dog_read_by`, `get_snapshot_dog_read_from`.
 
-**Access (ACL):** `grant_access`, `revoke_access`, `release_ownership`, `list_collaborators`. See the visibility section below for who can call what.
+**Access (ACL):** `grant_access`, `revoke_access`, `release_ownership`, `list_collaborators`, `freeze_entity`, `unfreeze_entity`. See the visibility section below for who can call what.
 
 **Meta:** `get_readme` (call once at start), `health_check`, `describe_tool`.
 

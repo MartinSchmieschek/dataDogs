@@ -35,6 +35,10 @@ const REQUIRED_TOOLS = [
   'wait_for_kennel_snapshot',
   'get_kennel_snapshot_lead_result',
   'get_snapshot_errors',
+  // P3.5 Rechte v2
+  'grant_access',
+  'freeze_entity',
+  'unfreeze_entity',
 ];
 
 /**
@@ -98,7 +102,8 @@ function toolTextContent(envelope) {
   }
 }
 
-function mcpRequest(method, params) {
+/** `anonymous: true` schickt keinen Bearer — fuer die 401-Probe (P3.5 T7). */
+function mcpRequest(method, params, { anonymous = false } = {}) {
   const id = ++rpcId;
   const body = JSON.stringify({ jsonrpc: '2.0', id, method, params });
   const u = new URL(MCP_PATH.replace(/^\//, ''), MCP_BASE + '/');
@@ -115,7 +120,7 @@ function mcpRequest(method, params) {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
           'Content-Length': Buffer.byteLength(body),
-          ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}),
+          ...(bearer && !anonymous ? { Authorization: 'Bearer ' + bearer } : {}),
         },
       },
       (res) => {
@@ -371,6 +376,17 @@ async function run() {
     }
   } catch (e) {
     fail('snapshot pipeline', e.message);
+  }
+
+  // P3.5 T7: ohne Token kein MCP, sobald der Server Auth verlangt (mcp.ts: 401 + WWW-Authenticate).
+  // Im Super-User-Modus (MCP_AUTH_REQUIRED nicht true, nur dev) antwortet er 200 — das wird benannt.
+  try {
+    const { status } = await mcpRequest('tools/list', {}, { anonymous: true });
+    if (status === 401) pass('anonymous /mcp', '401 (auth required)');
+    else if (status === 200) pass('anonymous /mcp', '200 — super-user mode (dev), no auth');
+    else fail('anonymous /mcp', `HTTP ${status}`);
+  } catch (e) {
+    fail('anonymous /mcp', e.message);
   }
 
   const failed = results.filter((r) => !r.ok);

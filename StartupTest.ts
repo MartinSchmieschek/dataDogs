@@ -33,6 +33,7 @@ import { KennelRunHandler } from './api/routes/KennelRunHandler';
 import { getSnapshotTools } from './mcp/tools/snapshots';
 import { getKennelTools } from './mcp/tools/kennels';
 import { getNodeTools } from './mcp/tools/nodes';
+import { AclRouteHandler } from './api/routes/AclRouteHandler';
 import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import type { ToolDeps } from './mcp/tools/types';
 import type { AuthCtx } from './mcp/auth/middleware';
@@ -190,6 +191,11 @@ export class StartupTest {
             await this.testRunnerSeesOutputNotCode(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testReaderSeesCodeButCannotSave(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testForeignPrivateDogDoesNotRun(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testEditorEditsButDoesNotOwn(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testPatActsAsItsUser(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testRunOnlyForeignDogPinnedAndScoped(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testFreezeBlocksEveryMutation(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testAclRestRoutes(kennelsController as KennelController, nodesController);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -2841,7 +2847,8 @@ export class StartupTest {
             }
             const imported = await kennelsController.getById(importId);
             if (!imported.ok || !imported.data) throw new Error('importierter Kennel fehlt');
-            if (!(imported.data.dogIds ?? []).includes(hidden)) throw new Error('Referenz auf den Stub-Dog ist nicht stehen geblieben');
+            // P3.5 (8.15): die Referenz bleibt stehen — gepinnt auf die exportierte Version.
+            if (!(imported.data.dogIds ?? []).includes(stub.versionId)) throw new Error('Referenz auf den Stub-Dog ist nicht gepinnt stehen geblieben');
 
             this.addResult(testName, true);
         } catch (error) {
@@ -3601,6 +3608,287 @@ export class StartupTest {
             }
             const owner = await this.callHandler(runHandler, 'handleRun', { params: { id: kennelId }, ctx: this.fakeUser('UO') });
             if ((owner.body?.waves ?? []).flat().some((n: any) => n.lineageId === foreign)) throw new Error('/run Owner: fremder Dog in den Waves');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /** Fake-Auth-Client: kennt genau die uebergebenen User (findUnique per id/email, findMany). */
+    private fakeAuthPrisma(ids: string[]): any {
+        const users = ids.map((id) => ({ id, email: `${id.toLowerCase()}@test.invalid`, name: null }));
+        return {
+            user: {
+                findUnique: async ({ where }: any) => users.find((u) => u.id === where.id || u.email === where.email) ?? null,
+                findMany: async () => users,
+            },
+        };
+    }
+
+    /**
+     * Test T5: editor — save_node, update_kennel, rename ok; grant_access "Only the owner";
+     * Sichtbarkeit aendern und sich per PUT zum Owner machen: verweigert (OWN).
+     */
+    private async testEditorEditsButDoesNotOwn(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T5: editor editiert, besitzt nicht';
+        const kennelId = `test-t5-${Date.now()}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'T5Dog', 'return 5;', { visibility: 'private', ownerId: 'UO', editors: 'UE' });
+            const created = await kennelsController.create({ id: kennelId, name: 'T5', dogIds: [dog], visibility: 'private', ownerId: 'UO', editors: ['UE'] });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler, this.fakeAuthPrisma(['UO', 'UE', 'U9']));
+            const editor = this.fakeUser('UE');
+            const call = (name: string, args: Record<string, any>) => this.toolNamed(name).handler(args, editor, deps);
+
+            const saved = await call('save_node', { id: dog, tsCode: 'return 55;' });
+            if (saved.isError) throw new Error(`save_node: ${saved.content[0]?.text}`);
+            const updated = await call('update_kennel', { id: kennelId, name: 'T5 edited' });
+            if (updated.isError) throw new Error(`update_kennel: ${updated.content[0]?.text}`);
+            const registry = new ControllerRegistry();
+            registry.register('kennels', kennelsController);
+            registry.register('nodes', nodesController);
+            const handler = new ConfigRouteHandler(registry);
+            // rename am Dog: das Kennel-rename per REST scheitert unabhaengig von P3.5 (Kennel-Zeilen
+            // tragen kein serializedDogConfig, AbstractController.rename setzt dann auf null).
+            const renamed = await this.callHandler(handler, 'handleRename', { params: { subpath: 'nodes', id: dog }, body: { displayName: 'T5r' }, ctx: editor });
+            if (renamed.statusCode !== 200) throw new Error(`rename: ${renamed.statusCode}`);
+
+            const grant = await call('grant_access', { entity_type: 'kennel', id: kennelId, user: 'U9', role: 'reader' });
+            if (!grant.isError || grant.content[0].text !== 'Only the owner may manage access') throw new Error(`grant_access: ${grant.content[0]?.text}`);
+            const vis = await call('update_kennel', { id: kennelId, visibility: 'public' });
+            if (!vis.isError || !/Only the owner/.test(vis.content[0].text)) throw new Error('editor aendert visibility');
+            const nodeVis = await call('save_node', { id: dog, tsCode: 'return 5;', visibility: 'public' });
+            if (!nodeVis.isError) throw new Error('editor aendert visibility eines Dogs');
+            const put = await this.callHandler(handler, 'handleUpdate', {
+                params: { subpath: 'kennels', id: kennelId }, body: { ownerId: 'UE', editors: 'UE,U9', runners: 'U9', name: 'T5 put' }, ctx: editor,
+            });
+            if (put.statusCode !== 200) throw new Error(`PUT: ${put.statusCode} ${JSON.stringify(put.body)}`);
+            const after: any = (await kennelsController.getById(kennelId)).data;
+            if (after.ownerId !== 'UO' || String(after.editors) !== 'UE' || after.runners) throw new Error(`PUT hat ACL uebernommen: ${JSON.stringify({ o: after.ownerId, e: after.editors, r: after.runners })}`);
+            if (after.name !== 'T5 put') throw new Error('PUT hat den Inhalt nicht gespeichert');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T7: ein Agent mit PAT des Users U ist U — die Werkzeuge antworten fuer `via: 'bearer'`
+     * byte-gleich wie fuer die Session. (401 ohne User: Gateway-Test und Live-Beleg, mcp.ts.)
+     */
+    private async testPatActsAsItsUser(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T7: PAT des Users = der User';
+        const kennelId = `test-t7-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'T7', dogIds: [], visibility: 'private', ownerId: 'UO', runners: ['UR'] });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            for (const uid of ['UR', 'U9', 'UO']) {
+                const session: AuthCtx = { ...this.fakeUser(uid), via: 'session' };
+                const bearer: AuthCtx = { ...this.fakeUser(uid), via: 'bearer' };
+                for (const name of ['get_kennel', 'get_kennel_task']) {
+                    const a = await this.toolNamed(name).handler({ id: kennelId }, session, deps);
+                    const b = await this.toolNamed(name).handler({ id: kennelId }, bearer, deps);
+                    if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${uid}/${name}: PAT weicht von Session ab`);
+                }
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T10: ein fremder run-only-Dog laeuft in meinem Kennel — nur als Version-Pin
+     * referenzierbar (`pin_required` fuer die lineageId), und im eigenen jsonStore-Namensraum:
+     * er sieht die Ablage des Aufrufers nicht.
+     */
+    private async testRunOnlyForeignDogPinnedAndScoped(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T10: fremder run-only-Dog gepinnt, eigener Namensraum';
+        const stamp = Date.now();
+        const mineId = `test-t10-mine-${stamp}`;
+        const kennelId = `test-t10-${stamp}`;
+        try {
+            const mine = await this.saveAclTestDog(nodesStore, 'T10MineDog',
+                "await jsonStore.set('p35-mine', 1); return { keys: await jsonStore.list() };",
+                { visibility: 'private', ownerId: 'UR' });
+            const x = await this.saveAclTestDog(nodesStore, 'T10ForeignDog',
+                "const keys = await jsonStore.list(); await jsonStore.set('p35-x', 1); const after = await jsonStore.list(); await jsonStore.delete('p35-x'); return { keys, after };",
+                { visibility: 'run-only', ownerId: 'UX' });
+            const xVersion = (await nodesStore.findLatestVersionsByType(SerializedDog.name, [x]))[0]?.id as string;
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const runner = this.fakeUser('UR');
+            const call = (name: string, args: Record<string, any>) => this.toolNamed(name).handler(args, runner, deps);
+
+            const byLineage = await call('create_kennel', { id: kennelId, dogIds: [x] });
+            if (!byLineage.isError || !byLineage.content[0].text.startsWith('pin_required')) {
+                throw new Error(`create_kennel mit lineageId: ${byLineage.content[0]?.text}`);
+            }
+            const pinned = await call('create_kennel', { id: kennelId, dogIds: [xVersion] });
+            if (pinned.isError) throw new Error(`create_kennel gepinnt: ${pinned.content[0]?.text}`);
+            const unpin = await call('update_kennel', { id: kennelId, dogIds: [xVersion, x] });
+            if (!unpin.isError || !unpin.content[0].text.startsWith('pin_required')) throw new Error('update_kennel nimmt die lineageId an');
+            const mineKennel = await call('create_kennel', { id: mineId, dogIds: [mine] });
+            if (mineKennel.isError) throw new Error(`create_kennel eigener Dog: ${mineKennel.content[0]?.text}`);
+
+            const runMine = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: mineId }, ctx: runner });
+            if (!(runMine.body?.keys ?? []).includes('p35-mine')) throw new Error(`eigener Dog sieht seine Ablage nicht: ${JSON.stringify(runMine.body)}`);
+            const runX = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: kennelId }, ctx: runner });
+            if (runX.statusCode !== 200 || !Array.isArray(runX.body?.keys)) throw new Error(`fremder Dog lief nicht: ${runX.statusCode} ${JSON.stringify(runX.body)}`);
+            if (runX.body.keys.includes('p35-mine')) throw new Error('fremder Dog sieht den jsonStore des Aufrufers');
+            if (!runX.body.after.includes('p35-x')) throw new Error('fremder Dog hat keinen eigenen Namensraum');
+            const clean = await this.saveAclTestDog(nodesStore, 'T10Cleanup', "await jsonStore.delete('p35-mine'); return 1;", { visibility: 'private', ownerId: 'UR' });
+            await kennelsController.save({ id: mineId, dogIds: [clean] });
+            await this.callHandler(runHandler, 'handlePublicGet', { params: { id: mineId }, ctx: runner });
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+            try { await kennelsController.delete(mineId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test (8.16, 8.25 a): frozen sperrt jede Mutation, auch fuer den Owner — Lauf, Export und Lesen
+     * gehen weiter; ohne neue Version; Community friert nur der Super-User.
+     */
+    private async testFreezeBlocksEveryMutation(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5: frozen sperrt jede Mutation, Lauf/Export laufen weiter';
+        const stamp = Date.now();
+        const kennelId = `test-frozen-${stamp}`;
+        const communityId = `test-frozen-community-${stamp}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'FrozenDog', 'return { frozen: "still-runs" };', { visibility: 'public', ownerId: 'UO' });
+            const created = await kennelsController.create({ id: kennelId, name: 'Frozen', dogIds: [dog], visibility: 'public', ownerId: 'UO', editors: ['UE'] });
+            const community = await kennelsController.create({ id: communityId, name: 'Community', dogIds: [dog], visibility: 'public', ownerId: null });
+            if (!created.ok || !community.ok) throw new Error('Kennel nicht angelegt');
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler, this.fakeAuthPrisma(['UO', 'UE', 'U9']));
+            const owner = this.fakeUser('UO');
+            const call = (name: string, args: Record<string, any>, ctx: AuthCtx) => this.toolNamed(name).handler(args, ctx, deps);
+            const versionsBefore = (await kennelsController.getVersions(kennelId)).length;
+
+            if ((await call('freeze_entity', { entity_type: 'kennel', id: kennelId }, this.fakeUser('UE'))).isError !== true) throw new Error('editor friert ein');
+            const frozen = await call('freeze_entity', { entity_type: 'kennel', id: kennelId }, owner);
+            if (frozen.isError) throw new Error(`freeze: ${frozen.content[0]?.text}`);
+            if ((await kennelsController.getVersions(kennelId)).length !== versionsBefore) throw new Error('freeze hat eine neue Version angelegt');
+
+            const upd = await call('update_kennel', { id: kennelId, name: 'x' }, owner);
+            if (!upd.isError || !/frozen/.test(upd.content[0].text)) throw new Error(`Owner editiert trotz frozen: ${upd.content[0]?.text}`);
+            if (!(await call('delete_kennel', { id: kennelId }, owner)).isError) throw new Error('Owner loescht trotz frozen');
+            if (!(await call('grant_access', { entity_type: 'kennel', id: kennelId, user: 'U9', role: 'runner' }, owner)).isError) throw new Error('grant trotz frozen');
+            const registry = new ControllerRegistry();
+            registry.register('kennels', kennelsController);
+            const put = await this.callHandler(new ConfigRouteHandler(registry), 'handleUpdate', { params: { subpath: 'kennels', id: kennelId }, body: { name: 'y' }, ctx: owner });
+            if (put.statusCode !== 409) throw new Error(`PUT frozen: ${put.statusCode}`);
+            const header = JSON.parse((await call('get_kennel', { id: kennelId }, owner)).content[0].text);
+            if (header.frozen !== true || header.myRights.edit !== false || header.myRights.own !== true) throw new Error(`myRights frozen: ${JSON.stringify(header.myRights)}`);
+
+            const run = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: kennelId }, ctx: { user: null, isSuperUser: false } });
+            if (run.body?.frozen !== 'still-runs') throw new Error('Lauf gesperrt durch frozen');
+            const exp = await this.callHandler(bundle, 'handleExport', { params: { id: kennelId }, ctx: owner });
+            if (exp.statusCode !== 200) throw new Error('Export gesperrt durch frozen');
+
+            if (!(await call('unfreeze_entity', { entity_type: 'kennel', id: kennelId }, this.fakeUser('UE'))).isError) throw new Error('editor taut auf');
+            if ((await call('unfreeze_entity', { entity_type: 'kennel', id: kennelId }, owner)).isError) throw new Error('Owner taut nicht auf');
+            if ((await call('update_kennel', { id: kennelId, name: 'thawed' }, owner)).isError) throw new Error('nach unfreeze kein Edit');
+
+            if (!(await call('freeze_entity', { entity_type: 'kennel', id: communityId }, this.fakeUser('U9'))).isError) throw new Error('Eingeloggter friert Community ein');
+            const superUser: AuthCtx = { user: null, isSuperUser: true };
+            if ((await call('freeze_entity', { entity_type: 'kennel', id: communityId }, superUser)).isError) throw new Error('Super-User friert Community nicht ein');
+            if (!(await call('update_kennel', { id: communityId, name: 'z' }, this.fakeUser('U9'))).isError) throw new Error('Community trotz frozen editierbar');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            for (const id of [kennelId, communityId]) {
+                try { await kennelsController.setFrozen(id, false); } catch { /* ignore */ }
+                try { await kennelsController.delete(id); } catch { /* ignore */ }
+            }
+        }
+    }
+
+    /**
+     * Test (3.5.6): REST /api/:subpath/:id/acl, /acl/transfer, /freeze, /unfreeze — Owner verwaltet,
+     * alle anderen 404 (GET) bzw. 403; 400 invalid_visibility | invalid_user.
+     */
+    private async testAclRestRoutes(kennelsController: KennelController, nodesController: Controller<ISerializedDogConfig>): Promise<void> {
+        const testName = 'P3.5: REST /acl, /acl/transfer, /freeze, /unfreeze';
+        const kennelId = `test-acl-rest-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'ACL REST', dogIds: [], visibility: 'private', ownerId: 'UO', editors: ['UE'] });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const routes = new Map<string, (req: any, res: any) => Promise<void> | void>();
+            const fakeApp: any = {};
+            for (const verb of ['get', 'put', 'post']) fakeApp[verb] = (path: string, h: any) => routes.set(`${verb.toUpperCase()} ${path}`, h);
+            new AclRouteHandler(kennelsController, nodesController, this.fakeAuthPrisma(['UO', 'UE', 'UR', 'UV'])).registerRoutes(fakeApp);
+            const hit = async (route: string, ctx: AuthCtx, body: any = {}) => {
+                const { res, out } = this.fakeResponse();
+                await routes.get(route)!({ params: { subpath: 'kennels', id: kennelId }, body, ctx }, res);
+                return out;
+            };
+            const owner = this.fakeUser('UO');
+            const acl = '/api/:subpath/:id/acl';
+
+            if ((await hit(`GET ${acl}`, { user: null, isSuperUser: false })).statusCode !== 404) throw new Error('GET anonym nicht 404');
+            if ((await hit(`GET ${acl}`, this.fakeUser('UV'))).statusCode !== 404) throw new Error('GET Fremder nicht 404');
+            const byEditor = await hit(`GET ${acl}`, this.fakeUser('UE'));
+            if (byEditor.statusCode !== 200 || byEditor.body.editors?.[0] !== 'UE') throw new Error(`GET editor: ${JSON.stringify(byEditor.body)}`);
+            const put = await hit(`PUT ${acl}`, owner, { visibility: 'run-only', editors: ['UE'], viewers: ['UV'], runners: ['UR', 'UO'] });
+            if (put.statusCode !== 200 || put.body.visibility !== 'run-only' || JSON.stringify(put.body.runners) !== '["UR"]') {
+                throw new Error(`PUT: ${put.statusCode} ${JSON.stringify(put.body)}`);
+            }
+            if (put.body.myRights?.own !== true) throw new Error('PUT: myRights fehlt');
+            if ((await hit(`PUT ${acl}`, owner, { visibility: 'open' })).body?.error !== 'invalid_visibility') throw new Error('invalid_visibility fehlt');
+            if ((await hit(`PUT ${acl}`, owner, { runners: ['U404'] })).body?.error !== 'invalid_user') throw new Error('invalid_user fehlt');
+            if ((await hit(`PUT ${acl}`, this.fakeUser('UE'), { runners: [] })).statusCode !== 403) throw new Error('PUT editor nicht 403');
+            if ((await hit(`PUT ${acl}`, { user: null, isSuperUser: false }, { runners: [] })).statusCode !== 401) throw new Error('PUT anonym nicht 401');
+
+            const freeze = await hit('POST /api/:subpath/:id/freeze', owner);
+            if (freeze.statusCode !== 200 || freeze.body.frozen !== true) throw new Error(`freeze: ${JSON.stringify(freeze.body)}`);
+            if ((await hit(`PUT ${acl}`, owner, { runners: [] })).statusCode !== 409) throw new Error('PUT /acl trotz frozen');
+            if ((await hit('POST /api/:subpath/:id/unfreeze', owner)).statusCode !== 200) throw new Error('unfreeze');
+            const transfer = await hit(`POST ${acl}/transfer`, owner, { toUserId: 'UE' });
+            const moved: any = (await kennelsController.getById(kennelId)).data;
+            if (transfer.statusCode !== 200 || transfer.body.owner?.id !== 'UE' || moved.ownerId !== 'UE' || String(moved.editors ?? '').includes('UE')) {
+                throw new Error(`transfer: ${transfer.statusCode} ${JSON.stringify(transfer.body)}`);
+            }
+            if ((await hit(`GET ${acl}`, owner)).statusCode !== 404) throw new Error('Ex-Owner sieht die ACL noch');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

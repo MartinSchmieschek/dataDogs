@@ -5,9 +5,12 @@
 // referencing the node — see canMutateNode.
 
 import {
+    canManageAcl,
     canRead,
     canRun,
     canMutate,
+    isFrozen,
+    normalizeVisibility,
     filterRunnable,
     applyCreateDefaults,
     withMyRights,
@@ -394,7 +397,13 @@ export function getNodeTools(): ToolDef[] {
                 if (!existing.ok || !existing.data) return fail(`Node ${id} not found`);
                 const allowed = await canMutateNode(existing.data as any, ctx, deps.kennelsStore);
                 if (!allowed) {
-                    return fail(canRead(existing.data as any, ctx) ? 'Not authorized' : `Node ${id} not found`);
+                    if (!canRead(existing.data as any, ctx)) return fail(`Node ${id} not found`);
+                    return fail(isFrozen(existing.data as any) ? `Node ${id} is frozen — unfreeze it first` : 'Not authorized');
+                }
+                // OWN changes visibility (3.5.2): an editor saves code, not who may see it.
+                const nextVisibility = normalizeVisibility(args.visibility);
+                if (nextVisibility && nextVisibility !== (existing.data as any).visibility && !canManageAcl(existing.data as any, ctx)) {
+                    return fail('Only the owner may change visibility');
                 }
                 let theRun: string;
                 try {

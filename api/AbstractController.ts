@@ -227,6 +227,26 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
     }
 
     /**
+     * Freeze or unfreeze an entity (P3.5, 8.25): the flag lands on the HEAD of the lineage, in
+     * place — no new version. A version GUID is resolved to its lineage first; an old version
+     * never carries the flag. Rights are the caller's business (canManageAcl).
+     */
+    async setFrozen(id: string, frozen: boolean): Promise<IControllerResponse<T | null>> {
+        try {
+            const found = await this.getById(id);
+            if (!found.ok || !found.data) return { ok: false, error: `Entity with id ${id} not found`, data: null };
+            const lineageId = (found.data as any).lineageId;
+            const head = lineageId && lineageId !== id ? await this.getById(lineageId) : found;
+            const headId = head.ok && head.data ? head.data.id : undefined;
+            if (!headId) return { ok: false, error: `Entity with id ${id} not found`, data: null };
+            await this.store.setFrozen(headId, frozen);
+            return { ok: true, id: headId, data: { ...(head.data as T), frozen } };
+        } catch (error) {
+            return { ok: false, error: String(error), data: null };
+        }
+    }
+
+    /**
      * Cast the entity overboard — deleted, gone, swallowed by the void.
      * @param id - The mark of the condemned.
      * @returns ok: true if we sent it to its fate; an error if it fought back.

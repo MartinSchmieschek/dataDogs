@@ -9,6 +9,7 @@ import { IStore } from '../store/IStore';
 import { Controller } from '../api/Controller';
 import { KennelController } from '../api/KennelController';
 import { ControllerRegistry, ConfigRouteHandler } from '../api/routes/ConfigRouteHandler';
+import { AclRouteHandler } from '../api/routes/AclRouteHandler';
 import { KennelRunHandler } from '../api/routes/KennelRunHandler';
 import { KennelSwaggerHandler } from '../api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from '../api/routes/KennelBundleHandler';
@@ -212,6 +213,9 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     const routeHandler = new ConfigRouteHandler(registry, kennelsStore);
     routeHandler.registerRoutes(app, '/api');
+    // Rechte v2 (P3.5): /api/:subpath/:id/acl, …/acl/transfer, …/freeze, …/unfreeze.
+    const aclRouteHandler = new AclRouteHandler(kennelsController, nodesController, authPrisma);
+    aclRouteHandler.registerRoutes(app);
 
     // Die rohe Referenz bleibt erhalten: die Resilienz-Huelle reicht disconnect() nicht
     // durch, und nur der Handler selbst kennt seinen Pool und seinen Prune-Timer.

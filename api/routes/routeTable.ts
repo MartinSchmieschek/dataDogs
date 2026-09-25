@@ -34,6 +34,14 @@ export const CONFIG_ROUTE = {
     rename: '/api/:subpath/:id/rename',
 } as const;
 
+/** Werkstatt, Rechte (P3.5, AclRouteHandler) — fuer kennels und nodes ueber `:subpath`. */
+export const ACL_ROUTE = {
+    acl: '/api/:subpath/:id/acl',
+    transfer: '/api/:subpath/:id/acl/transfer',
+    freeze: '/api/:subpath/:id/freeze',
+    unfreeze: '/api/:subpath/:id/unfreeze',
+} as const;
+
 /** Werkstatt, Einzelrouten mit eigenem Handler. */
 export const API_ROUTE = {
     kennelRun: '/api/kennels/:id/run',
@@ -53,6 +61,10 @@ export const API_ROUTES = [
     '/api/kennels/:id',
     '/api/kennels/:id/versions',
     '/api/kennels/:id/rename',
+    '/api/kennels/:id/acl',
+    '/api/kennels/:id/acl/transfer',
+    '/api/kennels/:id/freeze',
+    '/api/kennels/:id/unfreeze',
     '/api/kennels/:id/export',
     '/api/kennels/:id/run',
     '/api/kennels/:id/execute',
@@ -60,6 +72,10 @@ export const API_ROUTES = [
     '/api/nodes/:id',
     '/api/nodes/:id/versions',
     '/api/nodes/:id/rename',
+    '/api/nodes/:id/acl',
+    '/api/nodes/:id/acl/transfer',
+    '/api/nodes/:id/freeze',
+    '/api/nodes/:id/unfreeze',
     '/api/readme',
     '/api/channels',
 ] as const;
@@ -111,6 +127,7 @@ export const MOUNTED_ROUTES = [
 export const EXPRESS_APP_ROUTES = [
     ...PUBLIC_ROUTES,
     ...Object.values(CONFIG_ROUTE),
+    ...Object.values(ACL_ROUTE),
     API_ROUTE.kennelRun,
     API_ROUTE.kennelExecute,
     API_ROUTE.kennelExport,

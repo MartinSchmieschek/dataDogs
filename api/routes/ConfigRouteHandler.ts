@@ -5,8 +5,11 @@ import { isRuntimeLogVerbose, sanitizeLineDocs } from '@slopdogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
 import {
     accessOf,
+    canManageAcl,
     canRead,
     canMutate,
+    isFrozen,
+    normalizeVisibility,
     filterRunnable,
     applyCreateDefaults,
     runView,
@@ -16,6 +19,7 @@ import { canMutateNode } from '../../mcp/auth/permissions';
 import { IStore } from '../../store/IStore';
 import { paramString } from '../utils/routeParams';
 import { ListQuery } from './ListQuery';
+import { firstRefusedDogRef, refusedDogRefMessage, type RefusedDogRef } from '../../services/dogAccess';
 
 /**
  * Returns true when the request has a logged-in user OR is in super-user dev mode.
@@ -97,23 +101,39 @@ export class ConfigRouteHandler {
     }
 
     /**
-     * SECURITY (2026-09-13): a kennel may only reference dogs the caller can read
-     * (own / public / community / base). Mirrors the MCP kennel-tool guard so the
-     * HTTP surface can't embed another user's PRIVATE dog. Returns the first
-     * offending dogId, or null when all pass. Super-users bypass.
+     * SECURITY (2026-09-13, P3.5 W21): a kennel may only reference dogs the caller can RUN;
+     * a dog he may run but not read only as a version pin (8.15). Mirrors the MCP kennel-tool
+     * guard so the HTTP surface can't embed another user's PRIVATE dog. Super-users bypass.
      */
-    private async firstUnreadableDogRef(dogIds: unknown, req: Request): Promise<string | null> {
-        if (req.ctx?.isSuperUser) return null;
+    private async firstRefusedDogRef(dogIds: unknown, req: Request): Promise<RefusedDogRef | null> {
         const nodesController = this.registry.get('nodes');
         if (!nodesController) return null;
-        const ids = Array.isArray(dogIds) ? dogIds.filter((d): d is string => typeof d === 'string') : [];
-        for (const id of ids) {
-            if (id.startsWith('base:')) continue;
+        return firstRefusedDogRef(dogIds, req.ctx, async (id) => {
             const res = await nodesController.getById(id);
-            if (!res.ok || !res.data) continue; // unresolved → leave to runtime
-            if (!canRead(res.data, req.ctx)) return id;
+            return res.ok && res.data ? res.data : null;
+        });
+    }
+
+    /** 403 fuer eine verbotene Referenz, 400 `pin_required` fuer einen ungepinnten run-only-Dog. */
+    private static sendRefusedDogRef(res: Response, refused: RefusedDogRef): void {
+        res.status(refused.reason === 'pin_required' ? 400 : 403).json({
+            error: refused.reason === 'pin_required' ? 'pin_required' : refusedDogRefMessage(refused),
+            error_description: refusedDogRefMessage(refused),
+            dogId: refused.id,
+        });
+    }
+
+    /** Die Antwort auf eine verweigerte Mutation: 404 fuer Nicht-Leser, sonst 403 bzw. 409 (frozen). */
+    private static sendMutationRefused(res: Response, entity: any, req: Request, id: string, notAllowed: string): void {
+        if (!canRead(entity, req.ctx)) {
+            res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
+            return;
         }
-        return null;
+        if (isFrozen(entity)) {
+            res.status(409).json({ error: 'frozen', error_description: 'Frozen. Unfreeze it first.' });
+            return;
+        }
+        res.status(403).json({ error: notAllowed });
     }
 
     /**
@@ -280,11 +300,11 @@ export class ConfigRouteHandler {
                 res.status(401).json({ error: `Login required to create ${subpath}` });
                 return;
             }
-            // Kennels: reject references to dogs the caller can't read (foreign private).
+            // Kennels: reject references to dogs the caller can't run; pin run-only foreign dogs.
             if (subpath === 'kennels') {
-                const offending = await this.firstUnreadableDogRef(input?.dogIds, req);
-                if (offending) {
-                    res.status(403).json({ error: `Not authorized to reference dog ${offending} — a kennel may only use your own, public, or base dogs.` });
+                const refused = await this.firstRefusedDogRef(input?.dogIds, req);
+                if (refused) {
+                    ConfigRouteHandler.sendRefusedDogRef(res, refused);
                     return;
                 }
             }
@@ -414,27 +434,42 @@ export class ConfigRouteHandler {
             }
             const allowed = await this.canMutateForSubpath(subpath, existing.data, req);
             if (!allowed) {
-                res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
-                    error: canRead(existing.data, req.ctx)
-                        ? `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} zu ändern`
-                        : `Entity mit ID ${id} nicht gefunden`,
-                });
+                ConfigRouteHandler.sendMutationRefused(
+                    res, existing.data, req, id, `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} zu ändern`,
+                );
+                return;
+            }
+
+            // Rechte aendern sich nur ueber /acl, /freeze und die ACL-Werkzeuge: PUT nimmt keine
+            // ACL-Listen, keinen Owner und kein frozen an — sonst machte sich ein Editor zum Owner.
+            // visibility ist OWN (3.5.2).
+            const {
+                ownerId: _ownerIn,
+                editors: _editorsIn,
+                viewers: _viewersIn,
+                runners: _runnersIn,
+                frozen: _frozenIn,
+                ...body
+            } = req.body ?? {};
+            const nextVisibility = normalizeVisibility(body.visibility);
+            if (nextVisibility && nextVisibility !== (existing.data as any).visibility && !canManageAcl(existing.data, req.ctx)) {
+                res.status(403).json({ error: 'Only the owner may change visibility' });
                 return;
             }
 
             // Kennels: validate only NEWLY added dogIds so a pre-existing reference never
             // blocks a legit edit, but a freshly injected foreign private dog is rejected.
-            if (subpath === 'kennels' && Array.isArray(req.body?.dogIds)) {
+            if (subpath === 'kennels' && Array.isArray(body.dogIds)) {
                 const had = new Set<string>(Array.isArray((existing.data as any).dogIds) ? (existing.data as any).dogIds : []);
-                const added = (req.body.dogIds as any[]).filter((d) => typeof d === 'string' && !had.has(d));
-                const offending = await this.firstUnreadableDogRef(added, req);
-                if (offending) {
-                    res.status(403).json({ error: `Not authorized to reference dog ${offending} — a kennel may only use your own, public, or base dogs.` });
+                const added = (body.dogIds as any[]).filter((d) => typeof d === 'string' && !had.has(d));
+                const refused = await this.firstRefusedDogRef(added, req);
+                if (refused) {
+                    ConfigRouteHandler.sendRefusedDogRef(res, refused);
                     return;
                 }
             }
 
-            const result = await controller.save({ ...req.body, id });
+            const result = await controller.save({ ...body, id });
             if (result.ok) {
                 res.status(200).json({ ok: true, id: result.id, data: result.data });
             } else {

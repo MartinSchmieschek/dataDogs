@@ -13,7 +13,7 @@ import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 import { KennelRunHandler } from './KennelRunHandler';
-import { canRead, applyCreateDefaults } from '../../mcp/auth/visibility';
+import { canRead, applyCreateDefaults, normalizeVisibility } from '../../mcp/auth/visibility';
 import { DogAclIndex } from '../../services/dogAccess';
 
 /**
@@ -255,10 +255,18 @@ export class KennelBundleHandler {
                 if (dog.versionId) idMap.set(dog.versionId, newLineageId);
             }
 
+            // Stubs stay references — pinned to the exported version (8.15): the exporter could not
+            // read the dog, so it may be someone's run-only dog, and a lineage reference would let
+            // its author change the code this kennel runs.
+            const stubPins = new Map<string, string>();
+            for (const stub of stubs) {
+                if (stub?.lineageId && stub?.versionId) stubPins.set(stub.lineageId, stub.versionId);
+            }
+
             const remap = (ref: string): string => {
                 if (typeof ref !== 'string') return ref;
                 if (ref.startsWith('base:')) return ref; // base refs travel untouched
-                return idMap.get(ref) ?? ref;
+                return idMap.get(ref) ?? stubPins.get(ref) ?? ref;
             };
 
             // SECURITY: imported dogs are never ownerless. Without ACL columns they were
@@ -307,7 +315,7 @@ export class KennelBundleHandler {
             const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
             const kennelAcl = applyCreateDefaults(
                 {
-                    visibility: bundle.kennel.visibility === 'public' ? 'public' : undefined,
+                    visibility: normalizeVisibility(bundle.kennel.visibility),
                     ownerId: req.ctx?.user?.id ?? null,
                 },
                 req.ctx,

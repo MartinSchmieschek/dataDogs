@@ -59,6 +59,43 @@ export class DogAclIndex {
     }
 }
 
+/** Warum ein Kennel einen Dog nicht referenzieren darf (W21). */
+export interface RefusedDogRef {
+    id: string;
+    /** forbidden: kein RUN. pin_required: nur RUN, und die Referenz ist keine Version-GUID (8.15). */
+    reason: 'forbidden' | 'pin_required';
+}
+
+/**
+ * W21: ein Kennel referenziert nur Dogs, die der Aufrufer ausfuehren darf (canRun). Fremde Dogs,
+ * die er nicht lesen darf, nur als Version-Pin: der Autor soll keinen neuen Code in einen fremden
+ * Kennel schieben koennen, der dort im Kontext anderer laeuft (8.15, Nira C). Base-Dogs und
+ * ungespeicherte ids (Geschwister eines build_kennel, Basis-Namen) laesst die Pruefung der Laufzeit.
+ */
+export async function firstRefusedDogRef(
+    dogIds: unknown,
+    ctx: AuthCtx | undefined,
+    lookup: (id: string) => Promise<(AclEntity & { id?: string }) | null | undefined>,
+): Promise<RefusedDogRef | null> {
+    if (ctx?.isSuperUser) return null;
+    const ids = Array.isArray(dogIds) ? dogIds.filter((d): d is string => typeof d === 'string') : [];
+    for (const id of ids) {
+        if (id.startsWith('base:')) continue; // BaseDogs are public infrastructure
+        const dog = await lookup(id);
+        if (!dog) continue; // not a stored node → leave to runtime
+        if (!canRun(dog, ctx)) return { id, reason: 'forbidden' };
+        if (!canRead(dog, ctx) && dog.id !== id) return { id, reason: 'pin_required' };
+    }
+    return null;
+}
+
+/** Die Antwort auf eine verweigerte Referenz — ein Text fuer MCP und REST. */
+export function refusedDogRefMessage(refused: RefusedDogRef): string {
+    return refused.reason === 'pin_required'
+        ? `pin_required: dog ${refused.id} is run-only for you — reference one of its version GUIDs (the id from list_nodes or get_node_schema), not its lineageId.`
+        : `Not authorized to reference dog ${refused.id} — a kennel may only use dogs you can run (your own, public, run-only, or granted to you as runner).`;
+}
+
 /** Der Laufzeit-Kontext eines Laufs, als AuthCtx gelesen — fuer die Praedikate in visibility.ts. */
 function authOfCapability(ctx: VmGlobalCapabilityContext | undefined): AuthCtx | undefined {
     if (!ctx) return undefined;
