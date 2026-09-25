@@ -4,7 +4,7 @@
 // check additionally allows kennel-owners (or kennel-editors) of any kennel
 // referencing the node — see canMutateNode.
 
-import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
+import { canRead, canMutate, filterReadable, applyCreateDefaults, withMyRights, VISIBILITIES } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
 import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@slopdogs/core';
@@ -172,7 +172,7 @@ export function getNodeTools(): ToolDef[] {
                 const result = await deps.nodesController.getById(id);
                 if (!result.ok || !result.data) return fail(`Node ${id} not found`);
                 if (!canRead(result.data as any, ctx)) return fail(`Node ${id} not found`);
-                return ok(result.data);
+                return ok(withMyRights(result.data as any, ctx));
             },
         },
         {
@@ -309,7 +309,7 @@ export function getNodeTools(): ToolDef[] {
                     icon: { type: 'string', description: 'one emoji' },
                     description: DESCRIPTION_SCHEMA,
                     lineDocs: LINE_DOCS_SCHEMA,
-                    visibility: { type: 'string', enum: ['public', 'private'] },
+                    visibility: { type: 'string', enum: [...VISIBILITIES] },
                 },
             },
             handler: async (args, ctx, deps) => {
@@ -373,7 +373,7 @@ export function getNodeTools(): ToolDef[] {
                     icon: { type: 'string' },
                     description: DESCRIPTION_SCHEMA,
                     lineDocs: LINE_DOCS_SCHEMA,
-                    visibility: { type: 'string', enum: ['public', 'private'] },
+                    visibility: { type: 'string', enum: [...VISIBILITIES] },
                 },
             },
             handler: async (args, ctx, deps) => {

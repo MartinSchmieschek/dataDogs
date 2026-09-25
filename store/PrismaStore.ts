@@ -111,6 +111,12 @@ export class PrismaStore implements IStore {
         ? (d.viewers.length ? d.viewers.join(',') : null)
         : d.viewers;
     }
+    if (d.runners !== undefined) {
+      updateData.runners = Array.isArray(d.runners)
+        ? (d.runners.length ? d.runners.join(',') : null)
+        : d.runners;
+    }
+    if (d.frozen !== undefined) updateData.frozen = Boolean(d.frozen);
     if (d.createdAt !== undefined) updateData.createdAt = d.createdAt;
     if (d.updatedAt !== undefined) updateData.updatedAt = d.updatedAt;
 
@@ -146,6 +152,8 @@ export class PrismaStore implements IStore {
         ownerId: row.ownerId,
         editors: row.editors,
         viewers: row.viewers,
+        runners: row.runners,
+        frozen: Boolean(row.frozen),
         lineageId: row.lineageId,
         parentId: row.parentId,
         displayName: row.displayName,
@@ -231,6 +239,9 @@ export class PrismaStore implements IStore {
         ownerId: r.ownerId,
         editors: r.editors,
         viewers: r.viewers,
+        runners: r.runners,
+        // $queryRaw liefert SQLite-Booleans als 0/1 — Boolean() macht beide Wege gleich.
+        frozen: Boolean(r.frozen),
         lineageId: r.lineageId,
         parentId: r.parentId,
         displayName: r.displayName,
@@ -256,6 +267,8 @@ export class PrismaStore implements IStore {
       ownerId: r.ownerId,
       editors: r.editors,
       viewers: r.viewers,
+      runners: r.runners,
+      frozen: Boolean(r.frozen),
       createdAt: r.createdAt,
       serializedDogConfig: r.serializedDogConfig
     };
@@ -424,6 +437,8 @@ export class PrismaStore implements IStore {
       ownerId: r.ownerId ?? null,
       editors: r.editors ?? null,
       viewers: r.viewers ?? null,
+      runners: r.runners ?? null,
+      frozen: Boolean(r.frozen),
       createdAt: r.createdAt ?? null,
       updatedAt: r.updatedAt ?? null,
       serializedDogConfig: r.serializedDogConfig
@@ -473,6 +488,8 @@ export class PrismaStore implements IStore {
           ownerId: r.ownerId ?? null,
           editors: r.editors ?? null,
           viewers: r.viewers ?? null,
+          runners: r.runners ?? null,
+          frozen: Boolean(r.frozen),
           updatedAt: r.updatedAt ?? null,
         };
       })
@@ -506,6 +523,14 @@ export class PrismaStore implements IStore {
         const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return bTime - aTime;
       });
+  }
+
+  /**
+   * Friert eine Zeile ein oder taut sie auf — an Ort und Stelle, ohne neue Version (8.25):
+   * die Kopfversion traegt das Feld, und ein Freeze ist keine Aenderung am Inhalt.
+   */
+  public async setFrozen(id: string, frozen: boolean): Promise<void> {
+    await this.prisma.dog.update({ where: { id }, data: { frozen } });
   }
 
   /** Cast the entity overboard — banished to the void, irrecoverable. */

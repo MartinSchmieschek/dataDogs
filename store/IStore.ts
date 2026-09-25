@@ -56,6 +56,12 @@ export interface IStore {
    */
   findByLineage(type: string, lineageId: string): Promise<Array<any>>;
 
+  /**
+   * Freeze or unfreeze one row in place — no new version (P3.5, 8.25). Callers pass the
+   * head version's id: the head carries the flag.
+   */
+  setFrozen(id: string, frozen: boolean): Promise<void>;
+
   /** Cast the entity overboard — gone into the void, never to be seen again. */
   delete(id: string): Promise<void>;
 

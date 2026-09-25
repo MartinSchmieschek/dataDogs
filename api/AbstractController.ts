@@ -149,6 +149,8 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
                 if (r.ownerId !== undefined && r.ownerId !== null) (parsed as any).ownerId = r.ownerId;
                 if (r.editors !== undefined && r.editors !== null) (parsed as any).editors = r.editors;
                 if (r.viewers !== undefined && r.viewers !== null) (parsed as any).viewers = r.viewers;
+                if (r.runners !== undefined && r.runners !== null) (parsed as any).runners = r.runners;
+                (parsed as any).frozen = Boolean(r.frozen);
                 (parsed as any)._createdAt = r.createdAt;
                 return parsed;
             });

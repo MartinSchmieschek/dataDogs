@@ -40,6 +40,16 @@ import { generateVersionId, generateLineageId } from './api/utils/versioning';
 import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { getAclTools } from './mcp/tools/acl';
+import {
+    canManageAcl,
+    canMutate,
+    canRead,
+    canRun,
+    rightsOf,
+    applyCreateDefaults,
+    type AclEntity,
+    type Visibility,
+} from './mcp/auth/visibility';
 import { toSwaggridCast } from './services/swaggridAdapter';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
@@ -168,6 +178,11 @@ export class StartupTest {
             await this.testLegacySaveAppliesCreateDefaults(nodesStore, nodesController);
             await this.testImportAppliesCreateDefaults(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testLegacySaveIgnoresClientAcl(nodesStore, nodesController);
+
+            // P3.5 Rechte v2: NONE < RUN < READ < EDIT < OWN
+            await this.testRightsMatrix();
+            await this.testOwnerReleasesToCommunity(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testVersionCarriesHeadRights(kennelsController as KennelController);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -1692,9 +1707,11 @@ export class StartupTest {
     private async testSerializedDogExists(store: IStore): Promise<void> {
         const testName = 'SerializedDog: Seed-Mimic (LayoutInputProvider + Tinder)';
         try {
-            // With GUID-based versioning, find the seed by type instead of hardcoded ID.
+            // With GUID-based versioning, find the seed by type instead of hardcoded ID — and by its
+            // name, not by row order: a schema push (P3.5: runners/frozen) rebuilds the SQLite
+            // table, and the first row of the type is then whichever id sorts first.
             const allSeeds = await store.findByType(SerializedDog.name);
-            const seedRow = allSeeds.length > 0 ? allSeeds[0] : null;
+            const seedRow = allSeeds.find((r: any) => r.displayName === 'Seed Serialized 1') ?? null;
             const seed = seedRow ? seedRow.serializedDogConfig : null;
             if (!seed) {
                 this.addResult(testName, true, 'Seed existiert noch nicht (wird beim nächsten Start erstellt)');
@@ -2251,7 +2268,7 @@ export class StartupTest {
         nodesStore: IStore,
         displayName: string,
         theRun: string,
-        acl: { visibility: 'public' | 'private'; ownerId: string | null },
+        acl: { visibility: Visibility; ownerId: string | null; runners?: string; viewers?: string; editors?: string },
     ): Promise<string> {
         const versionId = generateVersionId();
         const lineageId = generateLineageId();
@@ -2273,6 +2290,9 @@ export class StartupTest {
             serializedDogConfig: JSON.stringify(cfg),
             visibility: acl.visibility,
             ownerId: acl.ownerId,
+            ...(acl.runners !== undefined ? { runners: acl.runners } : {}),
+            ...(acl.viewers !== undefined ? { viewers: acl.viewers } : {}),
+            ...(acl.editors !== undefined ? { editors: acl.editors } : {}),
             createdAt: new Date(),
         });
         this.createdTestIds.push(versionId);
@@ -3070,7 +3090,7 @@ export class StartupTest {
             const registry = new ControllerRegistry();
             registry.register('nodes', nodesController);
             const handler = new ConfigRouteHandler(registry);
-            const forged = { ownerId: 'U9', visibility: 'public', editors: 'U9', viewers: 'U9' };
+            const forged = { ownerId: 'U9', visibility: 'public', editors: 'U9', viewers: 'U9', runners: 'U9', frozen: true };
             const save = async (id: string) => {
                 const { res, out } = this.fakeResponse();
                 await (handler as any).handleSave(
@@ -3090,9 +3110,10 @@ export class StartupTest {
                 if (!row) throw new Error(`${label}: Node nicht gefunden`);
                 if (row.ownerId !== 'U1') throw new Error(`${label}: ownerId erwartet U1, erhalten ${row.ownerId}`);
                 if (row.visibility !== 'private') throw new Error(`${label}: visibility erwartet private, erhalten ${row.visibility}`);
-                if (String(row.editors ?? '').includes('U9') || String(row.viewers ?? '').includes('U9')) {
-                    throw new Error(`${label}: editors/viewers vom Client uebernommen`);
+                if (String(row.editors ?? '').includes('U9') || String(row.viewers ?? '').includes('U9') || String(row.runners ?? '').includes('U9')) {
+                    throw new Error(`${label}: editors/viewers/runners vom Client uebernommen`);
                 }
+                if (row.frozen) throw new Error(`${label}: frozen vom Client uebernommen`);
                 const cfg = JSON.parse(row.serializedDogConfig || '{}');
                 if ('ownerId' in cfg || 'visibility' in cfg) throw new Error(`${label}: ACL-Felder in serializedDogConfig gelandet`);
             };
@@ -3107,6 +3128,168 @@ export class StartupTest {
         } finally {
             if (createdLineage) await this.deleteDogLineage(nodesStore, createdLineage);
             if (existing) await this.deleteDogLineage(nodesStore, existing);
+        }
+    }
+
+    /** Fake-User fuer die Rechte-Tests (T1-T12): nur die id zaehlt fuer die Praedikate. */
+    private fakeUser(id: string): AuthCtx {
+        return { user: { id, email: `${id.toLowerCase()}@test.invalid`, name: null }, isSuperUser: false };
+    }
+
+    /** Die hoechste Stufe eines Aufrufers — NONE < RUN < READ < EDIT < OWN. */
+    private levelOf(entity: AclEntity, ctx: AuthCtx): string {
+        if (canManageAcl(entity, ctx)) return 'OWN';
+        if (canMutate(entity, ctx)) return 'EDIT';
+        if (canRead(entity, ctx)) return 'READ';
+        if (canRun(entity, ctx)) return 'RUN';
+        return 'NONE';
+    }
+
+    /**
+     * Test (P3.5 3.5.2, T3 Teil, T6 Teil): die Rechtematrix als Praedikate — jede Rolle gegen
+     * jede Sichtbarkeit, dazu frozen, Community, Mehrfachrollen und die Create-Defaults.
+     */
+    private async testRightsMatrix(): Promise<void> {
+        const testName = 'P3.5: Rechtematrix NONE < RUN < READ < EDIT < OWN';
+        try {
+            const anon: AuthCtx = { user: null, isSuperUser: false };
+            const superUser: AuthCtx = { user: null, isSuperUser: true };
+            const roles: Array<[string, AuthCtx]> = [
+                ['anonym', anon],
+                ['fremd', this.fakeUser('U9')],
+                ['runner', this.fakeUser('UR')],
+                ['reader', this.fakeUser('UV')],
+                ['editor', this.fakeUser('UE')],
+                ['owner', this.fakeUser('UO')],
+                ['superuser', superUser],
+            ];
+            const expected: Record<Visibility, Record<string, string>> = {
+                private: { anonym: 'NONE', fremd: 'NONE', runner: 'RUN', reader: 'READ', editor: 'EDIT', owner: 'OWN', superuser: 'OWN' },
+                'run-only': { anonym: 'RUN', fremd: 'RUN', runner: 'RUN', reader: 'READ', editor: 'EDIT', owner: 'OWN', superuser: 'OWN' },
+                public: { anonym: 'READ', fremd: 'READ', runner: 'READ', reader: 'READ', editor: 'EDIT', owner: 'OWN', superuser: 'OWN' },
+            };
+            const entity = (visibility: Visibility, extra: Partial<AclEntity> = {}): AclEntity => ({
+                visibility, ownerId: 'UO', editors: 'UE', viewers: 'UV', runners: 'UR', ...extra,
+            });
+            const wrong: string[] = [];
+            for (const visibility of Object.keys(expected) as Visibility[]) {
+                for (const [role, ctx] of roles) {
+                    const got = this.levelOf(entity(visibility), ctx);
+                    if (got !== expected[visibility][role]) wrong.push(`${visibility}/${role}: ${got} statt ${expected[visibility][role]}`);
+                }
+            }
+            if (wrong.length) throw new Error(wrong.join('; '));
+
+            // frozen (8.25 a): niemand editiert, auch Owner und Super-User nicht; OWN bleibt (auftauen).
+            const frozen = entity('public', { frozen: true });
+            for (const [role, ctx] of roles) {
+                if (canMutate(frozen, ctx)) throw new Error(`frozen: ${role} darf editieren`);
+            }
+            if (!canManageAcl(frozen, this.fakeUser('UO')) || !canRead(frozen, anon) || !canRun(frozen, anon)) {
+                throw new Error('frozen: OWN/READ/RUN duerfen nicht fallen');
+            }
+
+            // Community (8.16): Eingeloggte lesen und editieren, niemand ausser dem Super-User besitzt.
+            const community = { visibility: 'private', ownerId: null } as AclEntity;
+            if (this.levelOf(community, this.fakeUser('U9')) !== 'EDIT') throw new Error('Community: Eingeloggter nicht EDIT');
+            if (this.levelOf(community, anon) !== 'NONE') throw new Error('Community privat: anonym nicht NONE');
+            if (this.levelOf({ visibility: null, ownerId: null } as AclEntity, anon) !== 'READ') throw new Error('Community ohne visibility: anonym nicht READ');
+            if (this.levelOf(community, superUser) !== 'OWN') throw new Error('Community: Super-User nicht OWN');
+
+            // Mehrfachrollen: die hoechste Stufe gewinnt; der Owner in runners bleibt OWN.
+            if (this.levelOf(entity('private', { runners: 'UR', viewers: 'UR' }), this.fakeUser('UR')) !== 'READ') {
+                throw new Error('runner + reader: nicht READ');
+            }
+            if (this.levelOf(entity('private', { runners: 'UO' }), this.fakeUser('UO')) !== 'OWN') throw new Error('Owner in runners: nicht OWN');
+
+            // myRights anonym auf public (3.5.7).
+            const rights = rightsOf(entity('public'), anon);
+            if (JSON.stringify(rights) !== JSON.stringify({ run: true, read: true, edit: false, own: false, frozen: false })) {
+                throw new Error(`myRights anonym/public: ${JSON.stringify(rights)}`);
+            }
+
+            // Create-Defaults: private, auch fuer den Super-User; run-only kommt durch.
+            if (applyCreateDefaults({}, superUser).visibility !== 'private') throw new Error('Super-User-Default nicht private');
+            if (applyCreateDefaults({ visibility: 'run-only' }, this.fakeUser('UO')).visibility !== 'run-only') {
+                throw new Error('run-only geht beim Anlegen verloren');
+            }
+            if (applyCreateDefaults({ visibility: 'wide-open' }, this.fakeUser('UO')).visibility !== 'private') {
+                throw new Error('unbekannte Sichtbarkeit nicht auf private');
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test (T6): der Owner darf alles — auch loslassen: release_ownership macht die Entitaet zur
+     * Community; danach besitzt sie niemand mehr (nur der Super-User), editieren darf jeder Eingeloggte.
+     */
+    private async testOwnerReleasesToCommunity(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T6: Owner gibt frei -> Community';
+        const kennelId = `test-release-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({
+                id: kennelId, name: `Release ${kennelId}`, dogIds: [], visibility: 'run-only', ownerId: 'UO', runners: ['UR'],
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const owner = this.fakeUser('UO');
+            const before: any = (await kennelsController.getById(kennelId)).data;
+            if (before?.visibility !== 'run-only' || before?.runners !== 'UR') throw new Error(`run-only/runners nicht gespeichert: ${JSON.stringify(before)}`);
+            if (JSON.stringify(rightsOf(before, owner)) !== JSON.stringify({ run: true, read: true, edit: true, own: true, frozen: false })) {
+                throw new Error('Owner hat nicht alle Rechte');
+            }
+
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const release = getAclTools().find((t) => t.name === 'release_ownership');
+            if (!release) throw new Error('Werkzeug release_ownership fehlt');
+            const stranger = await release.handler({ entity_type: 'kennel', id: kennelId }, this.fakeUser('U9'), deps);
+            if (!stranger.isError) throw new Error('Fremder konnte freigeben');
+            const r = await release.handler({ entity_type: 'kennel', id: kennelId }, owner, deps);
+            if (r.isError) throw new Error(`release: ${r.content[0]?.text}`);
+
+            const after: any = (await kennelsController.getById(kennelId)).data;
+            if (after?.ownerId != null) throw new Error(`ownerId nach release: ${after?.ownerId}`);
+            if (canManageAcl(after, owner)) throw new Error('Ex-Owner besitzt die Community-Entitaet noch');
+            if (!canMutate(after, this.fakeUser('U9'))) throw new Error('Community nicht fuer Eingeloggte editierbar');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test (P3.5): eine per Version-GUID gefundene Version traegt die Rechte ihres Kopfes —
+     * `?version=` ist kein Umweg um ein enger gestelltes Gate.
+     */
+    private async testVersionCarriesHeadRights(kennelsController: KennelController): Promise<void> {
+        const testName = 'P3.5: Version traegt die Rechte des Kopfes';
+        const kennelId = `test-head-acl-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'v1', dogIds: [], visibility: 'public', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const v1Id = (created.data as any)?.id as string;
+            const saved = await kennelsController.save({ id: kennelId, name: 'v2', visibility: 'private' });
+            if (!saved.ok) throw new Error(`save: ${saved.error}`);
+            const oldVersion: any = (await kennelsController.getById(v1Id)).data;
+            if (oldVersion?.name !== 'v1') throw new Error(`Version v1 nicht aufgeloest: ${oldVersion?.name}`);
+            if (oldVersion?.visibility !== 'private') throw new Error(`alte Version zeigt visibility ${oldVersion?.visibility}`);
+            if (canRead(oldVersion, { user: null, isSuperUser: false })) throw new Error('alte Version anonym lesbar');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 

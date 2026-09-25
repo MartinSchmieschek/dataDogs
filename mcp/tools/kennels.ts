@@ -2,7 +2,16 @@
 // granular kennel-detail accessors (defaultBody, defaultQuery, task, layout, versions).
 // Each respects the visibility/ownership rules; super-user (dev mode) bypasses.
 
-import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
+import {
+    canRead,
+    canMutate,
+    filterReadable,
+    applyCreateDefaults,
+    normalizeVisibility,
+    rightsOf,
+    isFrozen,
+    VISIBILITIES,
+} from '../auth/visibility';
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
 import {
     BASE_DOG_PREFIX,
@@ -241,7 +250,7 @@ function leanKennel(k: any) {
 }
 
 /** Header projection for get_kennel — payload presence flagged, not dumped. */
-function kennelHeader(k: any) {
+function kennelHeader(k: any, ctx: AuthCtx) {
     return {
         id: k.id,
         lineageId: k.lineageId,
@@ -257,6 +266,8 @@ function kennelHeader(k: any) {
         hasTask: typeof k.task === 'string' && k.task.length > 0,
         hasNodes: Array.isArray(k.nodes) && k.nodes.length > 0,
         hasEdges: Array.isArray(k.edges) && k.edges.length > 0,
+        frozen: isFrozen(k),
+        myRights: rightsOf(k, ctx),
         createdAt: k.createdAt,
         updatedAt: k.updatedAt,
     };
@@ -292,7 +303,7 @@ export function getKennelTools(): ToolDef[] {
                 const result = await deps.kennelsController.getById(String(args.id));
                 if (!result.ok || !result.data) return fail(result.error ?? 'not found');
                 if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
-                return ok(kennelHeader(result.data));
+                return ok(kennelHeader(result.data, ctx));
             },
         },
         {
@@ -405,7 +416,7 @@ export function getKennelTools(): ToolDef[] {
                     dogIds: { type: 'array', items: { type: 'string' } },
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
                     defaultBody: {},
-                    visibility: { type: 'string', enum: ['public', 'private'] },
+                    visibility: { type: 'string', enum: [...VISIBILITIES] },
                     ...KENNEL_TRACE_FIELDS,
                 },
             },
@@ -453,7 +464,7 @@ export function getKennelTools(): ToolDef[] {
                         minimum: 1,
                         description: 'Per-run VM timeout in ms for the first hunt (run-time-only, NOT persisted). Overrides SLOPDOGS_VM_TIMEOUT_MS (default 10000).',
                     },
-                    visibility: { type: 'string', enum: ['public', 'private'] },
+                    visibility: { type: 'string', enum: [...VISIBILITIES] },
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
                     defaultBody: {},
                     ...KENNEL_TRACE_FIELDS,
@@ -546,7 +557,7 @@ export function getKennelTools(): ToolDef[] {
                     dogIds: { type: 'array', items: { type: 'string' } },
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
                     defaultBody: {},
-                    visibility: { type: 'string', enum: ['public', 'private'] },
+                    visibility: { type: 'string', enum: [...VISIBILITIES] },
                     ...KENNEL_TRACE_FIELDS,
                 },
             },
@@ -962,7 +973,7 @@ async function buildKennel(
         if (typeof args.emoji === 'string') kennelInput.emoji = args.emoji;
         if (typeof args.description === 'string') kennelInput.description = args.description;
         // vmTimeoutMs ist Run-Time-Param und wandert NICHT in den Kennel (Welle 12 Korrektur).
-        if (args.visibility === 'public' || args.visibility === 'private') {
+        if (normalizeVisibility(args.visibility)) {
             kennelInput.visibility = args.visibility;
         }
         if (args.defaultQuery && typeof args.defaultQuery === 'object') {

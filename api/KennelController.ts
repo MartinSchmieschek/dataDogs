@@ -10,6 +10,7 @@ import {
     kennelIdBlockedReason,
 } from '@slopdogs/core';
 import { generateVersionId } from './utils/versioning';
+import { aclOf, normalizeVisibility, type Visibility } from '../mcp/auth/visibility';
 
 /**
  * Cargo manifest for raising a new kennel from the void.
@@ -26,10 +27,11 @@ export interface ICreateKennelInput extends ICreateInput {
     task?: string;
     nodes?: IKennelNodeAnnotation[];
     edges?: IKennelEdgeAnnotation[];
-    visibility?: 'public' | 'private';
+    visibility?: Visibility;
     ownerId?: string | null;
     editors?: string[] | string | null;
     viewers?: string[] | string | null;
+    runners?: string[] | string | null;
 }
 
 /**
@@ -46,10 +48,11 @@ export interface ISaveKennelInput extends IUpdateInput {
     task?: string;
     nodes?: IKennelNodeAnnotation[];
     edges?: IKennelEdgeAnnotation[];
-    visibility?: 'public' | 'private';
+    visibility?: Visibility;
     ownerId?: string | null;
     editors?: string[] | string | null;
     viewers?: string[] | string | null;
+    runners?: string[] | string | null;
 }
 
 /**
@@ -107,10 +110,11 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
-            const visibility = input.visibility === 'private' ? 'private' : 'public';
+            const visibility = normalizeVisibility(input.visibility) ?? 'public';
             const ownerId = input.ownerId ?? null;
             const editors = input.editors ?? undefined;
             const viewers = input.viewers ?? undefined;
+            const runners = input.runners ?? undefined;
 
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelController.create] Erstelle neue Kennel-Config: lineageId=${lineageId}, versionId=${versionId}, visibility=${visibility}, ownerId=${ownerId}`);
@@ -134,6 +138,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 ownerId,
                 ...(editors !== undefined ? { editors } : {}),
                 ...(viewers !== undefined ? { viewers } : {}),
+                ...(runners !== undefined ? { runners } : {}),
                 createdAt: config.createdAt?.toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
@@ -142,7 +147,16 @@ export class KennelController extends AbstractController<IKennelConfig> {
             await this.cascadeVisibilityToOwnedNodes(config.dogIds, visibility, ownerId);
 
             // Attach ACL fields to the returned config.
-            const result = { ...config, lineageId, visibility, ownerId, ...(editors !== undefined ? { editors } : {}), ...(viewers !== undefined ? { viewers } : {}) } as any;
+            const result = {
+                ...config,
+                lineageId,
+                visibility,
+                ownerId,
+                ...(editors !== undefined ? { editors } : {}),
+                ...(viewers !== undefined ? { viewers } : {}),
+                ...(runners !== undefined ? { runners } : {}),
+                frozen: false,
+            } as any;
 
             if (isRuntimeLogVerbose()) {
                 console.log(`[KennelController.create] Erfolgreich gespeichert: lineageId=${lineageId}`);
@@ -179,13 +193,12 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const existingOwnerId = (existing as any).ownerId;
             const existingEditors = (existing as any).editors;
             const existingViewers = (existing as any).viewers;
-            const nextVisibility =
-                input.visibility === 'public' || input.visibility === 'private'
-                    ? input.visibility
-                    : existingVisibility ?? 'public';
+            const existingRunners = (existing as any).runners;
+            const nextVisibility = normalizeVisibility(input.visibility) ?? existingVisibility ?? 'public';
             const nextOwnerId = input.ownerId !== undefined ? input.ownerId : existingOwnerId ?? null;
             const nextEditors = input.editors !== undefined ? input.editors : existingEditors ?? undefined;
             const nextViewers = input.viewers !== undefined ? input.viewers : existingViewers ?? undefined;
+            const nextRunners = input.runners !== undefined ? input.runners : existingRunners ?? undefined;
 
             // Merge new cargo with what was already in the hold.
             const config: IKennelConfig = {
@@ -219,9 +232,10 @@ export class KennelController extends AbstractController<IKennelConfig> {
             };
             const editorsChanged = aclNorm(existingEditors) !== aclNorm(nextEditors);
             const viewersChanged = aclNorm(existingViewers) !== aclNorm(nextViewers);
+            const runnersChanged = aclNorm(existingRunners) !== aclNorm(nextRunners);
 
             // Check if anything changed — spare the deep from phantom versions.
-            if (!contentChanged && !visibilityChanged && !ownerChanged && !editorsChanged && !viewersChanged) {
+            if (!contentChanged && !visibilityChanged && !ownerChanged && !editorsChanged && !viewersChanged && !runnersChanged) {
                 return {
                     ok: true,
                     id: (existing as any).lineageId || input.id,
@@ -256,6 +270,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 ownerId: nextOwnerId,
                 ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
                 ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+                ...(nextRunners !== undefined ? { runners: nextRunners } : {}),
                 createdAt: new Date().toISOString(),
                 updatedAt: config.updatedAt?.toISOString()
             });
@@ -273,6 +288,8 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 ownerId: nextOwnerId,
                 ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
                 ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+                ...(nextRunners !== undefined ? { runners: nextRunners } : {}),
+                frozen: false,
             } as any;
 
             if (isRuntimeLogVerbose()) {
@@ -300,7 +317,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
      */
     private async cascadeVisibilityToOwnedNodes(
         dogIds: string[] | undefined,
-        targetVisibility: 'public' | 'private',
+        targetVisibility: Visibility,
         ownerForCascade: string | null,
     ): Promise<void> {
         if (targetVisibility !== 'public') return;
@@ -500,7 +517,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             const parsed = this.parseEntity(exactData);
             // Verify it's actually a KennelConfig (not a dog with the same ID)
             if (exactData.type === this.KENNEL_TYPE || exactData.name !== undefined || exactData.dogIds !== undefined) {
-                return parsed;
+                return this.withHeadAcl(parsed);
             }
         }
 
@@ -520,6 +537,21 @@ export class KennelController extends AbstractController<IKennelConfig> {
         }
 
         return null;
+    }
+
+    /**
+     * Rechte v2: eine Version, per GUID gefunden, traegt die Rechte ihres Kopfes — sonst bliebe
+     * eine alte Version oeffentlich, nachdem der Owner die Lineage enger gestellt hat, und
+     * `?version=` waere der Umweg um jedes Gate. `frozen` lebt ohnehin nur am Kopf.
+     */
+    private async withHeadAcl(version: IKennelConfig): Promise<IKennelConfig> {
+        const lineageId = (version as any).lineageId;
+        if (!lineageId || lineageId === version.id) return version;
+        const lineageRows = await this.store.findByLineage(this.KENNEL_TYPE, lineageId);
+        if (lineageRows.length === 0) return version;
+        const head = this.pickLatestKennelStoreRow(lineageRows);
+        if (head.id === version.id) return version;
+        return { ...version, ...aclOf(this.parseEntity(head)) } as IKennelConfig;
     }
 
     /**
@@ -742,6 +774,8 @@ export class KennelController extends AbstractController<IKennelConfig> {
         if (data.ownerId !== undefined) result.ownerId = data.ownerId;
         if (data.editors !== undefined) result.editors = data.editors;
         if (data.viewers !== undefined) result.viewers = data.viewers;
+        if (data.runners !== undefined) result.runners = data.runners;
+        result.frozen = Boolean(data.frozen);
 
         return result as IKennelConfig;
     }

@@ -1,22 +1,39 @@
 // Visibility & ACL rules for kennels and nodes — single source of truth.
 //
-// Permission model
+// Permission model (Rechte v2, docs/slopdogs/PLAN.md P3.5)
 // ────────────────
-//   ownerId         creator, full rights
-//   editors[]       additional users with mutate rights
-//   viewers[]       additional users with read rights on PRIVATE entities
-//   visibility      "public" | "private" | null  (null = legacy, treated as public)
+//   Stufen, streng geordnet: NONE < RUN < READ < EDIT < OWN.  COPY = READ.
+//     RUN   ausfuehren / als Parent nutzen; Lead-Result bzw. Dog-Output sehen — kein Code, keine Konfig
+//     READ  + Code, Konfig, Defaults, Task, Layout, Versionen, Export
+//     EDIT  + neue Version, rename, delete, dogIds aendern
+//     OWN   + Rechte verwalten (ACL), visibility, Owner-Transfer, freeze/unfreeze
+//
+//   ownerId         creator, full rights (OWN)
+//   editors[]       additional users with mutate rights (EDIT)
+//   viewers[]       additional users with read rights on non-public entities (READ; UI/MCP: "reader")
+//   runners[]       additional users who may run/reference, not read (RUN)
+//   visibility      "public" | "run-only" | "private" | null
+//   frozen          true → no mutation for anyone (owner included) until unfreeze; runs, reads, copies go on
 //
 // Implicit rules
-//   ownerId = null              → community-editable: any logged-in user reads + mutates
-//   visibility ≠ "private"      → anyone (including anonymous) reads + runs
-//   visibility === "private"    → only owner + editors + viewers + super-user read
+//   ownerId = null              → community: any logged-in user reads + mutates; OWN only super-user
+//   visibility === "public"     → anyone (including anonymous) reads + runs
+//   visibility === "run-only"   → anyone runs; owner + editors + viewers read
+//   visibility === "private"    → owner + editors + viewers read, runners run
+//   null visibility             → community: public; owned: private (fail-closed)
 //   mutations                   → only owner + editors + super-user (+ community for null-owner)
-//   For nodes: see permissions.ts for the kennel-owner-bypass on edit.
 
 import type { AuthCtx } from './middleware';
 
-export type Visibility = 'public' | 'private';
+export type Visibility = 'public' | 'run-only' | 'private';
+
+/** Alle gueltigen Sichtbarkeiten — eine Liste fuer Schemas, Validierung und Texte. */
+export const VISIBILITIES: readonly Visibility[] = ['public', 'run-only', 'private'];
+
+/** Eine gueltige Sichtbarkeit oder undefined — alles andere ist "nicht angegeben". */
+export function normalizeVisibility(raw: unknown): Visibility | undefined {
+    return VISIBILITIES.includes(raw as Visibility) ? (raw as Visibility) : undefined;
+}
 
 export interface AclEntity {
     id?: string;
@@ -25,6 +42,33 @@ export interface AclEntity {
     ownerId?: string | null;
     editors?: string[] | string | null;
     viewers?: string[] | string | null;
+    runners?: string[] | string | null;
+    frozen?: boolean | number | null;
+}
+
+/**
+ * Die Spalten, die eine Zeile zur Rechte-Entitaet machen. Sie leben auf der Zeile, nicht im
+ * serializedDogConfig — und die Kopfversion einer Lineage ist die, die zaehlt.
+ */
+export const ACL_FIELDS = ['visibility', 'ownerId', 'editors', 'viewers', 'runners', 'frozen'] as const;
+
+/** Die ACL-Spalten einer Zeile (undefined bleibt weg). */
+export function aclOf(row: any): AclEntity {
+    const acl: Record<string, unknown> = {};
+    if (!row) return acl;
+    for (const field of ACL_FIELDS) {
+        if (row[field] !== undefined) acl[field] = row[field];
+    }
+    return acl as AclEntity;
+}
+
+/** Rechte eines Aufrufers an einer Entitaet — fuer UI-Chips und Agenten (`myRights`). */
+export interface MyRights {
+    run: boolean;
+    read: boolean;
+    edit: boolean;
+    own: boolean;
+    frozen: boolean;
 }
 
 /** Parse a comma-separated User-ID list (DB column) or pass through an array. */
@@ -40,8 +84,8 @@ export function serializeList(list: string[]): string | null {
 }
 
 export function effectiveVisibility(k: AclEntity): Visibility {
-    if (k.visibility === 'public') return 'public';
-    if (k.visibility === 'private') return 'private';
+    const explicit = normalizeVisibility(k.visibility);
+    if (explicit) return explicit;
     // SECURITY (2026-09-13): fail-closed on a MISSING/null visibility field.
     // The old rule treated null as public — so any entity whose visibility column
     // was never written (or was stripped by a partial projection, see PrismaStore
@@ -75,11 +119,33 @@ export function canRead(k: AclEntity, ctx: AuthCtx | undefined): boolean {
 }
 
 /**
+ * Can the requester RUN this entity — run a kennel and see its lead result, or reference a
+ * dog as a parent and see its output? A superset of {@link canRead}: every reader runs.
+ * On top: `run-only` entities run for everyone (8.17: oeffentlich = ausfuehrbar und sichtbar),
+ * and `runners[]` run a private entity. Code, config and defaults stay behind canRead.
+ */
+export function canRun(k: AclEntity, ctx: AuthCtx | undefined): boolean {
+    if (canRead(k, ctx)) return true;
+    if (effectiveVisibility(k) === 'run-only') return true;
+    if (!ctx?.user) return false;
+    return parseList(k.runners).includes(ctx.user.id);
+}
+
+/** Eingefroren (8.16/8.25): keine Mutation fuer niemanden, bis der Owner auftaut. */
+export function isFrozen(k: AclEntity | null | undefined): boolean {
+    return !!k && Boolean(k.frozen);
+}
+
+/**
  * Can the requester create/update/delete this entity? For nodes that may also be
  * editable by kennel-owners-using-them, use {@link permissions.canMutateNode} which
  * adds the kennel-lookup on top of the basics here.
+ *
+ * A frozen entity is immutable for everyone — owner and super-user included — until
+ * {@link canManageAcl} unfreezes it (8.25 a).
  */
 export function canMutate(k: AclEntity | null, ctx: AuthCtx | undefined): boolean {
+    if (isFrozen(k)) return false;
     if (ctx?.isSuperUser) return true;
     if (!ctx?.user) return false;
     if (!k) return true; // create: any logged-in user may create new
@@ -90,17 +156,63 @@ export function canMutate(k: AclEntity | null, ctx: AuthCtx | undefined): boolea
     return false;
 }
 
+/**
+ * OWN: manage the ACL, change visibility, transfer ownership, freeze/unfreeze.
+ * Owner and super-user. A community entity (ownerId null) belongs to nobody — its OWN
+ * right is the super-user's (8.16): logged-in users keep editing it, but nobody claims it.
+ */
+export function canManageAcl(k: AclEntity, ctx: AuthCtx | undefined): boolean {
+    if (ctx?.isSuperUser) return true;
+    if (!ctx?.user) return false;
+    if (isCommunityOwned(k)) return false;
+    return k.ownerId === ctx.user.id;
+}
+
+/** Owner, editors, super-user: they see who else has access (ACL lists, e-mails). */
+export function seesCollaborators(k: AclEntity, ctx: AuthCtx | undefined): boolean {
+    if (ctx?.isSuperUser) return true;
+    if (!ctx?.user) return false;
+    if (k.ownerId === ctx.user.id) return true;
+    return parseList(k.editors).includes(ctx.user.id);
+}
+
+/** The caller's rights on one entity — `myRights` on get_kennel, get_node and the REST single fetch. */
+export function rightsOf(k: AclEntity, ctx: AuthCtx | undefined): MyRights {
+    return {
+        run: canRun(k, ctx),
+        read: canRead(k, ctx),
+        edit: canMutate(k, ctx),
+        own: canManageAcl(k, ctx),
+        frozen: isFrozen(k),
+    };
+}
+
+/**
+ * Die Sicht eines Aufrufers auf die ACL-Felder einer Entitaet: editors/viewers/runners nur fuer
+ * Owner, Editoren und Super-User; `myRights` immer. Liefert eine Kopie.
+ */
+export function withMyRights<T extends AclEntity>(k: T, ctx: AuthCtx | undefined): T & { myRights: MyRights } {
+    const view: any = { ...k, frozen: isFrozen(k), myRights: rightsOf(k, ctx) };
+    if (!seesCollaborators(k, ctx)) {
+        delete view.editors;
+        delete view.viewers;
+        delete view.runners;
+    }
+    return view;
+}
+
 export function filterReadable<T extends AclEntity>(items: T[], ctx: AuthCtx | undefined): T[] {
     return items.filter((k) => canRead(k, ctx));
 }
 
+/** Listen (W17): was der Aufrufer ausfuehren darf, erscheint — run-only-Entitaeten eingeschlossen. */
+export function filterRunnable<T extends AclEntity>(items: T[], ctx: AuthCtx | undefined): T[] {
+    return items.filter((k) => canRun(k, ctx));
+}
+
+/** Default je Erstellung: private — auch fuer den Super-User (P3.5). */
 export function applyCreateDefaults(input: any, ctx: AuthCtx | undefined): any {
-    const visibility: Visibility =
-        input?.visibility === 'public' || input?.visibility === 'private'
-            ? input.visibility
-            : ctx?.isSuperUser
-            ? 'public'
-            : 'private';
+    const visibility: Visibility = normalizeVisibility(input?.visibility) ?? 'private';
     const ownerId = ctx?.isSuperUser ? input?.ownerId ?? null : ctx?.user?.id ?? null;
     return { ...input, visibility, ownerId };
 }

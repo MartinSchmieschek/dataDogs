@@ -1,11 +1,19 @@
 // ACL management tools — grant_access, revoke_access, list_collaborators.
 //
-// Permission model: only the entity's owner (or super-user) may manage its ACL.
-// Community-owned entities (ownerId=null, legacy) can be managed by any logged-in
-// user — granting access effectively claims the entity if 'owner' role is used.
+// Permission model: only the entity's owner (or super-user) may manage its ACL
+// (canManageAcl). Community-owned entities (ownerId=null) stay editable for every
+// logged-in user, but nobody claims them — their OWN right is the super-user's (8.16).
 
 import type { PrismaClient } from '../../store/generated/prisma-auth-client';
-import { canMutate, canRead, parseList, serializeList, isCommunityOwned } from '../auth/visibility';
+import {
+    canManageAcl,
+    canMutate,
+    canRead,
+    parseList,
+    serializeList,
+    isCommunityOwned,
+    seesCollaborators,
+} from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail } from './types';
 
 type EntityType = 'kennel' | 'node';
@@ -57,26 +65,6 @@ async function saveEntity(
     }
     const r = await deps.nodesController.save({ id, ...patch } as any);
     return { ok: r.ok, error: r.error };
-}
-
-/**
- * Who sees collaborator e-mails: owner, editors, super-user. Readers (viewers, or anyone
- * on a public entity) see only ids and counts — an ACL listing is not an address book.
- */
-function seesCollaboratorEmails(entity: any, ctx: any): boolean {
-    if (ctx?.isSuperUser) return true;
-    if (!ctx?.user) return false;
-    if (entity.ownerId === ctx.user.id) return true;
-    return parseList(entity.editors).includes(ctx.user.id);
-}
-
-/** Owner / super-user / community-owned can manage ACL. Pure editors cannot. */
-function canManageAcl(entity: any, ctx: any): boolean {
-    if (ctx?.isSuperUser) return true;
-    if (!ctx?.user) return false;
-    if (entity.ownerId === ctx.user.id) return true;
-    if (isCommunityOwned(entity)) return true;
-    return false;
 }
 
 export function getAclTools(): ToolDef[] {
@@ -258,7 +246,9 @@ export function getAclTools(): ToolDef[] {
                     ...viewerIds,
                 ];
 
-                if (!seesCollaboratorEmails(entity, ctx)) {
+                // Who sees collaborator e-mails: owner, editors, super-user. Readers (viewers, or
+                // anyone on a public entity) see only ids and counts — not an address book.
+                if (!seesCollaborators(entity as any, ctx)) {
                     const idOnly = (uid: string) => ({ id: uid });
                     return ok({
                         entity_type: entityType,

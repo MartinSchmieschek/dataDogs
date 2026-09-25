@@ -4,6 +4,7 @@
 import { AbstractController, ICreateInput, IUpdateInput, IControllerResponse } from './AbstractController';
 import { IStore } from '../store/IStore';
 import { generateVersionId, generateLineageId } from './utils/versioning';
+import { aclOf, normalizeVisibility } from '../mcp/auth/visibility';
 
 /**
  * A generic controller bound to a store — the first mate for any config type.
@@ -34,12 +35,12 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             const lineageId = this.enableVersioning ? generateLineageId() : undefined;
 
             // Pull ACL fields off the input — they live on the outer row, not in the config.
-            const visibility = (input as any).visibility === 'private' ? 'private'
-                : (input as any).visibility === 'public' ? 'public' : undefined;
+            const visibility = normalizeVisibility((input as any).visibility);
             const ownerId = (input as any).ownerId !== undefined ? (input as any).ownerId : undefined;
             const editors = (input as any).editors !== undefined ? (input as any).editors : undefined;
             const viewers = (input as any).viewers !== undefined ? (input as any).viewers : undefined;
-            const { visibility: _v, ownerId: _o, editors: _e, viewers: _w, ...rest } = (input as any) ?? {};
+            const runners = (input as any).runners !== undefined ? (input as any).runners : undefined;
+            const { visibility: _v, ownerId: _o, editors: _e, viewers: _w, runners: _r, frozen: _f, ...rest } = (input as any) ?? {};
 
             const entity: T = {
                 ...rest,
@@ -64,6 +65,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 ...(ownerId !== undefined ? { ownerId } : {}),
                 ...(editors !== undefined ? { editors } : {}),
                 ...(viewers !== undefined ? { viewers } : {}),
+                ...(runners !== undefined ? { runners } : {}),
                 createdAt: new Date(),
             });
 
@@ -76,6 +78,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                     ...(ownerId !== undefined ? { ownerId } : {}),
                     ...(editors !== undefined ? { editors } : {}),
                     ...(viewers !== undefined ? { viewers } : {}),
+                    ...(runners !== undefined ? { runners } : {}),
                 } as T,
             };
         } catch (error) {
@@ -133,9 +136,8 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             const inputOwnerId = (input as any).ownerId;
             const inputEditors = (input as any).editors;
             const inputViewers = (input as any).viewers;
-            const nextVisibility = inputVisibility === 'public' || inputVisibility === 'private'
-                ? inputVisibility
-                : existingRow?.visibility ?? undefined;
+            const inputRunners = (input as any).runners;
+            const nextVisibility = normalizeVisibility(inputVisibility) ?? existingRow?.visibility ?? undefined;
             const nextOwnerId = inputOwnerId !== undefined
                 ? inputOwnerId
                 : existingRow?.ownerId ?? undefined;
@@ -145,14 +147,22 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             const nextViewers = inputViewers !== undefined
                 ? inputViewers
                 : existingRow?.viewers ?? undefined;
+            const nextRunners = inputRunners !== undefined
+                ? inputRunners
+                : existingRow?.runners ?? undefined;
             const visibilityChanged = (existingRow?.visibility ?? undefined) !== nextVisibility;
             const ownerChanged = (existingRow?.ownerId ?? undefined) !== nextOwnerId;
             const editorsChanged = JSON.stringify(existingRow?.editors ?? null) !== JSON.stringify(nextEditors ?? null);
             const viewersChanged = JSON.stringify(existingRow?.viewers ?? null) !== JSON.stringify(nextViewers ?? null);
+            const runnersChanged = JSON.stringify(existingRow?.runners ?? null) !== JSON.stringify(nextRunners ?? null);
 
             // Strip envelope-only fields before merging into the inner cfg, otherwise they
-            // land in serializedDogConfig as duplicates of the row columns.
-            const { id: _oldId, visibility: _vIn, ownerId: _oIn, editors: _eIn, viewers: _wIn, ...inputCfgFields } = (input as any);
+            // land in serializedDogConfig as duplicates of the row columns. `frozen` never
+            // travels with a save: only setFrozen touches it, on the head row.
+            const {
+                id: _oldId, visibility: _vIn, ownerId: _oIn, editors: _eIn, viewers: _wIn, runners: _rIn, frozen: _fIn,
+                ...inputCfgFields
+            } = (input as any);
             const { id: _prevId, serializedDogConfig: _stripNested, ...priorCfg } = (existingInner || {}) as any;
             const nextCfg = {
                 ...priorCfg,
@@ -163,7 +173,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 displayName,
             } as T;
 
-            // If nothing has changed (cfg, visibility, ownership, editors, viewers), spare the deep.
+            // If nothing has changed (cfg, visibility, ownership, editors, viewers, runners), spare the deep.
             if (
                 existingInner &&
                 this.enableVersioning &&
@@ -171,7 +181,8 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 !visibilityChanged &&
                 !ownerChanged &&
                 !editorsChanged &&
-                !viewersChanged
+                !viewersChanged &&
+                !runnersChanged
             ) {
                 return {
                     ok: true,
@@ -196,6 +207,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 ...(nextOwnerId !== undefined ? { ownerId: nextOwnerId } : {}),
                 ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
                 ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+                ...(nextRunners !== undefined ? { runners: nextRunners } : {}),
                 createdAt: new Date(),
             });
 
@@ -208,6 +220,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                     ...(nextOwnerId !== undefined ? { ownerId: nextOwnerId } : {}),
                     ...(nextEditors !== undefined ? { editors: nextEditors } : {}),
                     ...(nextViewers !== undefined ? { viewers: nextViewers } : {}),
+                    ...(nextRunners !== undefined ? { runners: nextRunners } : {}),
                 } as T,
             };
         } catch (error) {
@@ -220,6 +233,10 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
      * The base AbstractController.getById passes data through parseEntity which only sees
      * serializedDogConfig; the outer row's visibility/ownerId are lost. We use
      * findLatestVersionsByType (which returns the full row) and graft the metadata back on.
+     *
+     * Rechte v2: a version GUID resolves to that exact incarnation, but its rights are the
+     * HEAD's — an older version must not stay public (or runnable) after the owner narrowed
+     * the lineage, and `frozen` lives on the head only.
      */
     async getById(id: string): Promise<IControllerResponse<T | null>> {
         try {
@@ -227,7 +244,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             if (rows.length === 0) {
                 return { ok: false, error: `Entity mit ID ${id} nicht gefunden`, data: null };
             }
-            const r: any = rows[0];
+            const r: any = await this.withHeadAcl(rows[0], id);
             const parsed = this.parseEntity(r.serializedDogConfig || r);
             if (r.id) (parsed as any).id = r.id;
             if (r.lineageId) (parsed as any).lineageId = r.lineageId;
@@ -236,10 +253,23 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
             if (r.ownerId !== undefined && r.ownerId !== null) (parsed as any).ownerId = r.ownerId;
             if (r.editors !== undefined && r.editors !== null) (parsed as any).editors = r.editors;
             if (r.viewers !== undefined && r.viewers !== null) (parsed as any).viewers = r.viewers;
+            if (r.runners !== undefined && r.runners !== null) (parsed as any).runners = r.runners;
+            (parsed as any).frozen = Boolean(r.frozen);
             return { ok: true, data: parsed };
         } catch (error) {
             return { ok: false, error: String(error), data: null };
         }
+    }
+
+    /**
+     * A row found by its version GUID carries the ACL columns of its lineage head. A row found
+     * by lineageId already IS the head. One extra query, only on the version-GUID path.
+     */
+    private async withHeadAcl(row: any, requestedId: string): Promise<any> {
+        if (!row?.lineageId || row.lineageId === requestedId || row.id !== requestedId) return row;
+        const head: any = (await this.store.findLatestVersionsByType(this.entityType, [row.lineageId]))[0];
+        if (!head || head.id === row.id) return row;
+        return { ...row, ...aclOf(head) };
     }
 
     /**

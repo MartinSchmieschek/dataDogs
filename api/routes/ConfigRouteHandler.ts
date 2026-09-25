@@ -3,7 +3,7 @@
 import { Request, Response } from 'express';
 import { isRuntimeLogVerbose, sanitizeLineDocs } from '@slopdogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
-import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../mcp/auth/visibility';
+import { canRead, canMutate, filterReadable, applyCreateDefaults, withMyRights } from '../../mcp/auth/visibility';
 import { canMutateNode } from '../../mcp/auth/permissions';
 import { IStore } from '../../store/IStore';
 import { paramString } from '../utils/routeParams';
@@ -218,7 +218,9 @@ export class ConfigRouteHandler {
                     res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
                     return;
                 }
-                res.status(200).json({ ok: true, data: result.data });
+                // myRights fuer die UI-Chips (read only, run only, Editor-Sperre); ACL-Listen nur
+                // fuer Owner und Editoren.
+                res.status(200).json({ ok: true, data: result.data ? withMyRights(result.data, req.ctx) : result.data });
             } else {
                 res.status(404).json({ error: result.error });
             }
@@ -335,6 +337,8 @@ export class ConfigRouteHandler {
                 visibility: _visibilityIn,
                 editors: _editorsIn,
                 viewers: _viewersIn,
+                runners: _runnersIn,
+                frozen: _frozenIn,
                 ...existingConfig
             } = req.body.serializedDogConfig || {};
             let input: any = {
