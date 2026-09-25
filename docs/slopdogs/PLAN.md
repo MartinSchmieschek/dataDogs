@@ -1328,7 +1328,7 @@ Warum der Core ueberhaupt: `letOut` ist die einzige Stelle, an der ein Dog-Lauf 
 
 #### 4b.2 Core-Vertrag (woertlich)
 
-> **Gemessen 2026-09-26 (P4b, StartupTest 14, --expose-gc):** 403-406 Byte je pending-Eintrag (rund 0,4 MB je 1 000 Eintraege) — rund das Doppelte der Rechnung (~200 Byte), aber unter der 1-MB-Schwelle aus 4b.11; Deckel  bleibt 10 000 (voll ≈ 4 MB, Amars schlimmster Fall mit 4 000 Eintraegen ≈ 1,6 MB, beides aus dem Messwert gerechnet).  20 nach einem 20-Dog-Lauf und nach 100 Laeufen ohne Flush (gleiche Schluessel).  1,2-1,3 µs je Dog. RSS vor/nach einer Welle 527->556 MB (Worker-Isolates, voruebergehend), heapUsed +0,25 bis 3 MB.
+> **Gemessen 2026-09-26 (P4b, StartupTest 14, --expose-gc):** 403-406 Byte je pending-Eintrag (rund 0,4 MB je 1 000 Eintraege) — rund das Doppelte der Rechnung (~200 Byte), aber unter der 1-MB-Schwelle aus 4b.11; Deckel `KENNEL_CALL_MAX_PENDING` bleibt 10 000 (voll ≈ 4 MB, Amars schlimmster Fall mit 4 000 Eintraegen ≈ 1,6 MB, beides aus dem Messwert gerechnet). `pendingDogs` 20 nach einem 20-Dog-Lauf und nach 100 Laeufen ohne Flush (gleiche Schluessel). `recordDog` 1,2-1,3 µs je Dog. RSS vor/nach einer Welle 527->556 MB (Worker-Isolates, voruebergehend), heapUsed +0,25 bis 3 MB.
 
 
 ```ts
