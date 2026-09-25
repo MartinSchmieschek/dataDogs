@@ -21,6 +21,7 @@ import { paramString } from '../utils/routeParams';
 import { ListQuery } from './ListQuery';
 import { firstRefusedDogRef, refusedDogRefMessage, type RefusedDogRef } from '../../services/dogAccess';
 import type { KennelStatsService } from '../../services/KennelStatsService';
+import type { DogStatsService } from '../../services/DogStatsService';
 
 /**
  * Returns true when the request has a logged-in user OR is in super-user dev mode.
@@ -91,10 +92,14 @@ export class ConfigRouteHandler {
     /** P4: haengt `stats` an jede Kennel-Antwort (Liste und Einzelabruf). */
     private kennelStats?: KennelStatsService;
 
-    constructor(registry: ControllerRegistry, kennelStore?: IStore, kennelStats?: KennelStatsService) {
+    /** P4b: haengt `stats` an den Einzelabruf eines Dogs (die Liste bedient NodesRouteHandler). */
+    private dogStats?: DogStatsService;
+
+    constructor(registry: ControllerRegistry, kennelStore?: IStore, kennelStats?: KennelStatsService, dogStats?: DogStatsService) {
         this.registry = registry;
         this.kennelStore = kennelStore;
         this.kennelStats = kennelStats;
+        this.dogStats = dogStats;
     }
 
     /** True if subpath==='nodes' and the user can mutate this node (owner / editor / community / super). */
@@ -266,6 +271,7 @@ export class ConfigRouteHandler {
                 // fuer Owner und Editoren.
                 const data: any = result.data ? withMyRights(result.data, req.ctx) : result.data;
                 if (data && subpath === 'kennels' && this.kennelStats) await this.kennelStats.attachOne(data);
+                if (data && subpath === 'nodes' && this.dogStats) await this.dogStats.attachOne(data);
                 res.status(200).json({ ok: true, data });
             } else {
                 res.status(404).json({ error: result.error });

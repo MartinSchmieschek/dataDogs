@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { DogInfo } from '../models/dog.model';
+import { DogInfo, IDogUsage } from '../models/dog.model';
 
 export interface ApiResponse<T = any> {
   ok: boolean;
@@ -42,6 +42,11 @@ export class DogService {
 
   getById(id: string): Observable<ApiResponse<any>> {
     return this.http.get<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
+  }
+
+  /** Wo der Dog laeuft (P4b): Kennels, Abhaengige, Abhaengigkeiten. `id` = lineageId, Version oder `base:X`. */
+  getUsage(id: string): Observable<IDogUsage> {
+    return this.http.get<IDogUsage>(`${this.baseUrl}/${encodeURIComponent(id)}/usage`);
   }
 
   getVersions(id: string): Observable<ApiResponse<VersionEntry[]>> {

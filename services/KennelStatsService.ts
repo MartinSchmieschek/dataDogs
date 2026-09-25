@@ -144,6 +144,20 @@ export class KennelStatsService {
         return userId;
     }
 
+    /**
+     * Die Bayes-Scores der BEWERTETEN Kennels unter den genannten Lineages (P4b: Sterne-Faktor der
+     * Bewaehrt-Formel). Aus demselben Memo wie attach — keine eigene Abfrage.
+     */
+    async ratedScores(lineageIds: Iterable<string>): Promise<number[]> {
+        const memo = await this.current();
+        const scores: number[] = [];
+        for (const id of lineageIds) {
+            const r = memo.ratings.get(id);
+            if (r && r.count > 0) scores.push(KennelStatsService.score(r.count, r.sum, memo.globalMean));
+        }
+        return scores;
+    }
+
     /** Nach Flush, Rating-Schreibzugriff und Kennel-Delete: das naechste attach laedt neu. */
     invalidate(): void {
         this.memo = null;

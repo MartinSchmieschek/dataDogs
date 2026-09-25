@@ -2,9 +2,11 @@
 // From tangent planes the dogs emerge, each bearing name and form for those who seek to know.
 import { BASE_DOG_PREFIX, SerializedDog } from '@slopdogs/core';
 import { ControllerRegistry } from './ConfigRouteHandler';
-import { accessOf, filterRunnable, runView, withMyRights, type AclEntity } from '../../mcp/auth/visibility';
+import { accessOf, canRun, filterRunnable, runView, withMyRights, type AclEntity } from '../../mcp/auth/visibility';
 import type { AuthCtx } from '../../mcp/auth/middleware';
 import { ListQuery } from './ListQuery';
+import { API_ROUTE } from './routeTable';
+import type { DogStatsService } from '../../services/DogStatsService';
 
 /** A lean description of a base dog — enough for the toolbar to display it. */
 interface IBaseDogInfo {
@@ -17,12 +19,27 @@ interface IBaseDogInfo {
     contextName: string;
 }
 
+/** Blanke Klassennamen der Abhaengigkeiten eines Base-Dogs (required/optional sind Klassen). */
+function dependencyNames(list: unknown): string[] {
+    if (!Array.isArray(list)) return [];
+    return list.map((dep) => (dep as any)?.name).filter((n): n is string => typeof n === 'string' && n.length > 0);
+}
+
 export class NodesRouteHandler {
     private registry: ControllerRegistry;
     private baseDogsList: IBaseDogInfo[];
+    /** Die Vertraege der Base-Dogs — fuer usage.dependencies (P4b). */
+    private baseDogParents = new Map<string, { parentsRequired: string[]; parentsOptional: string[] }>();
 
-    constructor(registry: ControllerRegistry, baseDogs: any[]) {
+    /** @param dogStats P4b: `stats` an jedem Eintrag, `GET /api/nodes/:id/usage`. Ohne ihn: wie vor P4b. */
+    constructor(registry: ControllerRegistry, baseDogs: any[], private readonly dogStats?: DogStatsService) {
         this.registry = registry;
+        for (const dog of baseDogs) {
+            this.baseDogParents.set(BASE_DOG_PREFIX + dog.name, {
+                parentsRequired: dependencyNames(dog.required),
+                parentsOptional: dependencyNames(dog.optional),
+            });
+        }
         this.baseDogsList = baseDogs.map(dog => ({
             id: BASE_DOG_PREFIX + dog.name,
             name: dog.name,
@@ -55,7 +72,33 @@ export class NodesRouteHandler {
     }
 
     registerRoutes(app: any): void {
-        app.get('/api/nodes', (req: any, res: any) => this.handleList(req, res));
+        app.get(API_ROUTE.nodesList, (req: any, res: any) => this.handleList(req, res));
+        app.get(API_ROUTE.nodeUsage, (req: any, res: any) => this.handleUsage(req, res));
+    }
+
+    /**
+     * GET /api/nodes/:id/usage (P4b) — wo der Dog laeuft. `:id` = lineageId, Version-GUID oder `base:X`.
+     * 404, wenn der Aufrufer den Dog nicht ausfuehren darf (dieselbe Sichtbarkeit wie die Liste);
+     * Kennels nur, die er ausfuehren darf — der Rest als hiddenKennels.
+     */
+    private async handleUsage(req: any, res: any): Promise<void> {
+        try {
+            if (!this.dogStats) { res.status(404).json({ error: 'usage not available' }); return; }
+            const id = String(req.params.id);
+            const base = this.baseDogsList.find((d) => d.id === id || d.name === id);
+            if (base) {
+                res.status(200).json(await this.dogStats.usageOf({ id: base.id, ownerId: null, ...this.baseDogParents.get(base.id) }, req.ctx));
+                return;
+            }
+            const controller = this.registry.get('nodes');
+            const found = controller ? await controller.getById(id) : null;
+            const dog = found?.ok ? (found.data as any) : null;
+            if (!dog || !canRun(dog, req.ctx)) { res.status(404).json({ error: `Node ${id} not found` }); return; }
+            res.status(200).json(await this.dogStats.usageOf(dog, req.ctx));
+        } catch (e) {
+            console.error('[/api/nodes/:id/usage]', e);
+            res.status(500).json({ error: String(e) });
+        }
     }
 
     // GET /api/nodes — summons the manifest of hounds.
@@ -110,8 +153,9 @@ export class NodesRouteHandler {
                     serializedDogs = serializedDogs.filter((d: any) =>
                         !kennelSet.has(d.id) && !kennelSet.has(d.lineageId)
                     );
-                    const filteredBase = this.baseDogsList.filter(d => !kennelSet.has(d.id));
+                    const filteredBase = this.baseDogsList.filter(d => !kennelSet.has(d.id)).map((d) => ({ ...d }));
                     const scoped = [...filteredBase, ...serializedDogs];
+                    if (this.dogStats) await this.dogStats.attach(scoped as any[]);
                     res.status(200).json(listQuery.envelope(listQuery.apply(scoped, req.ctx)));
                     return;
                 }
@@ -120,7 +164,10 @@ export class NodesRouteHandler {
             // Base dogs take part in search, order and paging: they share one list with the
             // serialized dogs, so cutting the page after the merge is the only way page 1 and
             // page 2 stay free of overlaps. `mine=1` drops them — nobody owns infrastructure.
-            const all = [...this.baseDogsList, ...serializedDogs];
+            const all = [...this.baseDogsList.map((d) => ({ ...d })), ...serializedDogs];
+            // P4b: stats VOR ListQuery.apply — sortiert (proven, calls30d, reuse) und gefiltert (proven=1)
+            // wird nach ihnen, und nur an dem, was der Rechtefilter schon durchgelassen hat.
+            if (this.dogStats) await this.dogStats.attach(all as any[]);
             res.status(200).json(listQuery.envelope(listQuery.apply(all, req.ctx)));
         } catch (e) {
             console.error('[/api/nodes]', e);

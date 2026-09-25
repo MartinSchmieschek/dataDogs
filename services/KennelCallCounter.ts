@@ -187,6 +187,19 @@ export class KennelCallCounter {
         return out;
     }
 
+    /** Ungeflushte Laeufe EINES Dogs je Kennel (fuer die Nutzungsliste) — count und Fehler im Fenster. */
+    pendingDogKennelUsage(dogKey: string, sinceDay: string): Map<string, { count30d: number; failures30d: number }> {
+        const out = new Map<string, { count30d: number; failures30d: number }>();
+        for (const d of this.pendingDogs.values()) {
+            if (d.dogKey !== dogKey || d.day < sinceDay) continue;
+            const u = out.get(d.kennelLineageId) ?? { count30d: 0, failures30d: 0 };
+            u.count30d += d.count;
+            u.failures30d += d.errors + d.timeouts + d.oom;
+            out.set(d.kennelLineageId, u);
+        }
+        return out;
+    }
+
     /** Dog geloescht (letzte Version): seine ungeflushten Deltas fallen weg. */
     forgetDog(dogKey: string): void {
         for (const [key, d] of this.pendingDogs) {

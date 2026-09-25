@@ -53,6 +53,8 @@ export const API_ROUTE = {
     kennelExport: '/api/kennels/:id/export',
     kennelImport: '/api/kennels/import',
     nodesList: '/api/nodes',
+    /** Wo ein Dog laeuft (P4b): Kennels, Abhaengige, Abhaengigkeiten — vor ConfigRouteHandler registriert. */
+    nodeUsage: '/api/nodes/:id/usage',
     readme: '/api/readme',
     /** WebSocket-Upgrade am http.Server (ChannelHub), keine Express-Route. */
     channels: '/api/channels',
@@ -81,6 +83,7 @@ export const API_ROUTES = [
     '/api/nodes/:id/acl/transfer',
     '/api/nodes/:id/freeze',
     '/api/nodes/:id/unfreeze',
+    '/api/nodes/:id/usage',
     '/api/readme',
     '/api/landing',
     '/api/channels',
@@ -140,6 +143,7 @@ export const EXPRESS_APP_ROUTES = [
     API_ROUTE.kennelExport,
     API_ROUTE.kennelImport,
     API_ROUTE.nodesList,
+    API_ROUTE.nodeUsage,
     API_ROUTE.readme,
     API_ROUTE.landing,
     ...LEGACY_308,

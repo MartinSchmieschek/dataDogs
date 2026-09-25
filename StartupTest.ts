@@ -68,6 +68,7 @@ import { LandingRouteHandler } from './api/routes/LandingRouteHandler';
 import type { DogCallDelta, IDogStatsStore, IKennelStatsStore, KennelCallAggregate, KennelCallSource } from './store/IKennelStatsStore';
 import { dogStatsKeyOf } from './services/dogStatsKey';
 import { DogReferenceIndex } from './services/DogReferenceIndex';
+import { DogStatsService } from './services/DogStatsService';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
@@ -108,6 +109,18 @@ export class StartupTest {
         upsertKennelRating: async () => {},
         deleteKennelRating: async () => false,
         deleteKennelStats: async () => {},
+    };
+
+    /** Ein Dog-Stats-Store ohne Zeilen (P4b) — Testlaeufe gehoeren nicht in die Statistik. */
+    private static readonly NO_DOG_STATS_STORE: IDogStatsStore = {
+        incrementDogCalls: async () => {},
+        readDogCallAggregates: async () => [],
+        readDogKennelUsage: async () => [],
+        deleteDogCalls: async () => {},
+        replaceReferences: async () => {},
+        removeReferences: async () => {},
+        readAllReferences: async () => [],
+        rebuildReferences: async () => {},
     };
 
     /** Zaehler der Test-Handler: zaehlt im Speicher, flusht nie. */
@@ -257,6 +270,9 @@ export class StartupTest {
             await this.testReferenceDerivation(nodesStore, kennelsStore, dogStatsStore, baseDogsMap);
             await this.testReferenceRebuildIdempotent(nodesStore, kennelsStore, dogStatsStore, baseDogsMap);
             await this.testDogDeleteClearsStats(nodesStore, kennelsStore, statsStore, dogStatsStore, baseDogsMap);
+            await this.testDogReuseAndUsage();
+            await this.testProvenFormula();
+            await this.testListQuerySortsDogsByProven();
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -2394,6 +2410,8 @@ export class StartupTest {
             snapshotCache: new KennelSnapshotCache(),
             kennelStats: new KennelStatsService(StartupTest.NO_STATS_STORE, this.testCallCounter),
             callCounter: this.testCallCounter,
+            dogStats: new DogStatsService(StartupTest.NO_DOG_STATS_STORE, this.testCallCounter,
+                new KennelStatsService(StartupTest.NO_STATS_STORE, this.testCallCounter)),
         };
     }
 
@@ -5067,6 +5085,93 @@ export class StartupTest {
             try { await kennels.delete(kennelId); } catch { /* ignore */ }
             try { await statsStore.deleteKennelStats(kennelId); } catch { /* ignore */ }
             if (lineageId) try { await dogStore.deleteDogCalls(lineageId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test P4b 9: Kennzahlen und Crew-Effekt — D (u1) direkt in K1 (u1), K2 (u2, privat), K3 (community),
+     * transitiv in K4 (u3) ueber E (parents required D). Anonym sieht usage drei Kennels, K2 zaehlt verborgen.
+     */
+    private async testDogReuseAndUsage(): Promise<void> {
+        const testName = 'P4b 9: Wiederverwendung (direkt, transitiv, fremd, Owner) und usage';
+        try {
+            const ref = (fromKind: 'kennel' | 'dog', fromKey: string, toKey: string, kind: 'crew' | 'required' | 'optional', fromOwnerId: string | null, position = 0) =>
+                ({ fromKind, fromKey, toKey, kind, position, fromOwnerId, resolved: 1 as const });
+            const store: IDogStatsStore = {
+                ...StartupTest.NO_DOG_STATS_STORE,
+                readAllReferences: async () => [
+                    ref('kennel', 'K1', 'D', 'crew', 'u1'), ref('kennel', 'K2', 'D', 'crew', 'u2'), ref('kennel', 'K3', 'D', 'crew', null),
+                    ref('dog', 'E', 'D', 'required', 'u3'), ref('kennel', 'K4', 'E', 'crew', 'u3'),
+                ],
+            };
+            const kennels = [
+                { id: 'v1', lineageId: 'K1', name: 'K1', visibility: 'public', ownerId: 'u1' },
+                { id: 'v2', lineageId: 'K2', name: 'K2', visibility: 'private', ownerId: 'u2' },
+                { id: 'v3', lineageId: 'K3', name: 'K3', visibility: 'public', ownerId: null },
+                { id: 'v4', lineageId: 'K4', name: 'K4', visibility: 'public', ownerId: 'u3' },
+            ];
+            const dogs = [{ id: 'vE', lineageId: 'E', displayName: 'E', visibility: 'public', ownerId: 'u3' }];
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
+            const service = new DogStatsService(store, counter, new KennelStatsService(StartupTest.NO_STATS_STORE, counter),
+                { listKennels: async () => kennels, listDogs: async () => dogs });
+            const d = await service.attachOne({ id: 'vD', lineageId: 'D', ownerId: 'u1' });
+            const r = d.stats.reuse;
+            const got = [r.kennelsDirect, r.kennelsTransitive, r.kennelsForeign, r.owners, r.dependents].join(',');
+            if (got !== '3,4,3,4,1') throw new Error(`direct,transitive,foreign,owners,dependents: ${got}`);
+            const usage = await service.usageOf(d, { user: null, isSuperUser: false });
+            const listed = usage.kennels.map((k) => `${k.lineageId}:${k.via}`).sort().join(',');
+            if (listed !== 'K1:crew,K3:crew,K4:transitive' || usage.hiddenKennels !== 1) throw new Error(`usage: ${listed}, hidden ${usage.hiddenKennels}`);
+            if (usage.dependents.length !== 1 || usage.dependents[0].lineageId !== 'E' || usage.dependents[0].kind !== 'required') throw new Error(`dependents: ${JSON.stringify(usage.dependents)}`);
+            if (usage.kennels.some((k) => k.url !== `/k/${k.lineageId}`)) throw new Error('url nicht /k/<lineageId>');
+            if (d.stats.calls.avgDurationMs !== null || d.stats.proven.badge) throw new Error(`ohne Laeufe: ${JSON.stringify(d.stats)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Test P4b 10: die Formel an den vier Rechenbeispielen aus 4b.6. */
+    private async testProvenFormula(): Promise<void> {
+        const testName = 'P4b 10: Bewaehrt-Formel (14,09 / 3,00 / 0,33 / 1 042)';
+        try {
+            const a = DogStatsService.proven({ r: 99, n: 120, f: 6, k: 4, kf: 3, s: 4.27 });
+            const b = DogStatsService.proven({ r: 999, n: 1000, f: 0, k: 1, kf: 0, s: null });
+            const c = DogStatsService.proven({ r: 2, n: 3, f: 1, k: 1, kf: 0, s: null });
+            const base = DogStatsService.proven({ r: 5000, n: 6000, f: 0, k: 180, kf: 150, s: 3.9 });
+            const got = [a.score.toFixed(2), b.score.toFixed(2), c.score.toFixed(2), String(Math.round(base.score))].join(' / ');
+            if (got !== '14.09 / 3.00 / 0.33 / 1042') throw new Error(`Scores: ${got}`);
+            const badges = [a, b, c, base].map((x) => (x.badge ? 'ja' : 'nein')).join(',');
+            if (badges !== 'ja,ja,nein,ja') throw new Error(`badge: ${badges}`);
+            if (a.reliability !== 0.95 || c.reliability !== 0.7) throw new Error(`reliability: ${a.reliability}, ${c.reliability}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Test P4b 11: ListQuery fuer Dogs — sort=proven/calls30d/reuse, proven=1, Suche kombiniert, ohne stats hinten. */
+    private async testListQuerySortsDogsByProven(): Promise<void> {
+        const testName = 'P4b 11: ListQuery nach proven, calls30d, reuse';
+        try {
+            const dog = (id: string, displayName: string, score: number, badge: boolean, ranked30d: number, kennels: number) => ({
+                id, displayName, stats: { calls: { ranked30d }, reuse: { kennelsTransitive: kennels }, proven: { score, badge, reliability: 1 } },
+            });
+            const items: any[] = [
+                dog('a', 'Geo Lookup', 14.09, true, 99, 4),
+                dog('b', 'Renderer', 3, true, 999, 1),
+                dog('c', 'Geo Fresh', 0.33, false, 2, 1),
+                { id: 'd', displayName: 'Ohne Stats' },
+            ];
+            const ids = (q: Record<string, unknown>) => ListQuery.from(q).apply(items, undefined).data.map((x: any) => x.id).join(',');
+            const expect = (label: string, got: string, want: string) => { if (got !== want) throw new Error(`${label}: ${got} statt ${want}`); };
+            expect('sort=proven desc', ids({ sort: 'proven', dir: 'desc' }), 'a,b,c,d');
+            expect('sort=calls30d desc', ids({ sort: 'calls30d', dir: 'desc' }), 'b,a,c,d');
+            expect('sort=reuse desc', ids({ sort: 'reuse', dir: 'desc' }), 'a,c,b,d');
+            expect('proven=1', ids({ proven: '1', sort: 'proven', dir: 'desc' }), 'a,b');
+            expect('q=geo + proven', ids({ q: 'geo', sort: 'proven', dir: 'desc' }), 'a,c');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 

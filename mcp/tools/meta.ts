@@ -54,6 +54,7 @@ export function getMetaTools(): ToolDef[] {
                     user: ctx.user ? { id: ctx.user.id, email: ctx.user.email } : null,
                     isSuperUser: ctx.isSuperUser,
                     stats: deps.callCounter.status(),
+                    dogStats: deps.dogStats.health(),
                 });
             },
         },

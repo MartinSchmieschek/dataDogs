@@ -11,6 +11,7 @@ import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import type { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 import type { KennelStatsService } from '../../services/KennelStatsService';
 import type { KennelCallCounter } from '../../services/KennelCallCounter';
+import type { DogStatsService } from '../../services/DogStatsService';
 
 export interface BaseDogInfo {
     id: string;
@@ -54,6 +55,8 @@ export interface ToolDeps {
     kennelStats: KennelStatsService;
     /** P4: health_check meldet den Zaehlerstand (pending, dropped, lastFlushError). */
     callCounter: KennelCallCounter;
+    /** P4b: `stats` an list_nodes/get_node, `usage` an get_node, dogStats in health_check. */
+    dogStats: DogStatsService;
 }
 
 export interface ToolResult {

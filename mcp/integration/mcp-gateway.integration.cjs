@@ -428,6 +428,38 @@ async function run() {
     fail('P4 stats', e.message);
   }
 
+  // P4b (13): derselbe execute_kennel zaehlt auch jeden Dog sofort (ungeflushte Deltas im Memo-Merge);
+  // get_node traegt usage mit dem Kennel; list_nodes kennt sort=proven.
+  try {
+    const schema = await mcpCall('describe_tool', { name: 'list_nodes' });
+    const sortEnum = schema?.inputSchema?.properties?.sort?.enum || [];
+    if (!sortEnum.includes('proven') || !schema?.inputSchema?.properties?.provenOnly) fail('list_nodes schema', `sort.enum ${JSON.stringify(sortEnum)}`);
+    else pass('list_nodes schema', `sort ${sortEnum.join('|')}, provenOnly`);
+
+    const kennel = await mcpCall('get_kennel', { id: KENNEL_ID });
+    const crew = new Set(Array.isArray(kennel?.dogIds) ? kennel.dogIds : []);
+    const top = await mcpCall('list_nodes', { sort: 'calls30d', dir: 'desc', limit: 5 });
+    const nodes = Array.isArray(top?.nodes) ? top.nodes : [];
+    const withoutStats = nodes.filter((n) => !n?.stats?.calls || !n?.stats?.proven);
+    const ran = nodes.find((n) => (crew.has(n.id) || crew.has(n.lineageId)) && n.stats?.calls?.last30d >= 1);
+    if (nodes.length === 0 || withoutStats.length) fail('list_nodes stats', `${nodes.length} nodes, ${withoutStats.length} without stats`);
+    else if (!ran) fail('list_nodes stats', `no dog of ${KENNEL_ID} with calls.last30d >= 1 in top 5: ${nodes.map((n) => `${n.id}:${n.stats.calls.last30d}`).join(', ')}`);
+    else pass('list_nodes stats', `${ran.id} last30d ${ran.stats.calls.last30d}, ranked30d ${ran.stats.calls.ranked30d}, proven ${ran.stats.proven.score}`);
+
+    if (ran) {
+      const detail = await mcpCall('get_node', { id: ran.lineageId || ran.id });
+      const usageKennels = (detail?.usage?.kennels || []).map((k) => k.lineageId);
+      if (!detail?.stats?.reuse || !usageKennels.includes(KENNEL_ID)) fail('get_node usage', `kennels ${usageKennels.join(', ')}, hidden ${detail?.usage?.hiddenKennels}`);
+      else pass('get_node usage', `${usageKennels.length} kennels incl. ${KENNEL_ID}, hidden ${detail.usage.hiddenKennels}, transitive ${detail.stats.reuse.kennelsTransitive}`);
+    }
+
+    const h = await mcpCall('health_check', {});
+    if (typeof h?.dogStats?.pendingDogs !== 'number' || typeof h.dogStats.referenceRows !== 'number') fail('health_check dogStats', JSON.stringify(h?.dogStats));
+    else pass('health_check dogStats', `pendingDogs ${h.dogStats.pendingDogs}, referenceRows ${h.dogStats.referenceRows}`);
+  } catch (e) {
+    fail('P4b stats', e.message);
+  }
+
   // P4 (11.7): die Alt-Weiche antwortet 308 ohne Lauf und ohne Zaehlung; erst der Folge-GET auf
   // /k/<id> zaehlt — genau einmal (stats.calls.total vorher/nachher, Delta-Merge ohne Flush).
   try {

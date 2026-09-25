@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import {
     ISerializedDogConfig,
     SerializedDog,
+    MimicDog,
     type ICacheHandler,
 } from '@slopdogs/core';
 import { IStore } from '../store/IStore';
@@ -32,8 +33,9 @@ import { resolveAngularBrowserDir, resolvePublicDir } from './expressPaths';
 import { HeavyRequestLimiter } from './heavyRequestLimiter';
 import type { KennelCallCounter } from '../services/KennelCallCounter';
 import { KennelStatsService } from '../services/KennelStatsService';
-import type { IKennelStatsStore } from '../store/IKennelStatsStore';
+import type { IDogStatsStore, IKennelStatsStore } from '../store/IKennelStatsStore';
 import type { DogReferenceIndex } from '../services/DogReferenceIndex';
+import { DogStatsService } from '../services/DogStatsService';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
@@ -53,6 +55,8 @@ export type CreateHttpApplicationInput = {
     statsStore: IKennelStatsStore;
     /** Referenzindex (P4b): main.ts baut ihn beim Boot neu auf; die Controller melden jede Kopfversion. */
     refIndex: DogReferenceIndex;
+    /** Dog-Laeufe und Referenzen (P4b) — derselbe Store-Client. */
+    dogStatsStore: IDogStatsStore;
 };
 
 export type CreateHttpApplicationResult = {
@@ -202,8 +206,38 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     // P4: stats an jeder Kennel-Antwort. Ein Flush und ein Kennel-Delete machen das Memo ungueltig.
     const kennelStats = new KennelStatsService(input.statsStore, input.callCounter);
-    input.callCounter.setOnFlushed(() => kennelStats.invalidate());
     kennelsController.setStatsJanitor(kennelStats);
+
+    // P4b: stats an jeder Dog-Antwort — derselbe Store-Client, dasselbe Zaehler-Objekt. Ein Flush, eine
+    // Referenz-Aenderung (Save/Delete/Rebuild) und eine Bewertung machen das Memo ungueltig.
+    // Die Kopfversionen aller Dogs — SerializedDogs UND MimicDogs (nodesController.listLatest kennt nur
+    // den ersten Typ). Nur gelesen: fuer usage.dependents (und ab der Landing fuer provenDogs). Traegt eine
+    // Lineage Zeilen beider Typen, gilt der SerializedDog-Kopf (so wie list_nodes ihn zeigt).
+    const mimicsReader = new Controller<ISerializedDogConfig>(nodesStore, MimicDog.name);
+    const listAllDogs = async (): Promise<any[]> => {
+        const [serialized, mimics] = await Promise.all([nodesController.listLatest(), mimicsReader.listLatest()]);
+        const byLineage = new Map<string, any>();
+        for (const dog of [...(serialized.data ?? []), ...(mimics.data ?? [])]) {
+            const key = (dog as any).lineageId || dog.id;
+            if (key && !byLineage.has(key)) byLineage.set(key, dog);
+        }
+        return [...byLineage.values()];
+    };
+    const dogStats = new DogStatsService(
+        input.dogStatsStore,
+        input.callCounter,
+        kennelStats,
+        {
+            listKennels: async () => (await kennelsController.listLatest()).data ?? [],
+            listDogs: listAllDogs,
+        },
+        () => input.refIndex.referenceRows,
+    );
+    input.refIndex.onChange(() => dogStats.invalidate());
+    input.callCounter.setOnFlushed(() => {
+        kennelStats.invalidate();
+        dogStats.invalidate();
+    });
 
     // Die Selbsttest-Suite lief frueher GENAU HIER -- vor dem Montieren aller Routen und vor
     // httpServer.listen. Ein Fehlschlag, ein stiller Kill oder auch nur eine lange Laufzeit hat
@@ -224,7 +258,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         }
     };
 
-    const nodesRouteHandler = new NodesRouteHandler(registry, allBaseDogs);
+    const nodesRouteHandler = new NodesRouteHandler(registry, allBaseDogs, dogStats);
     nodesRouteHandler.registerRoutes(app);
     const readmeRouteHandler = new ReadmeRouteHandler(serverRootDir);
     readmeRouteHandler.registerRoutes(app);
@@ -232,7 +266,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     // Landing-Daten (P4) VOR /api/:subpath — sonst antwortet dort der Controller-404. Keine Bremse.
     new LandingRouteHandler(kennelsController, kennelStats).registerRoutes(app);
 
-    const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats);
+    const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats, dogStats);
     routeHandler.registerRoutes(app, '/api');
     // Rechte v2 (P3.5): /api/:subpath/:id/acl, …/acl/transfer, …/freeze, …/unfreeze.
     const aclRouteHandler = new AclRouteHandler(kennelsController, nodesController, authPrisma);
@@ -312,6 +346,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         snapshotCache,
         kennelStats,
         callCounter: input.callCounter,
+        dogStats,
     };
     app.use('/mcp', createMcpRouter(toolDeps));
     app.use('/actions', createActionsRouter(toolDeps));

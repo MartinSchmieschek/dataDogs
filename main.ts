@@ -231,6 +231,7 @@ async function start() {
         callCounter,
         statsStore: store,
         refIndex,
+        dogStatsStore: store,
     });
 
     const port = Number(process.env.PORT) || 3000;

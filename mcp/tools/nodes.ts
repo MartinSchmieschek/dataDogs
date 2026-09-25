@@ -16,6 +16,7 @@ import {
     VISIBILITIES,
 } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
+import { ListQuery } from '../../api/routes/ListQuery';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
 import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@slopdogs/core';
 
@@ -61,6 +62,16 @@ export function getNodeTools(): ToolDef[] {
                     search: {
                         type: 'string',
                         description: 'case-insensitive substring match on name and displayName',
+                    },
+                    sort: {
+                        type: 'string',
+                        enum: ['name', 'updatedAt', 'proven', 'calls30d', 'reuse'],
+                        description: 'proven = battle-tested first (usage x reliability x reuse x kennel stars). Prefer proven dogs over building new ones.',
+                    },
+                    dir: { type: 'string', enum: ['asc', 'desc'] },
+                    provenOnly: {
+                        type: 'boolean',
+                        description: 'only dogs carrying the proven badge (>=5 runs in 30 days, >=1 public run, >=1 kennel, reliability >= 0.8)',
                     },
                 },
             },
@@ -134,7 +145,7 @@ export function getNodeTools(): ToolDef[] {
                 const searchRaw = typeof args.search === 'string' ? args.search : undefined;
                 const s = searchRaw ? searchRaw.toLowerCase() : undefined;
 
-                const filtered = all.filter((n) => {
+                const matching = all.filter((n) => {
                     if (typeFilter && n.type !== typeFilter) return false;
                     if (s) {
                         const name = (n.name ?? '').toLowerCase();
@@ -146,6 +157,13 @@ export function getNodeTools(): ToolDef[] {
                     }
                     return true;
                 });
+                // P4b: jeder Eintrag traegt `stats` (Laeufe, Wiederverwendung, Bewaehrt). Sortiert wird nur
+                // auf Wunsch — ohne sort/provenOnly bleibt die bisherige Reihenfolge (Base-Dogs zuerst).
+                await deps.dogStats.attach(matching as any[]);
+                const wantsOrder = typeof args.sort === 'string' || args.provenOnly === true;
+                const filtered = wantsOrder
+                    ? ListQuery.from({ sort: args.sort, dir: args.dir, proven: args.provenOnly === true ? '1' : undefined }).apply(matching, ctx).data
+                    : matching;
 
                 const total = filtered.length;
                 const rawLimit = typeof args.limit === 'number' ? args.limit : 50;
@@ -181,11 +199,15 @@ export function getNodeTools(): ToolDef[] {
                 const base = deps.baseDogsList.find(
                     (b) => b.id === id || b.name === id || `base:${b.name}` === id,
                 );
-                if (base) return ok(base);
+                if (base) {
+                    const node = await deps.dogStats.attachOne({ ...base, ownerId: null });
+                    return ok({ ...node, usage: await deps.dogStats.usageOf(node, ctx) });
+                }
                 const result = await deps.nodesController.getById(id);
                 if (!result.ok || !result.data) return fail(`Node ${id} not found`);
                 if (!canRead(result.data as any, ctx)) return fail(`Node ${id} not found`);
-                return ok(withMyRights(result.data as any, ctx));
+                const node = await deps.dogStats.attachOne(withMyRights(result.data as any, ctx));
+                return ok({ ...node, usage: await deps.dogStats.usageOf(node, ctx) });
             },
         },
         {

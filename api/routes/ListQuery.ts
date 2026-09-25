@@ -7,7 +7,7 @@
 //
 // Order of operations is fixed and must not be reordered:
 //   ACL visibility (the caller applies it BEFORE handing the list in)
-//     -> mine -> q -> minStars -> minCalls -> sort -> offset/limit
+//     -> mine -> q -> minStars -> minCalls -> proven -> sort -> offset/limit
 // `total` counts after the filters, before the page is cut. Slicing earlier yields
 // wrong pages; counting before the ACL filter would leak how many private entries of
 // other users exist.
@@ -17,9 +17,10 @@ import type { AuthCtx } from '../../mcp/auth/middleware';
 /**
  * calls/calls30d = ranked usage (`stats.calls.ranked` / `.ranked30d`), rating = Bayes score
  * (`stats.rating.score`). The numeric keys need `stats` on the items (KennelStatsService.attach);
- * an item without stats counts as 0.
+ * an item without stats counts as 0. Dogs (P4b, DogStatsService.attach): calls30d reads the same
+ * `stats.calls.ranked30d`, proven = `stats.proven.score`, reuse = `stats.reuse.kennelsTransitive`.
  */
-export type SortField = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating';
+export type SortField = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating' | 'proven' | 'reuse';
 export type SortDirection = 'asc' | 'desc';
 
 export interface IListPage<T> {
@@ -31,7 +32,7 @@ export class ListQuery {
     /** Hard ceiling — a caller may ask for more, but never receives more. */
     static readonly MAX_LIMIT = 200;
 
-    private static readonly SORT_FIELDS: readonly string[] = ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating'];
+    private static readonly SORT_FIELDS: readonly string[] = ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating', 'proven', 'reuse'];
     /** lineageId too: the kennel id is what people and agents know a kennel by. */
     private static readonly SEARCHABLE_FIELDS: readonly string[] = ['name', 'displayName', 'description', 'lineageId'];
 
@@ -46,6 +47,8 @@ export class ListQuery {
         readonly minStars: number | null = null,
         /** Keep items with at least this many ranked calls, or no filter. */
         readonly minCalls: number | null = null,
+        /** Keep only dogs carrying the proven badge (`proven=1`, P4b). */
+        readonly provenOnly: boolean = false,
     ) { }
 
     /**
@@ -63,6 +66,7 @@ export class ListQuery {
             ListQuery.parseFlag(q.mine),
             ListQuery.parseMinStars(q.minStars),
             ListQuery.parseMinCalls(q.minCalls),
+            ListQuery.parseFlag(q.proven),
         );
     }
 
@@ -71,13 +75,14 @@ export class ListQuery {
         return this.limit !== null;
     }
 
-    /** Apply mine -> q -> minStars -> minCalls -> sort -> page. The caller has already applied the ACL filter. */
+    /** Apply mine -> q -> minStars -> minCalls -> proven -> sort -> page. The caller has already applied the ACL filter. */
     apply<T>(items: T[], ctx: AuthCtx | undefined): IListPage<T> {
         const owned = this.mineOnly ? items.filter(item => ListQuery.isOwnedBy(item, ctx)) : items;
         const found = this.search ? owned.filter(item => this.matches(item)) : owned;
         const starred = this.minStars === null ? found : found.filter(item => (ListQuery.statsOf(item)?.rating?.avg ?? -1) >= this.minStars!);
         const called = this.minCalls === null ? starred : starred.filter(item => (ListQuery.statsOf(item)?.calls?.ranked ?? 0) >= this.minCalls!);
-        const ordered = this.ordered(called);
+        const proven = this.provenOnly ? called.filter(item => ListQuery.statsOf(item)?.proven?.badge === true) : called;
+        const ordered = this.ordered(proven);
 
         if (this.limit === null) {
             return { data: ordered, total: ordered.length };
@@ -134,8 +139,13 @@ export class ListQuery {
         return String((item as { id?: unknown })?.id ?? '');
     }
 
-    /** The `stats` a list item carries (P4) — undefined for nodes and for callers that did not attach. */
-    private static statsOf(item: unknown): { calls?: { ranked?: number; ranked30d?: number }; rating?: { avg?: number | null; score?: number } } | undefined {
+    /** The `stats` a list item carries (P4 kennels, P4b dogs) — undefined for callers that did not attach. */
+    private static statsOf(item: unknown): {
+        calls?: { ranked?: number; ranked30d?: number };
+        rating?: { avg?: number | null; score?: number };
+        proven?: { score?: number; badge?: boolean };
+        reuse?: { kennelsTransitive?: number };
+    } | undefined {
         return (item as { stats?: any })?.stats;
     }
 
@@ -144,6 +154,8 @@ export class ListQuery {
         if (field === 'calls') return ListQuery.statsOf(item)?.calls?.ranked ?? 0;
         if (field === 'calls30d') return ListQuery.statsOf(item)?.calls?.ranked30d ?? 0;
         if (field === 'rating') return ListQuery.statsOf(item)?.rating?.score ?? 0;
+        if (field === 'proven') return ListQuery.statsOf(item)?.proven?.score ?? 0;
+        if (field === 'reuse') return ListQuery.statsOf(item)?.reuse?.kennelsTransitive ?? 0;
         if (field === 'name') {
             // Kennels carry `name`, dogs carry `displayName` — one route serves both.
             const label = record?.name ?? record?.displayName ?? '';
