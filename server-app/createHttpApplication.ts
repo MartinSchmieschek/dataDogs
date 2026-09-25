@@ -28,6 +28,7 @@ import { createActionsRouter } from '../mcp/transports/openapi';
 import { KennelSnapshotCache } from '../mcp/snapshots/KennelSnapshotCache';
 import { resolveAngularBrowserDir, resolvePublicDir } from './expressPaths';
 import { HeavyRequestLimiter } from './heavyRequestLimiter';
+import type { KennelCallCounter } from '../services/KennelCallCounter';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
@@ -41,6 +42,8 @@ export type CreateHttpApplicationInput = {
     allBaseDogs: any[];
     baseDogsMap: Map<string, new () => any>;
     resolveCacheDatabaseUrl: () => string;
+    /** Zaehlt jeden Kennel-Lauf (P4); main.ts besitzt ihn und flusht ihn beim Shutdown. */
+    callCounter: KennelCallCounter;
 };
 
 export type CreateHttpApplicationResult = {
@@ -222,7 +225,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const prismaCacheHandler = new PrismaCacheHandler(input.resolveCacheDatabaseUrl());
     const cacheHandler: ICacheHandler = withResilientCacheInfra(prismaCacheHandler);
 
-    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
+    const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler, callCounter: input.callCounter });
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler, nodesStore);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
 

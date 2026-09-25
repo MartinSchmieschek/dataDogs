@@ -295,6 +295,7 @@ export function getSnapshotTools(): ToolDef[] {
                             effectiveBody,
                             authCtxToCapabilityCtx(ctx),
                             vmTimeoutMs,
+                            { source: 'mcp-snapshot' },
                         );
                         const leadDogId = resolveLeadDogId(waves, freshConfig);
                         const leadResult = extractLeadResult(waves, freshConfig);

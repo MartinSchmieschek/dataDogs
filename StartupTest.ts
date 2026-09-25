@@ -88,6 +88,21 @@ export class StartupTest {
     /** IDs of test entities conjured during the trials, marked for cleanup lest they pollute the deep. */
     private createdTestIds: string[] = [];
 
+    /** Ein Stats-Store, der nichts schreibt — Testlaeufe gehoeren nicht in die Statistik. */
+    private static readonly NO_STATS_STORE: IKennelStatsStore = {
+        incrementKennelCalls: async () => {},
+        readKennelCallAggregates: async () => [],
+        readKennelRatingAggregates: async () => [],
+        readKennelRatingHistogram: async () => ({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }),
+        readKennelRating: async () => null,
+        upsertKennelRating: async () => {},
+        deleteKennelRating: async () => false,
+        deleteKennelStats: async () => {},
+    };
+
+    /** Zaehler der Test-Handler: zaehlt im Speicher, flusht nie. */
+    private readonly testCallCounter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
+
     /**
      * Führt alle Tests aus
      */
@@ -212,6 +227,8 @@ export class StartupTest {
             await this.testCallCounterCountsAndFlushes(statsStore);
             await this.testCallCounterDayBoundary(statsStore);
             await this.testCallCounterStopFlushes(statsStore);
+            await this.testEveryRunPathIsAttributed(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testFailedRunCountsLeadFailed(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -1506,7 +1523,7 @@ export class StartupTest {
             let lookups = 0;
             const countingController: any = { getById: async () => { lookups++; return { ok: false, data: null }; } };
             const countingStore: any = new Proxy({}, { get: () => async () => { lookups++; return null; } });
-            const handler = new KennelRunHandler({ kennelsController: countingController, nodesStore: countingStore, baseDogsMap: new Map() });
+            const handler = new KennelRunHandler({ kennelsController: countingController, nodesStore: countingStore, baseDogsMap: new Map(), callCounter: this.testCallCounter });
 
             const routes: Array<{ method: string; path: string; fn: any }> = [];
             const collect = (method: string) => (path: string, fn: any) => { routes.push({ method, path, fn }); };
@@ -1576,7 +1593,7 @@ export class StartupTest {
             const created = await kennelsController.create({ id: kennelId, dogIds: [dog], visibility: 'public' });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
 
-            const handler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const handler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             let runs = 0;
             (handler as any).runKennel = async () => { runs++; return []; };
             const head = async (id: string) => {
@@ -2380,7 +2397,7 @@ export class StartupTest {
             });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
 
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
             const tools = getSnapshotTools();
             const tool = (name: string) => {
@@ -2832,7 +2849,7 @@ export class StartupTest {
             });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
 
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const bundleHandler = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
 
             const exp = this.fakeResponse();
@@ -2914,7 +2931,7 @@ export class StartupTest {
             });
             if (!createdPublic.ok) throw new Error(`oeffentlicher Kennel nicht angelegt: ${createdPublic.error}`);
 
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
             const anon = { user: null, isSuperUser: false };
             const call = async (method: string, id: string) => {
@@ -2977,7 +2994,7 @@ export class StartupTest {
 
             const users = ['U1', 'U2', 'U3'].map((id) => ({ id, email: `${id.toLowerCase()}@test.invalid`, name: null }));
             const fakePrisma = { user: { findMany: async () => users } };
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler, fakePrisma);
             const tool = getAclTools().find((t) => t.name === 'list_collaborators');
             if (!tool) throw new Error('Werkzeug list_collaborators fehlt');
@@ -3079,7 +3096,7 @@ export class StartupTest {
                     config: { displayName: 'ImportAclDog', theRun: 'return 1;', parentsRequired: [], parentsOptional: [] },
                 }],
             };
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const bundleHandler = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
             const { res, out } = this.fakeResponse();
             await (bundleHandler as any).handleImport(
@@ -3288,7 +3305,7 @@ export class StartupTest {
                 throw new Error('Owner hat nicht alle Rechte');
             }
 
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
             const release = getAclTools().find((t) => t.name === 'release_ownership');
             if (!release) throw new Error('Werkzeug release_ownership fehlt');
@@ -3381,7 +3398,7 @@ export class StartupTest {
                 id: kennelId, name: 'T1 Private', dogIds: [dog], defaultBody: { mark: 'p35-default-t1' }, visibility: 'private', ownerId: 'UO',
             });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
             const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
             const anon = { user: null, isSuperUser: false };
@@ -3431,7 +3448,7 @@ export class StartupTest {
                 defaultQuery: { q: 'p35-query-t2' }, visibility: 'run-only', ownerId: 'UO',
             });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
             const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
@@ -3515,7 +3532,7 @@ export class StartupTest {
             const xVersion = (await nodesStore.findLatestVersionsByType(SerializedDog.name, [x]))[0]?.id as string;
             const created = await kennelsController.create({ id: kennelId, name: 'T3 Mine', dogIds: [xVersion], visibility: 'private', ownerId: 'UR' });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
             const runner = this.fakeUser('UR');
             const seen: unknown[] = [];
@@ -3575,7 +3592,7 @@ export class StartupTest {
                 { visibility: 'private', ownerId: 'UX', viewers: 'UV' });
             const created = await kennelsController.create({ id: kennelId, name: 'T4', dogIds: [x], visibility: 'public', ownerId: 'UX' });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
             const reader = this.fakeUser('UV');
@@ -3615,7 +3632,7 @@ export class StartupTest {
                 { visibility: 'private', ownerId: 'UF' });
             const created = await kennelsController.create({ id: kennelId, name: 'Altbestand', dogIds: [foreign], visibility: 'public', ownerId: 'UO' });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             for (const [label, ctx] of [['anonym', { user: null, isSuperUser: false }], ['Autor UF', this.fakeUser('UF')]] as Array<[string, AuthCtx]>) {
                 const pub = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: kennelId }, ctx });
                 if (pub.statusCode === 200 || JSON.stringify(pub.body).includes('foreign-ran')) {
@@ -3660,7 +3677,7 @@ export class StartupTest {
             const dog = await this.saveAclTestDog(nodesStore, 'T5Dog', 'return 5;', { visibility: 'private', ownerId: 'UO', editors: 'UE' });
             const created = await kennelsController.create({ id: kennelId, name: 'T5', dogIds: [dog], visibility: 'private', ownerId: 'UO', editors: ['UE'] });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler, this.fakeAuthPrisma(['UO', 'UE', 'U9']));
             const editor = this.fakeUser('UE');
             const call = (name: string, args: Record<string, any>) => this.toolNamed(name).handler(args, editor, deps);
@@ -3713,7 +3730,7 @@ export class StartupTest {
         try {
             const created = await kennelsController.create({ id: kennelId, name: 'T7', dogIds: [], visibility: 'private', ownerId: 'UO', runners: ['UR'] });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
             for (const uid of ['UR', 'U9', 'UO']) {
                 const session: AuthCtx = { ...this.fakeUser(uid), via: 'session' };
@@ -3756,7 +3773,7 @@ export class StartupTest {
                 "const keys = await jsonStore.list(); await jsonStore.set('p35-x', 1); const after = await jsonStore.list(); await jsonStore.delete('p35-x'); return { keys, after };",
                 { visibility: 'run-only', ownerId: 'UX' });
             const xVersion = (await nodesStore.findLatestVersionsByType(SerializedDog.name, [x]))[0]?.id as string;
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
             const runner = this.fakeUser('UR');
             const call = (name: string, args: Record<string, any>) => this.toolNamed(name).handler(args, runner, deps);
@@ -3810,7 +3827,7 @@ export class StartupTest {
             const created = await kennelsController.create({ id: kennelId, name: 'Frozen', dogIds: [dog], visibility: 'public', ownerId: 'UO', editors: ['UE'] });
             const community = await kennelsController.create({ id: communityId, name: 'Community', dogIds: [dog], visibility: 'public', ownerId: null });
             if (!created.ok || !community.ok) throw new Error('Kennel nicht angelegt');
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
             const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler, this.fakeAuthPrisma(['UO', 'UE', 'U9']));
             const owner = this.fakeUser('UO');
@@ -4031,7 +4048,7 @@ export class StartupTest {
                 { visibility: 'public', ownerId: 'UO' });
             const created = await kennelsController.create({ id: kennelId, name: 'Trailing Comment', dogIds: [dog], visibility: 'public', ownerId: 'UO' });
             if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
-            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
             const out = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: kennelId }, ctx: { user: null, isSuperUser: false } });
             if (out.statusCode !== 200 || out.body?.answer !== 42) throw new Error(`Lauf: ${out.statusCode} ${JSON.stringify(out.body)}`);
             this.addResult(testName, true);
@@ -4081,7 +4098,7 @@ export class StartupTest {
                     id: kennelId, name: c.label, dogIds: [`base:NeedsFixPact${stamp}x${i}`], visibility: c.visibility, ownerId: c.ownerId,
                 });
                 if (!created.ok) throw new Error(`${c.label}: Kennel nicht angelegt: ${created.error}`);
-                const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap: map });
+                const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap: map, callCounter: this.testCallCounter });
                 const config = await runHandler.loadKennelConfig(kennelId);
                 await runHandler.runKennel(config!, {}, undefined, runHandler.toCapabilityCtx(c.ctx));
 
@@ -4215,6 +4232,109 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
+        }
+    }
+
+    /** Ein Zaehler-Stub, der jede Zaehlung festhaelt: [lineageId, source, leadFailed]. */
+    private recordingCounter(): { counter: KennelCallCounter; calls: Array<[string, string, boolean]> } {
+        const calls: Array<[string, string, boolean]> = [];
+        const counter = { record: (l: string, s: string, f: boolean) => { calls.push([l, s, f]); } } as unknown as KennelCallCounter;
+        return { counter, calls };
+    }
+
+    /**
+     * Test P4 3: jede der neun Aufrufstellen zaehlt genau einmal mit ihrer Quelle aus 4.5 — keine
+     * `unknown`-Zaehlung auf einem bekannten Weg. HEAD zaehlt nicht.
+     */
+    private async testEveryRunPathIsAttributed(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P4 3: neun Aufrufstellen, je eine Quelle, kein unknown';
+        const stamp = Date.now();
+        const kennelId = `test-attr-${stamp}`;
+        const builtId = `test-attr-build-${stamp}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'AttrDog', 'return { attr: 1 };', { visibility: 'public', ownerId: 'UO' });
+            const created = await kennelsController.create({ id: kennelId, name: 'Attr', dogIds: [dog], visibility: 'public', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const { counter, calls } = this.recordingCounter();
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const owner = this.fakeUser('UO');
+            const req = { params: { id: kennelId }, ctx: owner };
+            const expectOne = (label: string, source: string, lineage = kennelId) => {
+                const got = calls.splice(0);
+                if (got.length !== 1 || got[0][0] !== lineage || got[0][1] !== source || got[0][2] !== false) {
+                    throw new Error(`${label}: ${JSON.stringify(got)} statt [${lineage}, ${source}, false]`);
+                }
+            };
+
+            await this.callHandler(runHandler, 'handlePublicHead', req);
+            if (calls.length !== 0) throw new Error(`HEAD zaehlt: ${JSON.stringify(calls)}`);
+            await this.callHandler(runHandler, 'handlePublicGet', req); expectOne('GET /k/:id', 'public');
+            await this.callHandler(runHandler, 'handlePublicPost', { ...req, method: 'POST', body: {} }); expectOne('POST /k/:id', 'public');
+            await this.callHandler(runHandler, 'handleExecute', req); expectOne('/execute', 'api-execute');
+            await this.callHandler(runHandler, 'handleRun', req); expectOne('/run', 'api-run');
+            await this.callHandler(swagger, 'handleSwaggerJson', req); expectOne('openapi.json', 'swagger');
+            const tool = async (name: string, args: Record<string, any>) => {
+                const r = await this.toolNamed(name).handler(args, owner, deps);
+                if (r.isError) throw new Error(`${name}: ${r.content[0]?.text}`);
+                return r;
+            };
+            await tool('run_kennel', { id: kennelId }); expectOne('run_kennel', 'mcp-run');
+            await tool('execute_kennel', { id: kennelId }); expectOne('execute_kennel', 'mcp-execute');
+            await tool('refresh_kennel_snapshot', { id: kennelId });
+            await tool('wait_for_kennel_snapshot', { id: kennelId, timeoutMs: 30_000 });
+            expectOne('refresh_kennel_snapshot', 'mcp-snapshot');
+            const built = await tool('build_kennel', {
+                id: builtId, visibility: 'private', dogs: [{ displayName: `AttrBuilt${stamp}`, tsCode: 'return { built: 1 };' }],
+            });
+            expectOne('build_kennel', 'mcp-build', builtId);
+            for (const d of JSON.parse(built.content[0].text).dogs ?? []) {
+                if (d?.lineageId) await this.deleteDogLineage(nodesStore, d.lineageId);
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            for (const id of [kennelId, builtId]) {
+                try { await kennelsController.delete(id); } catch { /* ignore */ }
+            }
+        }
+    }
+
+    /** Test P4 4: ein Lauf ohne aufloesbaren Lead zaehlt einmal, mit leadFailed. */
+    private async testFailedRunCountsLeadFailed(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P4 4: fehlgeschlagener Lauf zaehlt mit leadFailed';
+        const kennelId = `test-leadfailed-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'Lead fehlt', dogIds: [`gibt-es-nicht-${Date.now()}`], visibility: 'public', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            const config = await runHandler.loadKennelConfig(kennelId);
+            let threw = false;
+            try {
+                await runHandler.runKennel(config!, {}, undefined, undefined, undefined, { source: 'api-run' });
+            } catch {
+                threw = true;
+            }
+            const agg = counter.pendingAggregates('2000-01-01').get(kennelId);
+            if (agg?.total !== 1 || agg.leadFailed !== 1 || agg.rankedTotal !== 0) throw new Error(`Zaehlung (warf: ${threw}): ${JSON.stringify(agg)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 

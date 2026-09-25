@@ -216,6 +216,7 @@ async function start() {
         allBaseDogs,
         baseDogsMap,
         resolveCacheDatabaseUrl: dbEnv.resolveCacheDatabaseUrl,
+        callCounter,
     });
 
     const port = Number(process.env.PORT) || 3000;

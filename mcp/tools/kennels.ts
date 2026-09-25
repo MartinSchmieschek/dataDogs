@@ -697,7 +697,7 @@ export function getKennelTools(): ToolDef[] {
                 const startedAt = Date.now();
                 try {
                     const waves = await deps.kennelRunHandler.runKennel(
-                        config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs,
+                        config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs, { source: 'mcp-run' },
                     );
                     // Kennel-RUN (W3, W17 Stufe 1): only the run's shape and the lead result.
                     if (access === 'run') return ok(kennelRunView(waves, config, Date.now() - startedAt));
@@ -749,7 +749,7 @@ export function getKennelTools(): ToolDef[] {
                     : undefined;
                 try {
                     const waves = await deps.kennelRunHandler.runKennel(
-                        config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs,
+                        config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs, { source: 'mcp-execute' },
                     );
                     const lead = findDogInWaves(waves, dogIds[0]);
                     if (!lead) return fail(access === 'read' ? `Lead ${dogIds[0]} not in waves` : 'lead_failed');
@@ -1100,6 +1100,7 @@ async function buildKennel(
                         freshConfig.defaultBody,
                         authCtxToCapabilityCtx(ctx),
                         buildVmTimeoutMs,
+                        { source: 'mcp-build' },
                     );
 
                     // Cache the snapshot so subsequent get_snapshot_* calls work directly — for the

@@ -66,7 +66,7 @@ export class KennelSwaggerHandler {
             const query = this.runHandler.mergeQueryParams(config.defaultQuery, req.query);
             const body = config.defaultBody;
             const rawWaves = await this.runHandler.runKennel(
-                config, query, body, this.runHandler.toCapabilityCtx(req.ctx),
+                config, query, body, this.runHandler.toCapabilityCtx(req.ctx), undefined, { source: 'swagger' },
             );
             // Every wave node's result lands in the spec as a schema example — dogs the caller
             // may not read inside a readable kennel are redacted exactly like /run.

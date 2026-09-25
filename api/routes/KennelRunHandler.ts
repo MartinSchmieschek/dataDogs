@@ -21,6 +21,8 @@ import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/wavesRedaction';
 import { DogAclIndex, DogRunPolicy } from '../../services/dogAccess';
 import { isHtmlResultString, isMarkdownResultString } from '../../services/leadResultStringFormat';
+import type { KennelCallCounter } from '../../services/KennelCallCounter';
+import type { KennelCallSource } from '../../store/IKennelStatsStore';
 
 /** Lead-Yield mit { snapshot, live } — Lobby-Konvention fuer den Socket-Dog. */
 function isLobbyLeadShape(v: any): boolean {
@@ -55,6 +57,13 @@ export interface IKennelRunDeps {
     nodesStore: IStore;
     baseDogsMap: Map<string, new () => any>;
     cacheHandler?: ICacheHandler;
+    /** Zaehlt jeden begonnenen Lauf (P4) — synchron, im Speicher. */
+    callCounter: KennelCallCounter;
+}
+
+/** Wer einen Lauf ausgeloest hat — die Quelle der Zaehlung (P4 4.5). */
+export interface KennelRunAttribution {
+    source: KennelCallSource;
 }
 
 export class KennelRunHandler {
@@ -118,6 +127,8 @@ export class KennelRunHandler {
      * @param vmTimeoutMs Optional per-run override for the SerializedDog VM execution
      *   timeout (ms). Resolution order: vmTimeoutMs param > SLOPDOGS_VM_TIMEOUT_MS env >
      *   10000ms default. Run-Time-Param (Welle 12 Korrektur) -- nicht in IKennelConfig.
+     * @param attribution Wer den Lauf ausgeloest hat (P4). Jeder begonnene Lauf wird genau einmal
+     *   gezaehlt — im finally, synchron, ohne DB; ein Lauf ohne Quelle zaehlt als `unknown`.
      */
     public async runKennel(
         config: IKennelConfig,
@@ -125,31 +136,50 @@ export class KennelRunHandler {
         body?: any,
         capabilityCtx?: VmGlobalCapabilityContext,
         vmTimeoutMs?: number,
+        attribution?: KennelRunAttribution,
     ): Promise<Waves> {
-
-        const policy = new DogRunPolicy(config, capabilityCtx);
-        const mimicAdopter = await this.createMimicAdopter(config, policy);
-
-        const kennelRun = new KennelRun(
-            config,
-            this.deps.baseDogsMap,
-            this.createSerializedDogFactory(policy),
-            query || {},
-            body,
-            [],
-            this.deps.cacheHandler,
-            mimicAdopter
-        );
-        if (capabilityCtx) {
-            kennelRun.setCapabilityContext(capabilityCtx);
+        const lineageId = (config as any).lineageId || config.id;          // dieselbe Regel wie createMimicAdopter
+        const source: KennelCallSource = attribution?.source ?? 'unknown';
+        if (source === 'unknown' && isRuntimeLogVerbose()) {
+            console.warn(`[KennelRunHandler] Lauf ohne Quelle (${lineageId}) — zaehlt als unknown`, new Error('attribution').stack);
         }
-        if (typeof vmTimeoutMs === 'number' && vmTimeoutMs > 0) {
-            kennelRun.setVmTimeoutMs(vmTimeoutMs);
+        let leadFailed = false;
+        try {
+            const policy = new DogRunPolicy(config, capabilityCtx);
+            const mimicAdopter = await this.createMimicAdopter(config, policy);
+
+            const kennelRun = new KennelRun(
+                config,
+                this.deps.baseDogsMap,
+                this.createSerializedDogFactory(policy),
+                query || {},
+                body,
+                [],
+                this.deps.cacheHandler,
+                mimicAdopter
+            );
+            if (capabilityCtx) {
+                kennelRun.setCapabilityContext(capabilityCtx);
+            }
+            if (typeof vmTimeoutMs === 'number' && vmTimeoutMs > 0) {
+                kennelRun.setVmTimeoutMs(vmTimeoutMs);
+            }
+            const season = await kennelRun.run();
+            await this.persistNewMimics(config, season.exhausted, policy);
+            // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.
+            const waves = convertSeasonToWaves(season, config);
+            // Ein Lead, der gar nicht in den Waves steht (durfte nicht laufen), ist so gescheitert
+            // wie einer mit error-Brandzeichen — die Handler antworten dann `lead_failed`.
+            const leadRef = config.dogIds?.[0];
+            const lead: any = leadRef ? this.findDogInWaves(waves, leadRef) : null;
+            leadFailed = !lead || !!lead.error;
+            return waves;
+        } catch (err) {
+            leadFailed = true;                                               // "Nothing to harvest" oder Infrastruktur
+            throw err;
+        } finally {
+            this.deps.callCounter.record(lineageId, source, leadFailed);     // genau ein record je begonnenem Lauf
         }
-        const season = await kennelRun.run();
-        await this.persistNewMimics(config, season.exhausted, policy);
-        // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.
-        return convertSeasonToWaves(season, config);
     }
 
     /**
@@ -476,7 +506,7 @@ export class KennelRunHandler {
 
             const startedAt = Date.now();
             try {
-                const waves = await this.runKennel(config, query, body, this.toCapabilityCtx(req.ctx));
+                const waves = await this.runKennel(config, query, body, this.toCapabilityCtx(req.ctx), undefined, { source: 'api-run' });
                 if (access === 'run') {
                     res.json(kennelRunView(waves, config, Date.now() - startedAt));
                     return;
@@ -524,7 +554,7 @@ export class KennelRunHandler {
                 req.method === 'POST' && req.body !== undefined && req.body !== null
                     ? req.body
                     : config.defaultBody;
-            const waves = await this.runKennel(config, queryData, body, this.toCapabilityCtx(req.ctx));
+            const waves = await this.runKennel(config, queryData, body, this.toCapabilityCtx(req.ctx), undefined, { source: 'api-execute' });
 
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
@@ -603,7 +633,7 @@ export class KennelRunHandler {
 
             const queryData = this.mergeQueryParams(config.defaultQuery, req.query);
             // Wie GET /api/…/run: ohne Request-Body die gespeicherte defaultBody-Konfiguration nutzen.
-            const waves = await this.runKennel(config, queryData, config.defaultBody, this.toCapabilityCtx(req.ctx));
+            const waves = await this.runKennel(config, queryData, config.defaultBody, this.toCapabilityCtx(req.ctx), undefined, { source: 'public' });
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
                 this.sendLeadMissing(res, dogIds[0], access);
@@ -637,7 +667,7 @@ export class KennelRunHandler {
             const bodyData =
                 req.body !== undefined && req.body !== null ? req.body : config.defaultBody;
 
-            const waves = await this.runKennel(config, queryData, bodyData, this.toCapabilityCtx(req.ctx));
+            const waves = await this.runKennel(config, queryData, bodyData, this.toCapabilityCtx(req.ctx), undefined, { source: 'public' });
             const firstDog = this.findDogInWaves(waves, dogIds[0]);
             if (!firstDog) {
                 this.sendLeadMissing(res, dogIds[0], access);
