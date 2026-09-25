@@ -251,7 +251,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         }
         try {
             const startupTest = new StartupTest();
-            await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap, app);
+            await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap, app, authPrisma);
         } catch (err) {
             // Laut scheitern, aber weiterlaufen -- der Dienst ist wichtiger als seine Selbstpruefung.
             console.error('[StartupTest] Suite abgebrochen -- der Dienst laeuft weiter:', err);

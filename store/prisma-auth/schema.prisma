@@ -64,3 +64,26 @@ model RefreshToken {
   revokedAt    DateTime?
   createdAt    DateTime @default(now())
 }
+
+// Nutzergebundener Key-Store (P4c): Schluessel liegen nur verschluesselt (AES-256-GCM) hier,
+// nie in jsonStore, nie im Klartext; keine Read-API gibt den Wert zurueck.
+model UserKey {
+  id             String    @id @default(uuid())
+  ownerId        String                      // User.id — der Besitzer des Schluessels
+  alias          String                      // z. B. "openai" — im Dog referenziert
+  last4          String                      // maskierte Anzeige, nie mehr
+  ciphertext     String                      // AES-256-GCM, base64
+  iv             String                      // base64
+  authTag        String                      // base64
+  keyVersion     Int       @default(1)       // welcher Master-Key
+  allowedDomains String                      // CSV erlaubter Zieldomains (Egress-Allowlist) — Pflicht, mindestens eine
+  kennelGrants   String?                     // optional: CSV kennelLineageIds, die diesen Key in oeffentlichen Laeufen nutzen duerfen (Entscheidung 8.8)
+  quotaPerDay    Int?                        // Pflicht, sobald kennelGrants gesetzt ist
+  usedToday      Int       @default(0)
+  usedDayStamp   String?                     // YYYY-MM-DD Reset-Marke
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+
+  @@unique([ownerId, alias])
+  @@index([ownerId])
+}

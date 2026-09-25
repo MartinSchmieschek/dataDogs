@@ -71,6 +71,8 @@ import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { DogStatsService } from './services/DogStatsService';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
+import { randomBytes } from 'crypto';
+import { KeyStoreService, MasterKeyring, type KeyStorePrisma } from './services/KeyStoreService';
 
 /**
  * Arr, the testament of a single trial endured upon the eldritch seas —
@@ -137,6 +139,8 @@ export class StartupTest {
         baseDogsMap: Map<string, any>,
         /** Die fertig montierte Express-App — fuer den Abgleich Routentabelle <-> Stack. */
         app?: any,
+        /** Der Auth-Client der App (P4c): die Key-Store-Tests schreiben echte UserKey-Zeilen und raeumen sie ab. */
+        authPrisma?: KeyStorePrisma,
     ): Promise<TestResult[]> {
         if (isRuntimeLogVerbose()) {
             console.log('\n🧪 Starte Startup-Tests...\n');
@@ -273,6 +277,12 @@ export class StartupTest {
             await this.testDogReuseAndUsage();
             await this.testProvenFormula();
             await this.testListQuerySortsDogsByProven();
+
+            // P4c: Key-Store (Selbstangriff T1-T11; T11 im Gateway-Test)
+            if (authPrisma) {
+                await this.testKeyStoreDbReader(authPrisma);
+                await this.testKeyStoreRotation(authPrisma);
+            }
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -5172,6 +5182,110 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Ein frischer Master-Key je Test — nie aus der Env, nie in einer Datei. */
+    private static keyTestRing(versions: Record<number, Buffer> = { 1: randomBytes(32) }): MasterKeyring {
+        return MasterKeyring.fromKeys(versions);
+    }
+
+    /** Ein Testwert, der nur in diesem Lauf existiert und nach nichts Echtem aussieht. */
+    private static keyTestSecret(label: string): string {
+        return `p4c-${label}-${randomBytes(12).toString('hex')}`;
+    }
+
+    /**
+     * Test T5 (DB-Leser): die Zeile traegt den Wert nicht — weder im Chiffrat noch sonstwo; ein
+     * falscher Master-Key entschluesselt nicht (key_undecryptable), der richtige liefert den Klartext
+     * nur im Speicher des Dienstes; die maskierte Sicht zeigt last4, nie mehr.
+     */
+    private async testKeyStoreDbReader(prisma: KeyStorePrisma): Promise<void> {
+        const testName = 'P4c T5: DB-Leser sieht keinen Klartext (AES-256-GCM, keyVersion)';
+        const owner = `test-p4c-t5-${Date.now()}`;
+        try {
+            const secret = StartupTest.keyTestSecret('t5');
+            const store = new KeyStoreService(prisma, StartupTest.keyTestRing());
+            const view = await store.set(owner, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+            if (view.last4 !== secret.slice(-4) || JSON.stringify(view).includes(secret)) throw new Error(`Sicht: ${JSON.stringify(view)}`);
+            const row = await store.findRow(owner, 'openai');
+            if (!row) throw new Error('Zeile fehlt');
+            if (row.keyVersion !== 1 || !row.ciphertext || !row.iv || !row.authTag) throw new Error(`Zeile unvollstaendig: v${row.keyVersion}`);
+            if (JSON.stringify(row).includes(secret) || JSON.stringify(row).includes(secret.slice(4, -4))) throw new Error('Zeile traegt den Wert');
+            if (Buffer.from(row.ciphertext, 'base64').toString('utf8').includes(secret)) throw new Error('Chiffrat ist Klartext');
+
+            const wrong = new KeyStoreService(prisma, StartupTest.keyTestRing());
+            let wrongError = '';
+            try { wrong.decrypt(row); } catch (err) { wrongError = (err as Error).message; }
+            if (wrongError !== 'key_undecryptable:openai') throw new Error(`falscher Master-Key: "${wrongError}"`);
+            if (store.decrypt(row) !== secret) throw new Error('richtiger Master-Key liefert nicht den Klartext');
+            const listed = await store.list(owner);
+            if (listed.length !== 1 || JSON.stringify(listed).includes(secret)) throw new Error(`list: ${JSON.stringify(listed)}`);
+
+            const expectCode = async (label: string, input: any, code: string, on: KeyStoreService = store) => {
+                try { await on.set(owner, input); } catch (err: any) { if (err?.code === code) return; throw new Error(`${label}: ${err?.code ?? err}`); }
+                throw new Error(`${label}: angenommen`);
+            };
+            await expectCode('Alias gross', { alias: 'OpenAI', secret, allowedDomains: ['api.example.com'] }, 'invalid_alias');
+            await expectCode('Wert zu kurz', { alias: 'short', secret: 'abc1234', allowedDomains: ['api.example.com'] }, 'invalid_secret');
+            await expectCode('Wert mit Zeilenumbruch', { alias: 'nl', secret: `${secret}\nx`, allowedDomains: ['api.example.com'] }, 'invalid_secret');
+            for (const bad of [[], ['localhost'], ['127.0.0.1'], ['*.com'], ['api.*.com'], ['https://api.example.com']]) {
+                await expectCode(`Domains ${JSON.stringify(bad)}`, { alias: 'dom', secret, allowedDomains: bad }, 'invalid_domains');
+            }
+            await expectCode('Store aus', { alias: 'off', secret, allowedDomains: ['api.example.com'] }, 'keystore_disabled', new KeyStoreService(prisma, null));
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await prisma.userKey.deleteMany({ where: { ownerId: owner } }); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T10 (Rotation): V1 -> V2 im Dienst und ueber scripts/rotateKeystore.cjs; danach keyVersion 2,
+     * V2 allein liefert denselben Klartext, und auf stdout steht er nicht.
+     */
+    private async testKeyStoreRotation(prisma: KeyStorePrisma): Promise<void> {
+        const testName = 'P4c T10: Rotation V1 -> V2 ohne Klartext auf stdout';
+        const stamp = Date.now();
+        const ownerService = `test-p4c-t10-${stamp}`;
+        const ownerScript = `test-p4c-t10s-${stamp}`;
+        try {
+            const v1 = randomBytes(32);
+            const v2 = randomBytes(32);
+            const secret = StartupTest.keyTestSecret('t10');
+            const onV1 = new KeyStoreService(prisma, StartupTest.keyTestRing({ 1: v1 }));
+            await onV1.set(ownerService, { alias: 'rot', secret, allowedDomains: ['api.example.com'] });
+            await onV1.set(ownerScript, { alias: 'rot', secret, allowedDomains: ['api.example.com'] });
+
+            const both = new KeyStoreService(prisma, StartupTest.keyTestRing({ 1: v1, 2: v2 }));
+            const result = await both.rotate({ ownerId: ownerService, batchSize: 1 });
+            if (result.target !== 2 || result.rotated !== 1 || result.failed !== 0) throw new Error(`rotate: ${JSON.stringify(result)}`);
+            const onV2 = new KeyStoreService(prisma, StartupTest.keyTestRing({ 2: v2 }));
+            const rotated = await onV2.findRow(ownerService, 'rot');
+            if (rotated?.keyVersion !== 2 || onV2.decrypt(rotated) !== secret) throw new Error('nach rotate: V2 liefert nicht denselben Klartext');
+            if ((await onV2.findRow(ownerScript, 'rot'))?.keyVersion !== 1) throw new Error('rotate --owner hat eine fremde Zeile beruehrt');
+
+            const run = await new Promise<{ code: number | null; out: string }>((resolve) => {
+                const child = spawn(process.execPath, ['scripts/rotateKeystore.cjs', '--owner', ownerScript], {
+                    cwd: process.cwd(),
+                    env: { ...process.env, KEYSTORE_MASTER_KEY_V1: v1.toString('hex'), KEYSTORE_MASTER_KEY_V2: v2.toString('hex'), TS_NODE_TRANSPILE_ONLY: 'true' },
+                });
+                let out = '';
+                child.stdout.on('data', (c) => { out += c; });
+                child.stderr.on('data', (c) => { out += c; });
+                const timer = setTimeout(() => child.kill(), 120_000);
+                child.on('exit', (code) => { clearTimeout(timer); resolve({ code, out }); });
+            });
+            if (run.code !== 0 || !/1 umgeschluesselt, 0 nicht entschluesselbar/.test(run.out)) throw new Error(`Skript: Exit ${run.code}: ${run.out.slice(-300)}`);
+            if (run.out.includes(secret)) throw new Error('Skript druckt den Klartext');
+            const byScript = await onV2.findRow(ownerScript, 'rot');
+            if (byScript?.keyVersion !== 2 || onV2.decrypt(byScript) !== secret) throw new Error('nach Skript: V2 liefert nicht denselben Klartext');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await prisma.userKey.deleteMany({ where: { ownerId: { in: [ownerService, ownerScript] } } }); } catch { /* ignore */ }
         }
     }
 
