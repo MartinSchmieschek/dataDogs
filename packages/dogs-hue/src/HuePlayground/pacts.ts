@@ -7,7 +7,7 @@
  *  alternatively through HueBridgeEnvRetriever from the .env abyss.
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /**
  * Arr, the unholy pact input — the anchor coordinates required to reach the Bridge!

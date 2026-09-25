@@ -1,11 +1,11 @@
-# Data Hunt -- The Lodge
+# SlopDogs -- The Lodge
 
 > By that which bears no name we're drawn
 > to glowing screens, to darkened halls.
 > The dogs return before the dawn --
 > their spoils line these silent walls.
 
-The Angular frontend for [Data Hunt](../README.md). From here you assemble packs, loose them into the wild, and sift through everything they drag back.
+The Angular frontend for [SlopDogs](../README.md). From here you assemble packs, loose them into the wild, and sift through everything they drag back.
 
 **Angular 18** | **Monaco Editor** | **vis-network** | **TypeScript**
 

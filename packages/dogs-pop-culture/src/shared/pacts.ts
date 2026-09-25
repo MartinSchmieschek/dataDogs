@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /**
  * Gemeinsamer Lookup-Pact fuer alle 4 Pop-Culture-Hunde.

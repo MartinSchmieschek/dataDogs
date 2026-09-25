@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface PokeApiQuery {
     /** Endpoint: pokemon, pokemon-species, ability, type, move, generation, nature, berry */

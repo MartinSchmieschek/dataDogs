@@ -12,7 +12,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 import type { GeoPoint, GeoArea, GeoRoute } from "./types";
 
 /** Pact fuer einen Geo-Punkt — Hunde, die nur Lat/Lng brauchen (Wetter, Sun, AirQuality, ...) */

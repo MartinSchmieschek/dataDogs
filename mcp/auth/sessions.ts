@@ -37,7 +37,7 @@ export function createSessionMiddleware(): RequestHandler {
 
     return session({
         secret,
-        name: 'datadogs.sid',
+        name: 'slopdogs.sid',
         resave: false,
         saveUninitialized: false,
         cookie: {

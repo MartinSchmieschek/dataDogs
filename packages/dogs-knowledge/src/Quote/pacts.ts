@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface QuoteQuery {
     /** Autor-Filter (Slug, e.g. "albert-einstein") — optional */

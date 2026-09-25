@@ -4,7 +4,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** GPS-Koordinaten fuer die Luftqualitaetsabfrage */
 export interface AirQualityQuery {

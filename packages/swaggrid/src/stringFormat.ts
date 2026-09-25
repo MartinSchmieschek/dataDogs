@@ -1,6 +1,6 @@
 /**
  * Erkennung von HTML- vs. Markdown-Strings für text/html bzw. text/markdown in OpenAPI.
- * (Analog zur dataDogs-App: leadResultStringFormat.)
+ * (Analog zur SlopDogs-App: leadResultStringFormat.)
  */
 
 export function isHtmlResultString(s: string): boolean {

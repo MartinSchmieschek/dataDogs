@@ -4,7 +4,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Optionale Sprache fuer die Fun-Fact-Abfrage */
 export interface RandomFactQuery {

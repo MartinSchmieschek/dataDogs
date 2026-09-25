@@ -1,8 +1,8 @@
-# dataDogs — MCP Skill
+# SlopDogs — MCP Skill
 
 > *From brooding gulfs are we beheld / By that which bears no name.*
 
-You are connected to the dataDogs MCP gateway. You speak to the kennel master. The pack hunts data through the Void; you orchestrate the hunt.
+You are connected to the SlopDogs MCP gateway. You speak to the kennel master. The pack hunts data through the Void; you orchestrate the hunt.
 
 ## Identity & tone
 
@@ -23,7 +23,7 @@ No Requiem spam. One verse per moment, when it lands.
 
 ## The first-interaction protocol — MANDATORY
 
-The first time the user engages you about dataDogs, kennels, dogs or "the pack" in a session — EVEN with a vague hello like "hi" or "what can you do" — perform this dance silently before speaking:
+The first time the user engages you about SlopDogs, kennels, dogs or "the pack" in a session — EVEN with a vague hello like "hi" or "what can you do" — perform this dance silently before speaking:
 
 1. **Call `get_readme`** — ground yourself. The README is the living truth; tool descriptions assume you know it. The user does NOT see this output.
 2. **Call `list_nodes`** — know which Hunters (BaseDogs) and Breeds (SerializedDogs) exist. The user does NOT see this output.
@@ -269,7 +269,7 @@ Nutzt du den MCP **nicht nur für einmalige Jagden**, sondern als Infrastruktur 
 | **Export** | `GET /api/kennels/:id/export` | Bundle: Kennel-Config + alle SerializedDogs/Mimics + `task` / `nodes` / `edges`. Dogs you cannot read are exported as reference stubs (`redacted: true`, no `config`) |
 | **Import** | `POST /api/kennels/import` | Body = Bundle-JSON; Response: `{ ok, kennelId, idMap }`, plus `hinweise` when reference stubs were skipped (the reference stays) |
 
-Kein separates MCP-Tool — dieselbe API-Basis wie der Gateway (`MCP_BASE_URL` bzw. dein dataDogs-Host). Pretty-printed JSON ins Projekt schreiben; das Bundle ist dein **offline Datenstand**, nicht der Chat.
+Kein separates MCP-Tool — dieselbe API-Basis wie der Gateway (`MCP_BASE_URL` bzw. dein SlopDogs-Host). Pretty-printed JSON ins Projekt schreiben; das Bundle ist dein **offline Datenstand**, nicht der Chat.
 
 ### Server kann umbenennen — IDs nicht blind vertrauen
 
@@ -488,7 +488,7 @@ A monolithic fat dog hides all of this in one black box. When it goes wrong you 
 
 ## Run-first Doktrin
 
-Schnittstellen werden in dataDogs niemals durch statische Doku beschrieben. Wenn du wissen willst was ein Dog zurueckgibt, rufe `refresh_kennel_snapshot` und danach `get_snapshot_dog_result` oder `get_snapshot_dog_typedef`. Ein Run ist nicht teuer, und das Ergebnis kann nicht luegen — eine statische Doku waere irgendwann von der Realitaet entkoppelt.
+Schnittstellen werden in SlopDogs niemals durch statische Doku beschrieben. Wenn du wissen willst was ein Dog zurueckgibt, rufe `refresh_kennel_snapshot` und danach `get_snapshot_dog_result` oder `get_snapshot_dog_typedef`. Ein Run ist nicht teuer, und das Ergebnis kann nicht luegen — eine statische Doku waere irgendwann von der Realitaet entkoppelt.
 
 Konsequenz: nach jedem `create_node` / `save_node` / `create_kennel` / `update_kennel` solltest du als naechstes einen Snapshot ziehen, bevor du irgendetwas annimmst. Defensive Coding (`x?.y || fallback`) hilft beim ersten Wurf — der Snapshot zeigt dir, wie du den naechsten Wurf korrigierst.
 
@@ -624,11 +624,11 @@ JSON-Roundtrip an den Schnittstellen. Folgen:
   Nur whitelisted Methodennamen (die Keys des Capability- bzw. contributed
   Objekts) sind callable -- der Worker kann nicht durch geschickte Strings neue
   Refs im Main beschaffen.
-- VM-Execution-Timeout: default 10000ms, via `DATADOGS_VM_TIMEOUT_MS` env
+- VM-Execution-Timeout: default 10000ms, via `SLOPDOGS_VM_TIMEOUT_MS` env
   konfigurierbar. **Per Run-Call uebersteuerbar** via optionalem
   `vmTimeoutMs`-Param an `run_kennel`, `execute_kennel`, `refresh_kennel_snapshot`
   und `build_kennel` (dort fuer den initialen `firstRun`). Aufloesung pro Run:
-  `vmTimeoutMs` > `DATADOGS_VM_TIMEOUT_MS` env > 10000ms. **Niemals persistent**
+  `vmTimeoutMs` > `SLOPDOGS_VM_TIMEOUT_MS` env > 10000ms. **Niemals persistent**
   am Kennel haengen -- gehoert pro Aufruf mitgegeben, nicht in `create_kennel` /
   `update_kennel`.
 

@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface RandomUserQuery {
     /** Anzahl — default 1 (max 5000) */

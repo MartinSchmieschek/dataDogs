@@ -2,7 +2,7 @@
 // Map im Prozessspeicher, LRU + Idle-TTL. Keine Persistenz, kein Timer.
 // Eviction laeuft lazy — wer get() ruft, weckt den Aufraeumer.
 
-import type { IKennelConfig } from '@datadogs/core';
+import type { IKennelConfig } from '@slopdogs/core';
 import type { Waves } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from './types';
 

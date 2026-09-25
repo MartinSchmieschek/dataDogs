@@ -51,7 +51,7 @@ export async function searchGutenberg(
     let res: Response;
     try {
         res = await fetch(url, {
-            headers: { "Accept": "application/json", "User-Agent": "dataDogs/0.1" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
             signal: controller.signal,
         });
     } finally {

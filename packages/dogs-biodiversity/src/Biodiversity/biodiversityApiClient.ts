@@ -75,7 +75,7 @@ export async function fetchSpeciesObservations(
         res = await fetch(url, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "dataDogs/0.1",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
             },
             signal: controller.signal,
         });

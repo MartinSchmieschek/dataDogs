@@ -10,7 +10,7 @@ async function dadJokeFetch<T>(url: string): Promise<T> {
         res = await fetch(url, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "dataDogs/0.1 (https://github.com/MartinSchmieschek/dataDogs)",
+                "User-Agent": "SlopDogs/0.1 (https://github.com/MartinSchmieschek/dataDogs)",
             },
             signal: controller.signal,
         });

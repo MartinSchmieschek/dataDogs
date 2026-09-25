@@ -16,7 +16,7 @@ import { DogClass, IHuntingDog } from "../core/entities/IHuntingDog";
 import { IHuntingSeason } from "../core/entities/IHuntingSeason";
 import { Worker } from "worker_threads";
 import { transform as sucraseTransform } from "sucrase";
-import { isRuntimeLogVerbose } from "../runtimeLog";
+import { envFirst, isRuntimeLogVerbose } from "../runtimeLog";
 import { ILineDoc } from "./lineDocs";
 
 /**
@@ -401,7 +401,7 @@ export class SerializedDog<T> extends Dog<T> {
      * from the per-run `vmTimeoutMs` param (Welle 12 Korrektur: Run-Time-Param,
      * not persisted on IKennelConfig). Resolution order in `runExternalCode`:
      *   1. this override (when set + > 0)
-     *   2. `process.env.DATADOGS_VM_TIMEOUT_MS` (when numeric + > 0)
+     *   2. `process.env.SLOPDOGS_VM_TIMEOUT_MS` (when numeric + > 0)
      *   3. 10000 (10s default)
      */
     private vmTimeoutMsOverride: number | undefined;
@@ -847,7 +847,7 @@ export class SerializedDog<T> extends Dog<T> {
      *  - `theRun` may carry TypeScript syntax; sucrase strips it once, cache holds the JS.
      *  - Execution happens in a `worker_threads.Worker`, isolated from the captain's heart.
      *    A wayward `while(true)` or `process.exit()` cannot drag the server into the deep.
-     *  - A timeout (`DATADOGS_VM_TIMEOUT_MS`, default 10s) terminates runaway spirits.
+     *  - A timeout (`SLOPDOGS_VM_TIMEOUT_MS`, default 10s) terminates runaway spirits.
      *  - Only structured-clone-safe context crosses the membrane. Methods contributed
      *    either by registered VM-global capabilities (e.g. `jsonStore.get/set/...`,
      *    Welle 7) or by parent dogs cannot survive postMessage as functions, but
@@ -965,7 +965,7 @@ export class SerializedDog<T> extends Dog<T> {
         // only stores values > 0; env-Number-coercion of NaN / 0 falls through to 10000.
         const timeoutMs =
             this.vmTimeoutMsOverride
-            ?? (Number(process.env.DATADOGS_VM_TIMEOUT_MS) || 10_000);
+            ?? (Number(envFirst('SLOPDOGS_VM_TIMEOUT_MS', 'DATADOGS_VM_TIMEOUT_MS')) || 10_000);
 
         // Diagnose: probe whether the payload is structured-cloneable BEFORE we hand it to a Worker.
         // If this fails we know it is the context shape (not vm.runInContext output) and we get

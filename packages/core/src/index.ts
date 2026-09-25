@@ -24,7 +24,7 @@ export {
     type IKennelEdgeAnnotation,
     type MimicAdopter,
 } from './KennelRun';
-export { isRuntimeLogVerbose } from './runtimeLog';
+export { isRuntimeLogVerbose, envFirst } from './runtimeLog';
 export {
     KENNEL_RESERVED_SLUGS,
     kennelLineageIdBlockedReason,

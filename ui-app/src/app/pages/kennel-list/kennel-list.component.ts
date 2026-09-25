@@ -36,7 +36,7 @@ import { VisibilityBadgeComponent } from '../../components/visibility-badge/visi
 import { AuthService } from '../../services/auth.service';
 
 /** v2: Sortierschlüssel folgen dem Server-Vertrag (`name` | `createdAt` | `updatedAt`). */
-const KENNEL_LIST_SORT_STORAGE_KEY = 'datadogs.kennelList.sort.v2';
+const KENNEL_LIST_SORT_STORAGE_KEY = 'slopdogs.kennelList.sort.v2';
 
 /** Seitengröße der Nachlade-Liste. */
 const KENNEL_PAGE_SIZE = 20;
@@ -465,7 +465,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
     if (action === 'share') {
       const url = new URL(`/kennel/${encodeURIComponent(ref)}`, window.location.origin).href;
       const title = kennel.name || ref;
-      const payload = { title, text: `${title} – DataDogs`, url };
+      const payload = { title, text: `${title} – SlopDogs`, url };
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         void navigator.share(payload).catch(() => {
           void navigator.clipboard?.writeText(url);

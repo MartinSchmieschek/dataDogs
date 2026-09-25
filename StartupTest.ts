@@ -12,10 +12,11 @@ import {
     IMimicDogConfig,
     KennelRun,
     isRuntimeLogVerbose,
+    envFirst,
     selectLineDocs,
     sliceDogCodeLines,
     type ChannelState,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { KennelController } from './api/KennelController';
@@ -30,12 +31,13 @@ import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import type { ToolDeps } from './mcp/tools/types';
 import type { AuthCtx } from './mcp/auth/middleware';
 import { REDACTED_RESULT } from './services/wavesRedaction';
+import { readNegativeCacheMarker } from './services/PrismaCacheHandler';
 import { generateVersionId, generateLineageId } from './api/utils/versioning';
 import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { getAclTools } from './mcp/tools/acl';
 import { toSwaggridCast } from './services/swaggridAdapter';
-import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
+import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
 /**
  * Arr, the testament of a single trial endured upon the eldritch seas —
@@ -83,6 +85,8 @@ export class StartupTest {
             await this.testStoreSaveAndLoad(nodesStore);
             await this.testStoreFindByType(nodesStore);
             await this.testKennelExistsUsesLineageLookup();
+            await this.testEnvAliasFallback();
+            await this.testNegativeCacheMarkerAcceptsBothPrefixes();
             
             // Controller-Tests
             await this.testControllerList(nodesController);
@@ -272,6 +276,55 @@ export class StartupTest {
             if (lineageLookups.length !== 1 || lineageLookups[0][0] !== 'KennelConfig' || lineageLookups[0][1] !== 'x') {
                 throw new Error(`findByLineage-Aufrufe unerwartet: ${JSON.stringify(lineageLookups)}`);
             }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Umbenennung dataDogs -> SlopDogs — alte Env-Namen greifen als Alias, der neue Name gewinnt.
+     */
+    private async testEnvAliasFallback(): Promise<void> {
+        const testName = 'Env: DATADOGS_* als Alias fuer SLOPDOGS_*';
+        const keys = ['SLOPDOGS_LOG_LEVEL', 'DATADOGS_LOG_LEVEL'];
+        const saved = keys.map((k) => process.env[k]);
+        const originalWarn = console.warn;
+        const warnings: string[] = [];
+        try {
+            console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+            delete process.env.SLOPDOGS_LOG_LEVEL;
+            process.env.DATADOGS_LOG_LEVEL = 'verbose';
+            if (isRuntimeLogVerbose() !== true) throw new Error('alter Name DATADOGS_LOG_LEVEL=verbose wirkt nicht');
+            isRuntimeLogVerbose();
+            const aliasLines = warnings.filter((w) => w.includes('alias in use: DATADOGS_LOG_LEVEL -> SLOPDOGS_LOG_LEVEL'));
+            if (aliasLines.length !== 1) throw new Error(`${aliasLines.length} Alias-Logzeilen, erwartet genau 1`);
+            process.env.SLOPDOGS_LOG_LEVEL = 'quiet';
+            if (isRuntimeLogVerbose() !== false) throw new Error('neuer Name gewinnt nicht gegen den alten');
+            if (envFirst('SLOPDOGS_LOG_LEVEL', 'DATADOGS_LOG_LEVEL') !== 'quiet') throw new Error('envFirst liefert nicht den neuen Namen');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            console.warn = originalWarn;
+            keys.forEach((k, i) => {
+                if (saved[i] === undefined) delete process.env[k];
+                else process.env[k] = saved[i];
+            });
+        }
+    }
+
+    /**
+     * Test: Negativ-Marker im Cache werden mit neuem und altem Praefix erkannt.
+     */
+    private async testNegativeCacheMarkerAcceptsBothPrefixes(): Promise<void> {
+        const testName = 'Cache: Negativ-Marker mit __SLOPDOGS_ und __DATADOGS_ Praefix';
+        try {
+            const current = JSON.stringify('__SLOPDOGS_NEG_CACHE__:boom');
+            const legacy = JSON.stringify('__DATADOGS_NEG_CACHE__:old boom');
+            if (readNegativeCacheMarker(current) !== 'boom') throw new Error('neues Praefix nicht erkannt');
+            if (readNegativeCacheMarker(legacy) !== 'old boom') throw new Error('altes Praefix nicht erkannt');
+            if (readNegativeCacheMarker(JSON.stringify({ ok: true })) !== undefined) throw new Error('positiver Wert als Negativ-Marker erkannt');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
@@ -987,7 +1040,7 @@ export class StartupTest {
     private async testBaseDogsFormat(baseDogsMap: Map<string, any>): Promise<void> {
         const testName = 'BaseDogs: Format für API';
         try {
-            // BASE_DOG_PREFIX wird jetzt aus datadogs importiert
+            // BASE_DOG_PREFIX wird jetzt aus slopdogs importiert
             
             for (const [name, DogClass] of baseDogsMap.entries()) {
                 const expectedId = BASE_DOG_PREFIX + name;

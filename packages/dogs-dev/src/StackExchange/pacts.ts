@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface StackExchangeQuery {
     /** Stack-Exchange-Site (stackoverflow, superuser, serverfault, askubuntu, ...) — default "stackoverflow" */

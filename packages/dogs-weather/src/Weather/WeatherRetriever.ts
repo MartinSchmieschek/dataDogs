@@ -12,7 +12,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey, GEO_CACHE_TTL_WEATHER_MS } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey, GEO_CACHE_TTL_WEATHER_MS } from "@slopdogs/core";
 import { getWeather } from "./weatherApiClient";
 import type { WeatherResult } from "./interfaces/weatherTypes";
 import { WeatherQueryPact, type WeatherQuery } from "./pacts";

@@ -1,7 +1,7 @@
 // Waves-Redaktion — was der Aufrufer nicht lesen darf, verlaesst den Server nicht.
 // Eine Definition, mehrere Leser: HTTP `/api/kennels/:id/run`, MCP `run_kennel`
 // und die MCP-Snapshot-Werkzeuge. Weicht einer davon ab, ist das ein Leck.
-import { SerializedDog, MimicDog } from '@datadogs/core';
+import { SerializedDog, MimicDog } from '@slopdogs/core';
 import type { IStore } from '../store/IStore';
 import { canRead } from '../mcp/auth/visibility';
 import type { NodeEntry, Waves } from './WavesConverter';

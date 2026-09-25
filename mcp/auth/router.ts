@@ -122,7 +122,8 @@ export function createAuthRouter(prisma: PrismaClient): Router {
 
     router.post('/logout', (req: Request, res: Response) => {
         req.session.destroy(() => {
-            res.clearCookie('datadogs.sid');
+            res.clearCookie('slopdogs.sid');
+            res.clearCookie('datadogs.sid'); // Cookie-Name vor der Umbenennung
             res.json({ ok: true });
         });
     });

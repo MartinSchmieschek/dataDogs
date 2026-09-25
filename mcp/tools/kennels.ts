@@ -4,7 +4,7 @@
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
-import { BASE_DOG_PREFIX, checkSerializedDogCode, sanitizeLineDocs, type ILineDoc } from '@datadogs/core';
+import { BASE_DOG_PREFIX, checkSerializedDogCode, sanitizeLineDocs, type ILineDoc } from '@slopdogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
 import { redactWavesForCtx } from '../../services/wavesRedaction';
@@ -169,7 +169,7 @@ export class PflichtEltern {
 
     private static autoKommentar(e: { requiredBy: string[]; purpose?: string }): string {
         const kinder = e.requiredBy.join(', ');
-        return `Auto-added by dataDogs: required by ${kinder}. Purpose: ${e.purpose ?? `required input for ${kinder}.`}`;
+        return `Auto-added by SlopDogs: required by ${kinder}. Purpose: ${e.purpose ?? `required input for ${kinder}.`}`;
     }
 }
 
@@ -441,7 +441,7 @@ export function getKennelTools(): ToolDef[] {
                     vmTimeoutMs: {
                         type: 'number',
                         minimum: 1,
-                        description: 'Per-run VM timeout in ms for the first hunt (run-time-only, NOT persisted). Overrides DATADOGS_VM_TIMEOUT_MS (default 10000).',
+                        description: 'Per-run VM timeout in ms for the first hunt (run-time-only, NOT persisted). Overrides SLOPDOGS_VM_TIMEOUT_MS (default 10000).',
                     },
                     visibility: { type: 'string', enum: ['public', 'private'] },
                     defaultQuery: { type: 'object', additionalProperties: { type: 'string' } },
@@ -607,7 +607,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'run_kennel',
             description:
-                'Runs a kennel and returns the full Waves payload — every dog\'s yield, code, vmContext, errors and timing. WARNING: this can be megabytes per call (5–20 MB on rich kennels). Prefer refresh_kennel_snapshot + the get_snapshot_* / get_kennel_snapshot_* tools for granular access. Use run_kennel only when you truly need every dog\'s details in one shot. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this single run (resolution: vmTimeoutMs > DATADOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
+                'Runs a kennel and returns the full Waves payload — every dog\'s yield, code, vmContext, errors and timing. WARNING: this can be megabytes per call (5–20 MB on rich kennels). Prefer refresh_kennel_snapshot + the get_snapshot_* / get_kennel_snapshot_* tools for granular access. Use run_kennel only when you truly need every dog\'s details in one shot. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this single run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -623,7 +623,7 @@ export function getKennelTools(): ToolDef[] {
                     vmTimeoutMs: {
                         type: 'number',
                         minimum: 1,
-                        description: 'Per-run VM timeout in ms. Overrides DATADOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
+                        description: 'Per-run VM timeout in ms. Overrides SLOPDOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
                     },
                 },
             },
@@ -654,7 +654,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'execute_kennel',
             description:
-                'Runs a kennel and returns ONLY the lead dog\'s result — the public-facing payload. Use this when you want the spoils, not the diagnostic. The lead is the first entry in dogIds. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > DATADOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
+                'Runs a kennel and returns ONLY the lead dog\'s result — the public-facing payload. Use this when you want the spoils, not the diagnostic. The lead is the first entry in dogIds. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -669,7 +669,7 @@ export function getKennelTools(): ToolDef[] {
                     vmTimeoutMs: {
                         type: 'number',
                         minimum: 1,
-                        description: 'Per-run VM timeout in ms. Overrides DATADOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
+                        description: 'Per-run VM timeout in ms. Overrides SLOPDOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
                     },
                 },
             },

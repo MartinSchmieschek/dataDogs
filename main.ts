@@ -19,7 +19,7 @@ process.on('uncaughtException', (err) => {
     process.exit(1);
 });
 
-import { WebSocketChannelRetriever, registerVmGlobalCapability } from '@datadogs/core';
+import { WebSocketChannelRetriever, registerVmGlobalCapability } from '@slopdogs/core';
 import http from 'http';
 import fs from 'fs';
 import { ChannelHub } from './services/ChannelHub';

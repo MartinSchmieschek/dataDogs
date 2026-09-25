@@ -1,6 +1,6 @@
 // The NodesRouteHandler — summoner of the hound manifest.
 // From tangent planes the dogs emerge, each bearing name and form for those who seek to know.
-import { BASE_DOG_PREFIX, SerializedDog } from '@datadogs/core';
+import { BASE_DOG_PREFIX, SerializedDog } from '@slopdogs/core';
 import { ControllerRegistry } from './ConfigRouteHandler';
 import { filterReadable } from '../../mcp/auth/visibility';
 import { ListQuery } from './ListQuery';

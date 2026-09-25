@@ -4,7 +4,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /**
  * Query fuer Geocoding — entweder Adresse ODER lat/lng.

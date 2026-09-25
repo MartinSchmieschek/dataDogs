@@ -126,7 +126,7 @@ export class KennelRun {
      * every SerializedDog in this kennel receives the override via setVmTimeoutMs.
      * Resolution order at run time (highest priority first):
      *   1. `KennelRun.vmTimeoutMs` (this setter, when set + > 0)
-     *   2. `process.env.DATADOGS_VM_TIMEOUT_MS` (when numeric + > 0)
+     *   2. `process.env.SLOPDOGS_VM_TIMEOUT_MS` (when numeric + > 0)
      *   3. 10000 (10s default)
      * Run-Time-Param (Welle 12 Korrektur): nicht mehr persistent in IKennelConfig.
      */

@@ -1,5 +1,5 @@
 import { CompilerCache } from './CompilerCache';
-import { MimicDog } from '@datadogs/core';
+import { MimicDog } from '@slopdogs/core';
 
 /**
  * Arr, the TypeDefBuilder be the shipwright of TypeScript type definitions —

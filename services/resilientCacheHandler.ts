@@ -10,7 +10,7 @@ import type {
     ITileFeatureCache,
     TileCoverageResult,
     TileKey,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 
 export function isCacheInfraError(err: unknown): boolean {
     const code = (err as { code?: string })?.code;

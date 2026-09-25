@@ -1,6 +1,6 @@
 export {};
-import { OsmPowerRetriever, OsmPowerPact } from "@datadogs/dogs-geo";
-import type { IHuntingSeason, IHuntingDog } from "@datadogs/core";
+import { OsmPowerRetriever, OsmPowerPact } from "@slopdogs/dogs-geo";
+import type { IHuntingSeason, IHuntingDog } from "@slopdogs/core";
 
 function mockSeason(pactClass: new () => IHuntingDog<unknown>, query: unknown): IHuntingSeason {
     const p = new pactClass();

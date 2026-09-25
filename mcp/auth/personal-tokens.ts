@@ -163,7 +163,7 @@ function renderListPage(
     return [
         '<!DOCTYPE html><html lang="en"><head>',
         '<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>',
-        '<title>dataDogs — Personal Access Tokens</title>',
+        '<title>SlopDogs — Personal Access Tokens</title>',
         `<style>${PAGE_STYLES}</style></head><body><div class="wrap">`,
         '<div class="card">',
         '<h1>Personal Access Tokens</h1>',

@@ -1,7 +1,7 @@
 // The ConfigRouteHandler — the ship's navigator, mapping all HTTP requests to their captains.
 // In luminous space, blackened stars: each subpath is a star, each controller its light.
 import { Request, Response } from 'express';
-import { isRuntimeLogVerbose, sanitizeLineDocs } from '@datadogs/core';
+import { isRuntimeLogVerbose, sanitizeLineDocs } from '@slopdogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../../mcp/auth/visibility';
 import { canMutateNode } from '../../mcp/auth/permissions';
@@ -20,7 +20,7 @@ function requireLogin(req: Request, res: Response): boolean {
     const base = process.env.MCP_BASE_URL?.replace(/\/$/, '') || `${proto}://${host}`;
     res.setHeader(
         'WWW-Authenticate',
-        `Bearer realm="dataDogs", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+        `Bearer realm="SlopDogs", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
     );
     res.status(401).json({ error: 'unauthorized', error_description: 'Login required for this operation.' });
     return false;

@@ -13,7 +13,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@slopdogs/core";
 import { getRegionalNews } from "./newsApiClient";
 import type { RegionalNewsResult } from "./interfaces/newsTypes";
 import { RegionalNewsQueryPact, type RegionalNewsQuery } from "./pacts";

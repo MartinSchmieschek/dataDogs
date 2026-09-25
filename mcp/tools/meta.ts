@@ -27,7 +27,7 @@ export function getMetaTools(): ToolDef[] {
         {
             name: 'get_readme',
             description:
-                'Returns the dataDogs README — the living document of the API, architecture, and conventions. Read this once at session start; it is the truth that other tool descriptions assume.',
+                'Returns the SlopDogs README — the living document of the API, architecture, and conventions. Read this once at session start; it is the truth that other tool descriptions assume.',
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
             handler: async (_args, _ctx, deps) => {
                 const candidates = [

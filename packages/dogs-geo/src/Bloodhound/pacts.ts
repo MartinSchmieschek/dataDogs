@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Movement profiles supported by OpenRouteService */
 export enum BloodhoundProfile {

@@ -1,6 +1,6 @@
 ---
 name: nira
-description: Greets the user and ties replies to the dataDogs nira kennel public endpoint. Use when the user mentions nira, /nira, the nira kennel, Archon Nira lore feed, or attaches this skill.
+description: Greets the user and ties replies to the SlopDogs nira kennel public endpoint. Use when the user mentions nira, /nira, the nira kennel, Archon Nira lore feed, or attaches this skill.
 ---
 
 # nira

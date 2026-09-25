@@ -20,7 +20,7 @@ const https = require('https');
 const MCP_BASE = (process.env.MCP_BASE || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const MCP_PATH = process.env.MCP_PATH || '/mcp';
 const KENNEL_ID = process.env.KENNEL_ID || 'weather-kennel';
-const bearer = process.env.MCP_BEARER || process.env.DATADOGS_MCP_BEARER || '';
+const bearer = process.env.MCP_BEARER || process.env.SLOPDOGS_MCP_BEARER || process.env.DATADOGS_MCP_BEARER || '';
 
 const REQUIRED_TOOLS = [
   'health_check',
@@ -160,11 +160,34 @@ async function run() {
       fail('initialize', 'missing serverInfo');
     } else {
       const si = envelope.result.serverInfo;
-      pass('initialize', `${si.name} ${si.version}`);
+      if (si.name === 'slopdogs') pass('initialize', `${si.name} ${si.version}`);
+      else fail('initialize', `serverInfo.name ${si.name} (expected slopdogs)`);
     }
   } catch (e) {
     fail('initialize', e.message);
     throw e;
+  }
+
+  // resources: slopdogs://skill + deprecated alias datadogs://skill, same text
+  try {
+    const { status, envelope } = await mcpRequest('resources/list', {});
+    const uris = (envelope?.result?.resources || []).map((r) => r.uri);
+    if (status !== 200) {
+      fail('resources/list', `HTTP ${status}`);
+    } else if (!uris.includes('slopdogs://skill') || !uris.includes('datadogs://skill')) {
+      fail('resources/list', `uris: ${uris.join(', ')}`);
+    } else {
+      pass('resources/list', uris.join(', '));
+    }
+    const texts = [];
+    for (const uri of ['slopdogs://skill', 'datadogs://skill']) {
+      const read = await mcpRequest('resources/read', { uri });
+      texts.push(read.envelope?.result?.contents?.[0]?.text ?? null);
+    }
+    if (!texts[0] || texts[0] !== texts[1]) fail('resources/read', 'alias text differs or empty');
+    else pass('resources/read', `${texts[0].length} chars, alias identical`);
+  } catch (e) {
+    fail('resources', e.message);
   }
 
   // tools/list

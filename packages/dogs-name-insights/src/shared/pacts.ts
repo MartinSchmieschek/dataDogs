@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /**
  * Gemeinsamer Name-Query-Pact fuer alle Name-Insight-Hunde.

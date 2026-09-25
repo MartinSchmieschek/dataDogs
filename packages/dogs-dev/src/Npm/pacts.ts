@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface NpmQuery {
     /** Paketname (e.g. "react", "@angular/core") */

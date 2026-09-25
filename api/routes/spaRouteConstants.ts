@@ -1,11 +1,11 @@
 /**
  * Abstimmung Express ↔ Angular (SPA):
  * - `/:kennelId` (öffentlicher Kennel) matcht nur ein Pfadsegment; reservierte Slugs → next().
- * - Blocked kennel id list: `KENNEL_RESERVED_SLUGS` in @datadogs/core.
+ * - Blocked kennel id list: `KENNEL_RESERVED_SLUGS` in @slopdogs/core.
  *
  * SPA-Fallback (index.html) darf keine Backend-Pfade überschreiben (Präfixe unten).
  */
-import { KENNEL_RESERVED_SLUGS } from '@datadogs/core';
+import { KENNEL_RESERVED_SLUGS } from '@slopdogs/core';
 
 export const SPA_FALLBACK_SKIP_PREFIXES = ['/api', '/static', '/auth', '/mcp', '/actions', '/.well-known'] as const;
 
@@ -15,4 +15,4 @@ export const KENNEL_LINEAGE_ID_BLOCKLIST = new Set(KENNEL_RESERVED_SLUGS.map((s)
 /** @deprecated — gleiche Menge wie KENNEL_LINEAGE_ID_BLOCKLIST (Routing next()). */
 export const RESERVED_TOP_LEVEL_SEGMENTS = KENNEL_LINEAGE_ID_BLOCKLIST;
 
-export { kennelLineageIdBlockedReason, kennelDisplayNameBlockedReason } from '@datadogs/core';
+export { kennelLineageIdBlockedReason, kennelDisplayNameBlockedReason } from '@slopdogs/core';

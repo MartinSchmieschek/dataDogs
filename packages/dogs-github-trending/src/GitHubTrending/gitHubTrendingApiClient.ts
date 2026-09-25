@@ -80,7 +80,7 @@ export async function getTrending(language?: string, since: string = "daily"): P
         res = await fetch(url, {
             headers: {
                 "Accept": "application/vnd.github.v3+json",
-                "User-Agent": "dataDogs",
+                "User-Agent": "SlopDogs",
             },
             signal: controller.signal,
         });

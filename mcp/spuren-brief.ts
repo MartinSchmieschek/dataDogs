@@ -32,7 +32,7 @@ export const SPUREN_NODES_FIELD_HINT =
 
 export function buildMcpInitializeInstructions(hasFullSkill: boolean, werkzeugkasten?: string): string {
     const tail = hasFullSkill
-        ? '\n\n---\nVollständiger MCP-Guide (Ton, Workflows, Sandbox, Beispiele): Resource `datadogs://skill`.'
+        ? '\n\n---\nVollständiger MCP-Guide (Ton, Workflows, Sandbox, Beispiele): Resource `slopdogs://skill`.'
         : '';
     // Der Werkzeugkasten steht VOR der Spuren-Pflicht: er wird gebraucht, bevor gebaut wird,
     // die Spuren erst danach.

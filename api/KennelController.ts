@@ -9,7 +9,7 @@ import {
     isRuntimeLogVerbose,
     kennelDisplayNameBlockedReason,
     kennelLineageIdBlockedReason,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 import { generateVersionId } from './utils/versioning';
 
 /**

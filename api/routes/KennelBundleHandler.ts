@@ -9,7 +9,7 @@ import {
     isKennelIdTakenInList,
     isKennelNameTakenInList,
     type KennelIdNameListEntry,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';

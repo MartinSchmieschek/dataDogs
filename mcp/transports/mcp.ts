@@ -7,7 +7,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { promises as fs } from 'fs';
+import { promises as fs, readFileSync } from 'fs';
 import path from 'path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -26,6 +26,7 @@ import { type ToolDeps, type ToolDef } from '../tools/types';
 import type { AuthCtx } from '../auth/middleware';
 import { buildMcpInitializeInstructions } from '../spuren-brief';
 import { buildWerkzeugkasten } from '../werkzeugkasten';
+import { envFirst } from '@slopdogs/core';
 
 /**
  * Welle 11: tools/list token diet. The full long-form description is kept on
@@ -60,25 +61,50 @@ async function loadSkill(projectRoot: string): Promise<string> {
     return cachedSkill;
 }
 
+let cachedVersion: string | null = null;
+
+/** serverInfo.version folgt package.json statt eines Literals. */
+function loadPackageVersion(projectRoot: string): string {
+    if (cachedVersion !== null) return cachedVersion;
+    const candidates = [
+        path.join(projectRoot, 'package.json'),
+        path.join(projectRoot, '..', 'package.json'),
+    ];
+    for (const p of candidates) {
+        try {
+            const version = JSON.parse(readFileSync(p, 'utf-8')).version;
+            if (typeof version === 'string' && version) {
+                cachedVersion = version;
+                return cachedVersion;
+            }
+        } catch { /* try next */ }
+    }
+    cachedVersion = '0.0.0';
+    return cachedVersion;
+}
+
 /** Stable URI fer the skill resource -- MCP-Clients addressieren es so. */
-const SKILL_RESOURCE_URI = 'datadogs://skill';
+const SKILL_RESOURCE_URI = 'slopdogs://skill';
+/** Frueherer Name (dataDogs) -- bleibt lesbar, bis alle Notizen und Skills umgestellt sind (P7). */
+const LEGACY_SKILL_RESOURCE_URI = 'datadogs://skill';
 
 function buildServer(
     tools: ToolDef[],
     ctx: AuthCtx,
     deps: ToolDeps,
     skillContent: string,
+    version: string,
 ): Server {
     const toolMap = new Map(tools.map((t) => [t.name, t]));
     // Welle 8 (P6): skill.md zusaetzlich als MCP-Resource exponieren. Wir behalten
     // die kurze `instructions`-Variante fuer MCP-Clients ohne Resource-Support;
-    // der volle Inhalt ist ueber Resource `datadogs://skill` abrufbar.
+    // der volle Inhalt ist ueber Resource `slopdogs://skill` abrufbar.
     const shortInstructions = buildMcpInitializeInstructions(
         Boolean(skillContent),
         buildWerkzeugkasten(deps.baseDogsList),
     );
     const server = new Server(
-        { name: 'datadogs', version: '0.2.0-beta.0' },
+        { name: 'slopdogs', version },
         {
             capabilities: { tools: {}, resources: {} },
             instructions: shortInstructions,
@@ -117,8 +143,14 @@ function buildServer(
         resources: [
             {
                 uri: SKILL_RESOURCE_URI,
-                name: 'Skill: dataDogs MCP usage guide',
+                name: 'Skill: SlopDogs MCP usage guide',
                 description: 'Vollstaendiger Voidtongue/Pirate-Brief mit Tool-Workflows, Sandbox-Grenzen und Stale-Snapshot-Konventionen.',
+                mimeType: 'text/markdown',
+            },
+            {
+                uri: LEGACY_SKILL_RESOURCE_URI,
+                name: 'Skill: SlopDogs MCP usage guide (deprecated URI)',
+                description: `deprecated — use ${SKILL_RESOURCE_URI}`,
                 mimeType: 'text/markdown',
             },
         ],
@@ -126,7 +158,7 @@ function buildServer(
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req): Promise<any> => {
         const uri = req.params.uri;
-        if (uri !== SKILL_RESOURCE_URI) {
+        if (uri !== SKILL_RESOURCE_URI && uri !== LEGACY_SKILL_RESOURCE_URI) {
             // Unknown resource -- MCP SDK turns thrown errors into proper JSON-RPC errors.
             throw new Error(`Unknown resource: ${uri}`);
         }
@@ -163,9 +195,9 @@ export function createMcpRouter(deps: ToolDeps): Router {
     setMetaToolRegistry(tools);
 
     // Rate limit -- pro Identity (User-Id, sonst IP, sonst 'anon').
-    // Default 120/min, env-override per `DATADOGS_MCP_RATE_LIMIT`.
+    // Default 120/min, env-override per `SLOPDOGS_MCP_RATE_LIMIT`.
     const rateLimitMax = (() => {
-        const raw = Number(process.env.DATADOGS_MCP_RATE_LIMIT);
+        const raw = Number(envFirst('SLOPDOGS_MCP_RATE_LIMIT', 'DATADOGS_MCP_RATE_LIMIT'));
         return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 120;
     })();
     const mcpLimiter = rateLimit({
@@ -194,7 +226,7 @@ export function createMcpRouter(deps: ToolDeps): Router {
             const base = process.env.MCP_BASE_URL || `${req.protocol}://${req.get('host')}`;
             res.setHeader(
                 'WWW-Authenticate',
-                `Bearer realm="dataDogs MCP", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+                `Bearer realm="SlopDogs MCP", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
             );
             res.status(401).json({
                 error: 'unauthorized',
@@ -204,7 +236,7 @@ export function createMcpRouter(deps: ToolDeps): Router {
         }
 
         const skillContent = await loadSkill(deps.projectRoot);
-        const server = buildServer(tools, ctx, deps, skillContent);
+        const server = buildServer(tools, ctx, deps, skillContent, loadPackageVersion(deps.projectRoot));
         const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: undefined, // stateless
         });

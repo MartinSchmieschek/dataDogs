@@ -1,5 +1,5 @@
-import type { IKennelConfig } from '@datadogs/core';
-import type { Rune, SwaggridCast } from '@datadogs/swaggrid';
+import type { IKennelConfig } from '@slopdogs/core';
+import type { Rune, SwaggridCast } from '@slopdogs/swaggrid';
 import type { Waves } from './WavesConverter';
 import { findLeadNodeEntry } from './WavesConverter';
 

@@ -1,5 +1,5 @@
 {
-  "name": "@datadogs/dogs-webcams",
+  "name": "@slopdogs/dogs-webcams",
   "version": "0.2.0-beta.0",
   "description": "Webcams: Live-Webcams per GPS aus dem Void",
   "main": "dist/index.js",
@@ -23,11 +23,8 @@
   },
   "license": "MIT",
   "private": true,
-  "peerDependencies": {
-    "@datadogs/core": "file:../core"
-  },
   "dependencies": {
-    "@datadogs/core": "file:../core"
+    "@slopdogs/core": "file:../core"
   },
   "scripts": {
     "build": "tsc"

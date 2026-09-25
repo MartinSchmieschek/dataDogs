@@ -1,4 +1,4 @@
-# Data Hunt
+# SlopDogs
 
 > From brooding gulfs the pack descends,
 > through tangled endpoints, severed threads.
@@ -53,7 +53,7 @@ Wave 3 (Compositor):    NaturBundle  (= the lead)                         ← me
 
 2. **Hunters fetch, entity dogs normalize, the compositor composes.** No mixing.
 4. **A fat lead is a code smell.** If the lead is more than ~30 lines, split it.
-5. **Provide the user a detailed info well formated for its need** be playful with the final composition and aware that some dataDog can fail.
+5. **Provide the user a detailed info well formated for its need** be playful with the final composition and aware that some dogs can fail.
 6. **Split data from ui** good data can lead to bad ui experience, good ui is nothing without data. be playful test whats possible and create ui that combines kennel.
 
 ##may be deprecated?
@@ -282,7 +282,7 @@ In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are r
 
 **Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
 
-**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@datadogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400. **In the browser UI** (Kennel list on `:4300`), the same workflow is copy-and-paste: **Kopieren** in a card action fan copies that bundle JSON to the clipboard; the **clipboard (📋)** button pastes bundle JSON from the clipboard and imports it. See [Kennel list copy and paste](#kennel-list-copy-and-paste). Copy and paste across instances or between UI, terminal, and other tools.
+**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@slopdogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400. **In the browser UI** (Kennel list on `:4300`), the same workflow is copy-and-paste: **Kopieren** in a card action fan copies that bundle JSON to the clipboard; the **clipboard (📋)** button pastes bundle JSON from the clipboard and imports it. See [Kennel list copy and paste](#kennel-list-copy-and-paste). Copy and paste across instances or between UI, terminal, and other tools.
 
 **Caching** -- Two-tier memory so dogs don't repeat themselves:
 - **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication plus negative-caching for 429/504 to break provider retry storms.
@@ -304,7 +304,7 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aw
 
 ## Authentication & Access Control
 
-dataDogs ships with optional Google SSO + OAuth 2.1 + an ACL-based permission model.
+SlopDogs ships with optional Google SSO + OAuth 2.1 + an ACL-based permission model.
 
 ### Toggle
 
@@ -374,7 +374,7 @@ GET  /.well-known/oauth-protected-resource     MCP protected-resource metadata
 
 ### Tone for AI clients
 
-The MCP server returns **Spuren rules + a pointer to the full guide** as the `instructions` field at initialization (`mcp/spuren-brief.ts`); the complete skill lives in resource `datadogs://skill` (`mcp/skill.md`). For Custom GPTs and Vertex agents, `GET /actions/gpt-template` returns a ready-to-paste config block with the full skill text.
+The MCP server returns **Spuren rules + a pointer to the full guide** as the `instructions` field at initialization (`mcp/spuren-brief.ts`); the complete skill lives in resource `slopdogs://skill` (`mcp/skill.md`). For Custom GPTs and Vertex agents, `GET /actions/gpt-template` returns a ready-to-paste config block with the full skill text.
 
 ---
 
@@ -448,7 +448,7 @@ If a status-tracking save ever stops behaving as documented, the boot console fl
 | Databases | **Four** physically-separate Prisma schemas, each with its own `*_DATABASE_URL`: `DATABASE_URL` (kennels + nodes), `CACHE_DATABASE_URL` (run-cache), `JSON_STORAGE_DATABASE_URL` (fachliche JSON-Ablage), `AUTH_DATABASE_URL` (User, OAuthClient, AccessToken, RefreshToken, AuthorizationCode). SQLite for local dev; PostgreSQL for **integration** and production. |
 | Auth | Google SSO via `openid-client`, OAuth 2.1 AS via `jose` (HS256 JWTs), browser session via `express-session` |
 | Frontend | Angular 18, Monaco Editor, vis-network |
-| Core | `datadogs` package (local, in `packages/core`) |
+| Core | `slopdogs` package (local, in `packages/core`) |
 
 ---
 
@@ -542,14 +542,14 @@ Create three files:
 **`packages/dogs-mydog/package.json`**
 ```json
 {
-  "name": "@datadogs/dogs-mydog",
+  "name": "@slopdogs/dogs-mydog",
   "version": "0.1.0-alpha.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
   "private": true,
-  "dependencies": { "@datadogs/core": "file:../core" },
-  "peerDependencies": { "@datadogs/core": "0.1.0-alpha.1" },
+  "dependencies": { "@slopdogs/core": "file:../core" },
+  "peerDependencies": { "@slopdogs/core": "0.1.0-alpha.1" },
   "scripts": { "build": "tsc" },
   "devDependencies": { "typescript": "^5.0.0" }
 }
@@ -575,7 +575,7 @@ Create three files:
 A Pact declares _what data shape_ the Dog requires, without specifying _who provides it_. At runtime, a MimicDog or another Dog fulfills it.
 
 ```typescript
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface MyDogQuery {
     someParam: string;
@@ -600,7 +600,7 @@ Extend `Dog<YieldType>` and implement:
 | `yieldCollectorFactory` | Async function that does the actual work |
 
 ```typescript
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason } from "@slopdogs/core";
 import { MyDogQueryPact, type MyDogQuery } from "./pacts";
 
 export class MyRetriever extends Dog<MyResult> {
@@ -621,25 +621,25 @@ export class MyRetriever extends Dog<MyResult> {
 
 **`main.ts`** — two touches: register the class and any Pacts it introduces (same pattern as existing dogs at the bottom of the file):
 ```typescript
-import { MyRetriever, MyDogQueryPact } from '@datadogs/dogs-mydog';
+import { MyRetriever, MyDogQueryPact } from '@slopdogs/dogs-mydog';
 // add to allBaseDogClasses array:
 const allBaseDogClasses = [ ..., MyRetriever ];
 // add Pact to allPacts array:
 const allPacts = [ ..., MyDogQueryPact ];
 ```
 
-*(Geo-related dogs that use shared coordinate types also wire `GeoPointPact` from `@datadogs/geo-pact` in `allPacts` if your package needs it — copy a similar dog from `dogs-geo`.)*
+*(Geo-related dogs that use shared coordinate types also wire `GeoPointPact` from `@slopdogs/geo-pact` in `allPacts` if your package needs it — copy a similar dog from `dogs-geo`.)*
 
 ### 5. Wire up the build
 
 **Root `tsconfig.json`** — add path mapping:
 ```json
-"@datadogs/dogs-mydog": ["packages/dogs-mydog/src/index.ts"]
+"@slopdogs/dogs-mydog": ["packages/dogs-mydog/src/index.ts"]
 ```
 
 **Root `package.json`** — add dependency, build script, and typecheck:
 ```json
-"dependencies": { "@datadogs/dogs-mydog": "file:packages/dogs-mydog" }
+"dependencies": { "@slopdogs/dogs-mydog": "file:packages/dogs-mydog" }
 "scripts": {
   "build:dogs-mydog": "cd packages/dogs-mydog && npx tsc",
   "build:dogs": "... && npm run build:dogs-mydog",
@@ -647,7 +647,7 @@ const allPacts = [ ..., MyDogQueryPact ];
 }
 ```
 
-Then run `npm install` so the symlink in `node_modules/@datadogs/dogs-mydog` is created.
+Then run `npm install` so the symlink in `node_modules/@slopdogs/dogs-mydog` is created.
 
 ### 6. Seed a Kennel (optional)
 
@@ -713,11 +713,11 @@ services/
   WavesConverter.ts           Converts execution results to Wave format
   TypeDefBuilder.ts           Generates TypeScript definitions for VM context
   CompilerCache.ts            Caches compiled TypeScript
-  swaggridAdapter.ts          Maps Kennel runs to @datadogs/swaggrid
+  swaggridAdapter.ts          Maps Kennel runs to @slopdogs/swaggrid
   CacheHandler.ts             KV cache with TTL and in-flight deduplication
   AreaCacheStrategy.ts        Geographic area cache (Haversine containment)
 packages/
-  core/                       datadogs library (Dog, Kennel, Wave engine, Pacts, cache, WebSocket channel retrievers, JSON storage, kennel import helpers)
+  core/                       slopdogs library (Dog, Kennel, Wave engine, Pacts, cache, WebSocket channel retrievers, JSON storage, kennel import helpers)
   geo-pact/                   Shared GeoPoint pact for coordinate-shaped inputs
   swaggrid/                   OpenAPI generation (castGrimoire) — no domain deps
   dogs-*/                     One npm package per BaseDog domain (many — see root package.json `build:dogs-*` scripts)

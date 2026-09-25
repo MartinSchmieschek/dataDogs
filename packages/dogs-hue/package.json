@@ -1,5 +1,5 @@
 {
-  "name": "@datadogs/dogs-hue",
+  "name": "@slopdogs/dogs-hue",
   "version": "0.2.0-beta.0",
   "description": "Philips Hue Playground Base-Dogs",
   "main": "dist/index.js",
@@ -23,11 +23,8 @@
   },
   "license": "MIT",
   "private": true,
-  "peerDependencies": {
-    "@datadogs/core": "file:../core"
-  },
   "dependencies": {
-    "@datadogs/core": "file:../core",
+    "@slopdogs/core": "file:../core",
     "node-hue-api": "^5.0.0-beta.16"
   },
   "scripts": {

@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Query parameters for the phenology hunt */
 export interface PhenologyQuery {

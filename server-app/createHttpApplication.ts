@@ -4,7 +4,7 @@ import {
     ISerializedDogConfig,
     SerializedDog,
     type ICacheHandler,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 import { IStore } from '../store/IStore';
 import { Controller } from '../api/Controller';
 import { KennelController } from '../api/KennelController';

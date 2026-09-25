@@ -31,7 +31,7 @@ async function fetchEbird(path: string): Promise<any[]> {
         res = await fetch(url, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "dataDogs/0.1",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
                 "X-eBirdApiToken": getApiKey(),
             },
             signal: controller.signal,

@@ -9,7 +9,7 @@ import {
     SerializedDog,
     MimicDog,
     IKennelConfig,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 import { TypeDefBuilder } from './TypeDefBuilder';
 
 /**
@@ -99,7 +99,7 @@ function resolveInstanceId(instance: any): string {
 }
 
 /**
- * Lead-Knoten aus den Waves — gleiche Semantik wie @datadogs/swaggrid (Herald) / öffentliche API:
+ * Lead-Knoten aus den Waves — gleiche Semantik wie @slopdogs/swaggrid (Herald) / öffentliche API:
  * erster `dogIds`-Eintrag; `base:`-Prefix optional; Versions-Suffix optional;
  * bei SerializedDogs oft `lineageId` in der Kennel-Charter, `id` in den Waves = `storageId`.
  */

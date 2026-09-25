@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface OpenFdaQuery {
     /** Endpoint: drug/event (Nebenwirkungen), drug/label (Beipackzettel), drug/enforcement (Rueckrufe), device/enforcement, food/enforcement */

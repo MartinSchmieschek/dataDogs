@@ -238,7 +238,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
             description,
             version: '0.1.0-alpha.1',
         },
-        servers: [{ url: '', description: 'dataDogs-Server (Basis-URL je nach Umgebung)' }],
+        servers: [{ url: '', description: 'SlopDogs-Server (Basis-URL je nach Umgebung)' }],
         paths: {
             [`/${rift}`]: pathMethods,
         },

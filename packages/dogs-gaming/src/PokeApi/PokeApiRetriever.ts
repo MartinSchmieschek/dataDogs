@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@slopdogs/core";
 import { queryPokeApi } from "./pokeApiClient";
 import type { PokeApiResult } from "./interfaces/pokeTypes";
 import { PokeApiQueryPact, type PokeApiQuery } from "./pacts";

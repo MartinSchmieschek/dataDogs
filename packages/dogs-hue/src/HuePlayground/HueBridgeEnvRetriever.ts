@@ -9,7 +9,7 @@
  *  (the Hue API username — no passwords be stowed in this hold, matey).
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason } from "@slopdogs/core";
 import { HueBridgeQueryPact, type HueBridgeQueryInput } from "./pacts";
 
 /**

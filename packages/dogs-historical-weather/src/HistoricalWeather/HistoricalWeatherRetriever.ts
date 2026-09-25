@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@slopdogs/core";
 import { getHistoricalWeather } from "./historicalWeatherApiClient";
 import type { HistoricalWeatherResult } from "./interfaces/historicalWeatherTypes";
 import { HistoricalWeatherQueryPact, type HistoricalWeatherQuery } from "./pacts";

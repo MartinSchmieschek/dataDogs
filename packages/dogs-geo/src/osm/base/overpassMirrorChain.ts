@@ -190,7 +190,7 @@ async function fetchOverpassOnce(
 ): Promise<OverpassRawElement[]> {
     const userAgent =
         process.env.OVERPASS_USER_AGENT ??
-        `dataDogs/${userAgentLabel} (contact: set OVERPASS_USER_AGENT)`;
+        `SlopDogs/${userAgentLabel} (contact: set OVERPASS_USER_AGENT)`;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), fetchTimeoutMs);

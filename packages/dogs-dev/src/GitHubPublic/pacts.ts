@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface GitHubPublicQuery {
     /** Modus: user, repo, orgRepos, userRepos, search — default "repo" */

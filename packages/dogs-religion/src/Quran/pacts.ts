@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface QuranQuery {
     /** Modus: ayah (einzelner Vers), surah (ganze Sure), random (zufaelliger Vers) — default "ayah" */

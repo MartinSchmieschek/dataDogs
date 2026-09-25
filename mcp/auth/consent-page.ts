@@ -1,5 +1,5 @@
 // HTML consent page for OAuth authorization. Plain inline page, no framework,
-// matches the dataDogs visual style (dark + emoji vibes from the kennel UI).
+// matches the SlopDogs visual style (dark + emoji vibes from the kennel UI).
 
 export function renderConsentPage(opts: {
     clientName: string;
@@ -16,7 +16,7 @@ export function renderConsentPage(opts: {
         '<html lang="en"><head>',
         '<meta charset="utf-8" />',
         '<meta name="viewport" content="width=device-width, initial-scale=1" />',
-        '<title>dataDogs — Grant access?</title>',
+        '<title>SlopDogs — Grant access?</title>',
         '<style>',
         'body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;',
         '  background:radial-gradient(circle at 30% 20%,#1a1a2e 0%,#0a0a14 60%);color:#e8e8f0;',
@@ -43,7 +43,7 @@ export function renderConsentPage(opts: {
         '<input type="hidden" name="csrf" value="', safeCsrf, '" />',
         '<h1 class="title">Grant access?</h1>',
         '<p class="subtitle"><span class="client">', safeName, '</span> ',
-        'is requesting access to your dataDogs account. ',
+        'is requesting access to your SlopDogs account. ',
         'It will be able to read and modify Kennels you own.</p>',
         '<div><span class="scope">', safeScope, '</span></div>',
         '<div class="actions">',

@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface DiseaseQuery {
     /** Krankheit: covid-19, influenza, ebola — default "covid-19" */

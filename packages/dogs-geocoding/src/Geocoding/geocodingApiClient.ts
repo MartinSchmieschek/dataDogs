@@ -59,7 +59,7 @@ export async function forwardGeocode(
         res = await fetch(url, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "dataDogs/0.1",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
             },
             signal: controller.signal,
         });
@@ -99,7 +99,7 @@ export async function reverseGeocode(
         res = await fetch(url, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "dataDogs/0.1",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
             },
             signal: controller.signal,
         });

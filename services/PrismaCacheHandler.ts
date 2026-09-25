@@ -16,7 +16,7 @@
 
 import path from 'path';
 import type { PrismaClient } from '../store/generated/prisma-cache-client';
-import { ICacheHandler, isRuntimeLogVerbose, type ITileFeatureCache } from '@datadogs/core';
+import { ICacheHandler, isRuntimeLogVerbose, type ITileFeatureCache } from '@slopdogs/core';
 import { PrismaTileFeatureCache } from './PrismaTileFeatureCache';
 import { isCacheInfraError } from './resilientCacheHandler';
 
@@ -32,7 +32,21 @@ function createPrismaCacheClient(dbUrl: string): PrismaClient {
 const NEGATIVE_CACHE_TTL_MS = 60_000;
 
 /** Marker-Payload im Cache; wenn gelesen loesen wir den originalen Error aus. */
-const NEGATIVE_MARKER_PREFIX = '__DATADOGS_NEG_CACHE__:';
+const NEGATIVE_MARKER_PREFIX = '__SLOPDOGS_NEG_CACHE__:';
+/** Praefix vor der Umbenennung (dataDogs) -- alte Marker in der Cache-DB bleiben Negativ-Treffer. */
+const LEGACY_NEGATIVE_MARKER_PREFIX = '__DATADOGS_NEG_CACHE__:';
+
+/**
+ * Liest einen gespeicherten Cache-Wert als Negativ-Marker (JSON-String mit Praefix, neu oder alt).
+ * Liefert die Fehlermeldung, sonst undefined.
+ */
+export function readNegativeCacheMarker(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    for (const prefix of [NEGATIVE_MARKER_PREFIX, LEGACY_NEGATIVE_MARKER_PREFIX]) {
+        if (raw.startsWith('"' + prefix)) return (JSON.parse(raw) as string).slice(prefix.length);
+    }
+    return undefined;
+}
 
 /**
  * Abstand zwischen zwei Prune-Laeufen. Der frueher fest verdrahtete Minutentakt war
@@ -108,7 +122,7 @@ export class PrismaCacheHandler implements ICacheHandler {
             return undefined;
         }
         // Negative-Marker werden fuer externe get()-Aufrufer wie Miss behandelt.
-        if (row.value.startsWith('"' + NEGATIVE_MARKER_PREFIX)) {
+        if (readNegativeCacheMarker(row.value) !== undefined) {
             return undefined;
         }
         return JSON.parse(row.value) as T;
@@ -185,10 +199,10 @@ export class PrismaCacheHandler implements ICacheHandler {
             return undefined;
         }
         const raw = row.value;
-        if (typeof raw === 'string' && raw.startsWith('"' + NEGATIVE_MARKER_PREFIX)) {
-            // Negative-Marker ist als JSON-String gespeichert (JSON.stringify).
-            const decoded = JSON.parse(raw) as string;
-            return { kind: 'negative', message: decoded.slice(NEGATIVE_MARKER_PREFIX.length) };
+        // Negative-Marker ist als JSON-String gespeichert (JSON.stringify).
+        const negativeMessage = readNegativeCacheMarker(raw);
+        if (negativeMessage !== undefined) {
+            return { kind: 'negative', message: negativeMessage };
         }
         return { kind: 'hit', value: JSON.parse(raw) as T };
     }

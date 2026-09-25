@@ -7,7 +7,7 @@ import { type ToolDef, type ToolDeps, ok, fail } from './types';
 import type { AuthCtx } from '../auth/middleware';
 import type { NodeEntry, Waves, ReadTrackingEntry } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from '../snapshots/types';
-import type { IKennelConfig } from '@datadogs/core';
+import type { IKennelConfig } from '@slopdogs/core';
 import { redactWavesForCtx } from '../../services/wavesRedaction';
 
 /**
@@ -207,7 +207,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'refresh_kennel_snapshot',
             description:
-                'Runs a kennel asynchronously and stores the full Waves in-memory as a snapshot, keyed by kennelLineageId. Returns immediately with status=running. Use wait_for_kennel_snapshot or get_kennel_snapshot to observe completion. Prefer this over run_kennel for any inspection workflow — subsequent get_snapshot_* tools read from the cached run. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > DATADOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
+                'Runs a kennel asynchronously and stores the full Waves in-memory as a snapshot, keyed by kennelLineageId. Returns immediately with status=running. Use wait_for_kennel_snapshot or get_kennel_snapshot to observe completion. Prefer this over run_kennel for any inspection workflow — subsequent get_snapshot_* tools read from the cached run. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -223,7 +223,7 @@ export function getSnapshotTools(): ToolDef[] {
                     vmTimeoutMs: {
                         type: 'number',
                         minimum: 1,
-                        description: 'Per-run VM timeout in ms. Overrides DATADOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
+                        description: 'Per-run VM timeout in ms. Overrides SLOPDOGS_VM_TIMEOUT_MS (default 10000). Run-time-only, not persisted.',
                     },
                 },
             },

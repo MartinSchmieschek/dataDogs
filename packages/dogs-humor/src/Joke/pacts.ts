@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Abfrage fuer JokeAPI (jokeapi.dev) */
 export interface JokeQuery {

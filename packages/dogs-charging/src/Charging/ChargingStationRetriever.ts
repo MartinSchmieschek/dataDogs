@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketKey } from "@slopdogs/core";
 import { ChargingQueryPact, type ChargingQuery } from "./pacts";
 
 const DEFAULT_RADIUS_KM = 5;
@@ -111,7 +111,7 @@ export class ChargingStationRetriever extends Dog<ChargingResult> implements ICa
             try {
                 res = await fetch(url, {
                     method: "GET",
-                    headers: { "User-Agent": "dataDogs/ChargingStationRetriever" },
+                    headers: { "User-Agent": "SlopDogs/ChargingStationRetriever" },
                     signal: controller.signal,
                 });
             } finally {

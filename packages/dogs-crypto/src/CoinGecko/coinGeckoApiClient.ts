@@ -9,7 +9,7 @@ const CG_BASE = "https://api.coingecko.com/api/v3";
 async function cgFetch<T>(url: string): Promise<T> {
     const headers: Record<string, string> = {
         "Accept": "application/json",
-        "User-Agent": "dataDogs/0.1",
+        "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
     };
     const key = process.env.COINGECKO_API_KEY?.trim();
     if (key) headers["x-cg-demo-api-key"] = key;

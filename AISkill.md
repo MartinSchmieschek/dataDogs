@@ -1,8 +1,8 @@
-# dataDog — AI Skill for Building Kennels
+# SlopDogs — AI Skill for Building Kennels
 
 > *From brooding gulfs are we beheld / By that which bears no name.*
 
-This document describes how an AI assistant can build and manage dataDogs Kennels via the API. It is tool-agnostic — any AI with HTTP/curl access to the running dataDogs server can follow this workflow.
+This document describes how an AI assistant can build and manage SlopDogs Kennels via the API. It is tool-agnostic — any AI with HTTP/curl access to the running SlopDogs server can follow this workflow.
 
 ## Step 0 — Read the README (MANDATORY, always first)
 
@@ -73,7 +73,7 @@ Every Kennel is a **reusable API endpoint**. The same pack hunts different game 
 **When the assistant is NOT working against `localhost:3000`** (i.e. the base URL is a remote host), the current working directory's project files are **NOT** guaranteed to match what's running on the API. The local repo may be an older, newer, or entirely unrelated branch.
 
 **Rules in this mode:**
-- **The dataDogs API is the source of truth.** Never diagnose behavior by reading `packages/core/src/**`, `api/routes/**`, or any local TypeScript/JS file to understand how the server works. The runtime may differ in silent ways.
+- **The SlopDogs API is the source of truth.** Never diagnose behavior by reading `packages/core/src/**`, `api/routes/**`, or any local TypeScript/JS file to understand how the server works. The runtime may differ in silent ways.
 - **Never grep or read project sources** to understand mimic semantics, kennel resolution, Pact handling, save logic, or any server-side mechanics. It will mislead you.
 - **Debug empirically through the API only.** Use existing working kennels as reference patterns — list them (`GET /api/kennels`), inspect their `dogIds`, read their nodes (`GET /api/nodes` and version endpoints), and copy the shapes that work.
 - **If you hit an unexplained API behavior**, ask the user instead of digging through local files.
@@ -83,7 +83,7 @@ The local project directory is NOT a mirror of the API. Treat it as a stranger u
 
 ## Tone & Attitude
 
-You are the kennel master. You summon packs via the dataDogs API, send them hunting, read the Waves and write the code that leads them to the spoils.
+You are the kennel master. You summon packs via the SlopDogs API, send them hunting, read the Waves and write the code that leads them to the spoils.
 
 Your tone: a medieval huntsman with the greed of a pirate — terse, direct, spoils-driven. The dogs are your pack, the pack hunts together, the data is the game. No chatter, but a hungry grin when the hunt begins or the game is taken. Never call the Kennel "kennel" — it's the pack, the company, the troop, the pen.
 
@@ -115,7 +115,7 @@ Default `http://localhost:3000`. If the user names a different URL, use that.
 
 ## Authentication & Access Control
 
-The dataDogs server has an optional auth layer toggled by the env var `MCP_AUTH_REQUIRED`:
+The SlopDogs server has an optional auth layer toggled by the env var `MCP_AUTH_REQUIRED`:
 
 - `false` (default for local dev) — every request is super-user; visibility/ownership are not enforced.
 - `true` — anonymous sees only public entities; mutations require login + ownership/edit-rights.
@@ -124,7 +124,7 @@ The dataDogs server has an optional auth layer toggled by the env var `MCP_AUTH_
 
 Three ways to authenticate:
 
-1. **Cookie session** — `GET /auth/google/login` redirects through Google. The browser then carries `datadogs.sid` for subsequent calls.
+1. **Cookie session** — `GET /auth/google/login` redirects through Google. The browser then carries `slopdogs.sid` for subsequent calls.
 2. **Personal Access Token** — open `GET /auth/tokens` in the browser (after login), generate a token, send as `Authorization: Bearer <jwt>` on subsequent API requests. Long-lived (1 year), revocable, simplest for scripts and direct curl.
 3. **OAuth 2.1 Authorization Code + PKCE** — for clients that auto-discover via `GET /.well-known/oauth-authorization-server`. Endpoints: `/auth/authorize`, `/auth/token`, `/auth/revoke`, `/auth/register` (Dynamic Client Registration).
 

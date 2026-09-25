@@ -7,7 +7,7 @@
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
-import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@datadogs/core';
+import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@slopdogs/core';
 
 /** JSON-Schema fragment for the optional lineDocs field — shared by create_node / save_node. */
 const LINE_DOCS_SCHEMA = {

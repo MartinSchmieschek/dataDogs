@@ -37,7 +37,7 @@ import {
     tileBBox,
     tileKeyString,
     featureInRadius,
-} from "@datadogs/core";
+} from "@slopdogs/core";
 import {
     fetchOverpassElementsWithFallback,
     overpassSettingsHeader,

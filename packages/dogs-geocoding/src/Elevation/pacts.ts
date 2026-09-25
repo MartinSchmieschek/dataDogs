@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface ElevationQuery {
     /** Comma-separated latitudes or single lat */

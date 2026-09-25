@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface BoredQuery {
     /** Typ: education, recreational, social, diy, charity, cooking, relaxation, music, busywork */

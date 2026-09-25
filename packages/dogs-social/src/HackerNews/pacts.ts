@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface HackerNewsQuery {
     /** Endpoint: top, new, best, ask, show, job — oder "item" fuer Einzeleintrag, "user" fuer Profil */

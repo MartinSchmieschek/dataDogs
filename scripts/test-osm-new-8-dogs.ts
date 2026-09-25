@@ -17,8 +17,8 @@ import {
     OsmPublicTransitStopsRetriever, OsmPublicTransitStopsPact,
     OsmShopsRetriever, OsmShopsPact,
     OsmSportsRecreationRetriever, OsmSportsRecreationPact,
-} from "@datadogs/dogs-geo";
-import type { IHuntingSeason, IHuntingDog } from "@datadogs/core";
+} from "@slopdogs/dogs-geo";
+import type { IHuntingSeason, IHuntingDog } from "@slopdogs/core";
 
 function mockSeason(pactClass: new () => IHuntingDog<unknown>, query: unknown): IHuntingSeason {
     const pactInstance = new pactClass();

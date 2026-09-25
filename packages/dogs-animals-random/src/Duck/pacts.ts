@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface DuckQuery {
     /** Ohne Effekt — Pact dient nur als Form-Anker */

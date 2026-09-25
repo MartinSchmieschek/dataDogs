@@ -1,5 +1,5 @@
 {
-  "name": "@datadogs/dogs-space",
+  "name": "@slopdogs/dogs-space",
   "version": "0.2.0-beta.0",
   "description": "Space: ISS position and solar system data from the Void",
   "main": "dist/index.js",
@@ -23,11 +23,8 @@
   },
   "license": "MIT",
   "private": true,
-  "peerDependencies": {
-    "@datadogs/core": "file:../core"
-  },
   "dependencies": {
-    "@datadogs/core": "file:../core"
+    "@slopdogs/core": "file:../core"
   },
   "scripts": {
     "build": "tsc"

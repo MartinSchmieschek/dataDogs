@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface DeckOfCardsQuery {
     /** Modus: newShuffled (neues gemischtes Deck), draw (Karten aus Deck ziehen), shuffle (reshuffle) */

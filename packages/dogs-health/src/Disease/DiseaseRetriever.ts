@@ -1,4 +1,4 @@
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable } from "@slopdogs/core";
 import { queryDisease } from "./diseaseApiClient";
 import type { DiseaseResult } from "./interfaces/diseaseTypes";
 import { DiseaseQueryPact, type DiseaseQuery } from "./pacts";

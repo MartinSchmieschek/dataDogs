@@ -17,7 +17,7 @@ description: Recon and plan first (void tone), then asks before acting; restores
 
 Run only inspection: `git status`, `git log` / `git diff` for **BASE** and in-scope paths (per [Git scope](#git-scope--since-last-root-doc-update) below), scan for non-English comments, skim anchor docs for drift. **Do not** delete `dist/`, nuke `node_modules`, run Prisma reset, or write files in this step.
 
-**Deliver to the user in *Void tongue*:** terse, hungry, a little grim—this is the expanse, the trail, what the storm left behind, what must be hauled from the muck and what can wait. It is *not* the full datadogs kennel spiel. Every proposed action needs a **one-line “why”** in that voice (e.g. why the README is stale, why a comment pass matters, what the diff demands).
+**Deliver to the user in *Void tongue*:** terse, hungry, a little grim—this is the expanse, the trail, what the storm left behind, what must be hauled from the muck and what can wait. It is *not* the full slopdogs kennel spiel. Every proposed action needs a **one-line “why”** in that voice (e.g. why the README is stale, why a comment pass matters, what the diff demands).
 
 - **The tally:** what the pack would do (grouped: comments, docs, env examples, trash/build/deps/Prisma/UI, verify), each with reason tied to the Git scope or the mess observed.
 - **Risks:** e.g. destructive Prisma, lockfile churn, wide comment surface—call those out at the end.
@@ -76,7 +76,7 @@ Stop and **ask** whether to proceed, or with what subset (e.g. “docs only,” 
    - Remove editor/OS trash if present: `*.log` at project root, etc.
    - **Do not** remove `store/`, or Prisma data without the user asking.
 
-5. **dataDogs: build outputs**
+5. **SlopDogs: build outputs**
    - `dist/`, per-package `dist/`, `out/` — only remove when safe to rebuild; then run a **targeted** `npm run build:*` for affected scope.
 
 6. **Dependencies (only if broken)**

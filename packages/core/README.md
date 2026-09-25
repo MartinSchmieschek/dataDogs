@@ -1,6 +1,6 @@
-# datadogs/core
+# slopdogs/core
 
-Kernpaket für das DataDogs-System - enthält die grundlegenden Komponenten für die Orchestrierung und Ausführung von Data-Processing-Einheiten (Dogs).
+Kernpaket für das SlopDogs-System - enthält die grundlegenden Komponenten für die Orchestrierung und Ausführung von Data-Processing-Einheiten (Dogs).
 
 ## Installation
 
@@ -9,7 +9,7 @@ Dieses Paket wird als lokale Dependency im gleichen Repo verwendet:
 ```json
 {
   "dependencies": {
-    "datadogs": "file:./packages/core"
+    "slopdogs": "file:./packages/core"
   }
 }
 ```
@@ -42,13 +42,13 @@ import {
   Dog,
   IHuntingDog,
   IHuntingSeason
-} from 'datadogs';
+} from 'slopdogs';
 ```
 
 ## Eigene Dogs erstellen
 
 ```typescript
-import { Dog, IHuntingSeason } from 'datadogs';
+import { Dog, IHuntingSeason } from 'slopdogs';
 
 class MyCustomDog extends Dog<MyDataType> {
   // Überschreibe name von Dog
@@ -78,7 +78,7 @@ class MyCustomDog extends Dog<MyDataType> {
 ## SerializedDog Factory
 
 ```typescript
-import { SerializedDog } from 'datadogs';
+import { SerializedDog } from 'slopdogs';
 
 const serializedDogFactory = async (ids: string[]): Promise<Array<SerializedDog<unknown>>> => {
   // Lade SerializedDog-Configs aus deiner Datenquelle

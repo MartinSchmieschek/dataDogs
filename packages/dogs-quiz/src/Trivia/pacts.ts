@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface TriviaQuery {
     /** Anzahl Fragen (1-50) — default 10 */

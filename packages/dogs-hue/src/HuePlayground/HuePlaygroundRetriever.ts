@@ -7,7 +7,7 @@
  *  — see HuePlaygroundDirector fer the full manifest of eldritch rites.
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
-import { Dog, IHuntingDog, IHuntingSeason } from "@datadogs/core";
+import { Dog, IHuntingDog, IHuntingSeason } from "@slopdogs/core";
 import { HueBridgeQueryPact, type HueBridgeQueryInput } from "./pacts";
 import { fetchHueBridgeSnapshot } from "./hueSnapshot";
 import { HuePlaygroundDirector } from "./HuePlaygroundDirector";

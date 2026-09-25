@@ -4,7 +4,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Breitengrad und optionales Datum fuer die Jahreszeitenabfrage */
 export interface SeasonQuery {

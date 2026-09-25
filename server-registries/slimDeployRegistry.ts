@@ -4,15 +4,15 @@
  * Lokal unter NODE_ENV=development wird stattdessen fullRegistry geladen.
  * @see server-registries/fullRegistry.ts für die volle Liste.
  */
-import { QueryRetriever, BodyRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@datadogs/core';
+import { QueryRetriever, BodyRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@slopdogs/core';
 import {
     RandomRecipesRetriever,
     RandomEveryThingRetriever,
     CountryFlagBlackLab,
     DishFlagBlackLab,
-} from '@datadogs/dogs-demo';
-import { TalkingDog, LayoutInputPact } from '@datadogs/dogs-talking';
-import { WarframeAlertsRetriever } from '@datadogs/dogs-warframe';
+} from '@slopdogs/dogs-demo';
+import { TalkingDog, LayoutInputPact } from '@slopdogs/dogs-talking';
+import { WarframeAlertsRetriever } from '@slopdogs/dogs-warframe';
 import {
     BloodhoundIsochroneRetriever,
     OsmLandmarksRetriever,
@@ -20,19 +20,19 @@ import {
     NearbyLandmarksPact,
     TrailRetriever,
     TrailQueryPact,
-} from '@datadogs/dogs-geo';
-import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
-import { WeatherRetriever, WeatherQueryPact } from '@datadogs/dogs-weather';
-import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-quality';
-import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@datadogs/dogs-geocoding';
-import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
-import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
-import { SpeciesRetriever, BiodiversityQueryPact } from '@datadogs/dogs-biodiversity';
-import { BirdRetriever, BirdQueryPact } from '@datadogs/dogs-birds';
-import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology';
-import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
-import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
-import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
+} from '@slopdogs/dogs-geo';
+import { PublicTransportRetriever, PublicTransportQueryPact } from '@slopdogs/dogs-public-transport';
+import { WeatherRetriever, WeatherQueryPact } from '@slopdogs/dogs-weather';
+import { AirQualityRetriever, AirQualityQueryPact } from '@slopdogs/dogs-air-quality';
+import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@slopdogs/dogs-geocoding';
+import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@slopdogs/dogs-wikipedia';
+import { SunRetriever, SunQueryPact } from '@slopdogs/dogs-sun';
+import { SpeciesRetriever, BiodiversityQueryPact } from '@slopdogs/dogs-biodiversity';
+import { BirdRetriever, BirdQueryPact } from '@slopdogs/dogs-birds';
+import { PhenologyRetriever, PhenologyQueryPact } from '@slopdogs/dogs-phenology';
+import { WebcamRetriever, WebcamQueryPact } from '@slopdogs/dogs-webcams';
+import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@slopdogs/dogs-regional-news';
+import { TransitTripRetriever, TransitTripQueryPact } from '@slopdogs/dogs-transit-trips';
 
 export const allBaseDogClasses = [
     TalkingDog,

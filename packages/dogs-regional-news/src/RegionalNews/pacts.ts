@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Query parameters for the regional news hunt */
 export interface RegionalNewsQuery {

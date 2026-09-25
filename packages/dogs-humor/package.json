@@ -1,5 +1,5 @@
 {
-  "name": "@datadogs/dogs-humor",
+  "name": "@slopdogs/dogs-humor",
   "version": "0.2.0-beta.0",
   "description": "Humor: Witze, Dad-Jokes und Chuck Norris aus dem Void",
   "main": "dist/index.js",
@@ -23,8 +23,7 @@
   },
   "license": "MIT",
   "private": true,
-  "peerDependencies": { "@datadogs/core": "file:../core" },
-  "dependencies": { "@datadogs/core": "file:../core" },
+  "dependencies": { "@slopdogs/core": "file:../core" },
   "scripts": { "build": "tsc" },
   "devDependencies": { "typescript": "^5.0.0" }
 }

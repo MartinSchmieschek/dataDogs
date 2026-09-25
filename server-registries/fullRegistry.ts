@@ -2,16 +2,16 @@
  * Volle Base-Dog- und Pact-Registry für development/production.
  * Nur von fullRegistry.ts importieren — nicht in main.ts bündeln, damit Integration weniger Module lädt.
  */
-import { QueryRetriever, BodyRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@datadogs/core';
+import { QueryRetriever, BodyRetriever, WebSocketChannelRetriever, ChannelLiveSnippetRetriever } from '@slopdogs/core';
 import {
     RandomRecipesRetriever,
     RandomEveryThingRetriever,
     CountryFlagBlackLab,
     DishFlagBlackLab,
     FoodPornRetriever,
-} from '@datadogs/dogs-demo';
-import { TalkingDog, LayoutInputPact } from '@datadogs/dogs-talking';
-import { WarframeAlertsRetriever } from '@datadogs/dogs-warframe';
+} from '@slopdogs/dogs-demo';
+import { TalkingDog, LayoutInputPact } from '@slopdogs/dogs-talking';
+import { WarframeAlertsRetriever } from '@slopdogs/dogs-warframe';
 import {
     BloodhoundRouteRetriever,
     BloodhoundIsochroneRetriever,
@@ -37,127 +37,127 @@ import {
     ParkingQueryPact,
     TrailRetriever,
     TrailQueryPact,
-} from '@datadogs/dogs-geo';
-import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@datadogs/dogs-hue';
-import { PublicTransportRetriever, PublicTransportQueryPact } from '@datadogs/dogs-public-transport';
-import { WeatherRetriever, WeatherQueryPact } from '@datadogs/dogs-weather';
-import { AirQualityRetriever, AirQualityQueryPact } from '@datadogs/dogs-air-quality';
-import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@datadogs/dogs-geocoding';
-import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@datadogs/dogs-wikipedia';
-import { SunRetriever, SunQueryPact } from '@datadogs/dogs-sun';
-import { SpeciesRetriever, BiodiversityQueryPact } from '@datadogs/dogs-biodiversity';
-import { BirdRetriever, BirdQueryPact } from '@datadogs/dogs-birds';
-import { PhenologyRetriever, PhenologyQueryPact } from '@datadogs/dogs-phenology';
-import { WebcamRetriever, WebcamQueryPact } from '@datadogs/dogs-webcams';
-import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@datadogs/dogs-regional-news';
-import { TransitTripRetriever, TransitTripQueryPact } from '@datadogs/dogs-transit-trips';
-import { AstronomyRetriever, AstronomyQueryPact } from '@datadogs/dogs-astronomy';
-import { WaterRetriever, WaterQueryPact } from '@datadogs/dogs-water';
-import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@datadogs/dogs-historical-weather';
-import { ChargingStationRetriever, ChargingQueryPact } from '@datadogs/dogs-charging';
-import { CurrencyRetriever, CurrencyQueryPact } from '@datadogs/dogs-currency';
-import { HolidayRetriever, HolidayQueryPact } from '@datadogs/dogs-holidays';
-import { WikiSearchRetriever, WikiSearchQueryPact } from '@datadogs/dogs-wiki-search';
-import { SeasonRetriever, SeasonQueryPact } from '@datadogs/dogs-season';
-import { IPGeoRetriever, IPGeoQueryPact } from '@datadogs/dogs-ip-geo';
-import { RandomFactRetriever, RandomFactQueryPact } from '@datadogs/dogs-random-fact';
-import { SpaceRetriever, SpaceQueryPact } from '@datadogs/dogs-space';
-import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@datadogs/dogs-open-library';
-import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@datadogs/dogs-github-trending';
-import { GeoPointPact } from '@datadogs/geo-pact';
+} from '@slopdogs/dogs-geo';
+import { HuePlaygroundRetriever, HueBridgeEnvRetriever, HueBridgeQueryPact } from '@slopdogs/dogs-hue';
+import { PublicTransportRetriever, PublicTransportQueryPact } from '@slopdogs/dogs-public-transport';
+import { WeatherRetriever, WeatherQueryPact } from '@slopdogs/dogs-weather';
+import { AirQualityRetriever, AirQualityQueryPact } from '@slopdogs/dogs-air-quality';
+import { GeocodingRetriever, GeocodingQueryPact, ElevationRetriever, ElevationQueryPact } from '@slopdogs/dogs-geocoding';
+import { WikiNearbyRetriever, WikiNearbyQueryPact } from '@slopdogs/dogs-wikipedia';
+import { SunRetriever, SunQueryPact } from '@slopdogs/dogs-sun';
+import { SpeciesRetriever, BiodiversityQueryPact } from '@slopdogs/dogs-biodiversity';
+import { BirdRetriever, BirdQueryPact } from '@slopdogs/dogs-birds';
+import { PhenologyRetriever, PhenologyQueryPact } from '@slopdogs/dogs-phenology';
+import { WebcamRetriever, WebcamQueryPact } from '@slopdogs/dogs-webcams';
+import { RegionalNewsRetriever, RegionalNewsQueryPact } from '@slopdogs/dogs-regional-news';
+import { TransitTripRetriever, TransitTripQueryPact } from '@slopdogs/dogs-transit-trips';
+import { AstronomyRetriever, AstronomyQueryPact } from '@slopdogs/dogs-astronomy';
+import { WaterRetriever, WaterQueryPact } from '@slopdogs/dogs-water';
+import { HistoricalWeatherRetriever, HistoricalWeatherQueryPact } from '@slopdogs/dogs-historical-weather';
+import { ChargingStationRetriever, ChargingQueryPact } from '@slopdogs/dogs-charging';
+import { CurrencyRetriever, CurrencyQueryPact } from '@slopdogs/dogs-currency';
+import { HolidayRetriever, HolidayQueryPact } from '@slopdogs/dogs-holidays';
+import { WikiSearchRetriever, WikiSearchQueryPact } from '@slopdogs/dogs-wiki-search';
+import { SeasonRetriever, SeasonQueryPact } from '@slopdogs/dogs-season';
+import { IPGeoRetriever, IPGeoQueryPact } from '@slopdogs/dogs-ip-geo';
+import { RandomFactRetriever, RandomFactQueryPact } from '@slopdogs/dogs-random-fact';
+import { SpaceRetriever, SpaceQueryPact } from '@slopdogs/dogs-space';
+import { OpenLibraryRetriever, OpenLibraryQueryPact } from '@slopdogs/dogs-open-library';
+import { GitHubTrendingRetriever, GitHubTrendingQueryPact } from '@slopdogs/dogs-github-trending';
+import { GeoPointPact } from '@slopdogs/geo-pact';
 import {
     JokeRetriever, JokeQueryPact,
     DadJokeRetriever, DadJokeQueryPact,
     ChuckNorrisRetriever, ChuckNorrisQueryPact,
-} from '@datadogs/dogs-humor';
+} from '@slopdogs/dogs-humor';
 import {
     CatFactRetriever, CatFactQueryPact,
     FoxRetriever, FoxQueryPact,
     DuckRetriever, DuckQueryPact,
-} from '@datadogs/dogs-animals-random';
+} from '@slopdogs/dogs-animals-random';
 import {
     DictionaryRetriever,
     DatamuseRetriever, DatamuseQueryPact,
     WordQueryPact,
-} from '@datadogs/dogs-dictionary';
+} from '@slopdogs/dogs-dictionary';
 import {
     QuoteRetriever, QuoteQueryPact,
     GutenbergRetriever, GutenbergQueryPact,
     WikidataRetriever, WikidataQueryPact,
-} from '@datadogs/dogs-knowledge';
+} from '@slopdogs/dogs-knowledge';
 import {
     StarWarsRetriever, RickMortyRetriever, HarryPotterRetriever, GhibliRetriever,
     PopCultureQueryPact,
-} from '@datadogs/dogs-pop-culture';
+} from '@slopdogs/dogs-pop-culture';
 import {
     MusicBrainzRetriever, MusicBrainzQueryPact,
     LyricsRetriever, LyricsQueryPact,
     RadioBrowserRetriever, RadioBrowserQueryPact,
-} from '@datadogs/dogs-music';
+} from '@slopdogs/dogs-music';
 import {
     F1Retriever, F1QueryPact,
     SportsDBRetriever, SportsDbQueryPact,
     ChessRetriever, ChessQueryPact,
-} from '@datadogs/dogs-sports';
+} from '@slopdogs/dogs-sports';
 import {
     NpmRetriever, NpmQueryPact,
     StackExchangeRetriever, StackExchangeQueryPact,
     GitHubPublicRetriever, GitHubPublicQueryPact,
-} from '@datadogs/dogs-dev';
+} from '@slopdogs/dogs-dev';
 import {
     AirportRetriever, AirportQueryPact,
     GeoNamesRetriever,
     WikivoyageRetriever, WikivoyageQueryPact,
-} from '@datadogs/dogs-travel';
+} from '@slopdogs/dogs-travel';
 import {
     TriviaRetriever, TriviaQueryPact,
     BoredRetriever, BoredQueryPact,
     RandomUserRetriever, RandomUserQueryPact,
-} from '@datadogs/dogs-quiz';
+} from '@slopdogs/dogs-quiz';
 import {
     BibleRetriever, BibleQueryPact,
     QuranRetriever, QuranQueryPact,
-} from '@datadogs/dogs-religion';
+} from '@slopdogs/dogs-religion';
 import {
     DiseaseRetriever, DiseaseQueryPact,
     OpenFdaRetriever, OpenFdaQueryPact,
-} from '@datadogs/dogs-health';
+} from '@slopdogs/dogs-health';
 import {
     CocktailRetriever, CocktailQueryPact,
     MealRetriever, MealQueryPact,
-} from '@datadogs/dogs-cuisine';
+} from '@slopdogs/dogs-cuisine';
 import {
     WaybackRetriever, WaybackQueryPact,
-} from '@datadogs/dogs-web-archive';
+} from '@slopdogs/dogs-web-archive';
 import {
     DogCeoRetriever, DogCeoQueryPact,
     PicsumRetriever, PicsumQueryPact,
     NasaApodRetriever, NasaApodQueryPact,
-} from '@datadogs/dogs-images';
+} from '@slopdogs/dogs-images';
 import {
     AgifyRetriever,
     NationalizeRetriever,
     GenderizeRetriever,
     NameQueryPact,
-} from '@datadogs/dogs-name-insights';
+} from '@slopdogs/dogs-name-insights';
 import {
     PokeApiRetriever, PokeApiQueryPact,
     DeckOfCardsRetriever, DeckOfCardsQueryPact,
     ScryfallRetriever, ScryfallQueryPact,
-} from '@datadogs/dogs-gaming';
+} from '@slopdogs/dogs-gaming';
 import {
     LibreTranslateRetriever, LibreTranslateQueryPact,
-} from '@datadogs/dogs-translate';
+} from '@slopdogs/dogs-translate';
 import {
     TvMazeRetriever, TvMazeQueryPact,
-} from '@datadogs/dogs-tv';
+} from '@slopdogs/dogs-tv';
 import {
     HackerNewsRetriever, HackerNewsQueryPact,
     LemmyRetriever, LemmyQueryPact,
-} from '@datadogs/dogs-social';
+} from '@slopdogs/dogs-social';
 import {
     CoinGeckoRetriever, CoinGeckoQueryPact,
-} from '@datadogs/dogs-crypto';
+} from '@slopdogs/dogs-crypto';
 
 export const allBaseDogClasses = [
     TalkingDog,

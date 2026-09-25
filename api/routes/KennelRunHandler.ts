@@ -10,7 +10,7 @@ import {
     type ICacheHandler,
     type VmGlobalCapabilityContext,
     isRuntimeLogVerbose,
-} from '@datadogs/core';
+} from '@slopdogs/core';
 import { RESERVED_TOP_LEVEL_SEGMENTS } from './spaRouteConstants';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
@@ -99,7 +99,7 @@ export class KennelRunHandler {
      *   every SerializedDog so registered VM-Global-Capabilities can tenant-scope
      *   their bridges (e.g. `jsonStore` per-user key prefix).
      * @param vmTimeoutMs Optional per-run override for the SerializedDog VM execution
-     *   timeout (ms). Resolution order: vmTimeoutMs param > DATADOGS_VM_TIMEOUT_MS env >
+     *   timeout (ms). Resolution order: vmTimeoutMs param > SLOPDOGS_VM_TIMEOUT_MS env >
      *   10000ms default. Run-Time-Param (Welle 12 Korrektur) -- nicht in IKennelConfig.
      */
     public async runKennel(

@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 export interface ScryfallQuery {
     /** Modus: named (exact/fuzzy), search (Volltext), random */

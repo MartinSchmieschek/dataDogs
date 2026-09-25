@@ -8,8 +8,8 @@
  * =========================================================================
  */
 
-import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketCenter, GEO_CACHE_TTL_OSM_MS } from "@datadogs/core";
-import type { GeoPoint } from "@datadogs/geo-pact";
+import { Dog, IHuntingDog, IHuntingSeason, type ICacheHandler, type ICacheable, geoBucketCenter, GEO_CACHE_TTL_OSM_MS } from "@slopdogs/core";
+import type { GeoPoint } from "@slopdogs/geo-pact";
 import { calculateRoute, processRouteResponse } from "./routeCalculator";
 import type { BloodhoundRouteResult, RouteSegment } from "./interfaces/bloodhoundTypes";
 import { BloodhoundRouteQueryPact, BloodhoundProfile, DEFAULT_BLOODHOUND_PROFILE, type BloodhoundRouteQuery, type BloodhoundPoint } from "./pacts";

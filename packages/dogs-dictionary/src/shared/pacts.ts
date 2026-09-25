@@ -1,4 +1,4 @@
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /**
  * Gemeinsamer Wort-Query-Pact fuer alle Wort-basierten Hunde dieses Packages.

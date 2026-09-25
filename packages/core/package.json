@@ -1,7 +1,7 @@
 {
-  "name": "@datadogs/core",
+  "name": "@slopdogs/core",
   "version": "0.2.0-beta.0",
-  "description": "Kernpaket für das DataDogs-System - enthält die grundlegenden Komponenten für die Orchestrierung und Ausführung von Data-Processing-Einheiten (Dogs)",
+  "description": "Kernpaket für das SlopDogs-System - enthält die grundlegenden Komponenten für die Orchestrierung und Ausführung von Data-Processing-Einheiten (Dogs)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

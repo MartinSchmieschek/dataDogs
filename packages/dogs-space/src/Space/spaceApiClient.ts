@@ -63,11 +63,11 @@ async function fetchIss(): Promise<IssData | null> {
     try {
         const [posRes, crewRes] = await Promise.all([
             fetch(ISS_POSITION_URL, {
-                headers: { "Accept": "application/json", "User-Agent": "dataDogs/0.1" },
+                headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
                 signal: controller.signal,
             }),
             fetch(ISS_PEOPLE_URL, {
-                headers: { "Accept": "application/json", "User-Agent": "dataDogs/0.1" },
+                headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
                 signal: controller.signal,
             }),
         ]);
@@ -110,7 +110,7 @@ async function fetchBody(bodyName: string): Promise<BodyData> {
     try {
         const url = `${SOLAR_BODY_URL}/${encodeURIComponent(bodyName.toLowerCase())}`;
         const res = await fetch(url, {
-            headers: { "Accept": "application/json", "User-Agent": "dataDogs/0.1" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
             signal: controller.signal,
         });
 
@@ -146,7 +146,7 @@ async function fetchPlanetsOverview(): Promise<{ planets: PlanetSummary[] }> {
     try {
         const url = `${SOLAR_BODY_URL}?filter[]=isPlanet,eq,true&data=englishName,gravity,meanRadius,sideralOrbit,discoveredBy`;
         const res = await fetch(url, {
-            headers: { "Accept": "application/json", "User-Agent": "dataDogs/0.1" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
             signal: controller.signal,
         });
 

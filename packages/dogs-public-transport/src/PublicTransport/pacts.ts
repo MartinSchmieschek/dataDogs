@@ -13,7 +13,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** GPS-Koordinaten fuer die Suche nach nahegelegenen Haltestellen */
 export interface PublicTransportQuery {

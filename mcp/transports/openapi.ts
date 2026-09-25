@@ -72,10 +72,10 @@ export function createActionsRouter(deps: ToolDeps): Router {
         const spec: any = {
             openapi: '3.1.0',
             info: {
-                title: 'dataDogs Actions',
+                title: 'SlopDogs Actions',
                 version: '0.1.0',
                 description:
-                    'Build and call dataDogs kennels — reusable hunting packs that fetch and combine data from external sources.',
+                    'Build and call SlopDogs kennels — reusable hunting packs that fetch and combine data from external sources.',
             },
             servers: [{ url: `${base}/actions` }],
             paths: {},
@@ -145,9 +145,9 @@ export function createActionsRouter(deps: ToolDeps): Router {
         const base = baseUrl(req);
         const instructions = await loadSkill(deps.projectRoot);
         res.json({
-            name: 'dataDogs — Kennel Master',
+            name: 'SlopDogs — Kennel Master',
             description:
-                'Build and call dataDogs kennels: hunting packs that fetch and combine data from external APIs.',
+                'Build and call SlopDogs kennels: hunting packs that fetch and combine data from external APIs.',
             instructions,
             capabilities: { web_browsing: false, dalle: false, code_interpreter: false },
             actions: {
@@ -172,7 +172,7 @@ export function createActionsRouter(deps: ToolDeps): Router {
                 'What kennels can I see?',
                 'Run the public weather kennel for Munich',
                 'Build me a kennel that combines weather and species data near a coordinate',
-                'Show me the dataDogs README',
+                'Show me the SlopDogs README',
             ],
         });
     });
@@ -195,7 +195,7 @@ export function createActionsRouter(deps: ToolDeps): Router {
             const base = baseUrl(req);
             res.setHeader(
                 'WWW-Authenticate',
-                `Bearer realm="dataDogs Actions", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+                `Bearer realm="SlopDogs Actions", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
             );
             res.status(401).json({ error: 'unauthorized' });
             return;

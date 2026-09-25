@@ -9,7 +9,7 @@
  * =========================================================================
  */
 
-import { createPact } from "@datadogs/core";
+import { createPact } from "@slopdogs/core";
 
 /** Query parameters for the bird observation hunt */
 export interface BirdQuery {

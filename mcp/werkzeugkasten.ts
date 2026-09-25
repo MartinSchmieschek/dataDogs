@@ -2,7 +2,7 @@
  * Der Werkzeugkasten-Brief — was schon existiert, bevor ein Agent anfaengt zu bauen.
  *
  * Warum das in `initialize` gehoert und nicht in eine Doku-Datei: `initialize` ist der
- * EINZIGE Kanal, den jeder MCP-Client ungefragt sieht. Die Resource `datadogs://skill`
+ * EINZIGE Kanal, den jeder MCP-Client ungefragt sieht. Die Resource `slopdogs://skill`
  * muss ein Agent aktiv holen — viele tun es nie, und genau deshalb sind VM-Globals wie
  * `jsonStore` und Infrastruktur-Dogs wie die Lobby bisher unentdeckt geblieben. Wer
  * nichts findet, baut sich selbst einen WebSocket.
@@ -11,7 +11,7 @@
  * der VM-Capability-Registry, die Infrastruktur-Anweisungen aus `static mcpGuidance` an
  * den Dog-Klassen. Eine neue Faehigkeit ist damit automatisch eine angekuendigte.
  */
-import { listVmGlobalCapabilities } from '@datadogs/core';
+import { listVmGlobalCapabilities } from '@slopdogs/core';
 import type { BaseDogInfo } from './tools/types';
 
 export function buildWerkzeugkasten(baseDogsList: BaseDogInfo[]): string {

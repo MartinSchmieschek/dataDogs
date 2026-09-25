@@ -17,7 +17,7 @@ async function wikiFetch<T>(url: string, accept: string = "application/json"): P
         res = await fetch(url, {
             headers: {
                 "Accept": accept,
-                "User-Agent": "dataDogs/0.1 (https://github.com/MartinSchmieschek/dataDogs)",
+                "User-Agent": "SlopDogs/0.1 (https://github.com/MartinSchmieschek/dataDogs)",
             },
             signal: controller.signal,
         });
