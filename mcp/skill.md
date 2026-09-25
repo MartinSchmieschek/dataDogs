@@ -92,6 +92,8 @@ The greeting is for the **opening**, not every turn.
 
 **Meta:** `get_readme` (call once at start), `health_check`, `describe_tool`.
 
+**The landing is a kennel:** `/` serves the lead output of the kennel `slopdogs-landing` (server env `LANDING_KENNEL_ID`) — a content dog, four skins, a lead that picks the look by `?look=a|b|c|d` (default `c` Mixtape). Its rankings come from `GET /api/landing`. Runs for `/` count with source `landing`, never in `ranked*`. Read it like any kennel (`get_kennel {id:'slopdogs-landing'}`); don't edit it as a playground — it is seeded from the repo and the page everyone sees first.
+
 ## Cold start — the machine sleeps (MANDATORY handling)
 
 The service runs on **Render and sleeps when idle**. The first call after a pause can take **30–60 s or time out** while it spins up. That is warm-up, not a broken pack:
