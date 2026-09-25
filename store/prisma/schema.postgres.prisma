@@ -51,6 +51,31 @@ model Dog {
   @@index([type, lineageId])
 }
 
+// Aufruf-Zaehler je Kennel-Lineage, Tag (UTC, 'YYYY-MM-DD') und Quelle. Reine Zaehler:
+// keine IP, kein User-Agent, keine Identitaet. Keine FK auf Dog: die lineageId ist dort
+// nicht eindeutig (jede Version traegt sie), und Kennel + Stats duerfen unabhaengig sterben.
+model KennelCallDaily {
+  lineageId  String
+  day        String   // 'YYYY-MM-DD' in UTC — String, damit SQLite und Postgres gleich vergleichen
+  source     String   // public | api-execute | mcp-execute | api-run | mcp-run | mcp-snapshot | mcp-build | swagger | unknown
+  count      Int      @default(0)
+  leadFailed Int      @default(0)   // Laeufe, deren Lead-Dog ein error-Brandzeichen trug
+
+  @@id([lineageId, day, source])
+  @@index([day])                    // 30-Tage-Fenster
+}
+
+// Eine Bewertung je Nutzer und Kennel-Lineage. userId = Auth-User.id (andere DB, keine FK).
+model KennelRating {
+  lineageId String
+  userId    String
+  stars     Int                      // 1..5, in der Anwendung geprueft
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([lineageId, userId])
+}
+
 // ---------------------------------------------------------------------------
 // Postgres-Single-DB-Mode: alle Tabellen liegen in derselben physischen DB.
 // Cache-, JSON-Storage- UND Auth-Schemas (store/prisma-cache,

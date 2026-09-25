@@ -4,9 +4,17 @@
 // Now the lineage branches like cursed coral — lineageId binds incarnations, parentId traces ancestry.
 import { PrismaClient, Prisma } from '@prisma/client';
 import { IStore } from './IStore';
+import {
+  IKennelStatsStore,
+  RANKED_CALL_SOURCES,
+  type KennelCallAggregate,
+  type KennelCallDelta,
+  type KennelRatingAggregate,
+  type KennelRatingHistogram,
+} from './IKennelStatsStore';
 import path from 'path';
 
-export class PrismaStore implements IStore {
+export class PrismaStore implements IStore, IKennelStatsStore {
   private prisma: PrismaClient;
 
   /**
@@ -536,6 +544,104 @@ export class PrismaStore implements IStore {
   /** Cast the entity overboard — banished to the void, irrecoverable. */
   public async delete(id: string): Promise<void> {
     await this.prisma.dog.delete({ where: { id } });
+  }
+
+  // --- Aufrufe und Sterne je Kennel-Lineage (P4, IKennelStatsStore) ---
+
+  /**
+   * Ein Statement je Delta, alle Deltas eines Flushs in EINER Transaktion. `ON CONFLICT … +
+   * excluded` addiert atomar — auch wenn zwei Prozesse (Deploy-Ueberlappung) gleichzeitig
+   * flushen. Kein Prisma-`upsert` mit `increment`: ob daraus natives ON CONFLICT wird, ist
+   * versionsabhaengig, und SELECT+INSERT rennt in P2002.
+   */
+  public async incrementKennelCalls(deltas: KennelCallDelta[]): Promise<void> {
+    if (deltas.length === 0) return;
+    await this.prisma.$transaction(deltas.map((d) => this.prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "KennelCallDaily" ("lineageId", "day", "source", "count", "leadFailed")
+      VALUES (${d.lineageId}, ${d.day}, ${d.source}, ${d.count}, ${d.leadFailed})
+      ON CONFLICT ("lineageId", "day", "source") DO UPDATE SET
+        "count"      = "KennelCallDaily"."count"      + excluded."count",
+        "leadFailed" = "KennelCallDaily"."leadFailed" + excluded."leadFailed"
+    `)));
+  }
+
+  /**
+   * `CAST(… AS INTEGER)`: Postgres liefert SUM(integer) als bigint -> Prisma-BigInt; Number()
+   * macht beide Wege gleich. `"day" >= 'YYYY-MM-DD'` vergleicht lexikographisch korrekt.
+   */
+  public async readKennelCallAggregates(sinceDay: string, lineageIds?: string[]): Promise<KennelCallAggregate[]> {
+    if (lineageIds && lineageIds.length === 0) return [];
+    const ranked = Prisma.join([...RANKED_CALL_SOURCES]);
+    const where = lineageIds ? Prisma.sql`WHERE "lineageId" IN (${Prisma.join(lineageIds)})` : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+      SELECT "lineageId",
+             CAST(SUM("count") AS INTEGER)                                                          AS "total",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "count" ELSE 0 END) AS INTEGER)           AS "last30d",
+             CAST(SUM("leadFailed") AS INTEGER)                                                     AS "leadFailed",
+             CAST(SUM(CASE WHEN "source" IN (${ranked}) THEN "count" ELSE 0 END) AS INTEGER)        AS "rankedTotal",
+             CAST(SUM(CASE WHEN "source" IN (${ranked}) AND "day" >= ${sinceDay} THEN "count" ELSE 0 END) AS INTEGER) AS "ranked30d"
+      FROM "KennelCallDaily"
+      ${where}
+      GROUP BY "lineageId"
+    `);
+    return rows.map((r) => ({
+      lineageId: String(r.lineageId),
+      total: Number(r.total ?? 0),
+      last30d: Number(r.last30d ?? 0),
+      leadFailed: Number(r.leadFailed ?? 0),
+      rankedTotal: Number(r.rankedTotal ?? 0),
+      ranked30d: Number(r.ranked30d ?? 0),
+    }));
+  }
+
+  /** Anzahl und Summe je Lineage — der Mittelwert entsteht in JS (Postgres-AVG waere Decimal). */
+  public async readKennelRatingAggregates(lineageIds?: string[]): Promise<KennelRatingAggregate[]> {
+    if (lineageIds && lineageIds.length === 0) return [];
+    const where = lineageIds ? Prisma.sql`WHERE "lineageId" IN (${Prisma.join(lineageIds)})` : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+      SELECT "lineageId", CAST(COUNT(*) AS INTEGER) AS "count", CAST(SUM("stars") AS INTEGER) AS "sum"
+      FROM "KennelRating" ${where} GROUP BY "lineageId"
+    `);
+    return rows.map((r) => ({ lineageId: String(r.lineageId), count: Number(r.count ?? 0), sum: Number(r.sum ?? 0) }));
+  }
+
+  public async readKennelRatingHistogram(lineageId: string): Promise<KennelRatingHistogram> {
+    const rows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+      SELECT "stars", CAST(COUNT(*) AS INTEGER) AS "n" FROM "KennelRating" WHERE "lineageId" = ${lineageId} GROUP BY "stars"
+    `);
+    const histogram: KennelRatingHistogram = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const r of rows) {
+      const stars = Number(r.stars);
+      if (stars >= 1 && stars <= 5) histogram[stars as 1 | 2 | 3 | 4 | 5] = Number(r.n ?? 0);
+    }
+    return histogram;
+  }
+
+  public async readKennelRating(lineageId: string, userId: string): Promise<number | null> {
+    const row = await this.prisma.kennelRating.findUnique({
+      where: { lineageId_userId: { lineageId, userId } },
+      select: { stars: true },
+    });
+    return row?.stars ?? null;
+  }
+
+  public async upsertKennelRating(lineageId: string, userId: string, stars: number): Promise<void> {
+    await this.prisma.kennelRating.upsert({
+      where: { lineageId_userId: { lineageId, userId } },
+      create: { lineageId, userId, stars },
+      update: { stars },
+    });
+  }
+
+  public async deleteKennelRating(lineageId: string, userId: string): Promise<boolean> {
+    return (await this.prisma.kennelRating.deleteMany({ where: { lineageId, userId } })).count > 0;
+  }
+
+  public async deleteKennelStats(lineageId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.kennelCallDaily.deleteMany({ where: { lineageId } }),
+      this.prisma.kennelRating.deleteMany({ where: { lineageId } }),
+    ]);
   }
 
   /** Sever the connection to the deep — the anchor is raised, the voyage is done. */
