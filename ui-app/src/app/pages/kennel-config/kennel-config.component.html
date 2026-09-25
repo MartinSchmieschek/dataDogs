@@ -3,7 +3,7 @@
     <app-loading-indicator />
   }
 
-  <a [routerLink]="['/kennel', kennelId]" class="back-link">← Zurück zum Kennel</a>
+  <a [routerLink]="['/kennels', kennelId]" class="back-link">← Zurück zum Kennel</a>
   <h1>Kennel Editor: {{ kennelId }}</h1>
 
   @if (error()) {
@@ -157,7 +157,7 @@
         <button class="btn-save" (click)="save()" [disabled]="saving()">
           {{ saving() ? 'Speichert...' : 'Speichern' }}
         </button>
-        <a [routerLink]="['/kennel', kennelId]" class="btn-secondary">Zurück zum Kennel</a>
+        <a [routerLink]="['/kennels', kennelId]" class="btn-secondary">Zurück zum Kennel</a>
       </div>
 
       @if (timelineVersions().length > 1) {

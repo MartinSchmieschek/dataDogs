@@ -13,7 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, of } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, map, switchMap, tap } from 'rxjs/operators';
 import {
@@ -31,6 +31,7 @@ import { KennelScenicParallaxBackdropComponent } from '../../components/kennel-s
 import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
+import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
 import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
 import { VisibilityBadgeComponent } from '../../components/visibility-badge/visibility-badge.component';
 import { AuthService } from '../../services/auth.service';
@@ -116,6 +117,7 @@ function splitKennelDescForHighlight(text: string, query: string): KennelDescHig
 export class KennelListComponent implements OnInit, OnDestroy {
   private kennelService = inject(KennelService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private errorVideoPopup = inject(ErrorVideoPopupService);
   private backdropDrive = inject(BackdropDriveService);
   private auth = inject(AuthService);
@@ -127,6 +129,11 @@ export class KennelListComponent implements OnInit, OnDestroy {
 
   /** Skip the first auth-effect trigger so we don't double-load alongside ngOnInit. */
   private skipFirstAuthEffect = true;
+
+  /** Skip the first queryParamMap emission — its `q` is already applied before ngOnInit's reload(). */
+  private skipFirstQueryParamsEffect = true;
+  /** `?new=1` seen but auth state not ready yet — resolved by the auth-gated effect below. */
+  private pendingNewFromQuery = signal(false);
 
   /** iOS: Hinweis ausgeblendet ohne Erlaubnis. */
   compassPromptDismissed = signal(false);
@@ -183,6 +190,35 @@ export class KennelListComponent implements OnInit, OnDestroy {
       if (!_u) this.onlyMine.set(false);
       this.reload();
     }, { allowSignalWrites: true });
+
+    // `?new=1` in der URL öffnet das Anlegen-Formular — angemeldet direkt, sonst erst nach Login.
+    // Auth-gated, weil `auth.isReady()` beim ersten Tick noch false sein kann.
+    effect(() => {
+      if (!this.pendingNewFromQuery()) return;
+      if (!this.auth.isReady()) return;
+      this.pendingNewFromQuery.set(false);
+      if (this.auth.user()) {
+        this.showCreateForm.set(true);
+      } else {
+        this.auth.login('/kennels?new=1');
+      }
+    }, { allowSignalWrites: true });
+
+    // `?q=` in der URL übernimmt die Suche; ngOnInit's reload() lädt danach die erste Seite,
+    // deshalb ruft nur eine spätere (nicht die erste) Emission reload() selbst auf.
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const isFirst = this.skipFirstQueryParamsEffect;
+      this.skipFirstQueryParamsEffect = false;
+      const q = params.get('q');
+      if (q !== null) {
+        this.searchQuery.set(q);
+        this.appliedQuery.set(q);
+        if (!isFirst) this.reload();
+      }
+      if (params.get('new') === '1') {
+        this.pendingNewFromQuery.set(true);
+      }
+    });
 
     // Sentinel am Listenende beobachten. Läuft neu, sobald das Element erscheint
     // oder verschwindet (alles geladen / Fehler); die Registrierung endet mit der Komponente.
@@ -417,9 +453,9 @@ export class KennelListComponent implements OnInit, OnDestroy {
     return kennel.lineageId || kennel.id;
   }
 
-  /** `/:kennelId` plus gespeicherte `defaultQuery` (für Anzeige und `window.open`). */
+  /** `/k/:kennelId` plus gespeicherte `defaultQuery` (für Anzeige und `window.open`). */
   private listPublicExecutePath(kennel: IKennelConfig): string {
-    const path = `/${encodeURIComponent(this.kennelRef(kennel))}`;
+    const path = publicKennelPath(this.kennelRef(kennel));
     const dq = kennel.defaultQuery;
     if (!dq || typeof dq !== 'object') return path;
     const params = new URLSearchParams();
@@ -459,11 +495,11 @@ export class KennelListComponent implements OnInit, OnDestroy {
   onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
     const ref = this.kennelRef(kennel);
     if (action === 'edit') {
-      void this.router.navigate(['/kennel', ref, 'edit']);
+      void this.router.navigate(['/kennels', ref, 'edit']);
       return;
     }
     if (action === 'share') {
-      const url = new URL(`/kennel/${encodeURIComponent(ref)}`, window.location.origin).href;
+      const url = apiAbsoluteUrl(this.listPublicExecutePath(kennel));
       const title = kennel.name || ref;
       const payload = { title, text: `${title} – SlopDogs`, url };
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
@@ -480,15 +516,15 @@ export class KennelListComponent implements OnInit, OnDestroy {
       return;
     }
     if (action === 'swagger') {
-      window.open(apiAbsoluteUrl(`/api/kennels/${ref}/docs`), '_blank', 'noopener');
+      window.open(apiAbsoluteUrl(publicKennelDocsPath(ref)), '_blank', 'noopener');
       return;
     }
     if (action === 'swaggerJson') {
-      window.open(apiAbsoluteUrl(`/api/kennels/${ref}/swagger.json`), '_blank', 'noopener');
+      window.open(apiAbsoluteUrl(publicKennelOpenApiPath(ref)), '_blank', 'noopener');
       return;
     }
     if (action === 'waves') {
-      void this.router.navigate(['/kennel', ref]);
+      void this.router.navigate(['/kennels', ref]);
       return;
     }
     if (action === 'delete') {
@@ -571,7 +607,7 @@ export class KennelListComponent implements OnInit, OnDestroy {
         if (res.ok) {
           // After create, the returned id is the lineageId (user-chosen kennel ID).
           const ref = res.data?.lineageId || res.id || data.id;
-          this.router.navigate(['/kennel', ref, 'edit']);
+          this.router.navigate(['/kennels', ref, 'edit']);
         }
       },
       error: (err) => {

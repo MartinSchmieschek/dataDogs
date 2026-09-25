@@ -5,6 +5,7 @@ import { map } from 'rxjs/operators';
 import { IKennelConfig, KennelVersionEntry } from '../models/kennel-config.model';
 import { Waves } from '../models/dog-entry.model';
 import { apiAbsoluteUrl } from '../config/api-base';
+import { publicKennelPath } from '../config/public-paths';
 
 export interface ApiResponse<T = any> {
   ok: boolean;
@@ -126,7 +127,7 @@ export class KennelService {
    * Lead-Yield: JSON-Objekt oder String (HTML / Markdown / sonstiger Text).
    * Content-Type steuert die Auswertung (application/json vs. text/*).
    *
-   * Kennel-Ausführung geht immer über den öffentlichen Endpoint `/:kennelId` auf Express —
+   * Kennel-Ausführung geht immer über den öffentlichen Endpoint `/k/:kennelId` auf Express —
    * nicht über `/api/kennels/.../run|execute`. Deshalb absolute URL (apiAbsoluteUrl),
    * damit der Request am Angular-Dev-Proxy (`/api`, `/save`) vorbei direkt ans Backend geht.
    */
@@ -138,7 +139,7 @@ export class KennelService {
       });
     }
     const hasBody = body !== undefined && body !== null;
-    const url = apiAbsoluteUrl(`/${encodeURIComponent(id)}`);
+    const url = apiAbsoluteUrl(publicKennelPath(id));
     const opts = {
       params,
       observe: 'response' as const,

@@ -18,6 +18,7 @@ import { collectDescendantBranchNodeIds } from '../../components/vis-network/gra
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { apiAbsoluteUrl } from '../../config/api-base';
+import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
 import { WavesAppBarComponent, AppBarStatus, OverflowItem } from './components/waves-app-bar.component';
 import { WavesInspectorComponent, InspectorTab } from './components/waves-inspector.component';
 import { WavesJsonEditorComponent } from './components/waves-json-editor.component';
@@ -238,19 +239,19 @@ export class WavesViewerComponent implements OnInit {
 
   /** Swagger UI & OpenAPI — direkt Express :3000 (neuer Tab, kein Angular-Origin). */
   get swaggerDocsUrl(): string {
-    return this.appendVersionParam(apiAbsoluteUrl(`/api/kennels/${this.kennelId}/docs`));
+    return this.appendVersionParam(apiAbsoluteUrl(publicKennelDocsPath(this.kennelId)));
   }
 
   get swaggerJsonUrl(): string {
-    return this.appendVersionParam(apiAbsoluteUrl(`/api/kennels/${this.kennelId}/swagger.json`));
+    return this.appendVersionParam(apiAbsoluteUrl(publicKennelOpenApiPath(this.kennelId)));
   }
 
   /**
-   * Öffentlicher Kennel-Endpunkt (Lead-Yield): GET `/:kennelId` auf dem Express-Server —
+   * Öffentlicher Kennel-Endpunkt (Lead-Yield): GET `/k/:kennelId` auf dem Express-Server —
    * nicht `/api/kennels/.../run`. Query-Parameter aus dem Panel werden angehängt.
    */
   get kennelRunBrowserUrl(): string {
-    const base = apiAbsoluteUrl(`/${encodeURIComponent(this.kennelId)}`);
+    const base = apiAbsoluteUrl(publicKennelPath(this.kennelId));
     const q = this.buildQueryRecord();
     const keys = Object.keys(q).filter((k) => k.trim());
     const params = new URLSearchParams();
@@ -262,7 +263,7 @@ export class WavesViewerComponent implements OnInit {
   }
 
   ngOnInit() {
-    // Route-Reuse: bei Wechsel /kennel/A → /kennel/B bleibt dieselbe Component-Instanz —
+    // Route-Reuse: bei Wechsel /kennels/A → /kennels/B bleibt dieselbe Component-Instanz —
     // snapshot.params wäre sonst stale und PUT/GET würden den falschen Kennel treffen.
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((pm) => {
       const id = pm.get('id');

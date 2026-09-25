@@ -1,5 +1,5 @@
 /**
- * Dev-Proxy: /api und /save → Backend (PUBLIC_API_BASE_URL oder PORT aus Repo-Root-.env).
+ * Dev-Proxy: /api, /save und /k → Backend (PUBLIC_API_BASE_URL oder PORT aus Repo-Root-.env).
  */
 const path = require('path');
 const fs = require('fs');
@@ -26,4 +26,5 @@ if (pub) {
 module.exports = {
   '/api': { target, secure: false, changeOrigin: true },
   '/save': { target, secure: false, changeOrigin: true },
+  '/k': { target, secure: false, changeOrigin: true },
 };
