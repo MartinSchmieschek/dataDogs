@@ -1328,6 +1328,9 @@ Warum der Core ueberhaupt: `letOut` ist die einzige Stelle, an der ein Dog-Lauf 
 
 #### 4b.2 Core-Vertrag (woertlich)
 
+> **Gemessen 2026-09-26 (P4b, StartupTest 14, --expose-gc):** 403-406 Byte je pending-Eintrag (rund 0,4 MB je 1 000 Eintraege) — rund das Doppelte der Rechnung (~200 Byte), aber unter der 1-MB-Schwelle aus 4b.11; Deckel  bleibt 10 000 (voll ≈ 4 MB, Amars schlimmster Fall mit 4 000 Eintraegen ≈ 1,6 MB, beides aus dem Messwert gerechnet).  20 nach einem 20-Dog-Lauf und nach 100 Laeufen ohne Flush (gleiche Schluessel).  1,2-1,3 µs je Dog. RSS vor/nach einer Welle 527->556 MB (Worker-Isolates, voruebergehend), heapUsed +0,25 bis 3 MB.
+
+
 ```ts
 // packages/core/src/core/entities/IDogRunObserver.ts (neu, Export in packages/core/src/index.ts)
 export type DogRunOutcome = 'ok' | 'error' | 'timeout' | 'oom';
@@ -2263,7 +2266,7 @@ Freigabe 10-0 -> git commit (Identitaet Martin Schmieschek <Martin.Schmieschek@g
 | R10 | `mergeQueryParams` lowercased Werte (`channelId` "AbC" -> "abc") | gemessen im Code :90 | vorbestehend, nicht Teil von A030; notiert |
 | R11 | Render-Kaltstart bis 150 s trifft auch die statische Landing (HTML kommt aus dem Prozess) | gemessen (Boreal G, Follie 1.5) | Landing zeigt `waking`; Wecker ausserhalb der Seite ist eine eigene Entscheidung (8.9) |
 | R12 | Landing-Optik steht nicht — P5 Commit 1 wartet | offen | P1-P4c sind davon unabhaengig; P5 zuletzt vor P6 |
-| R13 | P4b-Speicherbedarf des Dog-Counters ist eine Rechnung aus Annahmen (~200 Byte je Schluessel, ~800 KB schlimmster Fall) | gerechnet, nicht gemessen | Messpunkt 4b.10 Test 14; Deckel `KENNEL_CALL_MAX_PENDING` gemeinsam; Korrektur in 4b.2 nach Messung |
+| R13 | ~~P4b-Speicherbedarf nur gerechnet~~ **gemessen** (4b.2): 403-406 Byte je pending-Eintrag, Deckel 10 000 ≈ 4 MB | gemessen 2026-09-26 (StartupTest 14) | erledigt |
 | R18 | P4c: ein Key kann von fremdem Dog-Code gegen seine **erlaubte** Domain missbraucht werden (Kontingent verbrennen) | gefolgert (Nira T2) | Quota je Key; Allowlist Pflicht; kein Grant ohne Quota; Restrisiko bleibt und ist dokumentiert |
 | R19 | P4c: Env-Leak (`KEYSTORE_MASTER_KEY_*`) zieht alle Keys | gefolgert (Nira T5) | Master-Key nur in Render-Env; Rotation V1 -> V2 vorbereitet; kein Klartext-Backup |
 | R20 | P4c: `console` ueber die Bridge kostet einen RPC je Log-Zeile | gefolgert | Verbose in prod aus; Messpunkt: 20-Dog-Kennel mit je 10 Log-Zeilen, Wellendauer vorher/nachher |
