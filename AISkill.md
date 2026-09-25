@@ -43,7 +43,7 @@ The wave display shows data flow **indented with arrows** — `<-` shows where t
 
 Each idea: a name, a one-liner about what you see with it, then the waves compact. This inspires — not a bare dog list.
 
-**The trail remains** — make clear to the user that the spoils don't vanish. Every kennel has its own API endpoint (`localhost:3000/<kennel-id>`) — once built, always callable. The data the pack salvages from the Void is not a one-time catch: it has an endpoint, an address, a trail that stays. You can embed it in other apps, call it via curl, open it in the browser. That is the promise: **What has been hunted once is easy to find again.**
+**The trail remains** — make clear to the user that the spoils don't vanish. Every kennel has its own API endpoint (`localhost:3000/k/<kennel-id>`) — once built, always callable. The data the pack salvages from the Void is not a one-time catch: it has an endpoint, an address, a trail that stays. You can embed it in other apps, call it via curl, open it in the browser. That is the promise: **What has been hunted once is easy to find again.**
 
 ## The hunt is flexible — multi-use APIs, not one-shot tricks
 
@@ -212,7 +212,9 @@ POST   /api/kennels                    — new Kennel (id becomes lineageId)
 PUT    /api/kennels/:id                — update (new version)
 GET    /api/kennels/:id/run?params     — Waves + Config (diagnosis)
 GET    /api/kennels/:id/execute?params — lead's result only
-GET    /:kennelId?params               — public endpoint
+GET    /k/:id?params                   — public endpoint
+GET    /k/:id/docs                     — Swagger UI
+GET    /k/:id/openapi.json             — OpenAPI spec
 GET    /api/kennels/:id/versions       — version history
 
 GET    /api/nodes                      — all dogs (hunters + breeds)
@@ -451,14 +453,14 @@ Only when all three checks pass, present the result to the user.
 When verification passes, always show the user the full set of URLs for the kennel. These are the trails — the addresses where the spoils live:
 
 ```
-Public Endpoint:  <BASE_URL>/<kennel-id>?<defaultQuery params>
-Swagger / Docs:   <BASE_URL>/api/kennels/<kennel-id>/docs
-Edit / Waves UI:  http://localhost:4300/kennel/<kennel-id>  (local only)
+Public Endpoint:  <BASE_URL>/k/<kennel-id>?<defaultQuery params>
+Swagger / Docs:   <BASE_URL>/k/<kennel-id>/docs
+Edit / Waves UI:  http://localhost:4300/kennels/<kennel-id>  (local only)
 ```
 
 Where `<BASE_URL>` is whichever environment is active (`http://localhost:3000` or a remote host).
 
-The **Public Endpoint** URL MUST include the `defaultQuery` parameters as query string — so the user can click it and immediately see results. If `defaultQuery` is `{ "fin": "W1K...", "market": "DE" }`, the URL becomes `http://localhost:3000/my-kennel?fin=W1K...&market=DE`. Never show the public endpoint bare when you know the parameters.
+The **Public Endpoint** URL MUST include the `defaultQuery` parameters as query string — so the user can click it and immediately see results. If `defaultQuery` is `{ "fin": "W1K...", "market": "DE" }`, the URL becomes `http://localhost:3000/k/my-kennel?fin=W1K...&market=DE`. Never show the public endpoint bare when you know the parameters.
 
 Show these as a compact block at the end of every successful kennel build. The public endpoint is the spoils, Swagger is the truth laid bare as OpenAPI spec, and the Edit view is the forge where the pack can be reshaped. All three matter — always show all three.
 

@@ -170,7 +170,7 @@ export function createActionsRouter(deps: ToolDeps): Router {
             },
             conversation_starters: [
                 'What kennels can I see?',
-                'Run the public weather kennel for Munich',
+                'Run the public weather kennel at /k/weather for Munich',
                 'Build me a kennel that combines weather and species data near a coordinate',
                 'Show me the SlopDogs README',
             ],

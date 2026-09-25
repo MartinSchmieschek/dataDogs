@@ -6,7 +6,6 @@ Prioritized technical debt and release topics (as of: code review / release chec
 
 ## High
 
-- [ ] **API-Routen — `/api/`-Konsistenz prüfen:** Heute: CRUD unter `/api/:subpath` (z. B. `/api/nodes`, `/api/kennels`), Kennel **Run/Execute/Swagger** unter `/api/kennels/:id/run|execute|docs|swagger.json`, daneben **öffentliche** Lead-Antwort ohne API-Präfix: `GET|POST /:kennelId`. Das ist absichtlich zweigleisig (Produkt-URL vs. Steuer-API), wirkt aber inkonsistent — Zielbild festlegen (alles unter `/api/v1/...`, Redirects, oder Docs nur unter `/api`), und README/ARCHITECTURE anpassen.
 - [ ] **Build & Deploy — ungeprüft:** Bisher **kein** systematischer Nachweis, dass das Projekt **end-to-end** **baubar und deploybar** ist: z. B. frischer Clone → `npm ci` → `npm run build` + `npm run ui:build` → `start:prod` mit echter `DATABASE_URL`, Angular-Assets ausgeliefert, Health/Smoke gegen API. Im Repo gibt es **keine** GitHub-Actions-Workflow-Datei — lokal: `npm test` / `npm run typecheck` / `npm run build`; **kein** Deploy-Job, **kein** Container-Image, **kein** Smoke-Test auf einer Zielumgebung.
 - [ ] **Packaging:** Dogs as **installable npm packages** (`npm install …`), not only inside the monorepo — including **Core Dogs** and **Kennel Runner** as separately publishable packages (versioning, `exports`, peer deps as needed).
 - [ ] **Kennel Runner vs. API:** The **Kennel Runner** itself **without an HTTP/API surface** (runtime/execution only); for REST/OpenAPI use a **wrapper** (thin API layer / separate package or service) that invokes the runner.
@@ -16,8 +15,8 @@ Prioritized technical debt and release topics (as of: code review / release chec
 ## Medium
 
 - [ ] **UI — Node löschen / SerializedDog:** DELETE `/api/nodes/:id` — IDs mit Sonderzeichen müssen URL-encoded sein (Client-seitig erledigt); bei weiteren Fehlern Backend-Logs (Prisma) prüfen.
-- [ ] **UI — Scope:** Die Oberfläche soll faktisch nur **Kennel-Liste** (`/`) und **Node-Viewer** (`/kennel/:id`) benötigen; weitere Routen nur falls nötig oder zusammenlegen.
-- [ ] **UI — Kennel bearbeiten:** Die Seite **Kennel bearbeiten** (`/kennel/:id/edit`) mit separaten **Kennel-Properties** ist überflüssig, wenn **alles im Node-Viewer** (Graph, Side-Panel, Query/Body, ggf. eingebettete Kennel-Metadaten) erledigt werden kann — Edit-Route reduzieren oder in den Viewer integrieren.
+- [ ] **UI — Scope:** Die Oberfläche soll faktisch nur **Kennel-Liste** (`/kennels`) und **Node-Viewer** (`/kennels/:id`) benötigen; weitere Routen nur falls nötig oder zusammenlegen.
+- [ ] **UI — Kennel bearbeiten:** Die Seite **Kennel bearbeiten** (`/kennels/:id/edit`) mit separaten **Kennel-Properties** ist überflüssig, wenn **alles im Node-Viewer** (Graph, Side-Panel, Query/Body, ggf. eingebettete Kennel-Metadaten) erledigt werden kann — Edit-Route reduzieren oder in den Viewer integrieren.
 - [ ] **UI — SerializedDog Default-Tab:** Im Edit-Fenster (Node-Side-Panel) soll bei **SerializedDogs** die **Code-Ansicht** standardmäktiv aktiv sein *(bereits umgesetzt: `getDefaultPanelSection` → `code`, wenn `codeTs` gesetzt; bei Bedarf noch speziell für reinen Node-Viewer testen/verdichten).*
 - [ ] **Mimics — default parameters:** Mimics need sensible **defaults** for parameters; ideally these come from the **Pact** (contract as single source of truth: define defaults there or generate from it).
 - [ ] **OpenAPI/Swagger — GET vs. POST:** **GET and POST** often appear side by side; **POST** is redundant when the default body is effectively **`{}`** and adds no semantics — adjust generation/annotations so only the needed method is documented (or POST only when the body is actually used).
@@ -88,7 +87,8 @@ Findings from a full code review against current standards.
 ## Done
 
 - [x] **Body `{}` / Kennel-Run (2026-03):** Leeres JSON-Objekt `{}` war bei `run`/`execute` fälschlich wie „kein Body“ behandelt (`Object.keys(body).length` bzw. `raw !== '{}'`). Behoben: Client sendet POST mit `{}`; Server nutzt bei POST den Request-Body inkl. leerem Objekt; öffentliches `POST /:kennelId` ebenso; Node-DELETE-URLs mit `encodeURIComponent`; Side-Panel zeigt Löschfehler.
-- [x] **UI — Kennel-Antwort im Node-Viewer:** Button **Antwort (Server)** öffnet den **öffentlichen** Endpunkt `GET http://localhost:3000/:kennelId` (Lead-Yield), z. B. `/default-kennel`; Query-Parameter aus dem Panel werden angehängt. (Nicht `/api/kennels/.../run`.)
+- [x] **UI — Kennel-Antwort im Node-Viewer:** Button **Antwort (Server)** öffnet den **öffentlichen** Endpunkt `GET http://localhost:3000/k/:id` (Lead-Yield), z. B. `/k/default-kennel`; Query-Parameter aus dem Panel werden angehängt. (Nicht `/api/kennels/.../run`.)
+- [x] **API-Routen — `/api/`-Konsistenz geklärt (P3):** Zielbild steht: **Ware** (Lead-Antwort, Docs, Spec) lebt unter `/k/:id`, `/k/:id/docs`, `/k/:id/openapi.json`; die **Steuer-API** (CRUD, Run/Execute, Versions, Export/Import) bleibt unter `/api/kennels/:id/...`. Zwei Namensräume bleiben absichtlich getrennt (Produkt-URL vs. Werkstatt) statt Zusammenlegung unter `/api/v1`; README/ARCHITECTURE aktualisiert, Quelle der Wahrheit ist `api/routes/routeTable.ts`.
 - [x] **License in `package.json`:** Root and `packages/core` set to `MIT`, aligned with [LICENSE](LICENSE).
 - [x] **`package.json` metadata:** `description`, `repository` (origin `MartinSchmieschek/dataDogs`), `engines.node` (`>=18.19.0`), `main` → `main.ts`, `private` as boolean.
 - [x] **`ARCHITECTURE.md`:** Section *Deployment — where the lodge meets the wild* (ports, env, DB, static UI; README vibe).

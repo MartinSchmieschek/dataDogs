@@ -6,6 +6,7 @@ import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
 import {
     BASE_DOG_PREFIX,
+    KENNEL_PUBLIC_PREFIX,
     checkSerializedDogCode,
     publicKennelDocsPath,
     publicKennelOpenApiPath,
@@ -436,7 +437,8 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'build_kennel',
             description:
-                'Composed one-shot kennel build. Creates a fresh set of Breeds (SerializedDogs / Mimics) AND assembles a kennel that uses them — atomic, with rollback on failure. **Keep each dog small** — one dog does one nameable thing. Do not put a whole page into a single dog: HTML fragments, the script block, data preparation and composition each get their own entry in `dogs[]`, and the lead composes them. The response reports any dog that has grown too large. **Lead convention:** by default the **LAST** dog in `dogs[]` becomes the lead (renderers / finalizers typically sit at the end of a pipeline). Pass `lead: "<displayName>"` to override. **Spuren:** `task` + `nodes[]` beim Create (Wunsch, kein Vertrag — mcp/skill.md § Spuren & Rechtfertigung). Sibling dogs reference each other by displayName via "@DisplayName" in parentsRequired/Optional; BaseDogs are referenced as bare class names ("QueryRetriever"), and raw lineageId GUIDs pass through unchanged. If `refresh` is true (default), the kennel is hunted once and the lead\'s spoils are previewed in the response. Rollback semantics: any failure during the build deletes every node already created in this call and the kennel row (if any) — no orphans left in the deep. **firstRun.status values:** `ok` (every dog clean), `lead-ok-with-side-errors` (lead returned cleanly but some upstream/side dog errored — public endpoint still serves), `lead-failed` (the lead itself errored — public endpoint is broken), `failed` (the run could not even be observed: worker crash, kennel vanished). `firstRun.leadOk` is a bool shortcut: true means the public endpoint serves the lead\'s payload.',
+                'Composed one-shot kennel build. Creates a fresh set of Breeds (SerializedDogs / Mimics) AND assembles a kennel that uses them — atomic, with rollback on failure. **Keep each dog small** — one dog does one nameable thing. Do not put a whole page into a single dog: HTML fragments, the script block, data preparation and composition each get their own entry in `dogs[]`, and the lead composes them. The response reports any dog that has grown too large. **Lead convention:** by default the **LAST** dog in `dogs[]` becomes the lead (renderers / finalizers typically sit at the end of a pipeline). Pass `lead: "<displayName>"` to override. **Spuren:** `task` + `nodes[]` beim Create (Wunsch, kein Vertrag — mcp/skill.md § Spuren & Rechtfertigung). Sibling dogs reference each other by displayName via "@DisplayName" in parentsRequired/Optional; BaseDogs are referenced as bare class names ("QueryRetriever"), and raw lineageId GUIDs pass through unchanged. If `refresh` is true (default), the kennel is hunted once and the lead\'s spoils are previewed in the response. Rollback semantics: any failure during the build deletes every node already created in this call and the kennel row (if any) — no orphans left in the deep. **firstRun.status values:** `ok` (every dog clean), `lead-ok-with-side-errors` (lead returned cleanly but some upstream/side dog errored — public endpoint still serves), `lead-failed` (the lead itself errored — public endpoint is broken), `failed` (the run could not even be observed: worker crash, kennel vanished). `firstRun.leadOk` is a bool shortcut: true means the public endpoint serves the lead\'s payload. '
+                + `The public address is \`${KENNEL_PUBLIC_PREFIX}/<kennelId>\` (returned as publicUrl); docs at \`${KENNEL_PUBLIC_PREFIX}/<kennelId>/docs\` (docsUrl), spec at \`${KENNEL_PUBLIC_PREFIX}/<kennelId>/openapi.json\` (openapiUrl).`,
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogs'],
@@ -514,7 +516,7 @@ export function getKennelTools(): ToolDef[] {
                     lead: {
                         type: 'string',
                         description:
-                            'displayName of the Lead dog (the one whose result is served at /:kennelId). Must match one of the entries in `dogs[].displayName`. Default: the LAST dog in `dogs[]` becomes lead, since in a pipeline the renderer/finalizer typically sits at the end of the chain.',
+                            `displayName of the Lead dog (the one whose result is served at ${KENNEL_PUBLIC_PREFIX}/<kennelId>).` + ' Must match one of the entries in `dogs[].displayName`. Default: the LAST dog in `dogs[]` becomes lead, since in a pipeline the renderer/finalizer typically sits at the end of the chain.',
                     },
                     refresh: {
                         type: 'boolean',
@@ -662,7 +664,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'execute_kennel',
             description:
-                'Runs a kennel and returns ONLY the lead dog\'s result — the public-facing payload. Use this when you want the spoils, not the diagnostic. The lead is the first entry in dogIds. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
+                'Runs a kennel and returns ONLY the lead dog\'s result — the public-facing payload, identical to `GET ' + KENNEL_PUBLIC_PREFIX + '/<kennelId>`. Use this when you want the spoils, not the diagnostic. The lead is the first entry in dogIds. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -841,7 +843,7 @@ async function buildKennel(
     }
 
     // Lead resolution — explicit `lead` overrides the default; default is the LAST dog in dogs[].
-    // The Lead is the dog whose result is served at /:kennelId. In a pipeline the renderer
+    // The Lead is the dog whose result is served at /k/<kennelId>. In a pipeline the renderer
     // sits at the end, so making the last entry the Lead matches the caller's typical intent
     // (and frees them from having to reorder Renderer-before-Producer just to satisfy lead = dogs[0]).
     const leadDisplayName: string | null =

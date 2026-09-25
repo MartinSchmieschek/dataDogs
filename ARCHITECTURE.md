@@ -49,7 +49,7 @@ flowchart TB
 
 ### Lead dog — whose catch becomes the answer
 
-Covenant is **order in `dogIds`**: the **first** slot is the **lead**. The graph still commands the waves; the lead alone decides **whose yield** becomes the public face of the hunt — the body returned to `GET /:kennelId` and kin. Wave logic does not bow to the lead; the response does.
+Covenant is **order in `dogIds`**: the **first** slot is the **lead**. The graph still commands the waves; the lead alone decides **whose yield** becomes the public face of the hunt — the body returned to `GET /k/:id` and kin. Wave logic does not bow to the lead; the response does.
 
 ```mermaid
 flowchart LR
@@ -77,7 +77,13 @@ flowchart LR
 
 ## HTTP surface — heralds and naked flame
 
-**Xata** is the truth that does not negotiate: routes are what they are. `ConfigRouteHandler` mounts CRUD under `/api`; `KennelRunHandler` adds **run**, **execute**, Swagger, and the bare **`/:kennelId`** hunt. The herald is the request; the fallen star is the response. No pleasant lie — only status codes and bodies.
+**Xata** is the truth that does not negotiate: routes are what they are. Four namespaces, one rule each: `/k/…` is **Ware** (the public run, its docs, its spec — content-type-honest, no envelope), `/api/…` is **Werkstatt** (CRUD, waves, versions, ACL), `/kennels…` is **Buehne** (the Angular SPA), `/` is the **Schaufenster** (static, DB-free). `ConfigRouteHandler` mounts CRUD under `/api`; `KennelRunHandler` adds **run**, **execute**, Swagger, and the public **`/k/:id`** hunt. The herald is the request; the fallen star is the response. No pleasant lie — only status codes and bodies.
+
+The single source of truth for every path is [`api/routes/routeTable.ts`](api/routes/routeTable.ts) — Express registers from it, and `scripts/check-doc-paths.cjs` (`npm run lint:docs`, part of `npm test`) checks every path mentioned in README.md, AISkill.md, this file, `mcp/skill.md` and the `.cursor/skills/*/SKILL.md` mirrors against it. A route without a table entry is a bug.
+
+A kennel name is only ever the second segment behind `/k/`. The old triple-maintained blocklist (`kennelReservedNames.ts` / `spaRouteConstants.ts` / `kennel-reserved-names.ts`) is gone; it is replaced by a **segment rule** — `FIXED_TOP_LEVEL` (`api auth .well-known static mcp actions save k kennels kennel robots.txt`) reserves only the fixed top-level segments Express mounts, nothing else. A kennel is free to be named `api` and live at `/k/api`.
+
+**Alt-Weiche (legacy):** behind env `LEGACY_KENNEL_REDIRECT` (default `1`), an unrecognized single-segment path `/:name` answers **308** to `/k/:name` (method, body and query preserved, no DB lookup) unless `:name` is one of the `FIXED_TOP_LEVEL` segments. The old `/api/kennels/:id/docs` and `/api/kennels/:id/swagger.json` are permanent 308s to `/k/:id/docs` and `/k/:id/openapi.json`.
 
 ```mermaid
 flowchart TB
@@ -89,8 +95,8 @@ flowchart TB
 
     subgraph Hunt["Kennel execution"]
         R["/api/kennels/:id/run|execute"]
-        P["GET|POST /:kennelId"]
-        Sw["/api/kennels/:id/docs, swagger.json"]
+        P["GET|POST /k/:id"]
+        Sw["/k/:id/docs, /k/:id/openapi.json (legacy /api/kennels/:id/docs, swagger.json → 308)"]
     end
 
     Client([Client / UI]) --> API
@@ -169,7 +175,7 @@ A request enters; the route kindles one path. The Kennel loads; **fillKennel** n
 flowchart TD
     Start[HTTP Request] --> Route{Route Type}
     
-    Route -->|GET /:kennelId| LoadKennel[Load KennelConfig<br/>from PrismaStore]
+    Route -->|GET /k/:id| LoadKennel[Load KennelConfig<br/>from PrismaStore]
     Route -->|GET /api/nodes| ListNodes[List Nodes<br/>BaseDogs + SerializedDogs]
     Route -->|POST /api/nodes| CreateNode[Create SerializedDog]
     
@@ -260,7 +266,7 @@ sequenceDiagram
     participant SerializedDog
     participant VM
     
-    Client->>Express: GET /:kennelId
+    Client->>Express: GET /k/:id
     Express->>PrismaStore: load(kennelId)
     PrismaStore-->>Express: KennelConfig
     
@@ -618,7 +624,7 @@ interface ISerializedDogConfig {
 
 | Surface | Port | Notes |
 |--------|------|--------|
-| **Backend** (Express, `main.ts`) | **3000** | API, `/save`, public `/:kennelId`, Swagger — the server that actually runs the dogs. |
+| **Backend** (Express, `main.ts`) | **3000** | API, `/save`, public `/k/:id`, Swagger — the server that actually runs the dogs. |
 | **UI** (dev, `ng serve`) | **4300** | Proxies `/api` and `/save` to the backend via [`ui-app/proxy.conf.js`](ui-app/proxy.conf.js). Open the UI here during development. |
 
 ### Environment

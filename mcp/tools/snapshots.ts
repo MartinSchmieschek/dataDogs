@@ -420,7 +420,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_kennel_snapshot_lead_result',
             description:
-                'Returns the snapshot\'s lead result — the same payload that the public GET /:kennelId endpoint yields. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
+                'Returns the snapshot\'s lead result — the same payload that the public GET /k/<kennelId> endpoint yields. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],

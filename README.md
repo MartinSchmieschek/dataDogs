@@ -29,7 +29,7 @@ A Kennel is a covenant. It binds:
 
 ### Lead Dog
 
-The **first** entry in `dogIds` is the **lead**. When the hunt is over and the pack returns, only one voice speaks: the lead's yield is what `GET /:kennelId` and `GET /api/kennels/:id/execute` return.
+The **first** entry in `dogIds` is the **lead**. When the hunt is over and the pack returns, only one voice speaks: the lead's yield is what `GET /k/:id` and `GET /api/kennels/:id/execute` return.
 
 **Lead response shape (string yields):** If the lead returns a **string**, the server picks a content type before JSON:
 
@@ -227,7 +227,7 @@ Editing notes therefore costs nothing — wrong comment, stale TODO, mis-spelled
 **Where they show up:**
 - `GET /api/kennels/:id` — full Kennel config including `task`, `nodes`, `edges`.
 - `GET /api/kennels/:id/run` — same fields, embedded in `kennelConfig` alongside the Waves.
-- `GET /:kennelId` (the **public** Lead-Yield endpoint) — does **NOT** include them. The public endpoint stays content-type-honest (HTML stays HTML, JSON stays JSON). Status tracking is for the kennel master, not for downstream consumers.
+- `GET /k/:id` (the **public** Lead-Yield endpoint) — does **NOT** include them. The public endpoint stays content-type-honest (HTML stays HTML, JSON stays JSON). Status tracking is for the kennel master, not for downstream consumers.
 
 > *Ris — In luminous space blackened stars, they gaze, accuse, deny.* The comments are the gaze; they accuse the broken edges and bless the working ones.
 
@@ -292,9 +292,9 @@ Dogs opt in by implementing `ICacheable` (simple KV) or `ITileCacheable` (geo-aw
 
 **Read tracking** -- Every property access between dogs is logged. Which dog read what, from whom, in which wave. Full data-flow traceability across the pack.
 
-**Public endpoints** -- Every Kennel gets a URL. `GET /my-kennel` runs the pack and returns the lead dog's result. Pass query params or POST a body -- the dogs pick it up.
+**Public endpoints** -- Every Kennel gets a URL. `GET /k/my-kennel` runs the pack and returns the lead dog's result. Pass query params or POST a body -- the dogs pick it up.
 
-**Swagger** -- `/api/kennels/:id/docs` runs the Kennel once and builds a live OpenAPI spec from the lead dog's actual yield — not a hand-written schema. `/api/kennels/:id/swagger.json` serves the raw spec. Swagger UI lets you try endpoints on the spot.
+**Swagger** -- `/k/:id/docs` runs the Kennel once and builds a live OpenAPI spec from the lead dog's actual yield — not a hand-written schema. `/k/:id/openapi.json` serves the raw spec. Swagger UI lets you try endpoints on the spot. The old `/api/kennels/:id/docs` and `/api/kennels/:id/swagger.json` answer 308 -> `/k/:id/docs` / `/k/:id/openapi.json`.
 
 **Inline Kennel params** -- Edit query parameters and body data directly from the Waves Viewer. Change it, reload, see the result. Save it when it's right.
 
@@ -394,8 +394,8 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | `GET` | `/api/kennels/:id/versions` | List all versions of a Kennel's lineage |
 | `GET` | `/api/kennels/:id/export` | Export Kennel bundle (dogs + history) as JSON |
 | `POST` | `/api/kennels/import` | Import a Kennel bundle (auto-renames on collision) |
-| `GET` | `/api/kennels/:id/swagger.json` | Xata -- the Kennel's truth as OpenAPI spec |
-| `GET` | `/api/kennels/:id/docs` | Swagger UI — generated from the run |
+| `GET` | `/k/:id/openapi.json` | Xata -- the Kennel's truth as OpenAPI spec (was `/api/kennels/:id/swagger.json`, now 308) |
+| `GET` | `/k/:id/docs` | Swagger UI — generated from the run (was `/api/kennels/:id/docs`, now 308) |
 
 ### Dogs (Nodes)
 
@@ -415,7 +415,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET/POST` | `/:kennelId` | Run Kennel, return lead dog's yield |
+| `GET/POST` | `/k/:id` | Run Kennel, return lead dog's yield |
 
 ### Meta
 
@@ -465,9 +465,9 @@ Backend wakes on `:3000`, UI (dev) on `:4300`. Open the UI. The lodge is warm.
 
 ### Default Kennel seed: server run and UI
 
-**Server-side:** On every startup, `main.ts` calls **`runSeeds()`** ([`seed.ts`](seed.ts)) against the Prisma store. If the database is still empty of those rows, the seed creates **`seed-serialized-1-v1`** (the LayoutInput Mimic) and a **`KennelConfig`** with id **`default-kennel`** — see `dogIds` there (serialized dog first as **lead**, then all registered BaseDogs). Nothing special-cases that Kennel at runtime: **`GET /api/kennels/default-kennel/run`** (waves + config), **`GET /default-kennel`** (public **lead** yield only), and **`POST /default-kennel`** with a body all go through the same **`KennelRunHandler` → `KennelRun`** path as any other Kennel (load config from DB → fill kennel → run waves).
+**Server-side:** On every startup, `main.ts` calls **`runSeeds()`** ([`seed.ts`](seed.ts)) against the Prisma store. If the database is still empty of those rows, the seed creates **`seed-serialized-1-v1`** (the LayoutInput Mimic) and a **`KennelConfig`** with id **`default-kennel`** — see `dogIds` there (serialized dog first as **lead**, then all registered BaseDogs). Nothing special-cases that Kennel at runtime: **`GET /api/kennels/default-kennel/run`** (waves + config), **`GET /k/default-kennel`** (public **lead** yield only), and **`POST /k/default-kennel`** with a body all go through the same **`KennelRunHandler` → `KennelRun`** path as any other Kennel (load config from DB → fill kennel → run waves).
 
-**UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4300`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4300/kennel/default-kennel`**. The Waves viewer loads that Kennel run (graph + results); **⟳ Neu laden** re-runs it. The **Antwort (Server)** button opens the raw public response (**`http://localhost:3000/default-kennel`**, plus any query params from the panel) in a new tab so you can compare browser vs UI.
+**UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4300`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4300/kennels/default-kennel`**. The Waves viewer loads that Kennel run (graph + results); **⟳ Neu laden** re-runs it. The **Antwort (Server)** button opens the raw public response (**`http://localhost:3000/k/default-kennel`**, plus any query params from the panel) in a new tab so you can compare browser vs UI.
 
 ### Kennel list copy and paste
 
@@ -520,7 +520,7 @@ curl -X POST http://localhost:3000/api/kennels \
   -d '{"id": "my-kennel", "name": "First Hunt", "dogIds": ["base:RandomRecipesRetriever"]}'
 
 # Unleash it
-curl http://localhost:3000/my-kennel
+curl http://localhost:3000/k/my-kennel
 ```
 
 Or skip the terminal -- the [UI](ui-app/README.md) does all of this with a few clicks.
@@ -674,7 +674,7 @@ theRun: `return { someParam: QueryRetriever.someparam }`
 npm run build:dogs-mydog          # compiles the package
 npx tsc --noEmit -p tsconfig.build.json  # typechecks the whole project
 npm start                         # server starts, seed runs, kennel is callable
-curl http://localhost:3000/my-kennel?someParam=test
+curl http://localhost:3000/k/my-kennel?someParam=test
 ```
 
 ---
