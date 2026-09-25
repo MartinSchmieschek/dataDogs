@@ -137,6 +137,30 @@ function mcpRequest(method, params, { anonymous = false } = {}) {
   });
 }
 
+/** Ein GET ohne Umleitungen zu folgen — fuer die Alt-Weiche (308) und /k/:id. */
+function httpGet(pathAndQuery) {
+  const u = new URL(pathAndQuery, MCP_BASE + '/');
+  const lib = u.protocol === 'https:' ? https : http;
+  return new Promise((resolve, reject) => {
+    const req = lib.request(
+      {
+        hostname: u.hostname,
+        port: u.port || (u.protocol === 'https:' ? 443 : 80),
+        path: u.pathname + u.search,
+        method: 'GET',
+        headers: { Accept: 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) },
+      },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, raw }));
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 async function mcpCall(toolName, args = {}) {
   const { status, raw, envelope } = await mcpRequest('tools/call', {
     name: toolName,
@@ -402,6 +426,28 @@ async function run() {
     else pass('health_check stats', `pending ${h.stats.pending}, dropped ${h.stats.dropped}, lastFlushError ${h.stats.lastFlushError}`);
   } catch (e) {
     fail('P4 stats', e.message);
+  }
+
+  // P4 (11.7): die Alt-Weiche antwortet 308 ohne Lauf und ohne Zaehlung; erst der Folge-GET auf
+  // /k/<id> zaehlt — genau einmal (stats.calls.total vorher/nachher, Delta-Merge ohne Flush).
+  try {
+    const before = (await mcpCall('get_kennel', { id: KENNEL_ID }))?.stats?.calls?.total;
+    const qs = `?lat=${query.lat}&lng=${query.lng}`;
+    const old = await httpGet(`/${KENNEL_ID}${qs}`);
+    const afterRedirect = (await mcpCall('get_kennel', { id: KENNEL_ID }))?.stats?.calls?.total;
+    if (old.status !== 308 || old.location !== `/k/${KENNEL_ID}${qs}`) {
+      fail('legacy 308 counts not', `HTTP ${old.status} -> ${old.location}`);
+    } else if (typeof before !== 'number' || afterRedirect !== before) {
+      fail('legacy 308 counts not', `total ${before} -> ${afterRedirect}`);
+    } else {
+      const followed = await httpGet(old.location);
+      const after = (await mcpCall('get_kennel', { id: KENNEL_ID }))?.stats?.calls?.total;
+      if (followed.status !== 200) fail('legacy 308 counts not', `GET ${old.location}: HTTP ${followed.status}`);
+      else if (after !== before + 1) fail('legacy 308 counts not', `total ${before} -> ${after} (expected +1)`);
+      else pass('legacy 308 counts not', `308 +0, /k/ +1 (total ${before} -> ${after})`);
+    }
+  } catch (e) {
+    fail('legacy 308 counts not', e.message);
   }
 
   // P3.5 T7: ohne Token kein MCP, sobald der Server Auth verlangt (mcp.ts: 401 + WWW-Authenticate).
