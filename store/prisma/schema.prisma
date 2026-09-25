@@ -80,6 +80,43 @@ model KennelRating {
   @@id([lineageId, userId])
 }
 
+// Dog-Laeufe je Dog-Schluessel, Kennel-Lineage, Tag (UTC) und Quelle (P4b). dogKey = Dog-lineageId oder 'base:<Klasse>'.
+model DogCallDaily {
+  dogKey          String
+  kennelLineageId String
+  day             String
+  source          String
+  count           Int @default(0)
+  ok              Int @default(0)    // ohne Fehler, mindestens ein Fetch oder kein Cache
+  cached          Int @default(0)    // ohne Fehler, nur Cache-Treffer
+  errors          Int @default(0)
+  timeouts        Int @default(0)
+  oom             Int @default(0)
+  cacheHits       Int @default(0)    // Summe getOrFetch-Treffer
+  cacheMisses     Int @default(0)    // Summe getOrFetch-Fetches
+  durationMsSum   Int @default(0)    // Int reicht: 2^31 ms ~ 24 Tage Summe je Zeile und Tag
+  durationMsMax   Int @default(0)
+
+  @@id([dogKey, kennelLineageId, day, source])
+  @@index([day])
+  @@index([kennelLineageId])
+}
+
+// Referenzen der Kopfversionen (P4b): Kennel -> Dog (dogIds) und Dog -> Dog (parents). toKey = lineageId | 'base:<Klasse>' | Rohwert (dangling).
+model DogReference {
+  fromKind    String   // 'kennel' | 'dog'
+  fromKey     String   // Kennel-lineageId bzw. Dog-lineageId
+  toKey       String
+  kind        String   // 'crew' (dogIds) | 'required' | 'optional'
+  position    Int      // Index im Ursprungsarray; 0 bei kind='crew' = Lead
+  fromOwnerId String?  // ownerId des Ursprungs (null = community) — fuer den Crew-Effekt ohne Join
+  resolved    Int      @default(1)   // 0 = Ziel beim Schreiben nicht aufloesbar (dangling)
+
+  @@id([fromKind, fromKey, toKey, kind, position])
+  @@index([toKey])
+  @@index([fromKey])
+}
+
 // Auth + OAuth tables moved to store/prisma-auth/ (own DATABASE: AUTH_DATABASE_URL).
 // Kennel.ownerId / Dog.editors / Dog.viewers stay here as plain User-ID strings —
 // the FK is logical, not enforced at DB level (cross-DB).

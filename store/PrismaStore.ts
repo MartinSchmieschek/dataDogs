@@ -6,7 +6,13 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { IStore } from './IStore';
 import {
   IKennelStatsStore,
+  IDogStatsStore,
   RANKED_CALL_SOURCES,
+  type DogCallAggregate,
+  type DogCallDelta,
+  type DogKennelUsage,
+  type DogReferenceFromKind,
+  type DogReferenceRow,
   type KennelCallAggregate,
   type KennelCallDelta,
   type KennelRatingAggregate,
@@ -14,14 +20,17 @@ import {
 } from './IKennelStatsStore';
 import path from 'path';
 
-export class PrismaStore implements IStore, IKennelStatsStore {
+export class PrismaStore implements IStore, IKennelStatsStore, IDogStatsStore {
   private prisma: PrismaClient;
+  /** Postgres oder SQLite — aus der URL wie scripts/dbEnv.cjs. Nur die MAX/GREATEST-Weiche (P4b) braucht es. */
+  private readonly isPostgres: boolean;
 
   /**
    * Provision the store with a connection string — or let the env scroll speak for itself.
    * Without a connectionString, Prisma reads DATABASE_URL from the void.
    */
   constructor(connectionString?: string) {
+    this.isPostgres = /^postgres(ql)?:/i.test((connectionString ?? process.env.DATABASE_URL ?? '').trim());
     if (connectionString) {
       this.prisma = new PrismaClient({ datasources: { db: { url: connectionString } } } as any);
     } else {
@@ -554,15 +563,132 @@ export class PrismaStore implements IStore, IKennelStatsStore {
    * flushen. Kein Prisma-`upsert` mit `increment`: ob daraus natives ON CONFLICT wird, ist
    * versionsabhaengig, und SELECT+INSERT rennt in P2002.
    */
-  public async incrementKennelCalls(deltas: KennelCallDelta[]): Promise<void> {
-    if (deltas.length === 0) return;
-    await this.prisma.$transaction(deltas.map((d) => this.prisma.$executeRaw(Prisma.sql`
+  public async incrementKennelCalls(deltas: KennelCallDelta[], dogDeltas: DogCallDelta[] = []): Promise<void> {
+    if (deltas.length === 0 && dogDeltas.length === 0) return;
+    await this.prisma.$transaction([
+      ...deltas.map((d) => this.prisma.$executeRaw(Prisma.sql`
       INSERT INTO "KennelCallDaily" ("lineageId", "day", "source", "count", "leadFailed")
       VALUES (${d.lineageId}, ${d.day}, ${d.source}, ${d.count}, ${d.leadFailed})
       ON CONFLICT ("lineageId", "day", "source") DO UPDATE SET
         "count"      = "KennelCallDaily"."count"      + excluded."count",
         "leadFailed" = "KennelCallDaily"."leadFailed" + excluded."leadFailed"
-    `)));
+    `)),
+      ...this.dogCallStatements(dogDeltas),
+    ]);
+  }
+
+  // --- Dog-Aufrufe und Referenzen (P4b, IDogStatsStore) ---
+
+  /**
+   * Ein Statement je Dog-Delta. `durationMsMax` ist die EINZIGE Dialektstelle: SQLite kennt das
+   * skalare MAX(a, b), Postgres GREATEST(a, b).
+   */
+  private dogCallStatements(deltas: DogCallDelta[]) {
+    const greatest = Prisma.raw(this.isPostgres ? 'GREATEST' : 'MAX');
+    return deltas.map((d) => this.prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "DogCallDaily" ("dogKey", "kennelLineageId", "day", "source", "count", "ok", "cached", "errors", "timeouts", "oom", "cacheHits", "cacheMisses", "durationMsSum", "durationMsMax")
+      VALUES (${d.dogKey}, ${d.kennelLineageId}, ${d.day}, ${d.source}, ${d.count}, ${d.ok}, ${d.cached}, ${d.errors}, ${d.timeouts}, ${d.oom}, ${d.cacheHits}, ${d.cacheMisses}, ${d.durationMsSum}, ${d.durationMsMax})
+      ON CONFLICT ("dogKey", "kennelLineageId", "day", "source") DO UPDATE SET
+        "count"         = "DogCallDaily"."count"         + excluded."count",
+        "ok"            = "DogCallDaily"."ok"            + excluded."ok",
+        "cached"        = "DogCallDaily"."cached"        + excluded."cached",
+        "errors"        = "DogCallDaily"."errors"        + excluded."errors",
+        "timeouts"      = "DogCallDaily"."timeouts"      + excluded."timeouts",
+        "oom"           = "DogCallDaily"."oom"           + excluded."oom",
+        "cacheHits"     = "DogCallDaily"."cacheHits"     + excluded."cacheHits",
+        "cacheMisses"   = "DogCallDaily"."cacheMisses"   + excluded."cacheMisses",
+        "durationMsSum" = "DogCallDaily"."durationMsSum" + excluded."durationMsSum",
+        "durationMsMax" = ${greatest}("DogCallDaily"."durationMsMax", excluded."durationMsMax")
+    `));
+  }
+
+  public async incrementDogCalls(deltas: DogCallDelta[]): Promise<void> {
+    if (deltas.length === 0) return;
+    await this.prisma.$transaction(this.dogCallStatements(deltas));
+  }
+
+  public async readDogCallAggregates(sinceDay: string, dogKeys?: string[]): Promise<DogCallAggregate[]> {
+    if (dogKeys && dogKeys.length === 0) return [];
+    const ranked = Prisma.join([...RANKED_CALL_SOURCES]);
+    const where = dogKeys ? Prisma.sql`WHERE "dogKey" IN (${Prisma.join(dogKeys)})` : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+      SELECT "dogKey",
+             CAST(SUM("count") AS INTEGER)                                                                    AS "total",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "count" ELSE 0 END) AS INTEGER)                     AS "last30d",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} AND "source" IN (${ranked}) THEN "count" ELSE 0 END) AS INTEGER) AS "ranked30d",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "errors" + "timeouts" + "oom" ELSE 0 END) AS INTEGER) AS "failures30d",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "cached" ELSE 0 END) AS INTEGER)                    AS "cached30d",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "durationMsSum" ELSE 0 END) AS INTEGER)             AS "durationMsSum30d",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "count" ELSE 0 END) AS INTEGER)                     AS "count30d",
+             CAST(MAX(CASE WHEN "day" >= ${sinceDay} THEN "durationMsMax" ELSE 0 END) AS INTEGER)             AS "durationMsMax30d",
+             CAST(COUNT(DISTINCT CASE WHEN "day" >= ${sinceDay} AND "count" > 0 THEN "kennelLineageId" END) AS INTEGER) AS "kennelsRun30d"
+      FROM "DogCallDaily"
+      ${where}
+      GROUP BY "dogKey"
+    `);
+    return rows.map((r) => ({
+      dogKey: String(r.dogKey),
+      total: Number(r.total ?? 0),
+      last30d: Number(r.last30d ?? 0),
+      ranked30d: Number(r.ranked30d ?? 0),
+      failures30d: Number(r.failures30d ?? 0),
+      cached30d: Number(r.cached30d ?? 0),
+      durationMsSum30d: Number(r.durationMsSum30d ?? 0),
+      count30d: Number(r.count30d ?? 0),
+      durationMsMax30d: Number(r.durationMsMax30d ?? 0),
+      kennelsRun30d: Number(r.kennelsRun30d ?? 0),
+    }));
+  }
+
+  public async readDogKennelUsage(sinceDay: string, dogKey: string): Promise<DogKennelUsage[]> {
+    const rows = await this.prisma.$queryRaw<any[]>(Prisma.sql`
+      SELECT "kennelLineageId",
+             CAST(SUM("count") AS INTEGER)                        AS "count30d",
+             CAST(SUM("errors" + "timeouts" + "oom") AS INTEGER)  AS "failures30d"
+      FROM "DogCallDaily" WHERE "dogKey" = ${dogKey} AND "day" >= ${sinceDay}
+      GROUP BY "kennelLineageId"
+    `);
+    return rows.map((r) => ({
+      dogKey,
+      kennelLineageId: String(r.kennelLineageId),
+      count30d: Number(r.count30d ?? 0),
+      failures30d: Number(r.failures30d ?? 0),
+    }));
+  }
+
+  public async deleteDogCalls(dogKey: string): Promise<void> {
+    await this.prisma.dogCallDaily.deleteMany({ where: { dogKey } });
+  }
+
+  public async replaceReferences(fromKind: DogReferenceFromKind, fromKey: string, rows: DogReferenceRow[]): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.dogReference.deleteMany({ where: { fromKind, fromKey } }),
+      this.prisma.dogReference.createMany({ data: rows }),
+    ]);
+  }
+
+  public async removeReferences(fromKind: DogReferenceFromKind, fromKey: string): Promise<void> {
+    await this.prisma.dogReference.deleteMany({ where: { fromKind, fromKey } });
+  }
+
+  public async readAllReferences(): Promise<DogReferenceRow[]> {
+    const rows = await this.prisma.dogReference.findMany();
+    return rows.map((r) => ({
+      fromKind: r.fromKind as DogReferenceFromKind,
+      fromKey: r.fromKey,
+      toKey: r.toKey,
+      kind: r.kind as DogReferenceRow['kind'],
+      position: r.position,
+      fromOwnerId: r.fromOwnerId ?? null,
+      resolved: r.resolved === 0 ? 0 : 1,
+    }));
+  }
+
+  public async rebuildReferences(rows: DogReferenceRow[]): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.dogReference.deleteMany({}),
+      this.prisma.dogReference.createMany({ data: rows }),
+    ]);
   }
 
   /**
