@@ -215,6 +215,8 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
                     ? JSON.parse(row.serializedDogConfig)
                     : row.serializedDogConfig;
             } catch { continue; }
+            // Eine Zeile ohne Konfig-Blob hat hier nichts umzubenennen (Kennels: eigenes rename).
+            if (!config || typeof config !== 'object') continue;
 
             config.displayName = displayName;
             await this.store.save({

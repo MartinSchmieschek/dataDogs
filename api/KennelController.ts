@@ -424,6 +424,24 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Rename a kennel across all its versions. Kennel rows carry no serializedDogConfig — their
+     * shown name is the `name` column. In place, no new version: the lineageId stays, and with
+     * it everything keyed on it (links, call counts, stars).
+     */
+    async rename(lineageIdOrVersionId: string, displayName: string): Promise<void> {
+        const resolved = await this.resolveKennel(lineageIdOrVersionId);
+        if (!resolved) {
+            throw new Error(`Kennel with id ${lineageIdOrVersionId} not found`);
+        }
+        const lineageId = (resolved as any).lineageId || lineageIdOrVersionId;
+        const versions = await this.store.findAllVersions(this.entityType, lineageId);
+        const versionIds = versions.length > 0 ? versions.map((v) => v.id) : [resolved.id];
+        for (const id of versionIds) {
+            await this.store.save({ id, type: this.KENNEL_TYPE, name: displayName });
+        }
+    }
+
+    /**
      * Delete a kennel and ALL its versions.
      * Accepts lineageId or version-GUID — resolves lineageId first, then deletes every incarnation.
      */

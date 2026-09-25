@@ -200,6 +200,9 @@ export class StartupTest {
             await this.testAclRestRoutes(kennelsController as KennelController, nodesController);
             await this.testBootGuardRefusesSuperUserOutsideDev();
 
+            // Fixes vor P4
+            await this.testKennelRenameViaRest(kennelsController as KennelController);
+
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
         } finally {
@@ -3660,8 +3663,6 @@ export class StartupTest {
             registry.register('kennels', kennelsController);
             registry.register('nodes', nodesController);
             const handler = new ConfigRouteHandler(registry);
-            // rename am Dog: das Kennel-rename per REST scheitert unabhaengig von P3.5 (Kennel-Zeilen
-            // tragen kein serializedDogConfig, AbstractController.rename setzt dann auf null).
             const renamed = await this.callHandler(handler, 'handleRename', { params: { subpath: 'nodes', id: dog }, body: { displayName: 'T5r' }, ctx: editor });
             if (renamed.statusCode !== 200) throw new Error(`rename: ${renamed.statusCode}`);
 
@@ -3959,6 +3960,47 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test (Fix vor P4): PATCH /api/kennels/:id/rename endete mit 500 — Kennel-Zeilen tragen kein
+     * serializedDogConfig. Jetzt: 200, jede Version heisst neu, keine neue Version, lineageId bleibt;
+     * per Version-GUID dasselbe.
+     */
+    private async testKennelRenameViaRest(kennelsController: KennelController): Promise<void> {
+        const testName = 'Fix: Kennel-rename per REST';
+        const kennelId = `test-rename-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'vorher', dogIds: [], visibility: 'private', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const firstVersion = (created.data as any)?.id as string;
+            const saved = await kennelsController.save({ id: kennelId, description: 'zweite Version' });
+            if (!saved.ok) throw new Error(`save: ${saved.error}`);
+            const registry = new ControllerRegistry();
+            registry.register('kennels', kennelsController);
+            const handler = new ConfigRouteHandler(registry);
+            const rename = (id: string, displayName: string, ctx: AuthCtx) =>
+                this.callHandler(handler, 'handleRename', { params: { subpath: 'kennels', id }, body: { displayName }, ctx });
+
+            const stranger = await rename(kennelId, 'fremd', this.fakeUser('U9'));
+            if (stranger.statusCode !== 404) throw new Error(`Fremder: ${stranger.statusCode}`);
+            const byLineage = await rename(kennelId, 'nachher', this.fakeUser('UO'));
+            if (byLineage.statusCode !== 200) throw new Error(`rename: ${byLineage.statusCode} ${JSON.stringify(byLineage.body)}`);
+            const versions = await kennelsController.getVersions(kennelId);
+            if (versions.length !== 2) throw new Error(`rename hat die Versionen veraendert: ${versions.length}`);
+            if (versions.some((v) => v.config?.name !== 'nachher')) throw new Error(`nicht jede Version umbenannt: ${versions.map((v) => v.config?.name).join(',')}`);
+            const head: any = (await kennelsController.getById(kennelId)).data;
+            if (head?.lineageId !== kennelId || head?.description !== 'zweite Version') throw new Error(`Kopf veraendert: ${JSON.stringify(head)}`);
+
+            const byVersion = await rename(firstVersion, 'per Version', this.fakeUser('UO'));
+            if (byVersion.statusCode !== 200) throw new Error(`rename per Version-GUID: ${byVersion.statusCode}`);
+            if ((await kennelsController.getById(kennelId)).data?.name !== 'per Version') throw new Error('rename per Version-GUID trifft den Kopf nicht');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 
