@@ -900,7 +900,7 @@ The `run_kennel` tool returns the full Waves payload — every dog's yield, code
 
 ### Kennel detail accessors
 
-`list_kennels` and `get_kennel` return only metadata + presence flags. Use the focused tools to fetch what you actually need: `get_kennel_default_body`, `get_kennel_default_query`, `get_kennel_task`, `get_kennel_layout`, `get_kennel_versions`. Same for nodes: `list_nodes` returns a `tsCodePreview` (~200 chars); `get_node(id)` returns the full body, `get_node_schema(id)` returns just the interface.
+`list_kennels` and `get_kennel` return only metadata + presence flags, plus `stats` (calls and stars). `list_kennels` takes `search`, `mine`, `sort` (`name`, `createdAt`, `updatedAt`, `calls`, `calls30d`, `rating`), `dir`, `minStars`, `minCalls`, `limit`, `offset`. Use the focused tools to fetch what you actually need: `get_kennel_default_body`, `get_kennel_default_query`, `get_kennel_task`, `get_kennel_layout`, `get_kennel_versions`. Same for nodes: `list_nodes` returns a `tsCodePreview` (~200 chars); `get_node(id)` returns the full body, `get_node_schema(id)` returns just the interface.
 
 ### Cleanup — `delete_kennel`
 

@@ -401,7 +401,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/kennels` | Survey all Kennels |
+| `GET` | `/api/kennels` | Survey all Kennels — every entry carries `stats` {calls, rating}; `?q=`, `?mine=1`, `?sort=name|createdAt|updatedAt|calls|calls30d|rating&dir=desc`, `?minStars=4`, `?minCalls=20`, `?limit=&offset=` |
 | `GET` | `/api/kennels/:id` | Load a Kennel's covenant |
 | `POST` | `/api/kennels` | Forge a new Kennel |
 | `PUT` | `/api/kennels/:id` | Rewrite the covenant |
@@ -409,6 +409,9 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | `GET/POST` | `/api/kennels/:id/run` | Unleash the hunt, return Waves + config |
 | `GET/POST` | `/api/kennels/:id/execute` | Unleash the hunt, return the lead's yield |
 | `GET` | `/api/kennels/:id/versions` | List all versions of a Kennel's lineage |
+| `GET` | `/api/kennels/:id/rating` | Stars: `{avg, count, score, histogram, mine}` (run right needed; `mine` null when anonymous or unrated) |
+| `PUT` | `/api/kennels/:id/rating` | Rate 1-5 (`{ "stars": 4 }`) — logged in, not the owner, not an editor |
+| `DELETE` | `/api/kennels/:id/rating` | Take your rating back (idempotent) |
 | `GET` | `/api/kennels/:id/acl` | Read visibility, owner, editors/viewers/runners, `myRights` (owner/editor only) |
 | `PUT` | `/api/kennels/:id/acl` | Set visibility and editors/viewers/runners (owner only) |
 | `POST` | `/api/kennels/:id/acl/transfer` | Transfer ownership (owner only) |
@@ -453,6 +456,9 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/api/readme` | Project README as rendered HTML |
+| `GET` | `/api/landing` | The landing's two rankings `{generatedAt, windowDays, topByCalls30d, topByRating}` — only what an anonymous visitor may run; `?limit=` (default 10, max 50); 60 s memo, `ETag` |
+
+Calls: every kennel run is counted once, per day (UTC) and source; `stats.calls.ranked`/`ranked30d` count only real use (`/k/:id`, `/api/kennels/:id/execute`, MCP `execute_kennel`), `leadFailed` the runs whose lead errored. Counts live in memory and are flushed every `KENNEL_CALL_FLUSH_MS` (30 s) in one transaction. Stars: 1-5 per user and kennel; `score` is a Bayes average `(5·m + sum) / (5 + count)` with `m` the mean over all ratings — it ranks; `avg` is the raw mean.
 
 ---
 
