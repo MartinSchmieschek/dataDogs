@@ -203,6 +203,7 @@ export class StartupTest {
             // Fixes vor P4
             await this.testKennelRenameViaRest(kennelsController as KennelController);
             await this.testTrailingLineCommentRuns(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testNewAutoMimicTakesKennelOwner(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4030,6 +4031,78 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test (Fix vor P4): ein neu erzeugter Auto-Mimic ist nicht mehr Community/public. Er gehoert dem
+     * Kennel-Owner und ist so sichtbar wie der Kennel; im Community-Kennel gehoert er dem eingeloggten
+     * Ausloeser (Create-Defaults), anonym bleibt er Community. Der naechste Lauf adoptiert ihn.
+     */
+    private async testNewAutoMimicTakesKennelOwner(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'Fix: neuer Auto-Mimic bekommt Owner und Sichtbarkeit des Kennels';
+        const stamp = Date.now();
+        const kennelIds: string[] = [];
+        const mimicRowIds: string[] = [];
+        try {
+            const cases: Array<{ label: string; ownerId: string | null; visibility: Visibility; ctx: AuthCtx; expectOwner: string | null }> = [
+                { label: 'privat, Owner UO', ownerId: 'UO', visibility: 'private', ctx: this.fakeUser('UO'), expectOwner: 'UO' },
+                { label: 'run-only, Owner UO, Runner anonym', ownerId: 'UO', visibility: 'run-only', ctx: { user: null, isSuperUser: false }, expectOwner: 'UO' },
+                { label: 'Community public, Ausloeser U9', ownerId: null, visibility: 'public', ctx: this.fakeUser('U9'), expectOwner: 'U9' },
+                { label: 'Community public, anonym', ownerId: null, visibility: 'public', ctx: { user: null, isSuperUser: false }, expectOwner: null },
+            ];
+            for (const [i, c] of cases.entries()) {
+                const pactName = `FixMimicPact${stamp}x${i}`;
+                const Pact = createPact<number>(pactName);
+                class NeedsFixPact extends Dog<number> {
+                    get name() { return `NeedsFixPact${stamp}x${i}`; }
+                    get required() { return [Pact]; }
+                    get optional() { return []; }
+                    protected yieldCollectorFactory = async () => 1;
+                }
+                const map = new Map(baseDogsMap);
+                map.set(`NeedsFixPact${stamp}x${i}`, NeedsFixPact);
+                map.set(pactName, Pact);
+                const kennelId = `test-mimic-owner-${stamp}-${i}`;
+                kennelIds.push(kennelId);
+                const created = await kennelsController.create({
+                    id: kennelId, name: c.label, dogIds: [`base:NeedsFixPact${stamp}x${i}`], visibility: c.visibility, ownerId: c.ownerId,
+                });
+                if (!created.ok) throw new Error(`${c.label}: Kennel nicht angelegt: ${created.error}`);
+                const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap: map });
+                const config = await runHandler.loadKennelConfig(kennelId);
+                await runHandler.runKennel(config!, {}, undefined, runHandler.toCapabilityCtx(c.ctx));
+
+                const rows = ((await nodesStore.findLatestVersionsByType(MimicDog.name)) as any[]).filter((r) => {
+                    try { return JSON.parse(r.serializedDogConfig).imitates === pactName; } catch { return false; }
+                });
+                mimicRowIds.push(...rows.map((r) => r.id));
+                if (rows.length !== 1) throw new Error(`${c.label}: ${rows.length} Mimic-Zeilen statt 1`);
+                if ((rows[0].ownerId ?? null) !== c.expectOwner || rows[0].visibility !== c.visibility) {
+                    throw new Error(`${c.label}: Mimic owner=${rows[0].ownerId} visibility=${rows[0].visibility}`);
+                }
+                // Der naechste Lauf nimmt ihn wieder auf (er darf im Kennel laufen) — keine zweite Zeile.
+                await runHandler.runKennel((await runHandler.loadKennelConfig(kennelId))!, {}, undefined, runHandler.toCapabilityCtx(c.ctx));
+                const again = ((await nodesStore.findLatestVersionsByType(MimicDog.name)) as any[]).filter((r) => {
+                    try { return JSON.parse(r.serializedDogConfig).imitates === pactName; } catch { return false; }
+                });
+                mimicRowIds.push(...again.map((r) => r.id).filter((id) => !mimicRowIds.includes(id)));
+                if (again.length !== 1) throw new Error(`${c.label}: zweiter Lauf legt einen neuen Mimic an`);
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            for (const id of kennelIds) {
+                try { await kennelsController.delete(id); } catch { /* ignore */ }
+            }
+            for (const id of mimicRowIds) {
+                try { await nodesStore.delete(id); } catch { /* ignore */ }
+            }
         }
     }
 

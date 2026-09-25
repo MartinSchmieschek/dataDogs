@@ -147,7 +147,7 @@ export class KennelRunHandler {
             kennelRun.setVmTimeoutMs(vmTimeoutMs);
         }
         const season = await kennelRun.run();
-        await this.persistNewMimics(config, season.exhausted);
+        await this.persistNewMimics(config, season.exhausted, policy);
         // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.
         return convertSeasonToWaves(season, config);
     }
@@ -323,8 +323,13 @@ export class KennelRunHandler {
         };
     }
 
-    private async persistNewMimics(config: IKennelConfig, exhausted: any[]): Promise<void> {
+    /**
+     * Speichert frisch erzeugte Auto-Mimics und heilt adoptierte in die dogIds. Ein neuer Mimic
+     * bekommt Owner und Sichtbarkeit aus seinem Kennel (DogRunPolicy.newMimicAcl).
+     */
+    private async persistNewMimics(config: IKennelConfig, exhausted: any[], policy: DogRunPolicy): Promise<void> {
         const { nodesStore } = this.deps;
+        const mimicAcl = policy.newMimicAcl();
         const currentDogIds = new Set<string>(config.dogIds ?? []);
         const freshLineageIds: string[] = [];
         const adoptedLineageIds: string[] = [];
@@ -364,6 +369,8 @@ export class KennelRunHandler {
                 parentId: null,
                 displayName: cfg.displayName,
                 serializedDogConfig: JSON.stringify(cfg),
+                ownerId: mimicAcl.ownerId,
+                visibility: mimicAcl.visibility,
                 createdAt: new Date(),
             });
 

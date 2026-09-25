@@ -11,7 +11,18 @@ import {
 } from '@slopdogs/core';
 import type { IStore } from '../store/IStore';
 import type { AuthCtx } from '../mcp/auth/middleware';
-import { accessOf, aclOf, canRead, canRun, parseList, type Access, type AclEntity } from '../mcp/auth/visibility';
+import {
+    accessOf,
+    aclOf,
+    applyCreateDefaults,
+    canRead,
+    canRun,
+    effectiveVisibility,
+    parseList,
+    type Access,
+    type AclEntity,
+    type Visibility,
+} from '../mcp/auth/visibility';
 
 /** Ein Verweis auf einen Dog: Version-GUID und/oder lineageId. */
 export interface DogRef {
@@ -119,12 +130,14 @@ function authOfCapability(ctx: VmGlobalCapabilityContext | undefined): AuthCtx |
  */
 export class DogRunPolicy {
     private readonly kennelOwnerId: string | null;
+    private readonly kennelVisibility: Visibility;
     private readonly kennelHands: Set<string>;
     private readonly kennelOwnerCtx: AuthCtx;
     private readonly runnerCtx: AuthCtx | undefined;
 
     constructor(kennel: IKennelConfig, private readonly capabilityCtx: VmGlobalCapabilityContext | undefined) {
         this.kennelOwnerId = (kennel as any).ownerId ?? null;
+        this.kennelVisibility = effectiveVisibility(kennel as AclEntity);
         this.kennelHands = new Set([
             ...(this.kennelOwnerId ? [this.kennelOwnerId] : []),
             ...parseList((kennel as any).editors),
@@ -143,6 +156,20 @@ export class DogRunPolicy {
         if (dogOwnerId === this.kennelOwnerId) return true;
         if (dogOwnerId && this.kennelHands.has(dogOwnerId)) return true;
         return canRun(dog, this.kennelOwnerCtx);
+    }
+
+    /**
+     * Die Rechte eines neu angelegten Auto-Mimics: er gehoert dem Kennel-Owner und ist so sichtbar
+     * wie sein Kennel — nie mehr Community/public, nur weil ihn ein Lauf erzeugt hat. Ein Community-
+     * Kennel hat keinen Owner: dann gelten die Create-Defaults des Ausloesers (Owner = der
+     * eingeloggte Aufrufer), solange der Mimic damit in diesem Kennel noch laufen darf; sonst bleibt
+     * er Community wie sein Kennel (anonymer Ausloeser, privater Community-Kennel).
+     */
+    newMimicAcl(): { ownerId: string | null; visibility: Visibility } {
+        const visibility = this.kennelVisibility;
+        if (this.kennelOwnerId) return { ownerId: this.kennelOwnerId, visibility };
+        const byTrigger = { ownerId: (applyCreateDefaults({}, this.runnerCtx).ownerId ?? null) as string | null, visibility };
+        return this.mayRun(byTrigger) ? byTrigger : { ownerId: null, visibility };
     }
 
     /** Laeuft er im eigenen Namensraum? Ja, wenn der Aufrufer seinen Code nicht lesen darf. */
