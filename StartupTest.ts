@@ -202,6 +202,7 @@ export class StartupTest {
 
             // Fixes vor P4
             await this.testKennelRenameViaRest(kennelsController as KennelController);
+            await this.testTrailingLineCommentRuns(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -3996,6 +3997,34 @@ export class StartupTest {
             const byVersion = await rename(firstVersion, 'per Version', this.fakeUser('UO'));
             if (byVersion.statusCode !== 200) throw new Error(`rename per Version-GUID: ${byVersion.statusCode}`);
             if ((await kennelsController.getById(kennelId)).data?.name !== 'per Version') throw new Error('rename per Version-GUID trifft den Kopf nicht');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test (Fix vor P4): Dog-Code, der mit einem `// Kommentar` endet, laeuft — frueher verschluckte
+     * der Kommentar die schliessende Klammer der Code-Huelle ("Unexpected end of input").
+     */
+    private async testTrailingLineCommentRuns(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'Fix: Dog-Code mit abschliessendem Zeilenkommentar laeuft';
+        const kennelId = `test-trailing-comment-${Date.now()}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'TrailingCommentDog',
+                'const answer: number = 42;\nreturn { answer }; // der letzte Satz ist ein Kommentar',
+                { visibility: 'public', ownerId: 'UO' });
+            const created = await kennelsController.create({ id: kennelId, name: 'Trailing Comment', dogIds: [dog], visibility: 'public', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const out = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: kennelId }, ctx: { user: null, isSuperUser: false } });
+            if (out.statusCode !== 200 || out.body?.answer !== 42) throw new Error(`Lauf: ${out.statusCode} ${JSON.stringify(out.body)}`);
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

@@ -860,9 +860,12 @@ export class SerializedDog<T> extends Dog<T> {
     season: IHuntingSeason
   ): Promise<T>  {
 
-        // Transpile (cached) and wrap the user's incantation in an async function
+        // Transpile (cached) and wrap the user's incantation in an async function.
+        // The line break before the closing brace is load-bearing: code that ends in a
+        // `// comment` would otherwise swallow `} catch …` and die with "Unexpected end of input".
+        // Nothing is prepended, so line numbers in errors still match the dog's own code.
         const runnable = this.getRunnableCode();
-        const wrappedCode = `(async () => { try { ${runnable} } catch (err) { throw err; } })()`;
+        const wrappedCode = `(async () => { try { ${runnable}\n} catch (err) { throw err; } })()`;
 
         // Build the context -- only declared parents' yields become global variables.
         // (fetch/console are provided inside the worker itself, not crossed via postMessage.)
