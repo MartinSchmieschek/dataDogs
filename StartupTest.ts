@@ -123,12 +123,13 @@ export class StartupTest {
             await this.testPublicLimiterCoversPublicPaths();
             await this.testPublicLimiterQueuesAndReleases();
 
-            // P3: /k/, Segment-Regel, Alt-Weiche, HEAD ohne Lauf
+            // P3: /k/, Segment-Regel, Alt-Weiche, HEAD ohne Lauf, Swagger unter /k
             await this.testKennelIdRule();
             await this.testCreateRejectsCaseCollision(kennelsController as KennelController);
             await this.testLegacyRedirectKeepsQueryAndMethod();
             await this.testPublicUnknownIs404();
             await this.testPublicHeadDoesNotRun(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testSwaggerRedirectAndPaths(nodesStore, kennelsController as KennelController);
 
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
@@ -1553,6 +1554,44 @@ export class StartupTest {
             if ((await live.text()) !== '') throw new Error('Server HEAD mit Body');
             const liveUnknown = await fetch(`${this.selfBaseUrl()}/k/${kennelId}-nicht-da`, { method: 'HEAD' });
             if (liveUnknown.status !== 404) throw new Error(`Server HEAD unbekannt: ${liveUnknown.status}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test: alte Swagger-Adressen -> 308 auf /k/…; die Spec traegt paths['/k/<id>'] und servers ''.
+     */
+    private async testSwaggerRedirectAndPaths(nodesStore: IStore, kennelsController: KennelController): Promise<void> {
+        const testName = 'P3: Swagger unter /k/:id/docs|openapi.json, 308 von /api';
+        const kennelId = `test-openapi-${Date.now()}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'OpenApiProbeDog', 'return { spec: 1 };', { visibility: 'public', ownerId: null });
+            const created = await kennelsController.create({ id: kennelId, dogIds: [dog], visibility: 'public' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const base = this.selfBaseUrl();
+
+            const docs = await fetch(`${base}/api/kennels/${kennelId}/docs?version=x`, { redirect: 'manual' });
+            if (docs.status !== 308) throw new Error(`/docs alt: ${docs.status}`);
+            if (docs.headers.get('location') !== `/k/${kennelId}/docs?version=x`) throw new Error(`/docs Location ${docs.headers.get('location')}`);
+            const json = await fetch(`${base}/api/kennels/${kennelId}/swagger.json`, { redirect: 'manual' });
+            if (json.status !== 308 || json.headers.get('location') !== `/k/${kennelId}/openapi.json`) {
+                throw new Error(`swagger.json alt: ${json.status} ${json.headers.get('location')}`);
+            }
+
+            const specRes = await fetch(`${base}/k/${kennelId}/openapi.json`);
+            if (specRes.status !== 200) throw new Error(`openapi.json: ${specRes.status}`);
+            const spec: any = await specRes.json();
+            const firstPath = Object.keys(spec.paths || {})[0];
+            if (firstPath !== `/k/${kennelId}`) throw new Error(`paths[0] = ${firstPath}`);
+            if (spec.servers?.[0]?.url !== '') throw new Error(`servers[0].url = ${spec.servers?.[0]?.url}`);
+
+            const ui = await fetch(`${base}/k/${kennelId}/docs`);
+            const html = await ui.text();
+            if (ui.status !== 200 || !html.includes(`/k/${kennelId}/openapi.json`)) throw new Error(`/k/:id/docs: ${ui.status}, specUrl fehlt`);
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

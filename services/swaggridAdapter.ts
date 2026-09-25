@@ -1,4 +1,4 @@
-import type { IKennelConfig } from '@slopdogs/core';
+import { publicKennelPath, type IKennelConfig } from '@slopdogs/core';
 import type { Rune, SwaggridCast } from '@slopdogs/swaggrid';
 import type { Waves } from './WavesConverter';
 import { findLeadNodeEntry } from './WavesConverter';
@@ -27,6 +27,7 @@ export function toSwaggridCast(
     );
     return {
         rift: config.id,
+        publicPath: publicKennelPath((config as { lineageId?: string }).lineageId ?? config.id),
         title: config.name,
         scroll: config.description,
         heraldId,

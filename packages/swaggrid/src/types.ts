@@ -17,8 +17,10 @@ export type Rune = {
  * Alles, was zur Spezifikation eines Rifts nötig ist — ohne Kennel-/Core-Typen.
  */
 export type SwaggridCast = {
-    /** Öffentlicher Pfad-Anker (URL-Segment) */
+    /** Name des Kennels (Titel-Rueckfall, operationId) */
     rift: string;
+    /** Öffentlicher Pfad des Endpunkts, z. B. `/k/wetter` — landet als Schlüssel in `paths` */
+    publicPath: string;
     title?: string;
     scroll?: string;
     /** Lead-Knoten: Instanz-ID oder Lineage-ID (wie in `dogIds[0]`); Abgleich inkl. `base:`-Prefix und Versions-Suffix */

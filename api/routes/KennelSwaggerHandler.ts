@@ -1,11 +1,13 @@
 // The KennelSwaggerHandler — Xata's herald, forging truth from the hunt into OpenAPI scrolls.
 // Its heralds are the stars it fells, the sky and Earth aflame.
 import { castGrimoire } from '@slopdogs/swaggrid';
+import { publicKennelDocsPath, publicKennelOpenApiPath } from '@slopdogs/core';
 import { toSwaggridCast } from '../../services/swaggridAdapter';
 import { KennelRunHandler } from './KennelRunHandler';
 import { canRead } from '../../mcp/auth/visibility';
 import { redactWavesForCtx } from '../../services/wavesRedaction';
 import type { IStore } from '../../store/IStore';
+import { LEGACY_ROUTE, PUBLIC_ROUTE } from './routeTable';
 
 /**
  * Handles Swagger/OpenAPI endpoints for kennels.
@@ -22,9 +24,26 @@ function escapeHtml(text: string): string {
 export class KennelSwaggerHandler {
     constructor(private runHandler: KennelRunHandler, private nodesStore: IStore) {}
 
+    /**
+     * Doku und Spec gehoeren zur Ware: `/k/:id/docs` und `/k/:id/openapi.json`.
+     * Die alten Adressen unter `/api/kennels/:id/…` antworten dauerhaft 308 — ohne DB-Lookup.
+     */
     registerRoutes(app: any): void {
-        app.get('/api/kennels/:id/swagger.json', (req: any, res: any) => this.handleSwaggerJson(req, res));
-        app.get('/api/kennels/:id/docs', (req: any, res: any) => this.handleSwaggerUi(req, res));
+        app.get(PUBLIC_ROUTE.openapi, (req: any, res: any) => this.handleSwaggerJson(req, res));
+        app.get(PUBLIC_ROUTE.docs, (req: any, res: any) => this.handleSwaggerUi(req, res));
+        app.get(LEGACY_ROUTE.swagger, (req: any, res: any) =>
+            this.redirectLegacy(req, res, publicKennelOpenApiPath(req.params.id)),
+        );
+        app.get(LEGACY_ROUTE.docs, (req: any, res: any) =>
+            this.redirectLegacy(req, res, publicKennelDocsPath(req.params.id)),
+        );
+    }
+
+    /** 308 auf die neue Adresse; die Query (z. B. `?version=`) reist unveraendert mit. */
+    private redirectLegacy(req: any, res: any, target: string): void {
+        const originalUrl = String(req.originalUrl ?? '');
+        const queryStart = originalUrl.indexOf('?');
+        res.redirect(308, target + (queryStart >= 0 ? originalUrl.slice(queryStart) : ''));
     }
 
     private async handleSwaggerJson(req: any, res: any): Promise<void> {
@@ -123,8 +142,8 @@ export class KennelSwaggerHandler {
             }
             const title = config.name || config.id;
             const titleSafe = escapeHtml(title);
-            const versionSuffix = req.query.version ? `?version=${req.query.version}` : '';
-            const specUrl = `/api/kennels/${req.params.id}/swagger.json${versionSuffix}`;
+            const versionSuffix = req.query.version ? `?version=${encodeURIComponent(String(req.query.version))}` : '';
+            const specUrl = `${publicKennelOpenApiPath(req.params.id)}${versionSuffix}`;
             const html = `<!DOCTYPE html>
 <html lang="en">
 <head>

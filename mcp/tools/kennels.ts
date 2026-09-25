@@ -4,7 +4,15 @@
 
 import { canRead, canMutate, filterReadable, applyCreateDefaults } from '../auth/visibility';
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
-import { BASE_DOG_PREFIX, checkSerializedDogCode, sanitizeLineDocs, type ILineDoc } from '@slopdogs/core';
+import {
+    BASE_DOG_PREFIX,
+    checkSerializedDogCode,
+    publicKennelDocsPath,
+    publicKennelOpenApiPath,
+    publicKennelPath,
+    sanitizeLineDocs,
+    type ILineDoc,
+} from '@slopdogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
 import { redactWavesForCtx } from '../../services/wavesRedaction';
@@ -1119,7 +1127,9 @@ async function buildKennel(
             ...(pflicht.ergaenzt.length ? { ergaenzt: pflicht.ergaenzt } : {}),
             kennelId,
             kennelLineageId,
-            publicUrl: `/${kennelId}`,
+            publicUrl: publicKennelPath(kennelId),
+            docsUrl: publicKennelDocsPath(kennelId),
+            openapiUrl: publicKennelOpenApiPath(kennelId),
             runUrl: `/api/kennels/${kennelId}/run`,
             dogs: builtDogs,
             spuren: spurenReport(kennelInput.task, kennelInput.nodes, dogIds),

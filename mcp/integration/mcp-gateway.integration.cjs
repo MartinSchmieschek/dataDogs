@@ -11,6 +11,8 @@
  *   MCP_PATH   — Default /mcp
  *   MCP_BEARER — optional (MCP_AUTH_REQUIRED / Integration)
  *   KENNEL_ID  — Default weather-kennel (Snapshot + execute)
+ *
+ * Lokal gegen einen Test-Server auf anderem Port: MCP_BASE=http://127.0.0.1:3099 npm run test:mcp:integration
  */
 'use strict';
 
@@ -265,6 +267,37 @@ async function run() {
     else pass('list_nodes', `page ${nodes.nodes.length}, total ${total ?? '?'}`);
   } catch (e) {
     fail('list_nodes', e.message);
+  }
+
+  // build_kennel: die Antwort nennt die Adressen unter /k/ (P3)
+  const probeId = `gateway-probe-${Date.now()}`;
+  try {
+    const built = await mcpCall('build_kennel', {
+      id: probeId,
+      name: 'Gateway probe',
+      refresh: false,
+      dogs: [{ displayName: 'GatewayProbe', tsCode: 'return { probe: 1 };' }],
+    });
+    const urls = `${built?.publicUrl} ${built?.docsUrl} ${built?.openapiUrl}`;
+    if (!built || typeof built !== 'object') {
+      fail('build_kennel urls', typeof built === 'string' ? built.slice(0, 120) : 'no response');
+    } else if (
+      built.publicUrl === `/k/${probeId}`
+      && /\/docs$/.test(String(built.docsUrl))
+      && /\/openapi\.json$/.test(String(built.openapiUrl))
+    ) {
+      pass('build_kennel urls', urls);
+    } else {
+      fail('build_kennel urls', urls);
+    }
+  } catch (e) {
+    fail('build_kennel urls', e.message);
+  } finally {
+    try {
+      await mcpCall('delete_kennel', { id: probeId });
+    } catch {
+      /* Aufraeumen ist best effort */
+    }
   }
 
   const query = { lat: '50.1109', lng: '8.6821' };

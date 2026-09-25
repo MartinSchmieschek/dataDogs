@@ -125,7 +125,7 @@ function safeSchemaName(name: string): string {
  * Response-Schema aus dem zuletzt beobachteten Lead-Ergebnis.
  */
 export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
-    const { rift, title, scroll, heraldId, whispers, offering, strata } = input;
+    const { rift, publicPath, title, scroll, heraldId, whispers, offering, strata } = input;
     const riftTitle = title || rift;
     const herald = findHerald(heraldId, strata);
 
@@ -137,7 +137,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
     const wellenZeilen = buildWellenUebersicht(strata);
     const einleitung =
         scroll ||
-        `Öffentlicher Kennel-Endpunkt unter \`/${rift}\` („${riftTitle}“). Diese Doku stammt von einem Probelauf mit den aktuellen Standard-Query-Parametern und dem Standard-Body.`;
+        `Öffentlicher Kennel-Endpunkt unter \`${publicPath}\` („${riftTitle}“). Diese Doku stammt von einem Probelauf mit den aktuellen Standard-Query-Parametern und dem Standard-Body.`;
     const wellenBlock =
         wellenZeilen.length > 0
             ? [
@@ -240,7 +240,7 @@ export function castGrimoire(input: SwaggridCast): OpenApiGrimoire {
         },
         servers: [{ url: '', description: 'SlopDogs-Server (Basis-URL je nach Umgebung)' }],
         paths: {
-            [`/${rift}`]: pathMethods,
+            [publicPath]: pathMethods,
         },
         components: { schemas },
     };
