@@ -24,6 +24,12 @@ import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { HeavyRequestLimiter } from './server-app/heavyRequestLimiter';
 import { EventEmitter } from 'events';
 import { CompilerCache } from './services/CompilerCache';
+import { KennelRunHandler } from './api/routes/KennelRunHandler';
+import { getSnapshotTools } from './mcp/tools/snapshots';
+import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
+import type { ToolDeps } from './mcp/tools/types';
+import type { AuthCtx } from './mcp/auth/middleware';
+import { REDACTED_RESULT } from './services/wavesRedaction';
 import { generateVersionId, generateLineageId } from './api/utils/versioning';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
 
@@ -124,6 +130,9 @@ export class StartupTest {
             await this.testLobbyFollowsInvitation(baseDogsMap, ['base:WebSocketChannelRetriever']);
             await this.testLobbyFollowsInvitation(baseDogsMap, ['base:WebSocketChannelRetriever', 'base:QueryRetriever']);
             await this.testAutoCreatedBodyRetrieverCarriesBody(baseDogsMap);
+
+            // Snapshot-Werkzeuge: Redaktion je Dog wie /run
+            await this.testSnapshotToolsRedactPerDog(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
 
             // Export/Import Tests
             await this.testKennelExportImport(nodesStore, kennelsStore, kennelsController);
@@ -1911,6 +1920,151 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Legt einen SerializedDog mit ACL-Spalten an; liefert die lineageId. Cleanup ueber createdTestIds. */
+    private async saveAclTestDog(
+        nodesStore: IStore,
+        displayName: string,
+        theRun: string,
+        acl: { visibility: 'public' | 'private'; ownerId: string | null },
+    ): Promise<string> {
+        const versionId = generateVersionId();
+        const lineageId = generateLineageId();
+        const cfg: ISerializedDogConfig = {
+            id: versionId,
+            lineageId,
+            parentId: null,
+            displayName,
+            theRun,
+            parentsRequired: [],
+            parentsOptional: [],
+        };
+        await nodesStore.save({
+            id: versionId,
+            type: SerializedDog.name,
+            lineageId,
+            parentId: null,
+            displayName,
+            serializedDogConfig: JSON.stringify(cfg),
+            visibility: acl.visibility,
+            ownerId: acl.ownerId,
+            createdAt: new Date(),
+        });
+        this.createdTestIds.push(versionId);
+        return lineageId;
+    }
+
+    /** Werkzeug-Abhaengigkeiten fuer MCP-Tool-Handler im Test. `prisma` ist ein Fake. */
+    private toolDeps(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        runHandler: KennelRunHandler,
+        prisma: any = null,
+    ): ToolDeps {
+        return {
+            kennelsController,
+            nodesController,
+            kennelRunHandler: runHandler,
+            kennelsStore,
+            nodesStore,
+            prisma,
+            baseDogsList: [],
+            projectRoot: process.cwd(),
+            snapshotCache: new KennelSnapshotCache(),
+        };
+    }
+
+    /**
+     * Test: Die Snapshot-Werkzeuge redigieren je Dog wie GET /api/kennels/:id/run (Nira L4/L5).
+     * Der Cache bleibt roh — nach den redigierten Lesern sieht der Owner wieder alles.
+     */
+    private async testSnapshotToolsRedactPerDog(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'ACL: Snapshot-Werkzeuge redigieren je Dog wie /run';
+        const kennelId = `test-snapshot-redact-${Date.now()}`;
+        try {
+            const d1 = await this.saveAclTestDog(nodesStore, 'SnapOpenDog', 'return { open: 1 };',
+                { visibility: 'public', ownerId: 'U0' });
+            const d2 = await this.saveAclTestDog(nodesStore, 'SnapPrivateDog', 'return { secret: "snap-secret" };',
+                { visibility: 'private', ownerId: 'U1' });
+            // Kennel gehoert U0, nicht U1 — sonst macht die Sichtbarkeits-Kaskade D2 oeffentlich.
+            const created = await kennelsController.create({
+                id: kennelId,
+                name: `Snapshot Redact ${kennelId}`,
+                dogIds: [d1, d2],
+                visibility: 'public',
+                ownerId: 'U0',
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const tools = getSnapshotTools();
+            const tool = (name: string) => {
+                const t = tools.find((x) => x.name === name);
+                if (!t) throw new Error(`Werkzeug ${name} fehlt`);
+                return t;
+            };
+            const read = async (name: string, ctx: AuthCtx, args: Record<string, any>) => {
+                const r = await tool(name).handler({ id: kennelId, ...args }, ctx, deps);
+                if (r.isError) throw new Error(`${name}: ${r.content[0]?.text}`);
+                return JSON.parse(r.content[0].text);
+            };
+            const user = (id: string): AuthCtx => ({ user: { id, email: `${id.toLowerCase()}@test.invalid`, name: null }, isSuperUser: false });
+            const u1 = user('U1');
+            const u2 = user('U2');
+            const anon: AuthCtx = { user: null, isSuperUser: false };
+            const superUser: AuthCtx = { user: null, isSuperUser: true };
+
+            await read('refresh_kennel_snapshot', u1, {});
+            const header = await read('wait_for_kennel_snapshot', u1, { timeoutMs: 30_000 });
+            if (header.status !== 'ok') throw new Error(`Snapshot-Status ${header.status}: ${header.errorMessage ?? ''}`);
+
+            const runNodeFor = async (ctx: AuthCtx, lineageId: string) => {
+                const { res, out } = this.fakeResponse();
+                await (runHandler as any).handleRun({ params: { id: kennelId }, query: {}, method: 'GET', ctx }, res);
+                if (!out.body?.ok) throw new Error(`/run fehlgeschlagen: ${JSON.stringify(out.body)}`);
+                const node = (out.body.waves as any[]).flat().find((n: any) => n.lineageId === lineageId);
+                if (!node) throw new Error(`/run: Dog ${lineageId} nicht in den Waves`);
+                return node;
+            };
+
+            for (const [label, ctx] of [['U2', u2], ['anonym', anon]] as Array<[string, AuthCtx]>) {
+                const result = await read('get_snapshot_dog_result', ctx, { dogId: d2 });
+                const code = await read('get_snapshot_dog_code', ctx, { dogId: d2 });
+                const vm = await read('get_snapshot_dog_vmcontext', ctx, { dogId: d2 });
+                const viaRun = await runNodeFor(ctx, d2);
+                if (result.result !== REDACTED_RESULT) throw new Error(`${label}: result nicht redigiert: ${JSON.stringify(result.result)}`);
+                if (result.result !== viaRun.result) throw new Error(`${label}: result weicht von /run ab`);
+                if (code.codeTs !== null || viaRun.codeTs != null) throw new Error(`${label}: codeTs nicht redigiert`);
+                if (vm.vmContext !== null || vm.vmContextTypeDef !== null || viaRun.vmContext != null) {
+                    throw new Error(`${label}: vmContext nicht redigiert`);
+                }
+                const open = await read('get_snapshot_dog_code', ctx, { dogId: d1 });
+                if (typeof open.codeTs !== 'string') throw new Error(`${label}: lesbarer Dog D1 wurde redigiert`);
+            }
+
+            for (const [label, ctx] of [['U1', u1], ['Super-User', superUser]] as Array<[string, AuthCtx]>) {
+                const result = await read('get_snapshot_dog_result', ctx, { dogId: d2 });
+                const code = await read('get_snapshot_dog_code', ctx, { dogId: d2 });
+                if (result.result?.secret !== 'snap-secret') throw new Error(`${label}: result nicht roh: ${JSON.stringify(result.result)}`);
+                if (typeof code.codeTs !== 'string' || !code.codeTs.includes('snap-secret')) throw new Error(`${label}: codeTs nicht roh`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 

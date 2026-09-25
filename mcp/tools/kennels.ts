@@ -7,6 +7,7 @@ import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode,
 import { BASE_DOG_PREFIX, checkSerializedDogCode, sanitizeLineDocs, type ILineDoc } from '@datadogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
+import { redactWavesForCtx } from '../../services/wavesRedaction';
 
 /** Status notebook — see mcp/skill.md § Spuren & Rechtfertigung */
 const KENNEL_TRACE_NODE_SCHEMA = {
@@ -643,7 +644,7 @@ export function getKennelTools(): ToolDef[] {
                         config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs,
                     );
                     // SECURITY (2026-09-13): strip code/runtime of nodes this caller may not read.
-                    const safeWaves = await deps.kennelRunHandler.redactWavesForCtx(waves, ctx);
+                    const safeWaves = await redactWavesForCtx(waves, ctx, deps.nodesStore);
                     return ok({ waves: safeWaves, kennelConfig: config });
                 } catch (err: any) {
                     return fail(err?.message ?? String(err));

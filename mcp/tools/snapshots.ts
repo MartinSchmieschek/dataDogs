@@ -8,6 +8,7 @@ import type { AuthCtx } from '../auth/middleware';
 import type { NodeEntry, Waves, ReadTrackingEntry } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from '../snapshots/types';
 import type { IKennelConfig } from '@datadogs/core';
+import { redactWavesForCtx } from '../../services/wavesRedaction';
 
 /**
  * Inline MCP-AuthCtx -> VmGlobalCapabilityContext adapter (Welle 9 hotfix).
@@ -101,7 +102,11 @@ export interface StaleSnapshotMarker {
  * Laed Snapshot + prueft Visibility + Stale.
  * - `not-found` / `forbidden` / `no-snapshot` -> fail() (echte Fehler)
  * - `stale` -> ok(StaleSnapshotMarker), kein isError
- * - sonst -> die Visible-Snapshot-Daten
+ * - sonst -> die Visible-Snapshot-Daten, je Dog redigiert fuer DIESEN Aufrufer
+ *
+ * Einzige Tuer zu den Snapshot-Waves: jedes Werkzeug, das aus dem Snapshot liest,
+ * geht hier durch und sieht genau das, was `/api/kennels/:id/run` demselben
+ * Aufrufer zeigen wuerde.
  */
 async function loadVisibleSnapshot(
     id: string,
@@ -138,7 +143,29 @@ async function loadVisibleSnapshot(
         };
         return { ok: false, stale: true, result: ok(marker) };
     }
-    return { ok: true, data: { snapshot, currentVersionId } };
+    return { ok: true, data: { snapshot: await redactSnapshotForCtx(snapshot, ctx, deps), currentVersionId } };
+}
+
+/**
+ * Die Sicht eines Aufrufers auf einen Snapshot. Redaktion beim LESEN, nicht beim
+ * Cachen: der Cache haelt rohe Waves und wird von Lesern mit verschiedenen Rechten
+ * gelesen (triggerUserId ist nur der Ausloeser, nicht der einzige Leser). Der
+ * Cache-Eintrag selbst bleibt unberuehrt — redactWavesForCtx liefert Kopien.
+ * Ist der Lead redigiert, ist es auch die vorbeprobte Lead-Beute.
+ */
+async function redactSnapshotForCtx(
+    snapshot: KennelSnapshotEntry,
+    ctx: Parameters<ToolDef['handler']>[1],
+    deps: ToolDeps,
+): Promise<KennelSnapshotEntry> {
+    if (!snapshot.waves) return snapshot;
+    const waves = await redactWavesForCtx(snapshot.waves, ctx, deps.nodesStore);
+    if (waves === snapshot.waves) return snapshot;
+    const lead = snapshot.leadDogId
+        ? waves.flat().find((d) => d.id === snapshot.leadDogId)
+        : undefined;
+    const leadResult = lead && (lead as any).redacted ? lead.result : snapshot.leadResult;
+    return { ...snapshot, waves, leadResult };
 }
 
 /** Slim-Projection eines NodeEntry fuer Listen. */
@@ -393,7 +420,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_kennel_snapshot_lead_result',
             description:
-                'Returns the snapshot\'s lead result — the same payload that the public GET /:kennelId endpoint yields.',
+                'Returns the snapshot\'s lead result — the same payload that the public GET /:kennelId endpoint yields. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -411,7 +438,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_snapshot_dog',
             description:
-                'Returns the metadata header of one dog in the snapshot — identity, type, flags, parents counts. No result, no code, no vmContext. Drill into those with the dedicated get_snapshot_dog_* tools.',
+                'Returns the metadata header of one dog in the snapshot — identity, type, flags, parents counts. No result, no code, no vmContext. Drill into those with the dedicated get_snapshot_dog_* tools. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogId'],
@@ -453,7 +480,7 @@ export function getSnapshotTools(): ToolDef[] {
 
         {
             name: 'get_snapshot_dog_result',
-            description: 'Returns only the dog\'s result payload from the snapshot.',
+            description: 'Returns only the dog\'s result payload from the snapshot. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogId'],
@@ -472,7 +499,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_snapshot_dog_code',
             description:
-                'Returns the dog\'s TypeScript source (codeTs). null for BaseDogs (they are hardcoded).',
+                'Returns the dog\'s TypeScript source (codeTs). null for BaseDogs (they are hardcoded). Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogId'],
@@ -491,7 +518,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_snapshot_dog_typedef',
             description:
-                'Returns the dog\'s VM type definition library and expected return-type alias — schema only, no runtime data.',
+                'Returns the dog\'s VM type definition library and expected return-type alias — schema only, no runtime data. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogId'],
@@ -513,7 +540,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'get_snapshot_dog_vmcontext',
             description:
-                'Returns the full VM scope (vmContext) plus its type definition. Expensive — contains every parent yield this dog could read. Use sparingly.',
+                'Returns the full VM scope (vmContext) plus its type definition. Expensive — contains every parent yield this dog could read. Use sparingly. Dogs you may not read are redacted (no code, no context, no result), exactly like /api/kennels/:id/run.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogId'],
