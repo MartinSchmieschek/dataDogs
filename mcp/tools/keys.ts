@@ -27,7 +27,7 @@ export function getKeyTools(): ToolDef[] {
                 + 'no tool returns the value. Dogs use it through `keys.fetch(url, opts)` with the placeholder `{{key:<alias>}}` in the url, a header value or the body; '
                 + 'the server substitutes it and only calls `allowedDomains` (exact host or `*.example.com`, https only, no private networks, no redirects). '
                 + 'Runs use the keys of whoever runs the kennel. alias: lowercase a-z, 0-9, _ and -, max 32. secret: 8-4096 chars, one line. '
-                + 'quotaPerDay caps calls per UTC day. The key store lives in the database — a reset deletes it; add the key again.',
+                + 'quotaPerDay caps calls per UTC day. kennelGrants (opt-in, requires quotaPerDay) lets runs of your listed kennels use the key for other runners — you pay, capped. The key store lives in the database — a reset deletes it; add the key again.',
             inputSchema: {
                 type: 'object',
                 required: ['alias', 'secret', 'allowedDomains'],
@@ -36,7 +36,8 @@ export function getKeyTools(): ToolDef[] {
                     alias: { type: 'string', description: 'lowercase name, referenced as {{key:<alias>}}' },
                     secret: { type: 'string', description: 'the value — shown never again' },
                     allowedDomains: { type: 'array', items: { type: 'string' }, description: 'hosts keys.fetch may call with this key, e.g. ["api.openai.com"] or ["*.example.com"]' },
-                    quotaPerDay: { type: 'integer', minimum: 1, description: 'optional cap of keys.fetch calls per UTC day' },
+                    kennelGrants: { type: 'array', items: { type: 'string' }, description: 'optional: lineage ids of YOUR kennels whose runs may use this key for any runner (anonymous visitors included) — you pay; requires quotaPerDay' },
+                    quotaPerDay: { type: 'integer', minimum: 1, description: 'cap of keys.fetch calls per UTC day — required with kennelGrants' },
                 },
             },
             handler: async (args, ctx, deps) => asKeyTool(ctx, deps, async (owner) => ({ ok: true, key: await deps.keyStore.set(owner, args as UserKeyInput) })),

@@ -18,6 +18,9 @@ export const KEY_ALIAS_RX = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export const KEY_SECRET_MIN = 8;
 export const KEY_SECRET_MAX = 4096;
 const MAX_DOMAINS = 20;
+const MAX_GRANTS = 50;
+/** Eine Kennel-Lineage (Kennel-ID oder GUID) — ohne Komma, sie steht in einer CSV-Spalte. */
+const KENNEL_GRANT_RX = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 const HOST_LABEL_RX = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const MASTER_KEY_ENV_RX = /^KEYSTORE_MASTER_KEY_V([1-9][0-9]*)$/;
 const CIPHER = 'aes-256-gcm';
@@ -64,6 +67,8 @@ export interface UserKeyInput {
     alias: unknown;
     secret: unknown;
     allowedDomains: unknown;
+    /** Kennel-Lineages, in deren Laeufen dieser Key auch fuer fremde Runner gilt (8.8) — nur mit quotaPerDay. */
+    kennelGrants?: unknown;
     quotaPerDay?: unknown;
 }
 
@@ -262,11 +267,16 @@ export class KeyStoreService {
         const secret = KeyStoreService.validSecret(input.secret);
         const allowedDomains = normalizeAllowedDomains(input.allowedDomains);
         const quotaPerDay = KeyStoreService.validQuota(input.quotaPerDay);
+        const kennelGrants = KeyStoreService.validGrants(input.kennelGrants);
+        if (kennelGrants.length > 0 && quotaPerDay === null) {
+            throw new KeyStoreError(400, 'quota_required', 'kennelGrants need quotaPerDay — a granted key is used by other people, so it gets a daily cap.');
+        }
         const sealed = keyring.seal(ownerId, alias, secret);
         const data = {
             last4: secret.slice(-4),
             ...sealed,
             allowedDomains: allowedDomains.join(','),
+            kennelGrants: kennelGrants.length > 0 ? kennelGrants.join(',') : null,
             quotaPerDay,
         };
         const row = await this.prisma.userKey.upsert({
@@ -293,6 +303,16 @@ export class KeyStoreService {
     /** Eine Zeile des Besitzers — fuer die Capability, nie fuer eine Antwort. */
     async findRow(ownerId: string, alias: string): Promise<UserKeyRow | null> {
         return (await this.prisma.userKey.findUnique({ where: { ownerId_alias: { ownerId, alias } } })) as UserKeyRow | null;
+    }
+
+    /**
+     * Ein Key des Kennel-Owners, den er diesem Kennel freigegeben hat (8.8) — fuer Laeufe fremder
+     * Runner. Nur mit Eintrag in kennelGrants; die Pflicht-Quota deckelt, was das kostet.
+     */
+    async findGrantedRow(ownerId: string, alias: string, kennelLineageId: string): Promise<UserKeyRow | null> {
+        const row = await this.findRow(ownerId, alias);
+        if (!row || row.quotaPerDay === null || row.quotaPerDay === undefined) return null;
+        return parseCsv(row.kennelGrants).includes(kennelLineageId) ? row : null;
     }
 
     /** Der Klartext — nur im Speicher der Capability. Wirft key_undecryptable:<alias>. */
@@ -411,6 +431,15 @@ export class KeyStoreService {
             throw new KeyStoreError(400, 'invalid_secret', `secret: ${KEY_SECRET_MIN}-${KEY_SECRET_MAX} chars, one line.`);
         }
         return raw;
+    }
+
+    private static validGrants(raw: unknown): string[] {
+        if (raw === undefined || raw === null) return [];
+        const list = Array.isArray(raw) ? raw : null;
+        if (!list || list.length > MAX_GRANTS || list.some((g) => typeof g !== 'string' || !KENNEL_GRANT_RX.test(g))) {
+            throw new KeyStoreError(400, 'invalid_grants', `kennelGrants: up to ${MAX_GRANTS} kennel lineage ids.`);
+        }
+        return [...new Set(list as string[])];
     }
 
     private static validQuota(raw: unknown): number | null {

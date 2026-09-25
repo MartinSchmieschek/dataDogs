@@ -336,6 +336,7 @@ export class StartupTest {
                 await this.testKeysLogScrub(keysRun);
                 await this.testKeysSuperUserTrap(keysRun);
                 await this.testKeysSnapshotCrossRead(keysRun, kennelsStore, nodesController);
+                await this.testKeysKennelGrants(keysRun);
             }
             await this.testExportScansRawKeys(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testWorkerFetchBlocksPrivateNetworks(nodesStore, kennelsController as KennelController, baseDogsMap);
@@ -5442,9 +5443,9 @@ export class StartupTest {
         kennel: { ownerId: string | null; visibility: Visibility; editors?: string },
         dogIds: string[],
         ctx: AuthCtx | undefined,
+        id = `test-p4c-kennel-${randomBytes(4).toString('hex')}`,
     ): Promise<any[]> {
         const runHandler = new KennelRunHandler({ kennelsController: deps.kennelsController, nodesStore: deps.nodesStore, baseDogsMap: deps.baseDogsMap, callCounter: this.testCallCounter });
-        const id = `test-p4c-kennel-${randomBytes(4).toString('hex')}`;
         const config: any = { id, lineageId: id, name: 'P4c', dogIds, ...kennel };
         const waves = await runHandler.runKennel(config, {}, undefined, runHandler.toCapabilityCtx(ctx), undefined, { source: 'unknown' });
         return waves.flat();
@@ -5687,6 +5688,57 @@ export class StartupTest {
                 this.addResult(testName, false, String(error));
             } finally {
                 try { await deps.kennelsController.delete(kennelId); } catch { /* ignore */ }
+            }
+        });
+    }
+
+    /**
+     * Test T1, zweiter Teil (8.8 kennelGrants): ohne Quota keine Freigabe (quota_required). Mit Freigabe
+     * laeuft der Owner-Key anonym ueber den freigegebenen Kennel — auch fuer seinen privaten Dog —,
+     * usedToday +1, kein Wert im Yield; danach quota_exceeded. Nicht freigegebener Kennel und ein Dog,
+     * dessen Code der Owner nicht lesen darf: keys_unavailable.
+     */
+    private async testKeysKennelGrants(deps: KeysTestDeps): Promise<void> {
+        const testName = 'P4c T1b: kennelGrants mit Pflicht-Quota fuer fremde Runner';
+        const stamp = Date.now();
+        const u1 = `test-p4c-t1g-${stamp}`;
+        const u2 = `test-p4c-t1h-${stamp}`;
+        const granted = `test-p4c-granted-${stamp}`;
+        const anon: AuthCtx = { user: null, isSuperUser: false };
+        await this.withKeysHarness(deps, [u1, u2], async ({ store, net }) => {
+            try {
+                const secret = StartupTest.keyTestSecret('t1g');
+                try {
+                    await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'], kennelGrants: [granted] });
+                    throw new Error('Freigabe ohne Quota angenommen');
+                } catch (err: any) {
+                    if (err?.code !== 'quota_required') throw err;
+                }
+                const view = await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'], kennelGrants: [granted], quotaPerDay: 1 });
+                if (view.kennelGrants.join() !== granted || view.quotaPerDay !== 1) throw new Error(`Sicht: ${JSON.stringify(view)}`);
+                const ownerDog = await this.saveAclTestDog(deps.nodesStore, 'P4cGrantDog', StartupTest.keyFetchDog('openai'), { visibility: 'private', ownerId: u1 });
+                const editorDog = await this.saveAclTestDog(deps.nodesStore, 'P4cGrantEditorDog', StartupTest.keyFetchDog('openai'), { visibility: 'private', ownerId: u2 });
+                const kennel = { ownerId: u1, visibility: 'public' as Visibility, editors: u2 };
+                const outcome = async (dog: string, id: string) => {
+                    const nodes = await this.runKeysKennel(deps, kennel, [dog], anon, id);
+                    StartupTest.assertNoSecret('T1b', [nodes], [secret]);
+                    const n = nodes.find((x: any) => x.lineageId === dog);
+                    return n?.error ? String(n.error) : n?.result?.status;
+                };
+
+                const first = await outcome(ownerDog, granted);
+                if (first !== 200 || net.sent.length !== 1 || net.sent[0].headers.authorization !== `Bearer ${secret}`) throw new Error(`freigegeben, anonym: ${first}`);
+                if ((await store.findRow(u1, 'openai'))?.usedToday !== 1) throw new Error('usedToday nicht +1');
+                const second = await outcome(ownerDog, granted);
+                if (!second || !String(second).includes('quota_exceeded')) throw new Error(`Quota: ${second}`);
+                const other = await outcome(ownerDog, `${granted}-other`);
+                if (!String(other).includes('keys_unavailable')) throw new Error(`nicht freigegebener Kennel: ${other}`);
+                const foreignCode = await outcome(editorDog, granted);
+                if (!String(foreignCode).includes('keys_unavailable')) throw new Error(`Dog, den der Owner nicht lesen darf: ${foreignCode}`);
+                if (net.sent.length !== 1) throw new Error(`gesendet: ${net.sent.length}`);
+                this.addResult(testName, true);
+            } catch (error) {
+                this.addResult(testName, false, String(error));
             }
         });
     }

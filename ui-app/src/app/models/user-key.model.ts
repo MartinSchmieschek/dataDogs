@@ -19,6 +19,8 @@ export interface IUserKeyInput {
   alias: string;
   secret: string;
   allowedDomains: string[];
+  /** Opt-in (8.8): nur zusammen mit quotaPerDay. */
+  kennelGrants?: string[];
   quotaPerDay?: number;
 }
 
@@ -28,6 +30,8 @@ export type UserKeyErrorCode =
   | 'invalid_secret'
   | 'invalid_domains'
   | 'invalid_quota'
+  | 'invalid_grants'
+  | 'quota_required'
   | 'no_identity'
   | 'not_found'
   | 'keystore_disabled';

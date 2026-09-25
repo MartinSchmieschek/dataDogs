@@ -343,16 +343,36 @@ export class KeysCapability {
         return { status: response.status, headers: outHeaders, body: run.scrubText(String(response.body ?? '')) };
     }
 
-    /** Einen Alias des Runners aufloesen — oder mit dem passenden Fehler scheitern. */
+    /**
+     * Wessen Freigabe gilt (8.8)? Die des Kennel-Owners — fuer jeden Runner ausser dem Super-User
+     * ohne Identitaet, und fuer einen fremden Dog nur, wenn der Owner seinen Code lesen darf.
+     */
+    grantOwnerOf(ctx: VmGlobalCapabilityContext | undefined): string | null {
+        if (!ctx || !ctx.kennelOwnerId || !ctx.kennelLineageId) return null;
+        if (ctx.isSuperUser && !ctx.userId) return null;
+        if (ctx.foreignDog && !ctx.foreignDog.ownerMayRead) return null;
+        return ctx.kennelOwnerId;
+    }
+
+    /**
+     * Einen Alias aufloesen: zuerst der Runner (seine eigenen Keys), dann ein Key, den der Kennel-Owner
+     * diesem Kennel freigegeben hat — sonst der passende Fehler.
+     */
     private async resolve(ctx: VmGlobalCapabilityContext, run: KeyRunState, alias: string): Promise<ResolvedKey> {
         const runner = this.runnerOf(ctx);
-        if (!runner) throw new KeysFetchError('keys_unavailable');
-        const resolved = await run.resolveOnce(`${runner}\u0000${alias}`, async () => {
-            const row = await this.store.findRow(runner, alias);
-            return row ? { row, secret: this.store.decrypt(row) } : null;
-        });
-        if (!resolved) throw new KeysFetchError(`key_not_found:${alias}`);
-        return resolved;
+        const grantOwner = this.grantOwnerOf(ctx);
+        const decrypted = (row: UserKeyRow | null): ResolvedKey | null => (row ? { row, secret: this.store.decrypt(row) } : null);
+        if (runner) {
+            const own = await run.resolveOnce(`${runner}\u0000${alias}`, async () => decrypted(await this.store.findRow(runner, alias)));
+            if (own) return own;
+        }
+        if (grantOwner) {
+            const kennel = ctx.kennelLineageId as string;
+            const granted = await run.resolveOnce(`grant\u0000${grantOwner}\u0000${kennel}\u0000${alias}`,
+                async () => decrypted(await this.store.findGrantedRow(grantOwner, alias, kennel)));
+            if (granted) return granted;
+        }
+        throw new KeysFetchError(runner ? `key_not_found:${alias}` : 'keys_unavailable');
     }
 
     /** Die Argumente des Dogs in eine feste Form: URL-Text, Methode, String-Header, String-Body. */
