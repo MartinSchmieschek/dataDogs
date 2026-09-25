@@ -20,6 +20,10 @@ import {
     publicKennelPath,
     publicKennelDocsPath,
     publicKennelOpenApiPath,
+    classifyDogError,
+    DOG_OOM_MARKER,
+    type DogRunReport,
+    type ICacheHandler,
 } from '@slopdogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
@@ -238,6 +242,11 @@ export class StartupTest {
             await this.testRatingRules(kennelsController as KennelController, statsStore);
             await this.testListQuerySortsAndFiltersByStats();
             await this.testLandingRanksOnlyPublic();
+
+            // P4b: Dog-Aufrufe, Wiederverwendung, Bewaehrt
+            await this.testDogRunObserverOncePerDog(baseDogsMap);
+            await this.testDogRunClassification(baseDogsMap);
+            await this.testDogCacheStatsWrapper(baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4600,6 +4609,125 @@ export class StartupTest {
             stats.invalidate();
             await get();
             if (loads() !== 2) throw new Error('invalidate() leert das Landing-Memo nicht');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Ein SerializedDog fuer die P4b-Laeufe — nur im Speicher, nie im Store. */
+    private p4bDog(displayName: string, theRun: string, parentsRequired: string[] = []): SerializedDog<unknown> {
+        const id = generateVersionId();
+        const cfg: ISerializedDogConfig = {
+            id, lineageId: generateLineageId(), parentId: null, displayName, theRun, parentsRequired, parentsOptional: [],
+        };
+        return new SerializedDog<unknown>(cfg, id);
+    }
+
+    /** Ein KennelRun ueber Speicher-Dogs mit einem Observer, der jeden Report festhaelt. */
+    private p4bRun(baseDogsMap: Map<string, any>, dogIds: string[], dogs: SerializedDog<unknown>[]): { run: KennelRun; reports: DogRunReport[] } {
+        const reports: DogRunReport[] = [];
+        const run = new KennelRun({ id: `test-p4b-${Date.now()}`, dogIds }, baseDogsMap,
+            async (ids) => dogs.filter((d) => ids.includes(d.lineageId as string)));
+        run.setDogRunObserver({ onDogRun: (r) => { reports.push(r); } });
+        return { run, reports };
+    }
+
+    /**
+     * Test P4b 1: der Observer hoert je gelaufenem Hund genau einen Report — Base-Dog und zwei
+     * SerializedDogs in drei Wellen, der letzte wirft; ok/ok/error, Dauer >= 0, waveIndex steigt.
+     * Ein werfender Observer toetet die Welle nicht.
+     */
+    private async testDogRunObserverOncePerDog(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 1: Observer feuert je Hund genau einmal';
+        try {
+            const a = this.p4bDog('P4bA', 'return { a: 1 };', ['QueryRetriever']);
+            const b = this.p4bDog('P4bB', 'throw new Error("p4b boom");', [a.lineageId as string]);
+            const { run, reports } = this.p4bRun(baseDogsMap, ['base:QueryRetriever', a.lineageId as string, b.lineageId as string], [a, b]);
+            await run.run();
+            const seen = reports.map((r) => `${r.dog.name === 'QueryRetriever' ? 'Q' : r.dog === a ? 'A' : 'B'}:${r.outcome}:${r.waveIndex}`).join(',');
+            if (seen !== 'Q:ok:0,A:ok:1,B:error:2') throw new Error(`Reports: ${seen}`);
+            if (reports.some((r) => !(r.durationMs >= 0))) throw new Error('durationMs < 0');
+            if (!String(reports[2].errorMessage).includes('p4b boom')) throw new Error(`errorMessage: ${reports[2].errorMessage}`);
+
+            const again = this.p4bDog('P4bC', 'return { c: 1 };');
+            const throwing = new KennelRun({ id: 'test-p4b-throwing', dogIds: [again.lineageId as string] }, baseDogsMap, async () => [again]);
+            throwing.setDogRunObserver({ onDogRun: () => { throw new Error('observer kaputt'); } });
+            const season = await throwing.run();
+            if ((season.exhausted[0] as any)?.collected?.c !== 1) throw new Error('werfender Observer hat die Welle gestoert');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Test P4b 2: Timeout und OOM nur ueber die Marker; alles andere ist error. */
+    private async testDogRunClassification(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 2: Klassifikation timeout/oom/error';
+        try {
+            const spin = this.p4bDog('P4bSpin', 'while (true) {}');
+            const { run, reports } = this.p4bRun(baseDogsMap, [spin.lineageId as string], [spin]);
+            run.setVmTimeoutMs(200);
+            await run.run();
+            if (reports.length !== 1 || reports[0].outcome !== 'timeout') throw new Error(`while(true): ${JSON.stringify(reports.map((r) => [r.outcome, r.errorMessage]))}`);
+            if (classifyDogError(`SerializedDog x ("y"): ${DOG_OOM_MARKER} of 64 MB`) !== 'oom') throw new Error('OOM-Marker nicht erkannt');
+            if (classifyDogError('Cannot read properties of undefined') !== 'error') throw new Error('Prosa als timeout/oom erkannt');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test P4b 3: der Cache-Wrapper zaehlt je Hund — erster Lauf holt (miss), zweiter trifft
+     * (hit, 0 misses = Klasse cached); NEG-HIT zaehlt als Treffer und der Lauf als error.
+     */
+    private async testDogCacheStatsWrapper(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 3: Cache-Wrapper zaehlt Hit/Miss, NEG-HIT';
+        try {
+            const memory = new Map<string, unknown>();
+            const fake: ICacheHandler = {
+                get: async (k) => memory.get(k) as any,
+                set: async (k, v) => { memory.set(k, v); },
+                has: async (k) => memory.has(k),
+                getOrFetch: async <T,>(key: string, _ttl: number, factory: () => Promise<T>): Promise<T> => {
+                    if (key === 'neg') throw new Error('provider down (negativ gecacht)');
+                    if (memory.has(key)) return memory.get(key) as T;
+                    const value = await factory();
+                    memory.set(key, value);
+                    return value;
+                },
+                invalidate: async (k) => { memory.delete(k); },
+                invalidateByPrefix: async () => {},
+                prune: async () => {},
+                getTileFeatureCache: () => ({}) as any,
+            };
+            const cachingDog = (dogName: string, key: string) => class extends Dog<number> {
+                private cache?: ICacheHandler;
+                get name() { return dogName; }
+                get required() { return []; }
+                get optional() { return []; }
+                setCacheHandler(handler: ICacheHandler) { this.cache = handler; }
+                protected yieldCollectorFactory = async () => this.cache!.getOrFetch(key, 60_000, async () => 42);
+            };
+            const map = new Map(baseDogsMap);
+            map.set('P4bCachingDog', cachingDog('P4bCachingDog', 'p4b-key'));
+            map.set('P4bNegDog', cachingDog('P4bNegDog', 'neg'));
+            const runOnce = async (dogId: string): Promise<DogRunReport> => {
+                const reports: DogRunReport[] = [];
+                const run = new KennelRun({ id: 'test-p4b-cache', dogIds: [dogId] }, map, undefined, undefined, undefined, [], fake);
+                run.setDogRunObserver({ onDogRun: (r) => { reports.push(r); } });
+                await run.run();
+                if (reports.length !== 1) throw new Error(`${dogId}: ${reports.length} Reports`);
+                return reports[0];
+            };
+            const cachedOf = (r: DogRunReport) => r.outcome === 'ok' && r.cacheHits > 0 && r.cacheMisses === 0;
+            const first = await runOnce('base:P4bCachingDog');
+            if (first.cacheMisses !== 1 || first.cacheHits !== 0 || first.outcome !== 'ok' || cachedOf(first)) throw new Error(`Lauf 1: ${JSON.stringify([first.cacheHits, first.cacheMisses, first.outcome])}`);
+            const second = await runOnce('base:P4bCachingDog');
+            if (second.cacheHits !== 1 || second.cacheMisses !== 0 || !cachedOf(second)) throw new Error(`Lauf 2: ${JSON.stringify([second.cacheHits, second.cacheMisses, second.outcome])}`);
+            const neg = await runOnce('base:P4bNegDog');
+            if (neg.cacheHits !== 1 || neg.cacheMisses !== 0 || neg.outcome !== 'error') throw new Error(`NEG-HIT: ${JSON.stringify([neg.cacheHits, neg.cacheMisses, neg.outcome])}`);
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

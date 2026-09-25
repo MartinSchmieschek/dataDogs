@@ -14,6 +14,7 @@
 import { Dog } from "../core/entities/abstractHuntingDog";
 import { DogClass, IHuntingDog } from "../core/entities/IHuntingDog";
 import { IHuntingSeason } from "../core/entities/IHuntingSeason";
+import { DOG_OOM_MARKER, DOG_TIMEOUT_MARKER } from "../core/entities/IDogRunObserver";
 import { Worker } from "worker_threads";
 import { transform as sucraseTransform } from "sucrase";
 import { envFirst, isRuntimeLogVerbose } from "../runtimeLog";
@@ -834,7 +835,7 @@ export class SerializedDog<T> extends Dog<T> {
         if (!isOutOfMemory) return err;
 
         return new Error(
-            `SerializedDog ${this.storageId} ("${this.name}"): sandbox worker exceeded its heap limit `
+            `SerializedDog ${this.storageId} ("${this.name}"): ${DOG_OOM_MARKER} `
             + `of ${maxHeapMb} MB and was terminated. Raise DOG_WORKER_MAX_HEAP_MB (default `
             + `${DEFAULT_DOG_WORKER_MAX_HEAP_MB}) or let this dog hold less data in memory.`
         );
@@ -1031,7 +1032,7 @@ export class SerializedDog<T> extends Dog<T> {
 
                 const timer = setTimeout(() => {
                     settle(() => reject(new Error(
-                        `SerializedDog ${this.storageId}: VM execution timed out after ${timeoutMs}ms`
+                        `SerializedDog ${this.storageId}: ${DOG_TIMEOUT_MARKER} ${timeoutMs}ms`
                     )));
                 }, timeoutMs);
 

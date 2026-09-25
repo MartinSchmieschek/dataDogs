@@ -22,6 +22,8 @@ import { IHuntingSeason } from './core/entities/IHuntingSeason';
 import { ICacheHandler } from './cache/ICacheHandler';
 import { isCacheable } from './cache/ICacheable';
 import { isTileCacheable } from './cache/tiling/ITileFeatureCache';
+import { withDogCacheStats } from './cache/withDogCacheStats';
+import type { IDogRunObserver } from './core/entities/IDogRunObserver';
 import { isRuntimeLogVerbose } from './runtimeLog';
 
 /**
@@ -111,6 +113,16 @@ export class KennelRun {
     private cacheHandler?: ICacheHandler;
     private capabilityCtx?: VmGlobalCapabilityContext;
     private vmTimeoutMs?: number;
+    private dogRunObserver?: IDogRunObserver;
+
+    /**
+     * Set the watcher that hears of every single hound run of this kennel (P4b): outcome,
+     * duration, cache hits/misses. The app fills in what the core cannot know -- kennel
+     * lineage and call source -- in its closure. Synchronous; a throwing watcher is contained.
+     */
+    public setDogRunObserver(observer: IDogRunObserver | undefined): void {
+        this.dogRunObserver = observer;
+    }
 
     /**
      * Set the capability context (userId/isSuperUser) that every SerializedDog in this
@@ -278,12 +290,13 @@ export class KennelRun {
             });
         }
 
-        // Cache-Injection — every hound that implements ICacheable receives the cache handler
+        // Cache-Injection — every hound that implements ICacheable receives the cache handler,
+        // wrapped per hound so its hits and misses can be counted (P4b, withDogCacheStats)
         if (this.cacheHandler) {
             const tileFeatureCache = this.cacheHandler.getTileFeatureCache();
             kennel.forEach(dog => {
                 if (isCacheable(dog)) {
-                    dog.setCacheHandler(this.cacheHandler!);
+                    dog.setCacheHandler(withDogCacheStats(this.cacheHandler!, dog));
                     if (v) console.log(`[KennelRun.fillKennel] Cache-Handler injected into: ${dog.name}`);
                 }
                 if (isTileCacheable(dog)) {
@@ -468,7 +481,7 @@ export class KennelRun {
             kennel = await this.fillKennel();
         }
 
-        const hunt = new SeasonRunner({ kennel });
+        const hunt = new SeasonRunner({ kennel, observer: this.dogRunObserver });
         const theHunt = await hunt.run();
 
         if (isRuntimeLogVerbose()) {

@@ -14,6 +14,8 @@ import { Dog } from "./core/entities/abstractHuntingDog";
 import { IHuntingDog } from "./core/entities/IHuntingDog";
 import { IHuntingSeason } from "./core/entities/IHuntingSeason";
 import { isRuntimeLogVerbose } from "./runtimeLog";
+import { classifyDogError, type DogRunOutcome, type IDogRunObserver } from "./core/entities/IDogRunObserver";
+import { dogCacheStatsOf } from "./cache/withDogCacheStats";
 
 /** Wie viele Hounds einer Welle gleichzeitig laufen duerfen, wenn WAVE_CONCURRENCY schweigt. */
 const DEFAULT_WAVE_CONCURRENCY = 4;
@@ -51,6 +53,12 @@ export class SeasonRunner {
     // The season log -- our anchor of progression through the roiling madness
     private season: IHuntingSeason
 
+    // The watcher at the gate (P4b) -- told once per hound run, never allowed to stop the wave
+    private observer?: IDogRunObserver
+
+    // Ein werfender Observer wird einmal je Prozess gemeldet, nicht je Hund
+    private static observerFailureLogged = false
+
     /**
      * Summon the hunt into existence -- provision it with a kennel of hounds
      * and prepare the season log fer the dark voyage ahead.
@@ -58,8 +66,10 @@ export class SeasonRunner {
      */
     constructor(options: {
         kennel: Array<IHuntingDog<unknown>>
+        observer?: IDogRunObserver
     }) {
 
+        this.observer = options.observer;
         this.kennel = options.kennel.length > 0 ? options.kennel : [];
 
         this.dogsWithBeesInthePants = Object.assign([], this.kennel) as Array<IHuntingDog<unknown>>;
@@ -83,6 +93,14 @@ export class SeasonRunner {
     // Release a single hound into the void -- let it hunt, let it collect, let it collapse exhausted
     private async letOut (dog: IHuntingDog<unknown>, season: IHuntingSeason):Promise<void> {
         const v = isRuntimeLogVerbose();
+        // P4b: Laufzeit, Ergebnisklasse und Cache-Zahlen dieses einen Laufs — der Wrapper am
+        // Cache-Handler zaehlt in __cacheStats, hier wird die Zaehlung vor dem Lauf genullt.
+        const cacheStats = dogCacheStatsOf(dog);
+        cacheStats.hits = 0;
+        cacheStats.misses = 0;
+        let outcome: DogRunOutcome = 'ok';
+        let errorMessage: string | undefined;
+        const startedAt = Date.now();
         try {
             if (v) console.log("<" + dog.name + ">" + " is running.")
             await dog.collectYield(season);
@@ -104,12 +122,35 @@ export class SeasonRunner {
             }
             // The hunt has failed -- store the horror in the dog's error brand
             (dog as any).__error = e instanceof Error ? e.message : String(e);
+            errorMessage = (dog as any).__error;
+            outcome = classifyDogError(errorMessage as string);
             // Add the dog to exhausted regardless -- even failed hunts leave their mark
             season.exhausted.push(dog);
             // Strike it from the restless crew, for it shall run no more
             let dogIndex = this.dogsWithBeesInthePants.findIndex(comperrator => comperrator === dog)
             if (dogIndex >= 0) {
                 this.dogsWithBeesInthePants.splice(dogIndex, 1)
+            }
+        }
+        finally {
+            this.report(dog, outcome, Date.now() - startedAt, cacheStats.hits, cacheStats.misses, season.currentWaveIndex ?? 0, errorMessage);
+        }
+    }
+
+    /**
+     * Tell the watcher -- synchronously, never awaited. A watcher that throws must not
+     * sink the wave: the error is swallowed here and logged once per process.
+     */
+    private report(dog: IHuntingDog<unknown>, outcome: DogRunOutcome, durationMs: number,
+                   cacheHits: number, cacheMisses: number, waveIndex: number, errorMessage?: string): void {
+        if (!this.observer) return;
+        try {
+            this.observer.onDogRun({ dog, outcome, durationMs, cacheHits, cacheMisses, waveIndex, errorMessage });
+        } catch (err) {
+            if (!SeasonRunner.observerFailureLogged) {
+                SeasonRunner.observerFailureLogged = true;
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[SeasonRunner] dog run observer threw (logged once): ${msg}`);
             }
         }
     }

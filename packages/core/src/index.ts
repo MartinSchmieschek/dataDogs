@@ -43,6 +43,16 @@ export {
 } from './kennelImportTarget';
 export { SeasonRunner } from './harverster';
 
+// The watcher at the kennel gate (P4b) -- one report per hound run, markers instead of prose
+export {
+    type DogRunOutcome,
+    type DogRunReport,
+    type IDogRunObserver,
+    DOG_TIMEOUT_MARKER,
+    DOG_OOM_MARKER,
+    classifyDogError,
+} from './core/entities/IDogRunObserver';
+
 // Spirits trapped in code, running in sandboxed voids
 export {
     SerializedDog,
@@ -76,6 +86,7 @@ export { MimicDog, IMimicDogConfig } from './dogs/MimicDog';
 // The cache pacts -- memory across voyages, dedup of in-flight hunts, tile-based geo caching
 export { ICacheHandler } from './cache/ICacheHandler';
 export { ICacheable, isCacheable } from './cache/ICacheable';
+export { withDogCacheStats, dogCacheStatsOf, type DogCacheStats } from './cache/withDogCacheStats';
 export { geoBucketKey, geoBucketCenter, defaultGeoBucketM, type GeoBucketOptions } from './cache/geoBucket';
 export { GEO_CACHE_TTL_OSM_MS, GEO_CACHE_TTL_WEATHER_MS, GEO_CACHE_TTL_AIR_QUALITY_MS } from './cache/geoCacheTtl';
 export {
