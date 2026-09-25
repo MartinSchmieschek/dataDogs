@@ -26,10 +26,13 @@ export {
 } from './KennelRun';
 export { isRuntimeLogVerbose, envFirst } from './runtimeLog';
 export {
-    KENNEL_RESERVED_SLUGS,
-    kennelLineageIdBlockedReason,
-    kennelDisplayNameBlockedReason,
-} from './kennelReservedNames';
+    KENNEL_PUBLIC_PREFIX,
+    KENNEL_ID_PATTERN,
+    publicKennelPath,
+    publicKennelDocsPath,
+    publicKennelOpenApiPath,
+    kennelIdBlockedReason,
+} from './kennelPaths';
 export {
     suggestKennelImportTarget,
     kennelImportNeedsUserChoice,

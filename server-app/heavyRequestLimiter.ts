@@ -17,7 +17,7 @@
  * den Normalbetrieb takten.
  *
  * Zwei Instanzen, zwei Toepfe: `heavy()` fuer UI-Listen und Runs der Werkstatt,
- * `publicRuns()` fuer oeffentliche Kennel-Laeufe (`/:kennelId`, swagger.json).
+ * `publicRuns()` fuer oeffentliche Kennel-Laeufe (`/k/:id`, `/k/:id/openapi.json`).
  * Getrennt, damit die UI nicht hinter einer Besucherwelle wartet — und Besucher
  * nicht an jeder Bremse vorbeilaufen.
  */
@@ -81,16 +81,14 @@ export class HeavyRequestLimiter {
     ];
 
     /**
-     * Die oeffentlichen Laeufe: `/:kennelId` (ein Segment) und die Spec-Erzeugung.
-     * Die Schleuse sitzt VOR express.static und dem SPA-Fallback — deshalb fallen alles
-     * mit Punkt im Namen (Angular-Artefakte, favicon.ico) und jedes feste Segment heraus
-     * (Backend-Praefixe, SPA-Routen, KENNEL_RESERVED_SLUGS).
-     * Bekannte Luecke bis `/k/`: ein Kennel-Name mit Punkt wird nicht gebremst.
-     * Disjunkt zu HEAVY_PATHS — kein Request wird doppelt gebremst.
+     * Die oeffentlichen Laeufe: `/k/:id` und die Spec-Erzeugung `/k/:id/openapi.json`.
+     * Seit dem Praefix `/k/` exakt: kein Angular-Artefakt, kein festes Segment und kein
+     * Kennel-Name mit Punkt faellt mehr durch. `/k/:id/docs` liefert nur statisches HTML
+     * und bleibt ungebremst. Disjunkt zu HEAVY_PATHS — kein Request wird doppelt gebremst.
      */
     private static readonly PUBLIC_PATHS: readonly RegExp[] = [
-        /^\/(?!(?:api|auth|static|mcp|actions|save|kennel|kennels|edit|nodes|\.well-known)(?:\/|$))[^/.]+\/?$/,
-        /^\/api\/kennels\/[^/]+\/swagger\.json\/?$/,
+        /^\/k\/[^/]+\/?$/,
+        /^\/k\/[^/]+\/openapi\.json\/?$/,
     ];
 
     /** UI-Listen und Runs der Werkstatt. */

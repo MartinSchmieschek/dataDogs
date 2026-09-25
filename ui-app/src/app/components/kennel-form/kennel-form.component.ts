@@ -1,5 +1,5 @@
 import { Component, EventEmitter, Output, inject } from '@angular/core';
-import { kennelDisplayNameBlockedReason, kennelLineageIdBlockedReason } from '../../config/kennel-reserved-names';
+import { kennelIdBlockedReason } from '../../config/public-paths';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { FormsModule } from '@angular/forms';
 import { KennelEmojiPickerComponent } from '../kennel-emoji-picker/kennel-emoji-picker.component';
@@ -150,17 +150,10 @@ export class KennelFormComponent {
       this.error = 'Kennel ID ist erforderlich';
       return;
     }
-    const idErr = kennelLineageIdBlockedReason(this.formData.id);
+    const idErr = kennelIdBlockedReason(this.formData.id);
     if (idErr) {
       this.error = idErr;
       return;
-    }
-    if (this.formData.name.trim()) {
-      const nameErr = kennelDisplayNameBlockedReason(this.formData.name);
-      if (nameErr) {
-        this.error = nameErr;
-        return;
-      }
     }
     this.error = '';
     this.submitted.emit({

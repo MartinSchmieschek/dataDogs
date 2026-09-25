@@ -1,18 +1,24 @@
 /**
  * Abstimmung Express ↔ Angular (SPA):
- * - `/:kennelId` (öffentlicher Kennel) matcht nur ein Pfadsegment; reservierte Slugs → next().
- * - Blocked kennel id list: `KENNEL_RESERVED_SLUGS` in @slopdogs/core.
+ * - Oeffentliche Kennels leben unter `/k/:id` — der Name ist Segment 2, es gibt keine Blockliste mehr.
+ * - `FIXED_TOP_LEVEL` dient nur der Alt-Weiche (`/:name` -> 308 `/k/:name`): feste Segmente gehen per next() weiter.
  *
  * SPA-Fallback (index.html) darf keine Backend-Pfade überschreiben (Präfixe unten).
  */
-import { KENNEL_RESERVED_SLUGS } from '@slopdogs/core';
 
-export const SPA_FALLBACK_SKIP_PREFIXES = ['/api', '/static', '/auth', '/mcp', '/actions', '/.well-known'] as const;
+/** Erste Pfadsegmente, die die Alt-Weiche nicht umleitet (lowercase). Kennel-Namen werden NICHT dagegen geprueft. */
+export const FIXED_TOP_LEVEL: ReadonlySet<string> = new Set([
+    'api',
+    'auth',
+    '.well-known',
+    'static',
+    'mcp',
+    'actions',
+    'save',
+    'k',
+    'kennels',
+    'kennel',
+    'robots.txt',
+]);
 
-/** Gleiche Einträge wie KENNEL_RESERVED_SLUGS (lowercase) — Routing + Validierung. */
-export const KENNEL_LINEAGE_ID_BLOCKLIST = new Set(KENNEL_RESERVED_SLUGS.map((s) => s.toLowerCase()));
-
-/** @deprecated — gleiche Menge wie KENNEL_LINEAGE_ID_BLOCKLIST (Routing next()). */
-export const RESERVED_TOP_LEVEL_SEGMENTS = KENNEL_LINEAGE_ID_BLOCKLIST;
-
-export { kennelLineageIdBlockedReason, kennelDisplayNameBlockedReason } from '@slopdogs/core';
+export const SPA_FALLBACK_SKIP_PREFIXES = ['/api', '/static', '/auth', '/mcp', '/actions', '/.well-known', '/k'] as const;

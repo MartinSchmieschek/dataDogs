@@ -16,6 +16,10 @@ import {
     selectLineDocs,
     sliceDogCodeLines,
     type ChannelState,
+    kennelIdBlockedReason,
+    publicKennelPath,
+    publicKennelDocsPath,
+    publicKennelOpenApiPath,
 } from '@slopdogs/core';
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
@@ -37,6 +41,7 @@ import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { getAclTools } from './mcp/tools/acl';
 import { toSwaggridCast } from './services/swaggridAdapter';
+import { LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
 /**
@@ -74,7 +79,7 @@ export class StartupTest {
         kennelsStore: IStore,
         nodesController: Controller<ISerializedDogConfig>,
         kennelsController: AbstractController<IKennelConfig>,
-        baseDogsMap: Map<string, any>
+        baseDogsMap: Map<string, any>,
     ): Promise<TestResult[]> {
         if (isRuntimeLogVerbose()) {
             console.log('\n🧪 Starte Startup-Tests...\n');
@@ -117,6 +122,13 @@ export class StartupTest {
             // Gate: zweite Schleuse fuer oeffentliche Kennel-Laeufe
             await this.testPublicLimiterCoversPublicPaths();
             await this.testPublicLimiterQueuesAndReleases();
+
+            // P3: /k/, Segment-Regel, Alt-Weiche, HEAD ohne Lauf
+            await this.testKennelIdRule();
+            await this.testCreateRejectsCaseCollision(kennelsController as KennelController);
+            await this.testLegacyRedirectKeepsQueryAndMethod();
+            await this.testPublicUnknownIs404();
+            await this.testPublicHeadDoesNotRun(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
@@ -1219,13 +1231,14 @@ export class StartupTest {
      * aber keine Angular-Artefakte, keine festen Segmente, keine Heavy-Pfade und kein HEAD.
      */
     private async testPublicLimiterCoversPublicPaths(): Promise<void> {
-        const testName = 'Gate: Public-Schleuse trifft /:kennelId und swagger.json';
+        const testName = 'Gate: Public-Schleuse trifft /k/:id und openapi.json';
         try {
             const limiter = HeavyRequestLimiter.publicRuns();
             const hits: Array<[string, string]> = [
-                ['/wetter', 'GET'],
-                ['/wetter/', 'POST'],
-                ['/api/kennels/w/swagger.json', 'GET'],
+                ['/k/wetter', 'GET'],
+                ['/k/wetter/', 'POST'],
+                ['/k/foo.bar', 'GET'],
+                ['/k/w/openapi.json', 'GET'],
             ];
             const misses: Array<[string, string | undefined]> = [
                 ['/kennels', undefined],
@@ -1233,7 +1246,9 @@ export class StartupTest {
                 ['/favicon.ico', undefined],
                 ['/api/kennels', undefined],
                 ['/kennel/w', undefined],
-                ['/wetter', 'HEAD'],
+                ['/wetter', 'GET'],
+                ['/k/w/docs', 'GET'],
+                ['/k/wetter', 'HEAD'],
             ];
             for (const [path, method] of hits) {
                 if (!limiter.isHeavy(path, method)) throw new Error(`${method} ${path} sollte gebremst werden`);
@@ -1371,6 +1386,178 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Basis-URL des eigenen Servers — die Suite laeuft NACH listen (main.ts), also antwortet er.
+     */
+    private selfBaseUrl(): string {
+        return `http://127.0.0.1:${Number(process.env.PORT) || 3000}`;
+    }
+
+    /**
+     * Test: Segment-Regel fuer Kennel-IDs statt Blockliste (P3, 2.6).
+     */
+    private async testKennelIdRule(): Promise<void> {
+        const testName = 'P3: Kennel-ID-Regel (Segment statt Blockliste)';
+        try {
+            const allowed = ['wetter', 'Wetter-2024', 'k', 'api', 'a.b_c', 'a'.repeat(64)];
+            const blocked = ['', 'a/b', '.', '..', 'a b', '-lead', 'a'.repeat(65), 'a?b', 'a#b', 'a%b'];
+            for (const id of allowed) {
+                const reason = kennelIdBlockedReason(id);
+                if (reason !== null) throw new Error(`"${id}" sollte erlaubt sein: ${reason}`);
+            }
+            for (const id of blocked) {
+                if (typeof kennelIdBlockedReason(id) !== 'string') throw new Error(`"${id}" sollte abgelehnt werden`);
+            }
+            if (publicKennelPath('wetter') !== '/k/wetter') throw new Error(`publicKennelPath: ${publicKennelPath('wetter')}`);
+            if (publicKennelDocsPath('wetter') !== '/k/wetter/docs') throw new Error('publicKennelDocsPath');
+            if (publicKennelOpenApiPath('wetter') !== '/k/wetter/openapi.json') throw new Error('publicKennelOpenApiPath');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: create lehnt eine ID ab, die sich nur in der Schreibweise von einer bestehenden unterscheidet.
+     */
+    private async testCreateRejectsCaseCollision(kennelsController: KennelController): Promise<void> {
+        const testName = 'P3: create lehnt Gross-/Kleinschreibungs-Kollision ab';
+        const stamp = Date.now();
+        const original = `Test-Case-${stamp}`;
+        const other = `test-case-${stamp}-2`;
+        try {
+            const created = await kennelsController.create({ id: original, dogIds: [] });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const clash = await kennelsController.create({ id: original.toLowerCase(), dogIds: [] });
+            if (clash.ok) throw new Error('Kollision in der Schreibweise wurde angelegt');
+            if (!String(clash.error || '').includes(original)) throw new Error(`Grund nennt die bestehende ID nicht: ${clash.error}`);
+            const fine = await kennelsController.create({ id: other, dogIds: [] });
+            if (!fine.ok) throw new Error(`freie ID abgelehnt: ${fine.error}`);
+            const bad = await kennelsController.create({ id: 'a/b', dogIds: [] });
+            if (bad.ok) throw new Error('ID mit / wurde angelegt');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(original); } catch { /* ignore */ }
+            try { await kennelsController.delete(original.toLowerCase()); } catch { /* ignore */ }
+            try { await kennelsController.delete(other); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test: Alt-Weiche `/:name` -> 308 `/k/:name` mit Query und Methode, ohne DB-Lookup;
+     * feste Segmente gehen per next() weiter.
+     */
+    private async testLegacyRedirectKeepsQueryAndMethod(): Promise<void> {
+        const testName = 'P3: Alt-Weiche 308 behaelt Query und Methode, 0 DB-Lookups';
+        try {
+            let lookups = 0;
+            const countingController: any = { getById: async () => { lookups++; return { ok: false, data: null }; } };
+            const countingStore: any = new Proxy({}, { get: () => async () => { lookups++; return null; } });
+            const handler = new KennelRunHandler({ kennelsController: countingController, nodesStore: countingStore, baseDogsMap: new Map() });
+
+            const routes: Array<{ method: string; path: string; fn: any }> = [];
+            const collect = (method: string) => (path: string, fn: any) => { routes.push({ method, path, fn }); };
+            handler.registerRoutes({ get: collect('get'), post: collect('post'), head: collect('head'), all: collect('all') });
+            const legacyEnabled = KennelRunHandler.legacyRedirectEnabled();
+            const legacyRoute = routes.find((r) => r.method === 'all' && r.path === LEGACY_ROUTE.kennel);
+            if (legacyEnabled && !legacyRoute) throw new Error('Alt-Weiche nicht registriert');
+            if (!legacyEnabled && legacyRoute) throw new Error('Alt-Weiche trotz LEGACY_KENNEL_REDIRECT=0 registriert');
+            const headIdx = routes.findIndex((r) => r.method === 'head' && r.path === PUBLIC_ROUTE.kennel);
+            const getIdx = routes.findIndex((r) => r.method === 'get' && r.path === PUBLIC_ROUTE.kennel);
+            if (headIdx < 0 || getIdx < 0 || headIdx > getIdx) throw new Error('HEAD /k/:id muss vor GET registriert sein');
+
+            const call = (method: string, name: string, originalUrl: string) => {
+                const out = { status: 0, location: '', next: false };
+                const res: any = { redirect: (code: number, loc: string) => { out.status = code; out.location = loc; } };
+                handler.legacyRedirect({ method, params: { name }, originalUrl }, res, () => { out.next = true; });
+                return out;
+            };
+
+            const get = call('GET', 'wetter', '/wetter?lat=1&channelId=AbC');
+            if (get.status !== 308 || get.location !== '/k/wetter?lat=1&channelId=AbC') {
+                throw new Error(`GET: ${get.status} ${get.location}`);
+            }
+            const post = call('POST', 'wetter', '/wetter?lat=1&channelId=AbC');
+            if (post.status !== 308 || post.location !== get.location) throw new Error(`POST: ${post.status} ${post.location}`);
+            for (const fixed of ['kennels', 'api', 'robots.txt', 'K', 'kennel']) {
+                const r = call('GET', fixed, `/${fixed}`);
+                if (!r.next || r.status !== 0) throw new Error(`/${fixed} muss per next() weitergehen`);
+            }
+            if (lookups !== 0) throw new Error(`Alt-Weiche hat ${lookups} DB-Lookups ausgeloest`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: ein unbekannter Kennel unter /k/ ist 404 JSON — nie index.html (SKIP_PREFIXES enthaelt /k).
+     */
+    private async testPublicUnknownIs404(): Promise<void> {
+        const testName = 'P3: GET /k/<unbekannt> -> 404 JSON';
+        try {
+            const res = await fetch(`${this.selfBaseUrl()}/k/nicht-da-${Date.now()}`, { redirect: 'manual' });
+            const type = res.headers.get('content-type') || '';
+            const body = await res.text();
+            if (res.status !== 404) throw new Error(`erwartet 404, erhalten ${res.status}`);
+            if (!type.includes('application/json')) throw new Error(`Content-Type ${type}`);
+            if (JSON.parse(body).error !== 'kennel_not_found') throw new Error(`Body ${body}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: HEAD /k/:id antwortet ohne Lauf — Spy auf runKennel am Handler, dazu der echte Server.
+     */
+    private async testPublicHeadDoesNotRun(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3: HEAD /k/:id ohne Lauf';
+        const kennelId = `test-head-${Date.now()}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'HeadProbeDog', 'return { head: 1 };', { visibility: 'public', ownerId: null });
+            const created = await kennelsController.create({ id: kennelId, dogIds: [dog], visibility: 'public' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+
+            const handler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            let runs = 0;
+            (handler as any).runKennel = async () => { runs++; return []; };
+            const head = async (id: string) => {
+                const out = { status: 0, ended: false, body: undefined as any, headers: {} as Record<string, string> };
+                const res: any = {
+                    setHeader: (k: string, v: string) => { out.headers[k.toLowerCase()] = v; },
+                    status: (code: number) => { out.status = code; return res; },
+                    end: (body?: any) => { out.ended = true; out.body = body; return res; },
+                };
+                await (handler as any).handlePublicHead({ params: { id }, query: {}, ctx: { user: null, isSuperUser: false } }, res);
+                return out;
+            };
+            const known = await head(kennelId);
+            if (known.status !== 200 || !known.ended || known.body !== undefined) throw new Error(`bekannt: ${known.status}`);
+            if (known.headers['cache-control'] !== 'no-store') throw new Error('Cache-Control no-store fehlt');
+            const unknown = await head(`${kennelId}-nicht-da`);
+            if (unknown.status !== 404) throw new Error(`unbekannt: ${unknown.status}`);
+            if (runs !== 0) throw new Error(`HEAD hat ${runs}x runKennel ausgeloest`);
+
+            const live = await fetch(`${this.selfBaseUrl()}/k/${kennelId}`, { method: 'HEAD' });
+            if (live.status !== 200) throw new Error(`Server HEAD: ${live.status}`);
+            if ((await live.text()) !== '') throw new Error('Server HEAD mit Body');
+            const liveUnknown = await fetch(`${this.selfBaseUrl()}/k/${kennelId}-nicht-da`, { method: 'HEAD' });
+            if (liveUnknown.status !== 404) throw new Error(`Server HEAD unbekannt: ${liveUnknown.status}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 

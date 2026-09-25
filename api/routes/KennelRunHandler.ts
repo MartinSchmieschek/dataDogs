@@ -10,8 +10,10 @@ import {
     type ICacheHandler,
     type VmGlobalCapabilityContext,
     isRuntimeLogVerbose,
+    publicKennelPath,
 } from '@slopdogs/core';
-import { RESERVED_TOP_LEVEL_SEGMENTS } from './spaRouteConstants';
+import { FIXED_TOP_LEVEL } from './spaRouteConstants';
+import { API_ROUTE, LEGACY_ROUTE, PUBLIC_ROUTE } from './routeTable';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { canRead } from '../../mcp/auth/visibility';
@@ -59,16 +61,28 @@ export class KennelRunHandler {
         this.deps = deps;
     }
 
-    /** Register run, execute, and public kennel routes. */
+    /**
+     * Register run, execute, and public kennel routes (Pfade aus der Routentabelle).
+     * HEAD steht VOR GET: ohne eigene Route beantwortet Express HEAD ueber den GET-Handler —
+     * und liesse den Kennel laufen. Die Alt-Weiche `/:name` kommt zuletzt.
+     */
     registerRoutes(app: any): void {
-        app.get('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
-        app.post('/api/kennels/:id/run', (req: any, res: any) => this.handleRun(req, res));
-        app.get('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
-        app.post('/api/kennels/:id/execute', (req: any, res: any) => this.handleExecute(req, res));
-        app.get('/:kennelId', (req: any, res: any, next: any) => void this.handlePublicGet(req, res, next));
-        app.post('/:kennelId', (req: any, res: any, next: any) =>
-            void this.handlePublicPost(req, res, next),
-        );
+        app.get(API_ROUTE.kennelRun, (req: any, res: any) => this.handleRun(req, res));
+        app.post(API_ROUTE.kennelRun, (req: any, res: any) => this.handleRun(req, res));
+        app.get(API_ROUTE.kennelExecute, (req: any, res: any) => this.handleExecute(req, res));
+        app.post(API_ROUTE.kennelExecute, (req: any, res: any) => this.handleExecute(req, res));
+        app.head(PUBLIC_ROUTE.kennel, (req: any, res: any) => void this.handlePublicHead(req, res));
+        app.get(PUBLIC_ROUTE.kennel, (req: any, res: any) => void this.handlePublicGet(req, res));
+        app.post(PUBLIC_ROUTE.kennel, (req: any, res: any) => void this.handlePublicPost(req, res));
+        if (KennelRunHandler.legacyRedirectEnabled()) {
+            app.all(LEGACY_ROUTE.kennel, (req: any, res: any, next: any) => this.legacyRedirect(req, res, next));
+        }
+    }
+
+    /** LEGACY_KENNEL_REDIRECT: Default an; nur `0`/`false` schaltet die Alt-Weiche ab. */
+    public static legacyRedirectEnabled(): boolean {
+        const flag = (process.env.LEGACY_KENNEL_REDIRECT || '').trim().toLowerCase();
+        return flag !== '0' && flag !== 'false';
     }
 
     // --- Public helpers (used by KennelSwaggerHandler and KennelBundleHandler) ---
@@ -476,28 +490,49 @@ export class KennelRunHandler {
         }
     }
 
-    private async handlePublicGet(req: any, res: any, next: any): Promise<void> {
-        const kennelId = req.params.kennelId;
-        if (RESERVED_TOP_LEVEL_SEGMENTS.has(String(kennelId || '').toLowerCase())) {
+    /**
+     * Alt-Weiche: `/<name>?…` -> 308 `/k/<name>?…`. Kein DB-Lookup, keine Zaehlung — ein
+     * Fremdpfad kostet zwei billige Antworten statt eines Lookups. Methode, Body und Query
+     * bleiben (RFC 7538); feste Segmente gehen per next() weiter.
+     */
+    public legacyRedirect(req: any, res: any, next: any): void {
+        const name = String(req.params?.name ?? '');
+        if (!name || FIXED_TOP_LEVEL.has(name.toLowerCase())) {
             next();
             return;
         }
+        const originalUrl = String(req.originalUrl ?? '');
+        const queryStart = originalUrl.indexOf('?');
+        const query = queryStart >= 0 ? originalUrl.slice(queryStart) : '';
+        res.redirect(308, publicKennelPath(name) + query);
+    }
 
+    /** Ein unbekannter oder unlesbarer Kennel sieht von aussen gleich aus: 404 JSON. */
+    private sendKennelNotFound(res: any): void {
+        res.status(404).json({ error: 'kennel_not_found' });
+    }
+
+    /**
+     * HEAD /k/:id — gibt es den Kennel und darf ich ihn lesen? Antwort ohne Lauf, ohne
+     * Zaehlung, nicht an der Public-Bremse (die bremst nur GET/POST).
+     */
+    private async handlePublicHead(req: any, res: any): Promise<void> {
+        try {
+            const config = await this.loadKennelConfig(req.params.id, req.query.version);
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(config && canRead(config as any, req.ctx) ? 200 : 404).end();
+        } catch (err) {
+            console.error('[KennelRunHandler.handlePublicHead]', err);
+            res.status(500).end();
+        }
+    }
+
+    private async handlePublicGet(req: any, res: any): Promise<void> {
+        const kennelId = req.params.id;
         try {
             const config = await this.loadKennelConfig(kennelId, req.query.version);
-            if (!config) {
-                const deferSpa =
-                    (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'integration') &&
-                    typeof next === 'function';
-                if (deferSpa) {
-                    next();
-                    return;
-                }
-                res.status(404).json({ error: `Kennel ${kennelId} not found` });
-                return;
-            }
-            if (!canRead(config as any, req.ctx)) {
-                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+            if (!config || !canRead(config as any, req.ctx)) {
+                this.sendKennelNotFound(res);
                 return;
             }
 
@@ -522,21 +557,12 @@ export class KennelRunHandler {
         }
     }
 
-    private async handlePublicPost(req: any, res: any, next: any): Promise<void> {
-        const kennelId = req.params.kennelId;
-        if (RESERVED_TOP_LEVEL_SEGMENTS.has(String(kennelId || '').toLowerCase())) {
-            next();
-            return;
-        }
-
+    private async handlePublicPost(req: any, res: any): Promise<void> {
+        const kennelId = req.params.id;
         try {
             const config = await this.loadKennelConfig(kennelId, req.query.version);
-            if (!config) {
-                res.status(404).json({ error: `Kennel ${kennelId} not found` });
-                return;
-            }
-            if (!canRead(config as any, req.ctx)) {
-                res.status(404).json({ error: `Kennel ${kennelId} nicht gefunden` });
+            if (!config || !canRead(config as any, req.ctx)) {
+                this.sendKennelNotFound(res);
                 return;
             }
 

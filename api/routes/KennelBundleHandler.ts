@@ -3,8 +3,7 @@
 import {
     SerializedDog,
     MimicDog,
-    kennelDisplayNameBlockedReason,
-    kennelLineageIdBlockedReason,
+    kennelIdBlockedReason,
     suggestKennelImportTarget,
     isKennelIdTakenInList,
     isKennelNameTakenInList,
@@ -214,14 +213,10 @@ export class KennelBundleHandler {
                 kennelName = s.name;
             }
 
-            const lineageErr = kennelLineageIdBlockedReason(kennelId);
-            if (lineageErr) {
-                res.status(400).json({ error: lineageErr });
-                return;
-            }
-            const displayErr = kennelDisplayNameBlockedReason(kennelName);
-            if (displayErr) {
-                res.status(400).json({ error: displayErr });
+            // Segment-Regel (Name = zweites Segment hinter /k/); der Anzeigename ist frei.
+            const idErr = kennelIdBlockedReason(kennelId);
+            if (idErr) {
+                res.status(400).json({ error: idErr });
                 return;
             }
 

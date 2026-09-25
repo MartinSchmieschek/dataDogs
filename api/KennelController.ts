@@ -7,8 +7,7 @@ import {
     IKennelNodeAnnotation,
     IKennelEdgeAnnotation,
     isRuntimeLogVerbose,
-    kennelDisplayNameBlockedReason,
-    kennelLineageIdBlockedReason,
+    kennelIdBlockedReason,
 } from '@slopdogs/core';
 import { generateVersionId } from './utils/versioning';
 
@@ -71,13 +70,18 @@ export class KennelController extends AbstractController<IKennelConfig> {
      */
     async create(input: ICreateKennelInput): Promise<IControllerResponse<IKennelConfig>> {
         try {
-            if (input.id?.trim()) {
-                const idErr = kennelLineageIdBlockedReason(input.id);
+            // Segment-Regel statt Blockliste: der Name lebt als zweites Segment hinter /k/ und
+            // kollidiert mit keinem festen Pfad. Der Anzeigename ist frei.
+            if (input.id !== undefined && input.id !== null && input.id !== '') {
+                const idErr = kennelIdBlockedReason(input.id);
                 if (idErr) return { ok: false, error: idErr };
-            }
-            if (input.name?.trim()) {
-                const nameErr = kennelDisplayNameBlockedReason(input.name);
-                if (nameErr) return { ok: false, error: nameErr };
+                const clash = await this.findCaseCollision(input.id);
+                if (clash) {
+                    return {
+                        ok: false,
+                        error: `Kennel-ID ${input.id} ist schon vergeben (als ${clash}; Gross-/Kleinschreibung zaehlt nicht)`,
+                    };
+                }
             }
 
             const lineageId = input.id || `kennel-${Date.now()}`;
@@ -164,11 +168,6 @@ export class KennelController extends AbstractController<IKennelConfig> {
             if (!input.id) {
                 return { ok: false, error: 'id is required' };
             }
-            if (input.name !== undefined && input.name !== null && String(input.name).trim()) {
-                const nameErr = kennelDisplayNameBlockedReason(String(input.name));
-                if (nameErr) return { ok: false, error: nameErr };
-            }
-
             // Resolve the existing kennel — by version ID or lineageId.
             const existing = await this.resolveKennel(input.id);
             if (!existing) {
@@ -369,11 +368,6 @@ export class KennelController extends AbstractController<IKennelConfig> {
      */
     async heal(id: string, patch: Partial<ISaveKennelInput>): Promise<IControllerResponse<IKennelConfig>> {
         try {
-            if (patch.name !== undefined && patch.name !== null && String(patch.name).trim()) {
-                const nameErr = kennelDisplayNameBlockedReason(String(patch.name));
-                if (nameErr) return { ok: false, error: nameErr };
-            }
-
             const existing = await this.resolveKennel(id);
             if (!existing) {
                 return { ok: false, error: `Kennel with id ${id} not found` };
@@ -483,6 +477,22 @@ export class KennelController extends AbstractController<IKennelConfig> {
      * Resolves a kennel by version ID or lineageId.
      * First tries exact match (version GUID), then resolves as lineageId (latest version).
      */
+    /**
+     * Eine Lineage, die sich nur in der Schreibweise von `id` unterscheidet — sonst null.
+     * Der Lookup bleibt case-sensitiv (resolveKennel), damit bestehende Links weiter treffen;
+     * nur das Anlegen verhindert zwei Kennels, die sich allein in Gross-/Kleinschreibung trennen.
+     * Kosten: ein Partition-Scan je create — create ist selten.
+     */
+    private async findCaseCollision(id: string): Promise<string | null> {
+        const lower = id.toLowerCase();
+        const rows = await this.store.findLatestByType(this.KENNEL_TYPE);
+        for (const row of rows) {
+            const lineage = typeof row?.lineageId === 'string' ? row.lineageId : null;
+            if (lineage && lineage !== id && lineage.toLowerCase() === lower) return lineage;
+        }
+        return null;
+    }
+
     private async resolveKennel(id: string): Promise<IKennelConfig | null> {
         // First: try exact match by version ID.
         const exactData = await this.store.load(id);
