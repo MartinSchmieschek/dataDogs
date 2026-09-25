@@ -32,6 +32,7 @@ import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
 import { createHttpApplication } from './server-app/createHttpApplication';
 import { EX_CONFIG, authModeBootError } from './mcp/auth/middleware';
+import { KennelCallCounter } from './services/KennelCallCounter';
 import {
     assertSlimRegistryCoversKennelDbRefs,
     collectBaseDogNamesFromLatestKennels,
@@ -75,6 +76,11 @@ async function start() {
 
     // Plant the first bones in the earth — the seeds from which our pack shall grow.
     await runSeeds(nodesStore, kennelsStore);
+
+    // Aufrufe je Kennel (P4): im Speicher gezaehlt, alle KENNEL_CALL_FLUSH_MS in einer Transaktion
+    // geschrieben. Die Tabellen haengen am Store-Client — kein fuenfter PrismaClient.
+    const callCounter = new KennelCallCounter(store);
+    callCounter.start();
 
     // Fachliche JSON-Ablage: eigene SQLite (JSON_STORAGE_DATABASE_URL), bewusst getrennt
     // von Nodes/Kennels (DATABASE_URL) und Run-Cache (CACHE_DATABASE_URL).
@@ -218,7 +224,7 @@ async function start() {
     const httpServer = http.createServer(app);
     await channelHub.attach(httpServer);
 
-    registerGracefulShutdown({ httpServer, store, jsonStorageService, disconnectHttpApplication });
+    registerGracefulShutdown({ httpServer, callCounter, store, jsonStorageService, disconnectHttpApplication });
 
     console.log('App started.');
     // Render u. a.: öffentlich erreichbar nur bei Bind an 0.0.0.0; PORT kommt von der Plattform.
@@ -239,6 +245,7 @@ const SHUTDOWN_GRACE_MS = 10_000;
 
 type ShutdownTargets = {
     httpServer: http.Server;
+    callCounter: KennelCallCounter;
     store: PrismaStore;
     jsonStorageService: JsonStorageService;
     disconnectHttpApplication: () => Promise<void>;
@@ -266,6 +273,10 @@ function registerGracefulShutdown(targets: ShutdownTargets): void {
         }, SHUTDOWN_GRACE_MS).unref();
 
         await new Promise<void>((resolve) => targets.httpServer.close(() => resolve()));
+
+        // Sequenziell VOR den Disconnects: die laufenden Requests sind durch (ihr finally hat
+        // gezaehlt), der letzte Flush braucht den Store-Pool noch. stop() wirft nie.
+        await targets.callCounter.stop();
 
         await Promise.allSettled([
             targets.store.disconnect(),

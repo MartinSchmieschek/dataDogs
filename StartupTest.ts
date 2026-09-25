@@ -56,6 +56,8 @@ import {
     type Visibility,
 } from './mcp/auth/visibility';
 import { toSwaggridCast } from './services/swaggridAdapter';
+import { KennelCallCounter, utcDay } from './services/KennelCallCounter';
+import type { IKennelStatsStore, KennelCallAggregate } from './store/IKennelStatsStore';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
@@ -204,6 +206,12 @@ export class StartupTest {
             await this.testKennelRenameViaRest(kennelsController as KennelController);
             await this.testTrailingLineCommentRuns(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testNewAutoMimicTakesKennelOwner(nodesStore, kennelsController as KennelController, baseDogsMap);
+
+            // P4: Aufrufe, Sterne, Suche, Landing-API
+            const statsStore = this.statsStoreOf(kennelsStore);
+            await this.testCallCounterCountsAndFlushes(statsStore);
+            await this.testCallCounterDayBoundary(statsStore);
+            await this.testCallCounterStopFlushes(statsStore);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4103,6 +4111,110 @@ export class StartupTest {
             for (const id of mimicRowIds) {
                 try { await nodesStore.delete(id); } catch { /* ignore */ }
             }
+        }
+    }
+
+    /** Der Store traegt die Stats-Tabellen (PrismaStore) — sonst ist die Montage falsch. */
+    private statsStoreOf(store: IStore): IKennelStatsStore {
+        if (typeof (store as any)?.incrementKennelCalls !== 'function') {
+            throw new Error('Store implementiert IKennelStatsStore nicht');
+        }
+        return store as unknown as IKennelStatsStore;
+    }
+
+    /** Ein Store-Proxy, der die Flush-Transaktionen zaehlt (<= 1 je Flush, 4.13). */
+    private countingStatsStore(inner: IKennelStatsStore): { store: IKennelStatsStore; flushes: () => number } {
+        let flushes = 0;
+        const store: IKennelStatsStore = Object.create(inner);
+        store.incrementKennelCalls = async (deltas) => {
+            if (deltas.length > 0) flushes += 1;
+            return inner.incrementKennelCalls(deltas);
+        };
+        return { store, flushes: () => flushes };
+    }
+
+    /**
+     * Test P4 1+2: der Zaehler zaehlt synchron und flusht in EINER Transaktion; ein zweiter Flush
+     * ohne neue Deltas aendert nichts; ein weiterer Flush addiert (ON CONFLICT … + excluded).
+     */
+    private async testCallCounterCountsAndFlushes(statsStore: IKennelStatsStore): Promise<void> {
+        const testName = 'P4 1+2: Counter zaehlt, flusht einmal, Increment addiert';
+        const lineage = `__st_a_${Date.now()}`;
+        try {
+            const { store, flushes } = this.countingStatsStore(statsStore);
+            const counter = new KennelCallCounter(store, { flushIntervalMs: 0 });
+            const sinceDay = utcDay(new Date(Date.now() - 29 * 86_400_000));
+            for (let i = 0; i < 3; i++) counter.record(lineage, 'public', false);
+            counter.record(lineage, 'public', true);
+            counter.record(lineage, 'api-run', false);
+            const pending = counter.pendingAggregates(sinceDay).get(lineage);
+            if (pending?.total !== 5 || pending.ranked30d !== 4) throw new Error(`pendingAggregates: ${JSON.stringify(pending)}`);
+            if (counter.status().pending !== 2) throw new Error(`status.pending: ${counter.status().pending}`);
+            await counter.flush();
+            const expect = (agg: KennelCallAggregate | undefined, want: Omit<KennelCallAggregate, 'lineageId'>, label: string) => {
+                const got = agg ? { total: agg.total, last30d: agg.last30d, leadFailed: agg.leadFailed, rankedTotal: agg.rankedTotal, ranked30d: agg.ranked30d } : null;
+                if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${label}: ${JSON.stringify(got)}`);
+            };
+            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 5, last30d: 5, leadFailed: 1, rankedTotal: 4, ranked30d: 4 }, 'nach Flush');
+            await counter.flush();
+            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 5, last30d: 5, leadFailed: 1, rankedTotal: 4, ranked30d: 4 }, 'zweiter Flush');
+            if (counter.pendingAggregates(sinceDay).size !== 0 || counter.status().pending !== 0) throw new Error('pending nach Flush nicht leer');
+            if (flushes() !== 1) throw new Error(`Transaktionen: ${flushes()} statt 1`);
+
+            counter.record(lineage, 'mcp-execute', false);
+            counter.record(lineage, 'mcp-execute', false);
+            await counter.flush();
+            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 7, last30d: 7, leadFailed: 1, rankedTotal: 6, ranked30d: 6 }, 'Increment');
+            if ((await statsStore.readKennelCallAggregates(sinceDay, [])).length !== 0) throw new Error('leere lineageIds nicht []');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
+        }
+    }
+
+    /** Test P4 5: die Tagesgrenze — zwei Zeilen, das 30-Tage-Fenster zaehlt nur den neuen Tag. */
+    private async testCallCounterDayBoundary(statsStore: IKennelStatsStore): Promise<void> {
+        const testName = 'P4 5: Counter trennt UTC-Tage';
+        const lineage = `__st_day_${Date.now()}`;
+        try {
+            let now = new Date('2026-09-25T23:59:59Z');
+            const counter = new KennelCallCounter(statsStore, { flushIntervalMs: 0, now: () => now });
+            counter.record(lineage, 'public', false);
+            now = new Date('2026-09-26T00:00:01Z');
+            counter.record(lineage, 'public', false);
+            if (counter.status().pending !== 2) throw new Error(`Schluessel: ${counter.status().pending} statt 2`);
+            await counter.flush();
+            const agg = (await statsStore.readKennelCallAggregates('2026-09-26', [lineage]))[0];
+            if (agg?.total !== 2 || agg.last30d !== 1 || agg.ranked30d !== 1) throw new Error(`Aggregat: ${JSON.stringify(agg)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
+        }
+    }
+
+    /** Test P4 10: stop() stellt den Timer ab und flusht den Rest; ein zweites stop() ist harmlos. */
+    private async testCallCounterStopFlushes(statsStore: IKennelStatsStore): Promise<void> {
+        const testName = 'P4 10: Shutdown flusht';
+        const lineage = `__st_stop_${Date.now()}`;
+        try {
+            const counter = new KennelCallCounter(statsStore, { flushIntervalMs: 60_000 });
+            counter.start();
+            counter.record(lineage, 'api-execute', false);
+            await counter.stop();
+            if ((counter as any).timer !== null) throw new Error('Timer laeuft nach stop()');
+            if (counter.status().pending !== 0) throw new Error('pending nach stop()');
+            const agg = (await statsStore.readKennelCallAggregates('2000-01-01', [lineage]))[0];
+            if (agg?.total !== 1) throw new Error(`nicht geflusht: ${JSON.stringify(agg)}`);
+            await counter.stop();
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
         }
     }
 
