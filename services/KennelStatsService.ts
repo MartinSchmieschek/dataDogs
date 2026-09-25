@@ -9,6 +9,8 @@ import type {
     KennelRatingHistogram,
 } from '../store/IKennelStatsStore';
 import { KennelCallCounter, utcDay } from './KennelCallCounter';
+import type { AuthCtx } from '../mcp/auth/middleware';
+import { canRun, parseList, type AclEntity } from '../mcp/auth/visibility';
 
 export interface KennelStats {
     calls:  { total: number; last30d: number; leadFailed: number; ranked: number; ranked30d: number };
@@ -20,6 +22,17 @@ export type KennelRatingView = KennelStats['rating'] & {
     histogram: KennelRatingHistogram;
     mine: number | null;
 };
+
+/** Eine abgelehnte Bewertung — Status und Code wie in der REST-Antwort (4.4.1). */
+export class RatingError extends Error {
+    constructor(readonly status: 400 | 401 | 403 | 404, readonly code: string, description?: string) {
+        super(description ?? code);
+        this.name = 'RatingError';
+    }
+}
+
+/** Ein bewertbarer Kennel: Rechte-Felder plus Schluessel. */
+export type RatableKennel = AclEntity & { id: string; lineageId?: string };
 
 type CallCounts = Omit<KennelCallAggregate, 'lineageId'>;
 
@@ -92,6 +105,43 @@ export class KennelStatsService {
         ]);
         const own = aggregates[0] ?? { count: 0, sum: 0 };
         return { lineageId, ...this.ratingOf(memo.globalMean, own.count, own.sum), histogram, mine };
+    }
+
+    /**
+     * Setzt die Bewertung des Aufrufers (Regeln 4.4.1, Pruefreihenfolge 2-7; Regel 1 — Kennel
+     * aufloesbar — ist Sache des Aufrufers). Wirft RatingError.
+     */
+    async setRating(kennel: RatableKennel, ctx: AuthCtx | undefined, stars: unknown): Promise<KennelRatingView> {
+        const userId = KennelStatsService.raterOf(kennel, ctx, true);
+        if (typeof stars !== 'number' || !Number.isInteger(stars) || stars < 1 || stars > 5) {
+            throw new RatingError(400, 'invalid_stars', 'stars must be an integer 1..5');
+        }
+        const lineageId = statsKeyOf(kennel);
+        await this.store.upsertKennelRating(lineageId, userId, stars);
+        this.invalidate();
+        return this.ratingView(lineageId, userId);
+    }
+
+    /** Nimmt die eigene Bewertung zurueck — idempotent; Owner/Editor-Regel und stars entfallen. */
+    async clearRating(kennel: RatableKennel, ctx: AuthCtx | undefined): Promise<KennelRatingView> {
+        const userId = KennelStatsService.raterOf(kennel, ctx, false);
+        const lineageId = statsKeyOf(kennel);
+        if (await this.store.deleteKennelRating(lineageId, userId)) this.invalidate();
+        return this.ratingView(lineageId, userId);
+    }
+
+    /**
+     * Wer bewerten darf (4.4.1): bewertet wird, was man ausfuehren darf (W21, canRun) — sonst 404,
+     * nichts verraten; eingeloggt mit echter Identitaet; nie der Owner, nie ein Editor.
+     */
+    private static raterOf(kennel: RatableKennel, ctx: AuthCtx | undefined, forWrite: boolean): string {
+        if (!canRun(kennel, ctx)) throw new RatingError(404, 'not_found', 'Kennel not found');
+        if (!ctx?.user && !ctx?.isSuperUser) throw new RatingError(401, 'unauthorized', 'Login required to rate.');
+        const userId = ctx?.user?.id;
+        if (!userId) throw new RatingError(403, 'no_identity', 'Super-user mode has no user identity to rate with.');
+        if (forWrite && kennel.ownerId === userId) throw new RatingError(403, 'owner_cannot_rate', 'Owners do not rate their own kennel.');
+        if (forWrite && parseList(kennel.editors).includes(userId)) throw new RatingError(403, 'editor_cannot_rate', 'Editors do not rate a kennel they edit.');
+        return userId;
     }
 
     /** Nach Flush, Rating-Schreibzugriff und Kennel-Delete: das naechste attach laedt neu. */

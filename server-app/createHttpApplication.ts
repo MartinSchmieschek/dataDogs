@@ -13,6 +13,7 @@ import { AclRouteHandler } from '../api/routes/AclRouteHandler';
 import { KennelRunHandler } from '../api/routes/KennelRunHandler';
 import { KennelSwaggerHandler } from '../api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from '../api/routes/KennelBundleHandler';
+import { KennelRatingHandler } from '../api/routes/KennelRatingHandler';
 import { NodesRouteHandler } from '../api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from '../api/routes/ReadmeRouteHandler';
 import { StartupTest } from '../StartupTest';
@@ -309,6 +310,8 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     kennelSwaggerHandler.registerRoutes(app);
     kennelBundleHandler.registerRoutes(app);
     kennelRunHandler.registerRoutes(app);
+    // Sterne (P4): /api/kennels/:id/rating — anderes Literal als /versions und /run, keine Kollision.
+    new KennelRatingHandler(kennelsController, kennelStats).registerRoutes(app);
 
     frontBinder.afterKennelRoutes(app, frontCtx);
 

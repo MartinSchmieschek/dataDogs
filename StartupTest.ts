@@ -58,6 +58,7 @@ import {
 import { toSwaggridCast } from './services/swaggridAdapter';
 import { KennelCallCounter, utcDay } from './services/KennelCallCounter';
 import { KennelStatsService } from './services/KennelStatsService';
+import { KennelRatingHandler } from './api/routes/KennelRatingHandler';
 import type { IKennelStatsStore, KennelCallAggregate } from './store/IKennelStatsStore';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
@@ -232,6 +233,7 @@ export class StartupTest {
             await this.testFailedRunCountsLeadFailed(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testRatingAggregateAndBayes(statsStore);
             await this.testKennelDeleteClearsStats(kennelsStore, statsStore);
+            await this.testRatingRules(kennelsController as KennelController, statsStore);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4421,6 +4423,71 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test P4 7: die Rating-Regeln 4.4.1 ueber den REST-Handler — Owner/Editor 403, stars ausser
+     * 1..5 (auch "4") 400, anonym 401 mit WWW-Authenticate, Super-User ohne Identitaet 403, ohne RUN
+     * 404; ein Fremder mit RUN bewertet (200, mine); Community-Kennel bewertet auch U1; DELETE idempotent.
+     */
+    private async testRatingRules(kennelsController: KennelController, statsStore: IKennelStatsStore): Promise<void> {
+        const testName = 'P4 7: Rating-Regeln (REST)';
+        const stamp = Date.now();
+        const owned = `test-rate-${stamp}`;
+        const priv = `test-rate-priv-${stamp}`;
+        const community = `test-rate-comm-${stamp}`;
+        try {
+            const mk = async (id: string, visibility: Visibility, ownerId: string | null, editors?: string[]) => {
+                const r = await kennelsController.create({ id, name: id, dogIds: [], visibility, ownerId, ...(editors ? { editors } : {}) });
+                if (!r.ok) throw new Error(`Kennel ${id} nicht angelegt: ${r.error}`);
+            };
+            await mk(owned, 'run-only', 'U1', ['U2']);
+            await mk(priv, 'private', 'U1');
+            await mk(community, 'public', null);
+            const stats = new KennelStatsService(statsStore, new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 }));
+            const handler = new KennelRatingHandler(kennelsController, stats);
+            const anon: AuthCtx = { user: null, isSuperUser: false };
+            const put = (id: string, ctx: AuthCtx, stars: unknown) => this.callHandler(handler, 'handlePut', { params: { id }, body: { stars }, ctx, method: 'PUT' });
+            const expectErr = (label: string, out: { statusCode: number; body: any }, status: number, code: string) => {
+                if (out.statusCode !== status || out.body?.error !== code) throw new Error(`${label}: ${out.statusCode} ${JSON.stringify(out.body)}`);
+            };
+
+            expectErr('Owner', await put(owned, this.fakeUser('U1'), 5), 403, 'owner_cannot_rate');
+            expectErr('Editor', await put(owned, this.fakeUser('U2'), 5), 403, 'editor_cannot_rate');
+            expectErr('stars 6', await put(owned, this.fakeUser('U3'), 6), 400, 'invalid_stars');
+            expectErr('stars "4"', await put(owned, this.fakeUser('U3'), '4'), 400, 'invalid_stars');
+            expectErr('stars 4.5', await put(owned, this.fakeUser('U3'), 4.5), 400, 'invalid_stars');
+            const anonPut = await put(owned, anon, 4);
+            expectErr('anonym', anonPut, 401, 'unauthorized');
+            if (!anonPut.headers['www-authenticate']) throw new Error('401 ohne WWW-Authenticate');
+            expectErr('Super-User ohne user', await put(owned, { user: null, isSuperUser: true }, 4), 403, 'no_identity');
+            expectErr('privat, Fremder', await put(priv, this.fakeUser('U3'), 4), 404, 'not_found');
+            expectErr('unbekannt', await put(`gibt-es-nicht-${stamp}`, this.fakeUser('U3'), 4), 404, 'not_found');
+
+            const rated = await put(owned, this.fakeUser('U3'), 4);
+            if (rated.statusCode !== 200 || rated.body?.mine !== 4 || rated.body?.count !== 1 || rated.body?.lineageId !== owned || rated.body?.histogram?.[4] !== 1) {
+                throw new Error(`U3 bewertet: ${rated.statusCode} ${JSON.stringify(rated.body)}`);
+            }
+            const seen = await this.callHandler(handler, 'handleGet', { params: { id: owned }, ctx: anon });
+            if (seen.statusCode !== 200 || seen.body?.mine !== null || seen.body?.avg !== 4) throw new Error(`GET anonym: ${JSON.stringify(seen.body)}`);
+            if ((await this.callHandler(handler, 'handleGet', { params: { id: priv }, ctx: anon })).statusCode !== 404) throw new Error('GET privat anonym nicht 404');
+            const byCommunity = await put(community, this.fakeUser('U1'), 5);
+            if (byCommunity.statusCode !== 200 || byCommunity.body?.mine !== 5) throw new Error(`Community: ${byCommunity.statusCode} ${JSON.stringify(byCommunity.body)}`);
+
+            const del = () => this.callHandler(handler, 'handleDelete', { params: { id: owned }, ctx: this.fakeUser('U3'), method: 'DELETE' });
+            const cleared = await del();
+            if (cleared.statusCode !== 200 || cleared.body?.mine !== null || cleared.body?.count !== 0) throw new Error(`DELETE: ${JSON.stringify(cleared.body)}`);
+            if ((await del()).statusCode !== 200) throw new Error('zweites DELETE nicht 200');
+            expectErr('DELETE anonym', await this.callHandler(handler, 'handleDelete', { params: { id: owned }, ctx: anon }), 401, 'unauthorized');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            for (const id of [owned, priv, community]) {
+                try { await kennelsController.delete(id); } catch { /* ignore */ }
+                try { await statsStore.deleteKennelStats(id); } catch { /* ignore */ }
+            }
         }
     }
 

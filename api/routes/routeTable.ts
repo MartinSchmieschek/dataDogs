@@ -46,6 +46,8 @@ export const ACL_ROUTE = {
 export const API_ROUTE = {
     kennelRun: '/api/kennels/:id/run',
     kennelExecute: '/api/kennels/:id/execute',
+    /** Sterne (P4): GET/PUT/DELETE. */
+    kennelRating: '/api/kennels/:id/rating',
     kennelExport: '/api/kennels/:id/export',
     kennelImport: '/api/kennels/import',
     nodesList: '/api/nodes',
@@ -68,6 +70,7 @@ export const API_ROUTES = [
     '/api/kennels/:id/export',
     '/api/kennels/:id/run',
     '/api/kennels/:id/execute',
+    '/api/kennels/:id/rating',
     '/api/nodes',
     '/api/nodes/:id',
     '/api/nodes/:id/versions',
@@ -130,6 +133,7 @@ export const EXPRESS_APP_ROUTES = [
     ...Object.values(ACL_ROUTE),
     API_ROUTE.kennelRun,
     API_ROUTE.kennelExecute,
+    API_ROUTE.kennelRating,
     API_ROUTE.kennelExport,
     API_ROUTE.kennelImport,
     API_ROUTE.nodesList,

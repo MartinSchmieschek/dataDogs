@@ -26,8 +26,14 @@ import type { KennelStatsService } from '../../services/KennelStatsService';
  * Returns true when the request has a logged-in user OR is in super-user dev mode.
  * Sends 401 + WWW-Authenticate when not — so MCP/Action clients know to start OAuth.
  */
-function requireLogin(req: Request, res: Response): boolean {
+export function requireLogin(req: Request, res: Response): boolean {
     if (req.ctx?.user || req.ctx?.isSuperUser) return true;
+    sendLoginRequired(req, res);
+    return false;
+}
+
+/** 401 + WWW-Authenticate (OAuth-Discovery fuer MCP/Action-Clients) — auch fuer den Rating-Endpunkt. */
+export function sendLoginRequired(req: Request, res: Response, description = 'Login required for this operation.'): void {
     const proto = (req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
     const host = (req.get('x-forwarded-host') || req.get('host') || 'localhost:3000').split(',')[0].trim();
     const base = process.env.MCP_BASE_URL?.replace(/\/$/, '') || `${proto}://${host}`;
@@ -35,8 +41,7 @@ function requireLogin(req: Request, res: Response): boolean {
         'WWW-Authenticate',
         `Bearer realm="SlopDogs", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
     );
-    res.status(401).json({ error: 'unauthorized', error_description: 'Login required for this operation.' });
-    return false;
+    res.status(401).json({ error: 'unauthorized', error_description: description });
 }
 
 /**
