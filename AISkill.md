@@ -117,8 +117,8 @@ Default `http://localhost:3000`. If the user names a different URL, use that.
 
 The SlopDogs server has an optional auth layer toggled by the env var `MCP_AUTH_REQUIRED`:
 
-- `false` (default for local dev) — every request is super-user; visibility/ownership are not enforced.
-- `true` — anonymous sees only public entities; mutations require login + ownership/edit-rights.
+- `false` (default for local dev) — every request is super-user; visibility/ownership are not enforced. Development only — in `production`/`integration` the server refuses to start unless this is `true` (exit code 78).
+- `true` — anonymous sees public entities and can run run-only ones; mutations require login + rights.
 
 ### Identity for API calls
 
@@ -130,49 +130,71 @@ Three ways to authenticate:
 
 ### ACL fields
 
+Rights are a strict ladder: **NONE < RUN < READ < EDIT < OWN**. COPY is not a right of its own — it equals READ; the only real copy protection is keeping something run-only.
+
+- **RUN** — run the kennel / use the dog as a parent; see the lead result or that dog's output. No code, no config/defaults/task/layout, no versions.
+- **READ** — + code, config, defaults, task, layout, versions, export, `get_node`/`_lines`/`_versions`, snapshot code/vmContext.
+- **EDIT** — + new version, rename, delete, change dog references.
+- **OWN** — + manage the ACL, change visibility, transfer ownership, freeze/unfreeze.
+
 Both Kennels and SerializedDogs have:
 
-- `visibility` — `"public"` (anyone reads + runs) or `"private"`.
-- `ownerId` — the creator's `User.id`. Has full rights.
-- `editors[]` — additional users who may mutate.
-- `viewers[]` — additional users who may read on private entities.
+- `visibility` — `"public"` (anyone reads + runs), `"run-only"` (anyone runs it and sees it listed; reading needs owner/editor/viewer), or `"private"` (owner/editors/viewers read, runners run). New entities always default to `"private"`, even under super-user.
+- `ownerId` — the creator's `User.id`. OWN.
+- `editors[]` — EDIT.
+- `viewers[]` — READ (role name `reader`; `viewer` still works as an alias).
+- `runners[]` — RUN without READ.
+
+`myRights: {run, read, edit, own, frozen}` comes back on `get_kennel`, `get_node` and on every entry of the REST lists `GET /api/nodes` / `GET /api/kennels` — use it instead of re-deriving rights from the raw lists.
 
 Special:
-- Legacy entities with `ownerId = null` are **community-editable** (any logged-in user reads + mutates).
-- **Cascade respects manual visibility:** when a kennel flips to public, only nodes whose `visibility IS NULL` (never explicitly set) cascade to public. A node you manually set to private (or public) is **never overwritten** by a kennel cascade. Other-user-owned nodes stay where they are.
-- **Node bypass:** any kennel-owner/editor of a kennel that uses a node may also mutate that node — *"if you depend on it, you can fix it."*
+- Legacy/community entities with `ownerId = null` are **community-editable** (any logged-in user reads + edits). Managing the ACL or freezing one is super-user only; nobody can grant themselves ownership of it.
+- **Cascade respects manual visibility:** when a kennel flips to public, only nodes whose `visibility IS NULL` (never explicitly set) cascade to public. A node you manually set to `run-only`, `public` or `private` is **never overwritten** by a kennel cascade. Other-user-owned nodes stay where they are.
+- **Frozen:** the owner (super-user for community entities) can freeze an entity. Nothing mutates it while frozen, owner included — edit, rename, delete, new version, ACL change all refuse — until unfrozen. Runs, reads, exports and copies keep working.
+- **Referencing a foreign dog** in a kennel needs at least RUN on it. One you may run but not read can only be added pinned to a version GUID, never by lineage — otherwise the call fails with `pin_required`.
 
 ### ACL operations
 
-Use these endpoints (or the corresponding MCP tools `grant_access` / `revoke_access` / `release_ownership` / `list_collaborators`):
+Use these endpoints (or the corresponding MCP tools `grant_access` / `revoke_access` / `release_ownership` / `list_collaborators` / `freeze_entity` / `unfreeze_entity`):
 
 ```
 POST /actions/grant_access
-  { "entity_type": "kennel" | "node", "id": "<id>", "user": "email-or-id", "role": "editor" | "viewer" | "owner" }
+  { "entity_type": "kennel" | "node", "id": "<id>", "user": "email-or-id", "role": "editor" | "reader" | "runner" | "owner" }
+  // "viewer" still works as an alias for "reader".
 
 POST /actions/revoke_access
-  { "entity_type": "kennel" | "node", "id": "<id>", "user": "email-or-id", "role": "editor" | "viewer" }
+  { "entity_type": "kennel" | "node", "id": "<id>", "user": "email-or-id", "role": "editor" | "reader" | "runner" }
 
 POST /actions/release_ownership
   { "entity_type": "kennel" | "node", "id": "<id>" }
-  // Sets ownerId = null. Editors/viewers kept. Only the current owner can call.
+  // Sets ownerId = null. Editors/viewers/runners kept. Only the current owner can call; refused while frozen.
 
 POST /actions/list_collaborators
   { "entity_type": "kennel" | "node", "id": "<id>" }
+  // Only for those who can read the entity; emails only for owner/editors.
+
+POST /actions/freeze_entity
+  { "entity_type": "kennel" | "node", "id": "<id>" }
+
+POST /actions/unfreeze_entity
+  { "entity_type": "kennel" | "node", "id": "<id>" }
 ```
 
-`grant_access` returns informative `action` codes for redundant requests — surface them to the user as gentle confirmations, not failures:
-- `already_editor` / `already_viewer` / `already_owner`
-- `redundant_owner_is_editor` / `redundant_owner_is_viewer` (owner already has those rights)
-- `redundant_editor_is_viewer` (editor includes read)
+Or directly via REST: `GET`/`PUT /api/kennels/:id/acl` (and `/api/nodes/:id/acl`), `POST /api/kennels/:id/acl/transfer`, `POST /api/kennels/:id/freeze`, `POST /api/kennels/:id/unfreeze`.
 
-Only the owner (or super-user, or any logged-in user on a community-owned entity) may manage the ACL.
+`grant_access` returns informative `action` codes for redundant requests — surface them to the user as gentle confirmations, not failures:
+- `already_owner` / `already_editor` / `already_viewer` / `already_runner`
+- `runner_added` / `viewer_added` / `editor_added`
+- `redundant_owner_is_runner` / `redundant_editor_is_runner` / `redundant_viewer_is_runner` (existing role already covers what `runner` would grant)
+
+Only the owner may manage the ACL or change visibility (`"Only the owner may manage access"`, `"Only the owner may change visibility"`); a frozen entity answers `"... is frozen — unfreeze it first"`.
 
 ### What this means for the workflow
 
-- When you create a kennel/node and the user is logged in, default `visibility` is `"private"` and `ownerId` is the user. Tell the user explicitly when this happens — they may want public.
-- When inspecting another user's kennel and you can read it, you may **not** be able to mutate it. Check `ownerId` and `editors` before assuming you can save.
-- When working in dev mode (`MCP_AUTH_REQUIRED=false`), all of this collapses to "you can do anything." Don't write workflows that depend on the dev-mode bypass — they break in prod.
+- When you create a kennel/node and the user is logged in, default `visibility` is `"private"` and `ownerId` is the user — always, even under super-user. Tell the user explicitly when this happens — they may want public or run-only.
+- When inspecting another user's kennel, check `myRights` before assuming you can mutate it, reference it by lineage, or see its code — READ and RUN are separate rights now.
+- Frozen entities keep running and reading; only mutation is blocked, including for the owner.
+- When working in dev mode (`MCP_AUTH_REQUIRED=false`), all of this collapses to "you can do anything." Don't write workflows that depend on the dev-mode bypass — they break in prod, and production/integration now refuse to boot without the guard.
 
 ## Architecture
 

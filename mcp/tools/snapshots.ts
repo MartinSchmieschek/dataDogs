@@ -225,7 +225,7 @@ export function getSnapshotTools(): ToolDef[] {
         {
             name: 'refresh_kennel_snapshot',
             description:
-                'Runs a kennel asynchronously and stores the full Waves in-memory as a snapshot, keyed by kennelLineageId. Returns immediately with status=running. Use wait_for_kennel_snapshot or get_kennel_snapshot to observe completion. Prefer this over run_kennel for any inspection workflow — subsequent get_snapshot_* tools read from the cached run. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
+                'Runs a kennel asynchronously and stores the full Waves in-memory as a snapshot, keyed by kennelLineageId and by you: a run carries your capabilities (your jsonStore), so every caller reads only his own snapshot. The run right is enough to refresh; per-dog inspection needs the read right. Returns immediately with status=running. Use wait_for_kennel_snapshot or get_kennel_snapshot to observe completion. Prefer this over run_kennel for any inspection workflow — subsequent get_snapshot_* tools read from the cached run. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],

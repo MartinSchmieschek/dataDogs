@@ -99,33 +99,51 @@ The service runs on **Render and sleeps when idle**. The first call after a paus
 
 ## Visibility & access
 
-Kennels and Breeds (SerializedDogs) carry an ACL:
+Rights are a strict ladder: **NONE < RUN < READ < EDIT < OWN**. COPY is not a right of its own — it equals READ; the only real copy protection is keeping something run-only.
 
-- **`visibility`** — `"public"` (anyone reads + runs) or `"private"` (only authorized users).
-- **`ownerId`** — the creator. Has full rights.
-- **`editors[]`** — additional users who may mutate (save, rename, delete). Cannot manage the ACL itself.
-- **`viewers[]`** — additional users who may read a private entity (no mutation rights).
-- **`ownerId = null`** (legacy / system-owned) is **community-editable** — any logged-in user reads + mutates. We don't fight legacy.
+- **RUN** — run the kennel, or use a dog as a parent; see the lead result / that dog's output. No code, no config/defaults/task/layout, no versions.
+- **READ** — + code, config, defaults, task, layout, versions, export, `get_node`/`get_node_lines`/`get_node_versions`, snapshot code/vmContext.
+- **EDIT** — + new version, rename, delete, change `dogIds`.
+- **OWN** — + manage the ACL, change visibility, transfer ownership, freeze/unfreeze.
 
-When a kennel goes public, its **own** SerializedDogs/MimicDogs in `dogIds` are cascaded — but only nodes that have **never had a visibility chosen** (`visibility IS NULL`). Nodes the user explicitly set to `public` or `private` are **never overwritten** by cascade. Manual choice always wins.
+**`visibility`** — `"public"` (anyone reads + runs), `"run-only"` (anyone runs it and sees it in listings; reading is owner/editors/viewers only), or `"private"` (owner/editors/viewers read, runners run). New entities always default to `"private"` — even under super-user.
 
-For nodes there's an additional bypass: any **kennel-owner or kennel-editor of any kennel that uses this node** may also mutate it. Rationale: if you depend on a node, you can fix it.
+**Lists, highest right wins:** `ownerId` (OWN), `editors[]` (EDIT), `viewers[]` (READ — MCP calls the role `reader`, `viewer` still works as an alias), `runners[]` (RUN — "run without read").
 
-ACL is managed through four tools — present them as natural verbs, not technical:
+**Community** (`ownerId = null`) — any logged-in user reads and edits it. OWN (ACL, freeze) belongs to the super-user only; nobody can grant themselves ownership of a community entity through `grant_access`.
 
-- `grant_access(entity_type, id, user, role)` — `role ∈ { editor, viewer, owner }`. `owner` transfers ownership.
-- `revoke_access(entity_type, id, user, role)` — remove from `editors[]` or `viewers[]`.
-- `release_ownership(entity_type, id)` — set `ownerId = null`, returning the entity to community-edit mode. Editors/viewers stay intact. Only the current owner can release.
-- `list_collaborators(entity_type, id)` — see owner + editors + viewers, all resolved with email + name.
+**`frozen`** — the owner (super-user for community entities) freezes an entity. While frozen, nothing mutates it — not even the owner: no edit, rename, delete, new version, or ACL change, until unfrozen. Runs, reads, exports and copies keep working; freezing never creates a new version.
 
-`user` accepts an email or a `User.id` GUID. Only the **owner** (or super-user, or any logged-in user on a community-owned entity) can manage the ACL.
+`myRights: {run, read, edit, own, frozen}` rides along on `get_kennel` and `get_node` (and on every entry of the REST lists `GET /api/nodes` / `GET /api/kennels`). The ACL lists themselves (`editors`/`viewers`/`runners`) are visible only to the owner and editors.
+
+**Referencing dogs** (`create_kennel`, `update_kennel`, `build_kennel` `extraDogIds`): you can only reference dogs you may run. A dog you may run but not read can only be pinned to a version GUID (from `list_nodes` / `get_node_schema`) — referencing it by lineage fails with `pin_required`. That keeps its author from slipping new code under a kennel that depends on it.
+
+A foreign dog you can't read runs in its own `jsonStore` namespace, scoped to you (`user:<you>:dog:<lineage>:`) — it never sees your own storage. A foreign private dog the kennel owner can't run doesn't run at all; the lead fails.
+
+**What a RUN-only caller gets back:** for a kennel you may only run, `execute_kennel` / `GET /k/:id` give you the lead result; `run_kennel` gives `{ ok, waves: [{dogCount}], leadResult, durationMs, dogs: [{status}] }` — no dog names or ids. Inside a kennel you can read, a dog you may only run shows name, result and a truncated error, never code or vmContext; a dog you have no right to shows only its identity and `"[redacted]"`. `get_kennel` for a RUN-only caller returns just `{id, lineageId, name, emoji, visibility, frozen, myRights}`. `list_nodes` shows run-only dogs with `tsCodePreview: null`; `get_node_schema` works at RUN; `get_node`/`get_node_lines`/`get_node_versions`/`get_kennel_*` all need READ. `/k/:id/docs` and `/k/:id/openapi.json` are available from RUN, but defaults only show once you have READ. Export needs READ; dogs you can't read go into the bundle as reference stubs, pinned to the exported version on import.
+
+**Snapshots** — you only ever see your own snapshot (a run carries the capabilities of whoever triggered it). A RUN-only caller gets `get_kennel_snapshot`, `wait_for_kennel_snapshot`, `get_kennel_snapshot_lead_result` (no `leadDogId`); anything per-dog needs READ.
+
+Run errors for someone who may only run the kennel come back as `"[redacted]"`; a dog you have no right on at all shows `"[redacted]"` as its error — never a message or stack.
+
+ACL is managed through six tools — present them as natural verbs, not technical:
+
+- `grant_access(entity_type, id, user, role)` — `role ∈ { editor, reader (alias viewer), runner, owner }`. `owner` transfers ownership.
+- `revoke_access(entity_type, id, user, role)` — remove from `editors[]`, `viewers[]` or `runners[]`.
+- `release_ownership(entity_type, id)` — set `ownerId = null`, returning the entity to community-edit mode. Editors/viewers/runners stay intact. Only the current owner (or super-user) can release; refused while frozen.
+- `list_collaborators(entity_type, id)` — see owner + editors + viewers + runners + `frozen`. Only if you can read the entity; emails are shown only to the owner and editors.
+- `freeze_entity(entity_type, id)` / `unfreeze_entity(entity_type, id)` — owner only (super-user for community entities).
+
+`user` accepts an email or a `User.id` GUID. Only the owner may manage the ACL or change visibility — editors may mutate content but not the ACL.
 
 `grant_access` returns informative `action` codes when a request is redundant:
-- `already_editor` / `already_viewer` / `already_owner` — user is already in that role, no change.
-- `redundant_owner_is_editor` / `redundant_owner_is_viewer` — owner already has every right an editor or viewer would gain.
-- `redundant_editor_is_viewer` — editor already includes read; viewer role is implicit.
+- `already_owner` / `already_editor` / `already_viewer` / `already_runner` — user is already in that role, no change.
+- `redundant_owner_is_editor` / `redundant_owner_is_viewer` / `redundant_editor_is_viewer` — a higher role already covers it.
+- `runner_added` / `viewer_added` / `editor_added` — the role was newly granted.
+- `redundant_owner_is_runner` / `redundant_editor_is_runner` / `redundant_viewer_is_runner` — the user's existing role already covers what `runner` would grant.
+- On `revoke_access`: `..._removed` / `not_present`.
 
-When you see these, surface them to the user as gentle confirmations, not as failures.
+When you see these, surface them to the user as gentle confirmations, not as failures. `"Only the owner may manage access"` and `"Only the owner may change visibility"` are refusals, not bugs; a frozen entity answers `"... is frozen — unfreeze it first"`.
 
 You see only what you may see. If a kennel is missing from `list_kennels` and the user expected it, the owner is probably someone else — don't say "deleted" or "not found", say "not in this user's pack" or "the trail is hidden from us".
 

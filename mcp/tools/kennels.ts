@@ -309,7 +309,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'list_kennels',
             description:
-                'Lists kennels visible to the current user. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt). Use get_kennel for the header, and the get_kennel_* tools for payload fields.',
+                'Lists kennels visible to the current user — every kennel you may run, run-only kennels included. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt). Use get_kennel for the header, and the get_kennel_* tools for payload fields (they need the read right).',
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
             handler: async (_args, ctx, deps) => {
                 const result = await deps.kennelsController.listLatest();
@@ -322,7 +322,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'get_kennel',
             description:
-                'Returns the header of one kennel — identity, dogIds, visibility, owner, and presence flags for the heavy fields (defaultBody/defaultQuery/task/nodes/edges). Use get_kennel_default_body / _default_query / _task / _layout to fetch those.',
+                'Returns the header of one kennel — identity, dogIds, visibility, owner, frozen, presence flags for the heavy fields (defaultBody/defaultQuery/task/nodes/edges) and `myRights: {run, read, edit, own, frozen}`. Use get_kennel_default_body / _default_query / _task / _layout to fetch those. If you may only run the kennel (run-only), you get {id, lineageId, name, emoji, visibility, frozen, myRights} — no dogIds, no config.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -437,7 +437,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'create_kennel',
             description:
-                'Creates a new kennel. Defaults visibility to "private" and ownerId to the current user. Pass "visibility":"public" to make it publicly accessible. dogIds is the ordered pack — first entry is the lead. **Spuren:** `task` (User-Wunsch) + `nodes[]` (ein Satz pro Hund) — siehe mcp/skill.md § Spuren & Rechtfertigung. Use refresh_kennel_snapshot afterwards to see the run state.',
+                'Creates a new kennel. Defaults visibility to "private" and ownerId to the current user. visibility: public | run-only | private — "run-only" lets everyone run it and see its result, but not read its dogs, config or defaults. dogIds is the ordered pack — first entry is the lead. dogIds may reference dogs you can run; a foreign dog you may run but not read must be pinned to a version (its version GUID from list_nodes / get_node_schema) — a lineageId answers "pin_required". **Spuren:** `task` (User-Wunsch) + `nodes[]` (ein Satz pro Hund) — siehe mcp/skill.md § Spuren & Rechtfertigung. Use refresh_kennel_snapshot afterwards to see the run state.',
             inputSchema: {
                 type: 'object',
                 required: ['id', 'dogIds'],
@@ -576,7 +576,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'update_kennel',
             description:
-                'Updates an existing kennel — creates a new version. Only the owner (or super-user) can update. Pass only the fields you want to change; others are preserved. **Spuren:** `task` + `nodes[]` — User-Wunsch festhalten, nicht JSON-Vertrag (mcp/skill.md § Spuren & Rechtfertigung). Use refresh_kennel_snapshot afterwards to see the run state.',
+                'Updates an existing kennel — creates a new version. The owner or a user with the edit right (editor) can update; changing visibility (public | run-only | private) needs the owner; a frozen kennel takes no update until the owner unfreezes it. Pass only the fields you want to change; others are preserved. Newly added dogIds must be dogs you can run; run-only foreign dogs are pinned to a version. **Spuren:** `task` + `nodes[]` — User-Wunsch festhalten, nicht JSON-Vertrag (mcp/skill.md § Spuren & Rechtfertigung). Use refresh_kennel_snapshot afterwards to see the run state.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -637,7 +637,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'delete_kennel',
             description:
-                'Deletes a kennel and ALL its versions. Only the owner (or super-user) can delete. Irreversible — every dog dies forever.',
+                'Deletes a kennel and ALL its versions. The owner or an editor can delete; not while frozen. Irreversible — every dog dies forever.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -661,7 +661,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'run_kennel',
             description:
-                'Runs a kennel and returns the full Waves payload — every dog\'s yield, code, vmContext, errors and timing. WARNING: this can be megabytes per call (5–20 MB on rich kennels). Prefer refresh_kennel_snapshot + the get_snapshot_* / get_kennel_snapshot_* tools for granular access. Use run_kennel only when you truly need every dog\'s details in one shot. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this single run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
+                'Runs a kennel and returns the full Waves payload — every dog\'s yield, code, vmContext, errors and timing. WARNING: this can be megabytes per call (5–20 MB on rich kennels). Prefer refresh_kennel_snapshot + the get_snapshot_* / get_kennel_snapshot_* tools for granular access. Use run_kennel only when you truly need every dog\'s details in one shot. Dogs you may not read come without code and context; if you may only run the kennel (run-only), you get just its shape: {ok, waves:[{dogCount}], leadResult, durationMs, dogs:[{status}]}. Optional `vmTimeoutMs` overrides the per-dog VM execution budget for this single run (resolution: vmTimeoutMs > SLOPDOGS_VM_TIMEOUT_MS env > 10000ms default) -- not persisted.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],

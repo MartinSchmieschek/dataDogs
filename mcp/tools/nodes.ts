@@ -1,8 +1,7 @@
 // Node (Hunter / Breed) tools — list, create, save code, get versions.
-// Nodes carry the same visibility/ownership model as Kennels: each Breed has an
-// ownerId, optional editors/viewers, and can be public or private. The mutate-
-// check additionally allows kennel-owners (or kennel-editors) of any kennel
-// referencing the node — see canMutateNode.
+// Nodes carry the same rights model as Kennels (NONE < RUN < READ < EDIT < OWN): each
+// Breed has an ownerId, optional editors/viewers/runners, and is public, run-only or
+// private. Referencing a node from a kennel grants no edit right (see canMutateNode).
 
 import {
     canManageAcl,
@@ -47,7 +46,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'list_nodes',
             description:
-                'Lists nodes visible to the current user — the discovery surface: start here to find out what exists. Returns a paged window with metadata only (no tsCode), including each entry\'s `description` and its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax build_kennel expects). Hunters (BaseDogs), Pacts and Breeds (SerializedDogs/MimicDogs) share the same listing; Pacts are flagged `isPact: true` and carry `pactTypeDef` when they declare a shape — a Pact is a contract, fulfil it with a MimicDog (dogs[].imitates) or a providing dog, never call it directly. Default limit=50, cap=200. Filter via type, search by name/displayName/description substring (case-insensitive).',
+                'Lists nodes visible to the current user — the discovery surface: start here to find out what exists. Returns a paged window with metadata only (no tsCode), including each entry\'s `description` and its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax build_kennel expects). Hunters (BaseDogs), Pacts and Breeds (SerializedDogs/MimicDogs) share the same listing; Pacts are flagged `isPact: true` and carry `pactTypeDef` when they declare a shape — a Pact is a contract, fulfil it with a MimicDog (dogs[].imitates) or a providing dog, never call it directly. Default limit=50, cap=200. Filter via type, search by name/displayName/description substring (case-insensitive). Run-only dogs (you may run them, not read them) are listed too, with `tsCodePreview: null`; use their `id` (a version GUID) to reference them in a kennel.',
             inputSchema: {
                 type: 'object',
                 additionalProperties: false,
@@ -167,7 +166,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'get_node',
             description:
-                'Returns the full detail of a node — including tsCode and the complete SerializedDogConfig (or BaseDog metadata). For SerializedDogs this carries `description` and any `lineDocs` (line-range annotations); to fetch only the annotation/code for one line without the whole dog, use get_node_lines.',
+                'Returns the full detail of a node — including tsCode, the complete SerializedDogConfig (or BaseDog metadata) and `myRights: {run, read, edit, own, frozen}`. Requires the read right; a run-only dog answers "not found" — use get_node_schema for its interface. For SerializedDogs this carries `description` and any `lineDocs` (line-range annotations); to fetch only the annotation/code for one line without the whole dog, use get_node_lines.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -192,7 +191,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'get_node_schema',
             description:
-                'Returns just the interface of a node — id, lineageId, displayName, name, description, icon, type, parents. No tsCode, no extra config. Use when you only need to bind to a node\'s shape.',
+                'Returns just the interface of a node — id, lineageId, displayName, name, description, icon, type, parents. No tsCode, no extra config. Use when you only need to bind to a node\'s shape. The run right is enough — this is how you learn a run-only dog\'s interface and the version `id` to pin it by.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -373,7 +372,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'save_node',
             description:
-                'Saves a new version of a Breed (SerializedDog). Only the owner (or super-user) can save. Pass id (lineageId or version GUID), tsCode (or tsCodeBase64) and updated parents. For Mimics, also pass serializedDogConfig with the imitates field intact. Pass "visibility" to flip public/private. Provide EITHER tsCode (raw string) OR tsCodeBase64 (utf8 base64) — the base64 form avoids JSON-escape hell.',
+                'Saves a new version of a Breed (SerializedDog). The owner or an editor can save (referencing a dog in your kennel grants no edit right); not while frozen. Changing visibility (public | run-only | private) needs the owner. Pass id (lineageId or version GUID), tsCode (or tsCodeBase64) and updated parents. For Mimics, also pass serializedDogConfig with the imitates field intact. Pass "visibility" to flip public/private. Provide EITHER tsCode (raw string) OR tsCodeBase64 (utf8 base64) — the base64 form avoids JSON-escape hell.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -444,7 +443,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'get_node_versions',
             description:
-                'Returns the full version history of a node\'s lineage — every incarnation, newest first. Returns "not found" if the node is private and the caller is not the owner.',
+                'Returns the full version history of a node\'s lineage — every incarnation, newest first. Requires the read right — "not found" otherwise (also for run-only dogs).',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
