@@ -3,14 +3,17 @@
 // Each respects the visibility/ownership rules; super-user (dev mode) bypasses.
 
 import {
+    accessOf,
     canRead,
     canMutate,
-    filterReadable,
+    filterRunnable,
     applyCreateDefaults,
     normalizeVisibility,
     rightsOf,
     isFrozen,
+    withMyRights,
     VISIBILITIES,
+    type Access,
 } from '../auth/visibility';
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
 import {
@@ -25,7 +28,8 @@ import {
 } from '@slopdogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief';
-import { redactWavesForCtx } from '../../services/wavesRedaction';
+import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/wavesRedaction';
+import { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 
 /** Status notebook — see mcp/skill.md § Spuren & Rechtfertigung */
 const KENNEL_TRACE_NODE_SCHEMA = {
@@ -249,6 +253,27 @@ function leanKennel(k: any) {
     };
 }
 
+/**
+ * get_kennel fuer RUN (W9): wer ausfuehren, aber nicht lesen darf, bekommt den Namen und seine
+ * Rechte — keine dogIds, keine Presence-Flags, keinen Owner.
+ */
+function kennelRunHeader(k: any, ctx: AuthCtx) {
+    return {
+        id: k.id,
+        lineageId: k.lineageId,
+        name: k.name,
+        emoji: k.emoji,
+        visibility: k.visibility ?? 'public',
+        frozen: isFrozen(k),
+        myRights: rightsOf(k, ctx),
+    };
+}
+
+/** Ein Lauf-Fehler fuer die Tool-Antwort: Leser sehen die Nachricht, RUN-Leser den Platzhalter (W13). */
+function runErrorText(err: any, access: Access): string {
+    return access === 'read' ? err?.message ?? String(err) : REDACTED_TEXT;
+}
+
 /** Header projection for get_kennel — payload presence flagged, not dumped. */
 function kennelHeader(k: any, ctx: AuthCtx) {
     return {
@@ -283,7 +308,8 @@ export function getKennelTools(): ToolDef[] {
             handler: async (_args, ctx, deps) => {
                 const result = await deps.kennelsController.listLatest();
                 if (!result.ok) return fail(result.error ?? 'list failed');
-                const visible = filterReadable(result.data ?? [], ctx);
+                // W17 (8.17): what you may run is listed — run-only kennels included.
+                const visible = filterRunnable(result.data ?? [], ctx);
                 return ok(visible.map(leanKennel));
             },
         },
@@ -302,7 +328,9 @@ export function getKennelTools(): ToolDef[] {
             handler: async (args, ctx, deps) => {
                 const result = await deps.kennelsController.getById(String(args.id));
                 if (!result.ok || !result.data) return fail(result.error ?? 'not found');
-                if (!canRead(result.data as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                const access = accessOf(result.data as any, ctx);
+                if (access === 'none') return fail(`Kennel ${args.id} not found`);
+                if (access === 'run') return ok(kennelRunHeader(result.data, ctx));
                 return ok(kennelHeader(result.data, ctx));
             },
         },
@@ -651,7 +679,8 @@ export function getKennelTools(): ToolDef[] {
             handler: async (args, ctx, deps) => {
                 const config = await deps.kennelRunHandler.loadKennelConfig(String(args.id));
                 if (!config) return fail(`Kennel ${args.id} not found`);
-                if (!canRead(config as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                const access = accessOf(config as any, ctx);
+                if (access === 'none') return fail(`Kennel ${args.id} not found`);
                 const query = deps.kennelRunHandler.mergeQueryParams(
                     config.defaultQuery,
                     (args.query as Record<string, any>) ?? {},
@@ -660,15 +689,18 @@ export function getKennelTools(): ToolDef[] {
                 const vmTimeoutMs = typeof args.vmTimeoutMs === 'number' && args.vmTimeoutMs > 0
                     ? args.vmTimeoutMs
                     : undefined;
+                const startedAt = Date.now();
                 try {
                     const waves = await deps.kennelRunHandler.runKennel(
                         config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs,
                     );
+                    // Kennel-RUN (W3, W17 Stufe 1): only the run's shape and the lead result.
+                    if (access === 'run') return ok(kennelRunView(waves, config, Date.now() - startedAt));
                     // SECURITY (2026-09-13): strip code/runtime of nodes this caller may not read.
                     const safeWaves = await redactWavesForCtx(waves, ctx, deps.nodesStore);
-                    return ok({ waves: safeWaves, kennelConfig: config });
+                    return ok({ waves: safeWaves, kennelConfig: withMyRights(config as any, ctx) });
                 } catch (err: any) {
-                    return fail(err?.message ?? String(err));
+                    return fail(runErrorText(err, access));
                 }
             },
         },
@@ -697,7 +729,9 @@ export function getKennelTools(): ToolDef[] {
             handler: async (args, ctx, deps) => {
                 const config = await deps.kennelRunHandler.loadKennelConfig(String(args.id));
                 if (!config) return fail(`Kennel ${args.id} not found`);
-                if (!canRead(config as any, ctx)) return fail(`Kennel ${args.id} not found`);
+                // W3: the lead result is the ware — RUN is enough.
+                const access = accessOf(config as any, ctx);
+                if (access === 'none') return fail(`Kennel ${args.id} not found`);
                 const dogIds = config.dogIds ?? [];
                 if (dogIds.length === 0) return fail('Kennel has no dogs');
                 const query = deps.kennelRunHandler.mergeQueryParams(
@@ -713,10 +747,10 @@ export function getKennelTools(): ToolDef[] {
                         config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs,
                     );
                     const lead = findDogInWaves(waves, dogIds[0]);
-                    if (!lead) return fail(`Lead ${dogIds[0]} not in waves`);
+                    if (!lead) return fail(access === 'read' ? `Lead ${dogIds[0]} not in waves` : 'lead_failed');
                     return ok(lead.result);
                 } catch (err: any) {
-                    return fail(err?.message ?? String(err));
+                    return fail(runErrorText(err, access));
                 }
             },
         },
@@ -1065,9 +1099,11 @@ async function buildKennel(
                         buildVmTimeoutMs,
                     );
 
-                    // Cache the snapshot so subsequent get_snapshot_* calls work directly.
+                    // Cache the snapshot so subsequent get_snapshot_* calls work directly — for the
+                    // builder: the run carried his capabilities, the snapshot is his.
                     deps.snapshotCache.startJob(
                         kennelLineageId,
+                        KennelSnapshotCache.viewerOf(ctx),
                         freshConfig.id,
                         mergedQuery,
                         freshConfig.defaultBody,
@@ -1080,7 +1116,7 @@ async function buildKennel(
                     const errorCount = flat.filter((d) => d?.error).length;
                     const leadOk = !!lead && !(lead as any)?.error;
 
-                    deps.snapshotCache.markOk(kennelLineageId, {
+                    deps.snapshotCache.markOk(kennelLineageId, KennelSnapshotCache.viewerOf(ctx), {
                         waves: waves as any,
                         kennelConfig: freshConfig,
                         leadDogId: lead ? leadRef ?? undefined : undefined,
@@ -1109,7 +1145,7 @@ async function buildKennel(
                 // The kennel was created successfully — a failed first hunt is
                 // not a build failure, it's just the dogs telling us the code
                 // needs work. Surface it, don't roll back.
-                deps.snapshotCache.markFailed(kennelLineageId, err?.message ?? String(err));
+                deps.snapshotCache.markFailed(kennelLineageId, KennelSnapshotCache.viewerOf(ctx), err?.message ?? String(err));
                 firstRun = {
                     status: 'failed',
                     leadOk: false,

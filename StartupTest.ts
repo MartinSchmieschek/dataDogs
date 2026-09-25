@@ -31,6 +31,8 @@ import { EventEmitter } from 'events';
 import { CompilerCache } from './services/CompilerCache';
 import { KennelRunHandler } from './api/routes/KennelRunHandler';
 import { getSnapshotTools } from './mcp/tools/snapshots';
+import { getKennelTools } from './mcp/tools/kennels';
+import { getNodeTools } from './mcp/tools/nodes';
 import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import type { ToolDeps } from './mcp/tools/types';
 import type { AuthCtx } from './mcp/auth/middleware';
@@ -183,6 +185,11 @@ export class StartupTest {
             await this.testRightsMatrix();
             await this.testOwnerReleasesToCommunity(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testVersionCarriesHeadRights(kennelsController as KennelController);
+            await this.testPrivateKennelHiddenFromAnon(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testRunOnlyKennelShowsNoPack(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testRunnerSeesOutputNotCode(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testReaderSeesCodeButCannotSave(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testForeignPrivateDogDoesNotRun(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -2324,6 +2331,8 @@ export class StartupTest {
     /**
      * Test: Die Snapshot-Werkzeuge redigieren je Dog wie GET /api/kennels/:id/run (Nira L4/L5).
      * Der Cache bleibt roh — nach den redigierten Lesern sieht der Owner wieder alles.
+     * P3.5: jeder liest nur seinen eigenen Snapshot (der Lauf traegt die Kapazitaeten seines
+     * Ausloesers); D2 gehoert dem Kennel-Owner — ein fremder privater Dog laeuft nicht mehr (3.5.7).
      */
     private async testSnapshotToolsRedactPerDog(
         nodesStore: IStore,
@@ -2338,8 +2347,8 @@ export class StartupTest {
             const d1 = await this.saveAclTestDog(nodesStore, 'SnapOpenDog', 'return { open: 1 };',
                 { visibility: 'public', ownerId: 'U0' });
             const d2 = await this.saveAclTestDog(nodesStore, 'SnapPrivateDog', 'return { secret: "snap-secret" };',
-                { visibility: 'private', ownerId: 'U1' });
-            // Kennel gehoert U0, nicht U1 — sonst macht die Sichtbarkeits-Kaskade D2 oeffentlich.
+                { visibility: 'private', ownerId: 'U0' });
+            // D2 ist explizit privat — die Sichtbarkeits-Kaskade des oeffentlichen Kennels laesst ihn so.
             const created = await kennelsController.create({
                 id: kennelId,
                 name: `Snapshot Redact ${kennelId}`,
@@ -2363,14 +2372,21 @@ export class StartupTest {
                 return JSON.parse(r.content[0].text);
             };
             const user = (id: string): AuthCtx => ({ user: { id, email: `${id.toLowerCase()}@test.invalid`, name: null }, isSuperUser: false });
-            const u1 = user('U1');
+            const u0 = user('U0');
             const u2 = user('U2');
             const anon: AuthCtx = { user: null, isSuperUser: false };
             const superUser: AuthCtx = { user: null, isSuperUser: true };
+            const snapshotFor = async (label: string, ctx: AuthCtx) => {
+                await read('refresh_kennel_snapshot', ctx, {});
+                const header = await read('wait_for_kennel_snapshot', ctx, { timeoutMs: 30_000 });
+                if (header.status !== 'ok') throw new Error(`${label}: Snapshot-Status ${header.status}: ${header.errorMessage ?? ''}`);
+            };
 
-            await read('refresh_kennel_snapshot', u1, {});
-            const header = await read('wait_for_kennel_snapshot', u1, { timeoutMs: 30_000 });
-            if (header.status !== 'ok') throw new Error(`Snapshot-Status ${header.status}: ${header.errorMessage ?? ''}`);
+            await snapshotFor('U0', u0);
+            const foreign = await tool('get_snapshot_dog_result').handler({ id: kennelId, dogId: d2 }, u2, deps);
+            if (!foreign.isError || !/no snapshot/.test(foreign.content[0]?.text ?? '')) {
+                throw new Error('U2 liest den Snapshot von U0 (triggerUserId ungeprueft)');
+            }
 
             const runNodeFor = async (ctx: AuthCtx, lineageId: string) => {
                 const { res, out } = this.fakeResponse();
@@ -2382,6 +2398,7 @@ export class StartupTest {
             };
 
             for (const [label, ctx] of [['U2', u2], ['anonym', anon]] as Array<[string, AuthCtx]>) {
+                await snapshotFor(label, ctx);
                 const result = await read('get_snapshot_dog_result', ctx, { dogId: d2 });
                 const code = await read('get_snapshot_dog_code', ctx, { dogId: d2 });
                 const vm = await read('get_snapshot_dog_vmcontext', ctx, { dogId: d2 });
@@ -2396,7 +2413,8 @@ export class StartupTest {
                 if (typeof open.codeTs !== 'string') throw new Error(`${label}: lesbarer Dog D1 wurde redigiert`);
             }
 
-            for (const [label, ctx] of [['U1', u1], ['Super-User', superUser]] as Array<[string, AuthCtx]>) {
+            for (const [label, ctx] of [['U0', u0], ['Super-User', superUser]] as Array<[string, AuthCtx]>) {
+                if (label !== 'U0') await snapshotFor(label, ctx);
                 const result = await read('get_snapshot_dog_result', ctx, { dogId: d2 });
                 const code = await read('get_snapshot_dog_code', ctx, { dogId: d2 });
                 if (result.result?.secret !== 'snap-secret') throw new Error(`${label}: result nicht roh: ${JSON.stringify(result.result)}`);
@@ -3285,6 +3303,304 @@ export class StartupTest {
             if (oldVersion?.name !== 'v1') throw new Error(`Version v1 nicht aufgeloest: ${oldVersion?.name}`);
             if (oldVersion?.visibility !== 'private') throw new Error(`alte Version zeigt visibility ${oldVersion?.visibility}`);
             if (canRead(oldVersion, { user: null, isSuperUser: false })) throw new Error('alte Version anonym lesbar');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /** Werkzeug per Name; wirft, wenn es fehlt. */
+    private toolNamed(name: string) {
+        const t = [...getKennelTools(), ...getNodeTools(), ...getSnapshotTools(), ...getAclTools()].find((x) => x.name === name);
+        if (!t) throw new Error(`Werkzeug ${name} fehlt`);
+        return t;
+    }
+
+    /** Ruft einen Route-Handler mit Fake-Response auf. */
+    private async callHandler(handler: any, method: string, req: Record<string, any>) {
+        const { res, out } = this.fakeResponse();
+        (res as any).end = () => res;
+        await handler[method]({ query: {}, method: 'GET', get: () => undefined, ...req }, res);
+        return out;
+    }
+
+    /**
+     * Abnahme-Harness (3.5.8): keine Antwort an eine Identitaet unterhalb READ traegt Code,
+     * Kontext oder Defaults. Geprueft wird der Text jeder gesammelten Antwort auf die Marker,
+     * die nur im Code bzw. in den Defaults stehen, und auf die Felder theRun/vmContext.
+     */
+    private assertNoLeak(label: string, responses: unknown[], markers: string[]): void {
+        for (const [i, r] of responses.entries()) {
+            const text = typeof r === 'string' ? r : JSON.stringify(r) ?? '';
+            for (const m of markers) {
+                if (text.includes(m)) throw new Error(`${label}: Antwort ${i} traegt "${m}"`);
+            }
+            if (/"theRun"\s*:|"vmContext"\s*:\s*\{/.test(text)) throw new Error(`${label}: Antwort ${i} traegt theRun/vmContext`);
+        }
+    }
+
+    /**
+     * Test T1: anonym / privater Kennel — GET/HEAD /k/:id, /run, openapi.json, /docs, Export: alles 404.
+     */
+    private async testPrivateKennelHiddenFromAnon(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T1: privater Kennel anonym ueberall 404';
+        const kennelId = `test-t1-${Date.now()}`;
+        try {
+            const dog = await this.saveAclTestDog(nodesStore, 'T1Dog', 'return { t1: "t1-out" }; /* p35-code-t1 */',
+                { visibility: 'private', ownerId: 'UO' });
+            const created = await kennelsController.create({
+                id: kennelId, name: 'T1 Private', dogIds: [dog], defaultBody: { mark: 'p35-default-t1' }, visibility: 'private', ownerId: 'UO',
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
+            const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
+            const anon = { user: null, isSuperUser: false };
+            const req = { params: { id: kennelId }, ctx: anon };
+            const answers = [
+                ['GET /k/:id', await this.callHandler(runHandler, 'handlePublicGet', req)],
+                ['HEAD /k/:id', await this.callHandler(runHandler, 'handlePublicHead', req)],
+                ['/run', await this.callHandler(runHandler, 'handleRun', req)],
+                ['/execute', await this.callHandler(runHandler, 'handleExecute', req)],
+                ['openapi.json', await this.callHandler(swagger, 'handleSwaggerJson', req)],
+                ['/docs', await this.callHandler(swagger, 'handleSwaggerUi', req)],
+                ['export', await this.callHandler(bundle, 'handleExport', req)],
+            ] as Array<[string, { statusCode: number; body: any }]>;
+            for (const [label, out] of answers) {
+                if (out.statusCode !== 404) throw new Error(`${label}: erwartet 404, erhalten ${out.statusCode}`);
+            }
+            this.assertNoLeak('T1', answers.map(([, out]) => out.body), ['p35-code-t1', 'p35-default-t1', 't1-out', 'T1 Private']);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T2: anonym bzw. eingeloggt ohne READ / run-only-Kennel — GET /k/:id liefert das
+     * Lead-Ergebnis; /run nur die Form des Laufs (W17 Stufe 1, keine Identitaet); Export 404;
+     * get_kennel_default_body not found; get_kennel gekuerzt; Snapshot nur Kopf und Lead.
+     */
+    private async testRunOnlyKennelShowsNoPack(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T2: run-only-Kennel liefert Lead, nie das Pack';
+        const kennelId = `test-t2-${Date.now()}`;
+        try {
+            const helper = await this.saveAclTestDog(nodesStore, 'T2SecretHelper', 'return { h: "t2-helper-out" }; /* p35-code-t2h */',
+                { visibility: 'private', ownerId: 'UO' });
+            const lead = await this.saveAclTestDog(nodesStore, 'T2LeadDog', 'return { lead: "t2-lead-out" }; /* p35-code-t2 */',
+                { visibility: 'private', ownerId: 'UO' });
+            const created = await kennelsController.create({
+                id: kennelId, name: 'T2 RunOnly', dogIds: [lead, helper], defaultBody: { mark: 'p35-default-t2' },
+                defaultQuery: { q: 'p35-query-t2' }, visibility: 'run-only', ownerId: 'UO',
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
+            const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const anon = { user: null, isSuperUser: false };
+            const pat = this.fakeUser('U9');
+            const req = { params: { id: kennelId }, ctx: anon };
+            const seen: unknown[] = [];
+
+            const pub = await this.callHandler(runHandler, 'handlePublicGet', req);
+            seen.push(pub.body);
+            if (pub.statusCode !== 200 || pub.body?.lead !== 't2-lead-out') throw new Error(`GET /k/:id: ${pub.statusCode} ${JSON.stringify(pub.body)}`);
+
+            const run = await this.callHandler(runHandler, 'handleRun', req);
+            seen.push(run.body);
+            if (run.statusCode !== 200 || run.body?.ok !== true) throw new Error(`/run: ${run.statusCode} ${JSON.stringify(run.body)}`);
+            if (run.body.leadResult?.lead !== 't2-lead-out') throw new Error('/run: leadResult fehlt');
+            if (!Array.isArray(run.body.waves) || run.body.waves.some((w: any) => Object.keys(w).join() !== 'dogCount')) {
+                throw new Error(`/run: Wellen tragen mehr als dogCount: ${JSON.stringify(run.body.waves)}`);
+            }
+            if (run.body.kennelConfig || JSON.stringify(run.body).includes(lead) || JSON.stringify(run.body).includes('T2LeadDog')) {
+                throw new Error('/run: Identitaet oder Konfiguration im Kennel-RUN');
+            }
+
+            const exp = await this.callHandler(bundle, 'handleExport', req);
+            if (exp.statusCode !== 404) throw new Error(`Export run-only anonym: ${exp.statusCode}`);
+            const spec = await this.callHandler(swagger, 'handleSwaggerJson', req);
+            seen.push(spec.body);
+            if (spec.statusCode !== 200) throw new Error(`openapi.json run-only: ${spec.statusCode}`);
+            if (JSON.stringify(spec.body).includes('t2-helper-out')) throw new Error('Spec traegt Zwischenergebnisse');
+
+            const call = async (name: string, args: Record<string, any>) => {
+                const r = await this.toolNamed(name).handler({ id: kennelId, ...args }, pat, deps);
+                seen.push(r.content[0]?.text);
+                return r;
+            };
+            if (!(await call('get_kennel_default_body', {})).isError) throw new Error('get_kennel_default_body ohne READ nicht "not found"');
+            if (!(await call('get_kennel_versions', {})).isError) throw new Error('get_kennel_versions ohne READ');
+            const header = JSON.parse((await call('get_kennel', {})).content[0].text);
+            if (header.dogIds || header.myRights?.run !== true || header.myRights?.read !== false) {
+                throw new Error(`get_kennel RUN: ${JSON.stringify(header)}`);
+            }
+            const listed = JSON.parse((await this.toolNamed('list_kennels').handler({}, pat, deps)).content[0].text);
+            if (!listed.some((k: any) => k.lineageId === kennelId)) throw new Error('list_kennels verbirgt den run-only-Kennel (8.17)');
+            const mcpRun = JSON.parse((await call('run_kennel', {})).content[0].text);
+            if (mcpRun.leadResult?.lead !== 't2-lead-out' || mcpRun.kennelConfig) throw new Error('run_kennel RUN: falsche Form');
+            await call('refresh_kennel_snapshot', {});
+            const waited = JSON.parse((await call('wait_for_kennel_snapshot', { timeoutMs: 30_000 })).content[0].text);
+            if (waited.status !== 'ok' || waited.leadDogId) throw new Error(`Snapshot-Kopf RUN: ${JSON.stringify(waited)}`);
+            const leadSnap = JSON.parse((await call('get_kennel_snapshot_lead_result', {})).content[0].text);
+            if (leadSnap.leadResult?.lead !== 't2-lead-out' || leadSnap.leadDogId) throw new Error('Snapshot-Lead RUN: falsche Form');
+            for (const name of ['get_snapshot_dog_code', 'get_snapshot_dog_result', 'get_kennel_snapshot_summary']) {
+                if (!(await call(name, { dogId: lead })).isError) throw new Error(`${name} ohne READ nicht verweigert`);
+            }
+
+            this.assertNoLeak('T2', seen, ['p35-code-t2', 'p35-default-t2', 'p35-query-t2', 't2-helper-out', 'T2SecretHelper']);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T3 (Lauf-Teil): ein runner eines fremden privaten Dogs X setzt X (gepinnt) in seinen
+     * eigenen Kennel — /run zeigt X.result, nie X.codeTs; get_node(X) not found, get_node_schema ok;
+     * im Snapshot ist X redigiert.
+     */
+    private async testRunnerSeesOutputNotCode(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T3: runner sieht Output, nie Code';
+        const kennelId = `test-t3-${Date.now()}`;
+        try {
+            const x = await this.saveAclTestDog(nodesStore, 'T3ForeignDog', 'return { x: "t3-x-out" }; /* p35-code-t3 */',
+                { visibility: 'private', ownerId: 'UX', runners: 'UR' });
+            const xVersion = (await nodesStore.findLatestVersionsByType(SerializedDog.name, [x]))[0]?.id as string;
+            const created = await kennelsController.create({ id: kennelId, name: 'T3 Mine', dogIds: [xVersion], visibility: 'private', ownerId: 'UR' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const runner = this.fakeUser('UR');
+            const seen: unknown[] = [];
+
+            const run = await this.callHandler(runHandler, 'handleRun', { params: { id: kennelId }, ctx: runner });
+            seen.push(run.body);
+            const node = (run.body?.waves ?? []).flat().find((n: any) => n.lineageId === x);
+            if (!node) throw new Error(`/run: X nicht in den Waves: ${JSON.stringify(run.body).slice(0, 300)}`);
+            if (node.result?.x !== 't3-x-out') throw new Error(`/run: X.result fehlt: ${JSON.stringify(node.result)}`);
+            if (node.codeTs !== undefined || node.vmContext !== undefined || node.access !== 'run') throw new Error('/run: X nicht auf RUN redigiert');
+
+            const call = async (name: string, args: Record<string, any>) => {
+                const r = await this.toolNamed(name).handler(args, runner, deps);
+                seen.push(r.content[0]?.text);
+                return r;
+            };
+            if (!(await call('get_node', { id: x })).isError) throw new Error('get_node(X) fuer runner nicht "not found"');
+            if (!(await call('get_node_versions', { id: x })).isError) throw new Error('get_node_versions(X) fuer runner');
+            if (!(await call('get_node_lines', { id: x, line: 1 })).isError) throw new Error('get_node_lines(X) fuer runner');
+            const schema = await call('get_node_schema', { id: x });
+            if (schema.isError) throw new Error(`get_node_schema(X): ${schema.content[0]?.text}`);
+            const listed = JSON.parse((await call('list_nodes', { search: 'T3ForeignDog' })).content[0].text);
+            const entry = listed.nodes.find((n: any) => n.lineageId === x);
+            if (!entry || entry.tsCodePreview !== null) throw new Error(`list_nodes: X fehlt oder zeigt Code: ${JSON.stringify(entry)}`);
+
+            await call('refresh_kennel_snapshot', { id: kennelId });
+            await call('wait_for_kennel_snapshot', { id: kennelId, timeoutMs: 30_000 });
+            const code = JSON.parse((await call('get_snapshot_dog_code', { id: kennelId, dogId: x })).content[0].text);
+            const result = JSON.parse((await call('get_snapshot_dog_result', { id: kennelId, dogId: x })).content[0].text);
+            if (code.codeTs !== null) throw new Error('Snapshot: X.codeTs nicht redigiert');
+            if (result.result?.x !== 't3-x-out') throw new Error('Snapshot: X.result fehlt');
+
+            this.assertNoLeak('T3', seen, ['p35-code-t3']);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T4: ein reader (viewers) eines privaten Dogs sieht Code, Versionen und Export —
+     * save_node bleibt ihm verwehrt.
+     */
+    private async testReaderSeesCodeButCannotSave(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5 T4: reader sieht Code, speichert nicht';
+        const kennelId = `test-t4-${Date.now()}`;
+        try {
+            const x = await this.saveAclTestDog(nodesStore, 'T4ReadableDog', 'return { x: 4 }; /* p35-code-t4 */',
+                { visibility: 'private', ownerId: 'UX', viewers: 'UV' });
+            const created = await kennelsController.create({ id: kennelId, name: 'T4', dogIds: [x], visibility: 'public', ownerId: 'UX' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const bundle = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            const reader = this.fakeUser('UV');
+
+            const node = await this.toolNamed('get_node').handler({ id: x }, reader, deps);
+            if (node.isError || !node.content[0].text.includes('p35-code-t4')) throw new Error('get_node(X) fuer reader ohne Code');
+            const body = JSON.parse(node.content[0].text);
+            if (body.myRights?.read !== true || body.myRights?.edit !== false) throw new Error(`myRights reader: ${JSON.stringify(body.myRights)}`);
+            if ('viewers' in body || 'editors' in body) throw new Error('reader sieht die ACL-Listen');
+            if ((await this.toolNamed('get_node_versions').handler({ id: x }, reader, deps)).isError) throw new Error('get_node_versions fuer reader');
+            const exp = await this.callHandler(bundle, 'handleExport', { params: { id: kennelId }, ctx: reader });
+            const dog = exp.body?.dogs?.find((d: any) => d.lineageId === x);
+            if (exp.statusCode !== 200 || !dog?.config) throw new Error(`Export fuer reader: ${exp.statusCode} ${JSON.stringify(dog)}`);
+            const save = await this.toolNamed('save_node').handler({ id: x, tsCode: 'return 5;' }, reader, deps);
+            if (!save.isError || save.content[0].text !== 'Not authorized') throw new Error(`save_node fuer reader: ${save.content[0]?.text}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test (3.5.7): ein fremder privater Dog im Altbestand laeuft nicht — auch nicht, wenn der
+     * Aufrufer zufaellig lesen darf; der Kennel-Owner hat kein RUN auf ihn. Der Lead faellt aus.
+     */
+    private async testForeignPrivateDogDoesNotRun(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'P3.5: fremder privater Dog laeuft nicht (3.5.7)';
+        const kennelId = `test-foreign-${Date.now()}`;
+        try {
+            const foreign = await this.saveAclTestDog(nodesStore, 'ForeignPrivateLead', 'return { f: "foreign-ran" };',
+                { visibility: 'private', ownerId: 'UF' });
+            const created = await kennelsController.create({ id: kennelId, name: 'Altbestand', dogIds: [foreign], visibility: 'public', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            for (const [label, ctx] of [['anonym', { user: null, isSuperUser: false }], ['Autor UF', this.fakeUser('UF')]] as Array<[string, AuthCtx]>) {
+                const pub = await this.callHandler(runHandler, 'handlePublicGet', { params: { id: kennelId }, ctx });
+                if (pub.statusCode === 200 || JSON.stringify(pub.body).includes('foreign-ran')) {
+                    throw new Error(`${label}: fremder Dog lief: ${pub.statusCode} ${JSON.stringify(pub.body)}`);
+                }
+            }
+            const owner = await this.callHandler(runHandler, 'handleRun', { params: { id: kennelId }, ctx: this.fakeUser('UO') });
+            if ((owner.body?.waves ?? []).flat().some((n: any) => n.lineageId === foreign)) throw new Error('/run Owner: fremder Dog in den Waves');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

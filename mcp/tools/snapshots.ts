@@ -2,13 +2,14 @@
 // Ein `refresh_kennel_snapshot` setzt die Hoehle, alle anderen Tools lesen aus ihr.
 // Volle Waves werden niemals in einem Aufruf zurueckgegeben — die Inspektion ist granular.
 
-import { canRead } from '../auth/visibility';
+import { accessOf, type Access } from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail } from './types';
 import type { AuthCtx } from '../auth/middleware';
 import type { NodeEntry, Waves, ReadTrackingEntry } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from '../snapshots/types';
+import { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 import type { IKennelConfig } from '@slopdogs/core';
-import { redactWavesForCtx } from '../../services/wavesRedaction';
+import { REDACTED_TEXT, redactWavesForCtx } from '../../services/wavesRedaction';
 
 /**
  * Inline MCP-AuthCtx -> VmGlobalCapabilityContext adapter (Welle 9 hotfix).
@@ -73,6 +74,8 @@ function extractLeadResult(waves: Waves, config: IKennelConfig): unknown {
 interface VisibleSnapshot {
     snapshot: KennelSnapshotEntry;
     currentVersionId: string;
+    /** READ: je Dog redigiert wie /run. RUN: nur Kopf und Lead-Ergebnis (W17 Stufe 1). */
+    access: Access;
 }
 
 /**
@@ -106,12 +109,15 @@ export interface StaleSnapshotMarker {
  *
  * Einzige Tuer zu den Snapshot-Waves: jedes Werkzeug, das aus dem Snapshot liest,
  * geht hier durch und sieht genau das, was `/api/kennels/:id/run` demselben
- * Aufrufer zeigen wuerde.
+ * Aufrufer zeigen wuerde. Kennel-Gate RUN (W4); ein RUN-Leser kommt nur durch, wo das
+ * Werkzeug `runOnly: true` erlaubt (Kopf, Lead-Ergebnis) — alles je Dog braucht READ.
+ * Gelesen wird nur der eigene Snapshot (KennelSnapshotCache.viewerOf).
  */
 async function loadVisibleSnapshot(
     id: string,
     ctx: Parameters<ToolDef['handler']>[1],
     deps: ToolDeps,
+    options: { runOnly?: boolean } = {},
 ): Promise<
     | { ok: true; data: VisibleSnapshot }
     | { ok: false; result: ReturnType<typeof fail> }
@@ -121,12 +127,16 @@ async function loadVisibleSnapshot(
     if (!current.ok || !current.data) {
         return { ok: false, result: fail(`Kennel ${id} not found`) };
     }
-    if (!canRead(current.data as any, ctx)) {
+    const access = accessOf(current.data as any, ctx);
+    if (access === 'none') {
         return { ok: false, result: fail(`Kennel ${id} not found`) };
+    }
+    if (access === 'run' && !options.runOnly) {
+        return { ok: false, result: fail(`Kennel ${id}: run-only for you — per-dog inspection needs the read right`) };
     }
 
     const lineageId = (current.data as any).lineageId ?? current.data.id;
-    const snapshot = deps.snapshotCache.get(lineageId);
+    const snapshot = deps.snapshotCache.get(lineageId, KennelSnapshotCache.viewerOf(ctx));
     if (!snapshot) {
         return {
             ok: false,
@@ -143,14 +153,17 @@ async function loadVisibleSnapshot(
         };
         return { ok: false, stale: true, result: ok(marker) };
     }
-    return { ok: true, data: { snapshot: await redactSnapshotForCtx(snapshot, ctx, deps), currentVersionId } };
+    if (access === 'run') {
+        return { ok: true, data: { snapshot, currentVersionId, access } };
+    }
+    return { ok: true, data: { snapshot: await redactSnapshotForCtx(snapshot, ctx, deps), currentVersionId, access } };
 }
 
 /**
  * Die Sicht eines Aufrufers auf einen Snapshot. Redaktion beim LESEN, nicht beim
- * Cachen: der Cache haelt rohe Waves und wird von Lesern mit verschiedenen Rechten
- * gelesen (triggerUserId ist nur der Ausloeser, nicht der einzige Leser). Der
- * Cache-Eintrag selbst bleibt unberuehrt — redactWavesForCtx liefert Kopien.
+ * Cachen: der Cache haelt rohe Waves; seit P3.5 liest jeder nur seinen eigenen Snapshot,
+ * aber die Rechte je Dog koennen sich seit dem Lauf geaendert haben — also wird beim Lesen
+ * redigiert. Der Cache-Eintrag selbst bleibt unberuehrt — redactWavesForCtx liefert Kopien.
  * Ist der Lead redigiert, ist es auch die vorbeprobte Lead-Beute.
  */
 async function redactSnapshotForCtx(
@@ -180,9 +193,14 @@ function slimDog(dog: NodeEntry, waveIndex: number) {
     };
 }
 
-function summaryHeader(snapshot: KennelSnapshotEntry) {
+/**
+ * Der Kopf eines Snapshots. Fuer RUN-Leser ohne Lead-Identitaet und ohne Fehlertext (W13) —
+ * Zaehler, Status und Zeiten sind die Form des Laufs, die kennelRunView auch zeigt.
+ */
+function summaryHeader(snapshot: KennelSnapshotEntry, access: Access = 'read') {
     const waves = snapshot.waves ?? [];
     const flat = waves.flat();
+    const readable = access === 'read';
     return {
         kennelLineageId: snapshot.kennelLineageId,
         kennelVersionId: snapshot.kennelVersionId,
@@ -193,8 +211,8 @@ function summaryHeader(snapshot: KennelSnapshotEntry) {
         waveCount: waves.length,
         dogCount: flat.length,
         errorCount: flat.filter((d) => d.error).length,
-        leadDogId: snapshot.leadDogId,
-        errorMessage: snapshot.errorMessage,
+        leadDogId: readable ? snapshot.leadDogId : undefined,
+        errorMessage: readable ? snapshot.errorMessage : snapshot.errorMessage ? REDACTED_TEXT : undefined,
     };
 }
 
@@ -231,13 +249,15 @@ export function getSnapshotTools(): ToolDef[] {
                 const id = String(args.id);
                 const current = await deps.kennelsController.getById(id);
                 if (!current.ok || !current.data) return fail(`Kennel ${id} not found`);
-                if (!canRead(current.data as any, ctx)) return fail(`Kennel ${id} not found`);
+                const access = accessOf(current.data as any, ctx);
+                if (access === 'none') return fail(`Kennel ${id} not found`);
 
                 const config = current.data;
                 const lineageId = (config as any).lineageId ?? config.id;
                 const kennelVersionId = config.id;
+                const viewer = KennelSnapshotCache.viewerOf(ctx);
 
-                const existing = deps.snapshotCache.get(lineageId);
+                const existing = deps.snapshotCache.get(lineageId, viewer);
                 if (existing && existing.status === 'running') {
                     return fail('snapshot run already in flight');
                 }
@@ -249,6 +269,7 @@ export function getSnapshotTools(): ToolDef[] {
                     : undefined;
                 deps.snapshotCache.startJob(
                     lineageId,
+                    viewer,
                     kennelVersionId,
                     query,
                     body,
@@ -260,7 +281,7 @@ export function getSnapshotTools(): ToolDef[] {
                     try {
                         const freshConfig = await deps.kennelRunHandler.loadKennelConfig(id);
                         if (!freshConfig) {
-                            deps.snapshotCache.markFailed(lineageId, `Kennel ${id} not found`);
+                            deps.snapshotCache.markFailed(lineageId, viewer, `Kennel ${id} not found`);
                             return;
                         }
                         const mergedQuery = deps.kennelRunHandler.mergeQueryParams(
@@ -277,14 +298,14 @@ export function getSnapshotTools(): ToolDef[] {
                         );
                         const leadDogId = resolveLeadDogId(waves, freshConfig);
                         const leadResult = extractLeadResult(waves, freshConfig);
-                        deps.snapshotCache.markOk(lineageId, {
+                        deps.snapshotCache.markOk(lineageId, viewer, {
                             waves,
                             kennelConfig: freshConfig,
                             leadDogId,
                             leadResult,
                         });
                     } catch (err: any) {
-                        deps.snapshotCache.markFailed(lineageId, err?.message ?? String(err));
+                        deps.snapshotCache.markFailed(lineageId, viewer, err?.message ?? String(err));
                     }
                 })();
 
@@ -310,9 +331,9 @@ export function getSnapshotTools(): ToolDef[] {
                 },
             },
             handler: async (args, ctx, deps) => {
-                const gate = await loadVisibleSnapshot(String(args.id), ctx, deps);
+                const gate = await loadVisibleSnapshot(String(args.id), ctx, deps, { runOnly: true });
                 if (!gate.ok) return gate.result;
-                return ok(summaryHeader(gate.data.snapshot));
+                return ok(summaryHeader(gate.data.snapshot, gate.data.access));
             },
         },
 
@@ -335,15 +356,17 @@ export function getSnapshotTools(): ToolDef[] {
                 const pollMs = 200;
                 const deadline = Date.now() + timeoutMs;
 
-                // Visibility gate first (early fail).
+                // Visibility gate first (early fail). Gate RUN: the header is the run's shape.
                 const current = await deps.kennelsController.getById(id);
                 if (!current.ok || !current.data) return fail(`Kennel ${id} not found`);
-                if (!canRead(current.data as any, ctx)) return fail(`Kennel ${id} not found`);
+                const access = accessOf(current.data as any, ctx);
+                if (access === 'none') return fail(`Kennel ${id} not found`);
                 const lineageId = (current.data as any).lineageId ?? current.data.id;
                 const currentVersionId = current.data.id;
+                const viewer = KennelSnapshotCache.viewerOf(ctx);
 
                 while (Date.now() < deadline) {
-                    const snap = deps.snapshotCache.get(lineageId);
+                    const snap = deps.snapshotCache.get(lineageId, viewer);
                     if (snap && snap.status !== 'running') {
                         if (snap.kennelVersionId !== currentVersionId) {
                             // Stale: ok() statt fail() -- Marker im Success-Payload,
@@ -356,7 +379,7 @@ export function getSnapshotTools(): ToolDef[] {
                             };
                             return ok(marker);
                         }
-                        return ok(summaryHeader(snap));
+                        return ok(summaryHeader(snap, access));
                     }
                     if (!snap) {
                         return fail('no snapshot — call refresh_kennel_snapshot first');
@@ -364,9 +387,9 @@ export function getSnapshotTools(): ToolDef[] {
                     await new Promise((r) => setTimeout(r, pollMs));
                 }
 
-                const snap = deps.snapshotCache.get(lineageId);
+                const snap = deps.snapshotCache.get(lineageId, viewer);
                 if (!snap) return fail('no snapshot — call refresh_kennel_snapshot first');
-                return ok({ ...summaryHeader(snap), timedOut: true });
+                return ok({ ...summaryHeader(snap, access), timedOut: true });
             },
         },
 
@@ -428,10 +451,12 @@ export function getSnapshotTools(): ToolDef[] {
                 properties: { id: { type: 'string' } },
             },
             handler: async (args, ctx, deps) => {
-                const gate = await loadVisibleSnapshot(String(args.id), ctx, deps);
+                // Das Lead-Ergebnis ist die Ware (/k/:id) — RUN darf es sehen, nur nicht, wer es liefert.
+                const gate = await loadVisibleSnapshot(String(args.id), ctx, deps, { runOnly: true });
                 if (!gate.ok) return gate.result;
                 const snap = gate.data.snapshot;
-                return ok({ leadDogId: snap.leadDogId, leadResult: snap.leadResult });
+                const leadDogId = gate.data.access === 'read' ? snap.leadDogId : undefined;
+                return ok({ leadDogId, leadResult: snap.leadResult });
             },
         },
 

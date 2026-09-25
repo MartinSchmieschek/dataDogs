@@ -16,6 +16,8 @@ export interface KennelSnapshotEntry {
     kennelLineageId: string;
     /** Kennel-Version zum Zeitpunkt des Run-Starts; Anker fuer Stale-Detection. */
     kennelVersionId: string;
+    /** Wessen Kapazitaeten der Lauf trug (KennelSnapshotCache.viewerOf) — nur der liest ihn. */
+    viewer: string;
     status: SnapshotStatus;
     startedAt: Date;
     finishedAt?: Date;

@@ -4,7 +4,15 @@
 // check additionally allows kennel-owners (or kennel-editors) of any kennel
 // referencing the node — see canMutateNode.
 
-import { canRead, canMutate, filterReadable, applyCreateDefaults, withMyRights, VISIBILITIES } from '../auth/visibility';
+import {
+    canRead,
+    canRun,
+    canMutate,
+    filterRunnable,
+    applyCreateDefaults,
+    withMyRights,
+    VISIBILITIES,
+} from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
 import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@slopdogs/core';
@@ -57,7 +65,8 @@ export function getNodeTools(): ToolDef[] {
             handler: async (args, ctx, deps) => {
                 const result = await deps.nodesController.listLatest();
                 if (!result.ok) return fail(result.error ?? 'list failed');
-                const visibleSerialized = filterReadable(result.data ?? [], ctx);
+                // W17 (8.17): run-only dogs are listed too — without their code (W6).
+                const visibleSerialized = filterRunnable(result.data ?? [], ctx);
 
                 // MimicDog-Heuristik: ein SerializedDog gilt als MimicDog, wenn
                 // sein displayName mit "auto-mimic-" beginnt oder sein
@@ -95,8 +104,10 @@ export function getNodeTools(): ToolDef[] {
                     })),
                     ...visibleSerialized.map((s: any) => {
                         const code = typeof s.theRun === 'string' ? s.theRun : '';
-                        const preview =
-                            code.length > 200 ? code.substring(0, 200) + '…' : code;
+                        // W6: RUN sees no code — not even 200 characters of it.
+                        const preview = !canRead(s, ctx)
+                            ? null
+                            : code.length > 200 ? code.substring(0, 200) + '…' : code;
                         return {
                             id: s.id,
                             lineageId: s.lineageId,
@@ -210,7 +221,8 @@ export function getNodeTools(): ToolDef[] {
                 }
                 const result = await deps.nodesController.getById(id);
                 if (!result.ok || !result.data) return fail(`Node ${id} not found`);
-                if (!canRead(result.data as any, ctx)) return fail(`Node ${id} not found`);
+                // W5: the interface is what a runner binds to — RUN is enough, no code travels.
+                if (!canRun(result.data as any, ctx)) return fail(`Node ${id} not found`);
                 const s = result.data as any;
                 return ok({
                     id: s.id,

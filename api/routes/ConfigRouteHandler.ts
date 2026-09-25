@@ -3,7 +3,15 @@
 import { Request, Response } from 'express';
 import { isRuntimeLogVerbose, sanitizeLineDocs } from '@slopdogs/core';
 import { AbstractController, IControllerResponse, IEntity } from '../AbstractController';
-import { canRead, canMutate, filterReadable, applyCreateDefaults, withMyRights } from '../../mcp/auth/visibility';
+import {
+    accessOf,
+    canRead,
+    canMutate,
+    filterRunnable,
+    applyCreateDefaults,
+    runView,
+    withMyRights,
+} from '../../mcp/auth/visibility';
 import { canMutateNode } from '../../mcp/auth/permissions';
 import { IStore } from '../../store/IStore';
 import { paramString } from '../utils/routeParams';
@@ -184,9 +192,13 @@ export class ConfigRouteHandler {
                 // ACL FIRST: visibility must be settled before `total` is counted and before the
                 // page is cut — otherwise `total` betrays how many foreign private entries exist
                 // and every page comes out with holes in it.
-                const readable = filterReadable(result.data, req.ctx);
+                // P3.5 (W17, 8.17): run-only entries are listed — name, emoji, description; their
+                // dogIds, defaults, task and layout stay behind READ.
+                const visible = filterRunnable(result.data, req.ctx).map((entity: any) =>
+                    accessOf(entity, req.ctx) === 'read' ? withMyRights(entity, req.ctx) : runView(entity, req.ctx),
+                );
                 const listQuery = ListQuery.from(req.query);
-                res.status(200).json(listQuery.envelope(listQuery.apply(readable, req.ctx)));
+                res.status(200).json(listQuery.envelope(listQuery.apply(visible, req.ctx)));
             } else {
                 res.status(500).json({ error: result.error });
             }

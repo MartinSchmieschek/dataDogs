@@ -131,6 +131,33 @@ export function canRun(k: AclEntity, ctx: AuthCtx | undefined): boolean {
     return parseList(k.runners).includes(ctx.user.id);
 }
 
+/** Die Lese-Stufe eines Aufrufers: READ (alles), RUN (nur Ergebnis), NONE (nichts, 404). */
+export type Access = 'read' | 'run' | 'none';
+
+export function accessOf(k: AclEntity, ctx: AuthCtx | undefined): Access {
+    if (canRead(k, ctx)) return 'read';
+    return canRun(k, ctx) ? 'run' : 'none';
+}
+
+/**
+ * Was RUN von einer Entitaet sieht (W9, W17): Identitaet, Name, Beschreibung, Icon, die
+ * Schnittstelle eines Dogs — nie Code, Konfig, Defaults, Task, Layout, dogIds oder ACL-Listen.
+ */
+const RUN_VIEW_FIELDS = [
+    'id', 'lineageId', 'name', 'displayName', 'emoji', 'icon', 'description', 'visibility',
+    'type', 'contextName', 'parentsRequired', 'parentsOptional', 'createdAt', 'updatedAt',
+] as const;
+
+export function runView(k: AclEntity & Record<string, any>, ctx: AuthCtx | undefined): Record<string, unknown> {
+    const view: Record<string, unknown> = {};
+    for (const field of RUN_VIEW_FIELDS) {
+        if (k[field] !== undefined) view[field] = k[field];
+    }
+    view.frozen = isFrozen(k);
+    view.myRights = rightsOf(k, ctx);
+    return view;
+}
+
 /** Eingefroren (8.16/8.25): keine Mutation fuer niemanden, bis der Owner auftaut. */
 export function isFrozen(k: AclEntity | null | undefined): boolean {
     return !!k && Boolean(k.frozen);

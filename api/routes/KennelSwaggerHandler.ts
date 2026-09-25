@@ -4,7 +4,7 @@ import { castGrimoire } from '@slopdogs/swaggrid';
 import { publicKennelDocsPath, publicKennelOpenApiPath } from '@slopdogs/core';
 import { toSwaggridCast } from '../../services/swaggridAdapter';
 import { KennelRunHandler } from './KennelRunHandler';
-import { canRead } from '../../mcp/auth/visibility';
+import { accessOf } from '../../mcp/auth/visibility';
 import { redactWavesForCtx } from '../../services/wavesRedaction';
 import type { IStore } from '../../store/IStore';
 import { LEGACY_ROUTE, PUBLIC_ROUTE } from './routeTable';
@@ -54,26 +54,28 @@ export class KennelSwaggerHandler {
                 return;
             }
 
-            // SECURITY (Nira F3): the spec is NOT discoverable to everyone. It carries the
-            // kennel's title, description and defaults (defaultQuery/defaultBody as examples)
-            // — for a private kennel that is exactly what the caller may not read. Same
-            // answer as /run: 404, no title, no existence.
-            const callerCanRead = canRead(config as any, req.ctx);
-            if (!callerCanRead) {
+            // SECURITY (Nira F3, P3.5 W12): the spec is NOT discoverable to everyone. Gate RUN —
+            // whoever may run the kennel may read how to call it; nobody else learns it exists
+            // (404, like /run). The defaults (defaultQuery/defaultBody as examples) are config:
+            // READ only. A RUN caller gets the lead's shape and nothing of the pack behind it.
+            const access = accessOf(config as any, req.ctx);
+            if (access === 'none') {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }
             const query = this.runHandler.mergeQueryParams(config.defaultQuery, req.query);
             const body = config.defaultBody;
-            // Every wave node's result lands in the spec as a schema example — private dogs
-            // inside a public kennel are redacted exactly like /run.
-            const waves = await redactWavesForCtx(
-                await this.runHandler.runKennel(config, query, body),
-                req.ctx,
-                this.nodesStore,
+            const rawWaves = await this.runHandler.runKennel(
+                config, query, body, this.runHandler.toCapabilityCtx(req.ctx),
             );
+            // Every wave node's result lands in the spec as a schema example — dogs the caller
+            // may not read inside a readable kennel are redacted exactly like /run.
+            const waves = access === 'read' ? await redactWavesForCtx(rawWaves, req.ctx, this.nodesStore) : rawWaves;
 
-            const spec: any = castGrimoire(toSwaggridCast(config, waves, { includeDefaults: callerCanRead }));
+            const spec: any = castGrimoire(toSwaggridCast(config, waves, {
+                includeDefaults: access === 'read',
+                leadOnly: access !== 'read',
+            }));
             this.augmentForVisibility(spec, config, req);
             res.json(spec);
         } catch (err) {
@@ -133,10 +135,10 @@ export class KennelSwaggerHandler {
                 res.status(404).json({ error: `Kennel ${req.params.id} not found` });
                 return;
             }
-            // SECURITY (Nira F3): the title alone confirms a private kennel exists — 404 like
-            // the spec. The lock and "Authorize" button remain for private kennels the caller
-            // may read (e.g. to try it out with a PAT).
-            if (!canRead(config as any, req.ctx)) {
+            // SECURITY (Nira F3, P3.5 W12): the title alone confirms a private kennel exists —
+            // 404 like the spec, for everyone who may not run it. The lock and "Authorize" button
+            // remain for private kennels the caller may run (e.g. to try it out with a PAT).
+            if (accessOf(config as any, req.ctx) === 'none') {
                 res.status(404).json({ error: `Kennel ${req.params.id} nicht gefunden` });
                 return;
             }

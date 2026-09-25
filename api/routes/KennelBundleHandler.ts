@@ -14,6 +14,7 @@ import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 import { KennelRunHandler } from './KennelRunHandler';
 import { canRead, applyCreateDefaults } from '../../mcp/auth/visibility';
+import { DogAclIndex } from '../../services/dogAccess';
 
 /**
  * Handles kennel export and import — the rites of passage across systems.
@@ -86,13 +87,16 @@ export class KennelBundleHandler {
                     this.nodesStore.findLatestVersionsByType(SerializedDog.name, batch),
                     this.nodesStore.findLatestVersionsByType(MimicDog.name, batch),
                 ]);
+                const rows = [...serialized, ...mimics] as any[];
+                // P3.5 (W10): the rights of a pinned version are those of its lineage head.
+                const acl = await DogAclIndex.load(this.nodesStore, rows.map((r) => ({ id: r.id, lineageId: r.lineageId })));
 
-                for (const row of [...serialized, ...mimics]) {
+                for (const row of rows) {
                     // SECURITY (Nira F1): a readable kennel may reference dogs the caller
-                    // may NOT read. Those travel as a reference stub — identity only, no
-                    // config — and their parents are not walked (that would be the code's
-                    // structure, again).
-                    if (!canRead(row as any, req.ctx)) {
+                    // may NOT read (run-only or private). Those travel as a reference stub —
+                    // identity only, no config — and their parents are not walked (that would
+                    // be the code's structure, again). COPY = READ (W16).
+                    if (acl.accessOf({ id: row.id, lineageId: row.lineageId }, req.ctx) !== 'read') {
                         collectedRows.push({ row, cfg: null });
                         continue;
                     }

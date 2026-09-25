@@ -2,7 +2,8 @@
 // From tangent planes the dogs emerge, each bearing name and form for those who seek to know.
 import { BASE_DOG_PREFIX, SerializedDog } from '@slopdogs/core';
 import { ControllerRegistry } from './ConfigRouteHandler';
-import { filterReadable } from '../../mcp/auth/visibility';
+import { accessOf, filterRunnable, runView, withMyRights, type AclEntity } from '../../mcp/auth/visibility';
+import type { AuthCtx } from '../../mcp/auth/middleware';
 import { ListQuery } from './ListQuery';
 
 /** A lean description of a base dog — enough for the toolbar to display it. */
@@ -44,6 +45,15 @@ export class NodesRouteHandler {
         return typeof source === 'string' && source.length > 0 ? SerializedDog.toCamelCase(source) : '';
     }
 
+    /**
+     * Die Sicht eines Aufrufers auf einen Dog der Liste (W7): READ bekommt den Dog (ACL-Listen nur
+     * fuer Owner/Editoren), RUN nur Name, Beschreibung und Schnittstelle — nie theRun, lineDocs
+     * oder serializedDogConfig. `myRights` traegt jeder Eintrag.
+     */
+    private static viewFor(dog: AclEntity & Record<string, any>, ctx: AuthCtx | undefined): Record<string, any> {
+        return accessOf(dog, ctx) === 'read' ? withMyRights(dog, ctx) : runView(dog, ctx);
+    }
+
     registerRoutes(app: any): void {
         app.get('/api/nodes', (req: any, res: any) => this.handleList(req, res));
     }
@@ -63,22 +73,25 @@ export class NodesRouteHandler {
             // listLatest() queries by entityType 'SerializedDog', so MimicDogs (type 'MimicDog') are excluded.
             const result = await controller.listLatest();
             let serializedDogs = result.ok && result.data ? result.data : [];
-            // Visibility filter FIRST: anonymous sees only public; logged-in sees public + own private.
-            // It has to precede `total` and the page, or `total` would betray how many foreign
-            // private dogs exist and the pages would come out with holes.
+            // Visibility filter FIRST: anonymous sees public + run-only; logged-in sees also what he
+            // may run or read. It has to precede `total` and the page, or `total` would betray how
+            // many foreign private dogs exist and the pages would come out with holes.
             // BaseDogs are always visible (they are project-wide infrastructure, no per-user concept).
-            serializedDogs = filterReadable(serializedDogs as any[], req.ctx);
+            // P3.5 (W7, W17): run-only dogs are listed — as their RUN view, without code.
+            serializedDogs = filterRunnable(serializedDogs as any[], req.ctx);
             // Additive: the name this dog answers to inside a child's VM context.
             serializedDogs = (serializedDogs as any[]).map(dog => ({
-                ...dog,
+                ...NodesRouteHandler.viewFor(dog, req.ctx),
                 contextName: NodesRouteHandler.contextNameOf(dog),
             }));
 
             // If a kennel is specified, filter to only dogs that are in that kennel's dogIds.
+            // The kennel's dogIds are its config — only a reader may filter by them.
             if (kennelId) {
                 const kennelController = this.registry.get('kennels');
                 const kennelResult = kennelController ? await kennelController.getById(kennelId) : null;
-                const kennelDogIds: string[] = (kennelResult?.data as any)?.dogIds ?? [];
+                const kennel = kennelResult?.data as any;
+                const kennelDogIds: string[] = kennel && accessOf(kennel, req.ctx) === 'read' ? kennel.dogIds ?? [] : [];
 
                 if (kennelDogIds.length > 0) {
                     // Build a set of all identifiers the kennel uses — both the raw entries

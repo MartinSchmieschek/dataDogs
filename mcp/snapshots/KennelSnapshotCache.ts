@@ -1,8 +1,14 @@
 // KennelSnapshotCache — Gedaechtnis ohne Stein.
 // Map im Prozessspeicher, LRU + Idle-TTL. Keine Persistenz, kein Timer.
 // Eviction laeuft lazy — wer get() ruft, weckt den Aufraeumer.
+//
+// Je Kennel UND je Betrachter (P3.5): ein Lauf traegt die Kapazitaeten dessen, der ihn
+// ausloest — jsonStore unter `user:<id>:`, spaeter seine Keys. Seine Ergebnisse sind damit
+// Daten dieses Nutzers. Ein Snapshot gehoert deshalb dem, der ihn ausgeloest hat, und nur
+// der liest ihn; jeder andere loest seinen eigenen aus und sieht, was /run IHM zeigen wuerde.
 
 import type { IKennelConfig } from '@slopdogs/core';
+import type { AuthCtx } from '../auth/middleware';
 import type { Waves } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from './types';
 
@@ -28,9 +34,23 @@ export class KennelSnapshotCache {
         this.idleTtlMs = options.idleTtlMs ?? 30 * 60 * 1000;
     }
 
+    /**
+     * Der Betrachter eines Aufrufs — die Identitaet, deren Kapazitaeten ein Lauf traegt.
+     * Super-User (dev) und alle Anonymen teilen je einen Topf: Anonyme teilen auch `anon:`.
+     */
+    static viewerOf(ctx: AuthCtx | null | undefined): string {
+        if (ctx?.isSuperUser) return 'super';
+        return ctx?.user?.id ? `user:${ctx.user.id}` : 'anon';
+    }
+
+    private static keyOf(lineageId: string, viewer: string): string {
+        return `${viewer}\u0000${lineageId}`;
+    }
+
     /** Starte einen Run — markiere die Hoehle, in der das Echo eintrifft. */
     startJob(
         lineageId: string,
+        viewer: string,
         kennelVersionId: string,
         query: Record<string, string> | undefined,
         body: unknown,
@@ -40,6 +60,7 @@ export class KennelSnapshotCache {
         const entry: KennelSnapshotEntry = {
             kennelLineageId: lineageId,
             kennelVersionId,
+            viewer,
             status: 'running',
             startedAt: now,
             lastAccessedAt: now,
@@ -47,13 +68,13 @@ export class KennelSnapshotCache {
             body,
             triggerUserId: triggerUserId ?? null,
         };
-        this.entries.set(lineageId, entry);
+        this.entries.set(KennelSnapshotCache.keyOf(lineageId, viewer), entry);
         this.evict();
     }
 
     /** Beute trifft ein. */
-    markOk(lineageId: string, params: MarkOkParams): void {
-        const entry = this.entries.get(lineageId);
+    markOk(lineageId: string, viewer: string, params: MarkOkParams): void {
+        const entry = this.entries.get(KennelSnapshotCache.keyOf(lineageId, viewer));
         if (!entry) return;
         const now = new Date();
         entry.status = 'ok';
@@ -67,8 +88,8 @@ export class KennelSnapshotCache {
     }
 
     /** Der Run zerbarst — markiere den Fehler. */
-    markFailed(lineageId: string, error: string): void {
-        const entry = this.entries.get(lineageId);
+    markFailed(lineageId: string, viewer: string, error: string): void {
+        const entry = this.entries.get(KennelSnapshotCache.keyOf(lineageId, viewer));
         if (!entry) return;
         const now = new Date();
         entry.status = 'failed';
@@ -78,22 +99,22 @@ export class KennelSnapshotCache {
         entry.lastAccessedAt = now;
     }
 
-    /** Lese — und beruehre die LRU-Asche. */
-    get(lineageId: string): KennelSnapshotEntry | undefined {
+    /** Lese — nur den eigenen Snapshot — und beruehre die LRU-Asche. */
+    get(lineageId: string, viewer: string): KennelSnapshotEntry | undefined {
         this.evict();
-        const entry = this.entries.get(lineageId);
+        const entry = this.entries.get(KennelSnapshotCache.keyOf(lineageId, viewer));
         if (entry) {
             entry.lastAccessedAt = new Date();
         }
         return entry;
     }
 
-    has(lineageId: string): boolean {
-        return this.entries.has(lineageId);
+    has(lineageId: string, viewer: string): boolean {
+        return this.entries.has(KennelSnapshotCache.keyOf(lineageId, viewer));
     }
 
-    delete(lineageId: string): void {
-        this.entries.delete(lineageId);
+    delete(lineageId: string, viewer: string): void {
+        this.entries.delete(KennelSnapshotCache.keyOf(lineageId, viewer));
     }
 
     /** Lazy eviction — idle entries verfallen, ueberzaehlige fallen aelteste-zuerst. */
