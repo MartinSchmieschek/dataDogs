@@ -460,6 +460,17 @@ async function run() {
     fail('P4b stats', e.message);
   }
 
+  // P4b: die Landing traegt provenDogs (Array, ggf. leer — das Abzeichen braucht >= 5 Laeufe).
+  try {
+    const landing = await httpGet('/api/landing');
+    const body = JSON.parse(landing.raw || '{}');
+    if (landing.status !== 200 || !Array.isArray(body.provenDogs)) fail('landing provenDogs', `HTTP ${landing.status}, ${typeof body.provenDogs}`);
+    else if (body.provenDogs.some((d) => !d?.stats?.proven?.badge)) fail('landing provenDogs', 'entry without badge');
+    else pass('landing provenDogs', `${body.provenDogs.length} proven dogs`);
+  } catch (e) {
+    fail('landing provenDogs', e.message);
+  }
+
   // P4 (11.7): die Alt-Weiche antwortet 308 ohne Lauf und ohne Zaehlung; erst der Folge-GET auf
   // /k/<id> zaehlt — genau einmal (stats.calls.total vorher/nachher, Delta-Merge ohne Flush).
   try {

@@ -3,6 +3,8 @@
 // Feld, das ein Anonymer nicht ohnehin ueber /api/kennels bekaeme. Oeffentlich = ausfuehrbar und
 // sichtbar (8.17): public- und run-only-Kennels erscheinen; defaultQuery steht nur in der url,
 // wenn der Kennel fuer Anonyme lesbar ist (READ), sonst bliebe Konfiguration hinter RUN sichtbar.
+// P4b: provenDogs — die bewaehrten Dogs (Abzeichen, nach proven.score), SerializedDogs/Mimics, die ein
+// Anonymer ausfuehren darf (dieselbe Regel wie die Kennel-Listen); Base-Dogs nie (Infrastruktur dominiert).
 import { createHash } from 'crypto';
 import { Request, Response } from 'express';
 import { publicKennelPath } from '@slopdogs/core';
@@ -10,6 +12,7 @@ import { KennelController } from '../KennelController';
 import { canRead, filterRunnable } from '../../mcp/auth/visibility';
 import type { AuthCtx } from '../../mcp/auth/middleware';
 import { KennelStatsService, statsKeyOf, type KennelStats } from '../../services/KennelStatsService';
+import type { DogStats, DogStatsService } from '../../services/DogStatsService';
 import { API_ROUTE } from './routeTable';
 
 export interface LandingEntry {
@@ -22,11 +25,27 @@ export interface LandingEntry {
     stats: KennelStats;
 }
 
+export interface LandingDogEntry {
+    id: string;
+    lineageId: string;
+    displayName: string | null;
+    description: string | null;
+    icon: string | null;
+    stats: DogStats;
+}
+
+/** Woher die Landing ihre Dogs nimmt (P4b): die Kopfversionen und ihre stats. */
+export interface LandingDogSource {
+    listDogs(): Promise<any[]>;
+    dogStats: DogStatsService;
+}
+
 interface LandingMemo {
     at: number;
     generatedAt: string;
     topByCalls30d: LandingEntry[];
     topByRating: LandingEntry[];
+    provenDogs: LandingDogEntry[];
 }
 
 const ANON: AuthCtx = { user: null, isSuperUser: false };
@@ -50,14 +69,17 @@ export class LandingRouteHandler {
     constructor(
         private readonly kennelsController: KennelController,
         private readonly stats: KennelStatsService,
+        private readonly dogs?: LandingDogSource,
         private readonly memoMs = positiveIntFromEnv('LANDING_MEMO_MS', 60_000),
         private readonly now: () => number = () => Date.now(),
     ) {
-        stats.onInvalidate(() => {
+        const invalidate = () => {
             this.memo = null;
             this.loading = null;
             this.generation += 1;
-        });
+        };
+        stats.onInvalidate(invalidate);
+        dogs?.dogStats.onInvalidate(invalidate);
     }
 
     /** Wie oft die Ranglisten neu gebaut wurden (listLatest + stats) — Messpunkt fuer Test 12. */
@@ -79,6 +101,7 @@ export class LandingRouteHandler {
                 windowDays: KennelStatsService.WINDOW_DAYS,
                 topByCalls30d: memo.topByCalls30d.slice(0, limit),
                 topByRating: memo.topByRating.slice(0, limit),
+                provenDogs: memo.provenDogs.slice(0, limit),
             };
             const text = JSON.stringify(body);
             const etag = `"${createHash('sha1').update(text).digest('hex')}"`;
@@ -126,9 +149,32 @@ export class LandingRouteHandler {
             .filter((e) => e.stats.rating.count > 0)
             .sort((a, b) => b.stats.rating.score - a.stats.rating.score || b.stats.rating.count - a.stats.rating.count || byName(a, b))
             .slice(0, LandingRouteHandler.MAX_LIMIT);
-        const memo: LandingMemo = { at, generatedAt: new Date(at).toISOString(), topByCalls30d, topByRating };
+        const provenDogs = await this.loadProvenDogs();
+        const memo: LandingMemo = { at, generatedAt: new Date(at).toISOString(), topByCalls30d, topByRating, provenDogs };
         if (generation === this.generation) this.memo = memo;
         return memo;
+    }
+
+    /** Bewaehrte Dogs (P4b): nur mit Abzeichen, nach proven.score, dann ranked30d, dann Name. */
+    private async loadProvenDogs(): Promise<LandingDogEntry[]> {
+        if (!this.dogs) return [];
+        const visible = filterRunnable((await this.dogs.listDogs()) as any[], ANON)
+            .map((d) => ({ id: d.id, lineageId: d.lineageId || d.id, ownerId: d.ownerId ?? null, displayName: d.displayName ?? null, description: d.description, icon: d.icon }));
+        const withStats = await this.dogs.dogStats.attach(visible);
+        return withStats
+            .filter((d) => d.stats.proven.badge)
+            .sort((a, b) => b.stats.proven.score - a.stats.proven.score
+                || b.stats.calls.ranked30d - a.stats.calls.ranked30d
+                || String(a.displayName ?? a.lineageId).localeCompare(String(b.displayName ?? b.lineageId)))
+            .slice(0, LandingRouteHandler.MAX_LIMIT)
+            .map((d) => ({
+                id: d.id,
+                lineageId: d.lineageId,
+                displayName: d.displayName,
+                description: LandingRouteHandler.shorten(d.description),
+                icon: typeof d.icon === 'string' ? d.icon : null,
+                stats: d.stats,
+            }));
     }
 
     /** Ein Landing-Eintrag: nur, was ein Anonymer ohnehin sieht, plus stats. */

@@ -211,7 +211,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     // P4b: stats an jeder Dog-Antwort — derselbe Store-Client, dasselbe Zaehler-Objekt. Ein Flush, eine
     // Referenz-Aenderung (Save/Delete/Rebuild) und eine Bewertung machen das Memo ungueltig.
     // Die Kopfversionen aller Dogs — SerializedDogs UND MimicDogs (nodesController.listLatest kennt nur
-    // den ersten Typ). Nur gelesen: fuer usage.dependents (und ab der Landing fuer provenDogs). Traegt eine
+    // den ersten Typ). Nur gelesen: fuer usage.dependents und die provenDogs der Landing. Traegt eine
     // Lineage Zeilen beider Typen, gilt der SerializedDog-Kopf (so wie list_nodes ihn zeigt).
     const mimicsReader = new Controller<ISerializedDogConfig>(nodesStore, MimicDog.name);
     const listAllDogs = async (): Promise<any[]> => {
@@ -264,7 +264,11 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     readmeRouteHandler.registerRoutes(app);
 
     // Landing-Daten (P4) VOR /api/:subpath — sonst antwortet dort der Controller-404. Keine Bremse.
-    new LandingRouteHandler(kennelsController, kennelStats).registerRoutes(app);
+    // P4b: provenDogs aus denselben Kopfversionen und demselben Dog-Memo wie list_nodes.
+    new LandingRouteHandler(kennelsController, kennelStats, {
+        listDogs: listAllDogs,
+        dogStats,
+    }).registerRoutes(app);
 
     const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats, dogStats);
     routeHandler.registerRoutes(app, '/api');
