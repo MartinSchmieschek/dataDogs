@@ -1,4 +1,6 @@
 // Skin D "Neon Alley": renders SlopdogsLandingContent as a full HTML page. Dog body.
+// Fonts are self-hosted under /static/landing/ (Latin subset, OFL: public/landing/OFL.txt), no font CDN.
+// "Already out there" is #sd-live: the lead dog fills its signs from /api/landing (states in PLAN P5).
 var C = SlopdogsLandingContent; var LOOK = 'd';
 if (!C || !C.order) throw new Error('skin_d: SlopdogsLandingContent missing. Wire the content dog (landing_content) as parent of this skin.');
 
@@ -10,6 +12,9 @@ function looks(cls,short){return '<nav class="'+cls+'" aria-label="Look">'+C.loo
 function dud(word){var i=word.search(/[oO]/);if(i<0)return esc(word);return esc(word.slice(0,i))+'<span class="dud">'+esc(word[i])+'</span>'+esc(word.slice(i+1));}
 
 var CSS = `
+@font-face{font-family:"Big Shoulders Display";src:url(/static/landing/big-shoulders-display.woff2) format("woff2");font-weight:500 900;font-display:swap}
+@font-face{font-family:"Karla";src:url(/static/landing/karla.woff2) format("woff2");font-weight:400 500;font-display:swap}
+@font-face{font-family:"Karla";src:url(/static/landing/karla-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
 :root{--bg:#0b0a12;--surface:#131120;--fg:#ece7ef;--muted:#a69fb3;--dim:#8a8399;--neon:#ff4d8d;--neon-dim:rgba(255,77,141,.42);--neon-haze:rgba(255,77,141,.10);--core:#fff2f7;--cold:#5ff2e6;--cold-dim:rgba(95,242,230,.4);--cold-haze:rgba(95,242,230,.09);--tube:rgba(255,255,255,.16);--font-display:"Big Shoulders Display","Arial Narrow",sans-serif;--font-body:"Karla",system-ui,sans-serif;--font-mono:ui-monospace,Menlo,Consolas,monospace;--s2:8px;--s3:12px;--s4:16px;--s6:24px;--s8:32px;--s12:48px;--s16:64px;--s24:96px;--gutter:clamp(16px,6vw,96px)}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;background:var(--bg)}
@@ -103,18 +108,29 @@ html:not(.js) .words button{color:var(--core);-webkit-text-stroke:0;text-shadow:
 .motion .seq.lit :is(.stop,.plug){animation:on 1.1s steps(1) both;animation-delay:var(--d,0s)}
 .motion .seq.lit :is(.stop,.plug).dead{animation:none}
 @media(max-width:767px){.stop.dead{position:static;transform:rotate(-3deg);margin-top:var(--s4)}.alley{gap:var(--s8)}}
-.grid{display:grid;grid-template-columns:1fr;gap:var(--s6);width:100%;max-width:1100px;margin-top:var(--s12);text-align:left}
+.grid{display:grid;grid-template-columns:1fr;gap:var(--s6);width:100%;max-width:1100px;margin:var(--s12) 0 0;padding:0;list-style:none;text-align:left}
+.grid>li{display:flex;min-width:0}
+.grid>li>.kn{flex:1 1 auto}
+.grid>li.ph{opacity:.4}
+#sd-live{width:100%;max-width:1100px}
+.grp{margin-top:var(--s16)}
+.grp .k{margin:0}
+.st p{margin:var(--s8) 0 0;font:400 12px/1.6 var(--font-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.st .copy{border:2px solid var(--neon);border-radius:8px;margin-left:var(--s4)}
+.more{margin-top:var(--s12)}
+.more a{display:inline-flex;align-items:center;min-height:44px;padding:0 var(--s6);text-decoration:none;font:700 1.05rem/1 var(--font-display);letter-spacing:.22em;text-transform:uppercase;color:var(--neon)}
 .kn{display:flex;flex-direction:column;justify-content:flex-end;gap:var(--s2);padding:var(--s6);min-height:180px;text-decoration:none;position:relative;transition:transform .3s}
 .kn:hover{transform:translateY(-2px)}
 .kn .id{font:400 11px/1.4 var(--font-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
 .kn .sign{font-size:clamp(2rem,4.5vw,3.4rem);letter-spacing:.06em;text-shadow:0 0 1px #fff,0 0 6px var(--neon),0 0 18px var(--neon-dim)}
 .kn p{margin:0;color:var(--muted);font-size:14px;line-height:1.45;max-width:38ch}
 .kn .dogs{font:400 11px/1 var(--font-mono);letter-spacing:.14em;color:var(--dim);margin-top:var(--s2)}
-.kn.big .sign{font-size:clamp(3rem,7vw,5.6rem)}
-.kn.marquee{flex-direction:row;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s8);min-height:0;border-style:dashed}
-.kn.marquee .sign{font-size:clamp(1.8rem,3.5vw,2.6rem)}
-.kn.marquee p{flex:1 1 260px}
-@media(min-width:768px){.grid{grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(200px,auto);grid-auto-flow:dense}.kn.tall{grid-row:span 2;justify-content:flex-start;align-items:center;text-align:center}.kn.tall .sign{display:block;writing-mode:vertical-rl;text-orientation:mixed;font-size:clamp(3rem,5vw,4.6rem);letter-spacing:.18em;margin:var(--s3) 0}.kn.tall p{max-width:20ch;text-align:center}.c2{grid-column:span 2}.c4{grid-column:span 4}}
+.big>.kn .sign{font-size:clamp(3rem,7vw,5.6rem)}
+.grid>li.marquee{border-style:dashed}
+.marquee>.kn{flex-direction:row;align-items:center;flex-wrap:wrap;gap:var(--s4) var(--s8);min-height:0}
+.marquee>.kn .sign{font-size:clamp(1.8rem,3.5vw,2.6rem)}
+.marquee>.kn p{flex:1 1 260px}
+@media(min-width:768px){.grid{grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(200px,auto);grid-auto-flow:dense}.grid>li.tall{grid-row:span 2}.tall>.kn{justify-content:flex-start;align-items:center;text-align:center}.tall>.kn .sign{display:block;writing-mode:vertical-rl;text-orientation:mixed;font-size:clamp(3rem,5vw,4.6rem);letter-spacing:.18em;margin:var(--s3) 0}.tall>.kn p{max-width:20ch;text-align:center}.c2{grid-column:span 2}.c4{grid-column:span 4}}
 footer{max-width:1200px;margin:0 auto;padding:var(--s16) var(--gutter) var(--s12);display:flex;flex-wrap:wrap;gap:var(--s6) var(--s8);justify-content:space-between;align-items:flex-end;font:400 12px/1.7 var(--font-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);border-top:1px solid rgba(255,255,255,.06)}
 footer a{text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
 footer a:hover{color:var(--fg)}
@@ -160,22 +176,31 @@ var R = {
     return '<section class="w" id="can">'+label(s)+'<h2 class="url sign cold flick">'+show(s.url)+'<b class="suffix"></b></h2><div class="el faces" data-info="'+esc(JSON.stringify(info))+'"><ul class="words" role="tablist" aria-label="Representation">'+
       s.items.map(function(it,i){return '<li><button type="button" role="tab" aria-selected="'+(i===0)+'" class="'+(i===0?'sign flick':'off')+'" data-face="'+esc(it.key)+'">'+esc(it.short)+'</button></li>';}).join('')+
       '</ul><p class="faceline" aria-live="polite"><b>'+esc(s.items[0].line)+'</b></p></div><p class="lede">'+esc(s.lede)+'</p>'+verse(s.verse)+'</section>';},
-  how: function(){var s=C.how,cmd=esc(s.command).replace(esc(s.commandHighlight),'<b>'+esc(s.commandHighlight)+'</b>');
+  how: function(){var s=C.how,cmd=esc(s.command).replace(esc(s.commandHighlight),'<b>'+esc(s.commandHighlight)+'</b>').replace(/&lt;host&gt;/g,'‹host›');
     return '<section class="w" id="how">'+label(s)+'<h2 class="sign flick">'+esc(s.headline)+'</h2><div class="el cmd frame flick"><code id="cmd">'+cmd+'</code><button class="copy" type="button" data-copy="#cmd">'+esc(s.copy.idle)+'</button></div><p class="lede">'+esc(s.lede)+'</p><p class="aside">'+esc(s.aside)+'</p>'+verse(s.verse)+'</section>';},
   breakout: function(){var s=C.breakout,d=s.dead;
     var stops=s.stops.map(function(x,i){var live=!!x.live,tag=x.href?'a':'div',cls='stop'+(i?' frame':'')+(live?' cold live':''),inner='<span class="k">'+esc(x.label)+'</span><span class="sign'+(live?' cold':'')+'">'+show(x.value)+'</span>';
       return (i?'<span class="drop" aria-hidden="true"></span>':'')+'<'+tag+' class="'+cls+'"'+(x.href?' href="'+esc(x.href)+'"':'')+(i?' style="--d:'+(i===1?'.7':'1.5')+'s"':'')+'>'+inner+'</'+tag+'>';}).join('');
     return '<section class="w" id="demo">'+label(s)+'<h2 class="sign flick">'+esc(s.headline)+'</h2><p class="lede">'+esc(s.lede)+'</p><div class="el alley seq">'+stops+
       '<div class="stop frame dead" aria-label="'+esc(d.label)+': '+esc(d.note)+'"><span class="sign off">'+esc(d.label)+'</span><span class="k">'+esc(d.note)+'</span></div></div></section>';},
-  out: function(){var s=C.out,cls={wide:'frame tall',big:'big c2',small:'frame',mid:'c2',strip:'frame marquee c4'};
-    return '<section class="w" id="out">'+label(s)+'<h2 class="sign flick">'+esc(s.headline)+'</h2><p class="lede">'+esc(s.lede)+'</p><div class="grid">'+
-      s.kennels.map(function(k){return '<a class="kn '+(cls[k.size]||'frame')+'" href="'+esc(s.kennelPath+k.id)+'"><span class="id">'+esc(k.id)+' · '+esc(k.type)+'</span><span class="sign">'+esc(k.title)+'</span><p>'+esc(k.blurb)+'</p><span class="dogs">'+k.dogs+' '+esc(s.dogsWord)+'</span></a>';}).join('')+'</div></section>';}
+  out: function(){var s=C.out,cls={wide:'frame tall',big:'big c2',small:'frame',mid:'c2',strip:'frame marquee c4'},sizes=((s.live||{}).sizes||[]).map(function(z){return cls[z]||'frame';}).join('|');
+    return '<section class="w" id="out">'+label(s)+'<h2 class="sign flick">'+esc(s.headline)+'</h2><p class="lede">'+esc(s.lede)+'</p>'+
+      live(function(l){return '<div class="grp" data-group="'+esc(l.key)+'"><p class="k">'+esc(l.label)+'</p><ol class="grid" data-list="'+esc(l.key)+'" data-kind="'+esc(l.kind)+'" data-sizes="'+esc(sizes)+'"></ol><p class="lede" data-empty="'+esc(l.key)+'" hidden>'+esc(l.empty)+'</p></div>';},
+        '<li><a class="kn" data-f-href href="/kennels"><span class="id"><span data-f="emoji" aria-hidden="true"></span> <span data-f="path"></span></span><span class="sign" data-f="name"></span><p data-f="description"></p><span class="dogs"><span data-f="calls"></span> <span data-f="stars"></span></span></a></li>')+
+      (s.more?'<p class="more"><a class="frame" href="'+esc(s.more.href)+'">'+esc(s.more.label)+'</a></p>':'')+'</section>';}
 };
+/* #sd-live: states, one ranking per list, a card <template>; the lead's page script fills it from /api/landing. */
+function live(group,card){var L=C.out.live||{},st=L.states||{},w=L.words||{};
+  return '<div id="sd-live" data-state="loading" aria-busy="true" data-api="'+esc(L.api)+'" data-limit="'+esc(L.limit)+'" data-emoji="'+esc(L.emoji)+'" data-dog-href="'+esc(L.dogHref)+'" data-w-calls="'+esc(w.calls)+'" data-w-call="'+esc(w.call)+'" data-w-reuse="'+esc(w.reuse)+'" data-w-reuse-one="'+esc(w.reuseOne)+'" data-w-proven="'+esc(w.proven)+'">'+
+    '<div class="st" role="status" aria-live="polite">'+['loading','waking','empty'].map(function(k){return '<p data-when="'+k+'">'+esc(st[k])+'</p>';}).join('')+
+    '<p data-when="error">'+esc(st.error)+' <button type="button" class="copy" data-retry>'+esc(st.retry)+'</button></p></div>'+
+    (L.lists||[]).map(group).join('')+'<template data-tpl="card">'+card+'</template></div>';}
 
 var f=C.footer;
 var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(C.meta.title)+'</title><meta name="description" content="'+esc(C.meta.description)+'"><meta name="theme-color" content="#0b0a12">'+
+  '<meta property="og:type" content="website"><meta property="og:title" content="'+esc(C.meta.title)+'"><meta property="og:description" content="'+esc(C.meta.description)+'"><meta property="og:url" content="https://‹host›/">'+
   '<script>document.documentElement.className=\'js\'+(matchMedia(\'(prefers-reduced-motion:reduce)\').matches?\'\':\' motion\')<\/script>'+
-  '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;900&family=Karla:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"><style>'+CSS+'</style></head>'+
+  '<style>'+CSS+'</style></head>'+
   '<body data-copy-text="'+esc(C.how.copy.idle+'|'+C.how.copy.done)+'"><header class="top"><a class="mark" href="#top">'+esc(C.brand.wordmark)+'</a><div class="right"><nav class="main">'+C.nav.map(function(n){return '<a href="#'+esc(n.anchor)+'">'+esc(n.label)+'</a>';}).join('')+'</nav>'+looks('looks',true)+'</div></header><main id="top">'+
   R.hero()+C.order.map(function(k){return R[k]?R[k]():'';}).join('')+'</main>'+
   '<footer><div><span>'+esc(f.line)+'</span><br><a href="#'+esc(f.commandAnchor)+'">'+esc(f.command)+'</a></div>'+looks('looks')+'<span>'+esc(f.tag)+'</span></footer><script>'+JS+'<\/script></body></html>';

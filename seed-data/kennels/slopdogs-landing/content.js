@@ -1,5 +1,7 @@
 // SlopDogs landing: content master. Pure data, no HTML. Skins (a/b/c/d) render this.
-// Strings keep the literal placeholder <host>; skins escape and display it (e.g. as ‹host›).
+// Strings keep the literal placeholder <host>; skins escape and display it as ‹host›, the server (GET /)
+// and the page script put the real host in its place. The kennels under "already out there" are not
+// written here: the page loads them from /api/landing (out.live), rankings and proven dogs, counted live.
 return {
   meta: {
     title: 'SlopDogs',
@@ -111,7 +113,7 @@ return {
     stops: [
       { key: 'local', label: 'local · 127.0.0.1', value: 'your AI writes' },
       { key: 'mcp', label: 'mcp · http', value: '/mcp' },
-      { key: 'public', label: 'slopdogs runs it · public', value: 'https://<host>/k/rennkarte', href: '/k/rennkarte', live: true }
+      { key: 'public', label: 'slopdogs runs it · public', value: 'https://<host>/k/rennkarte', live: true }
     ],
     dead: { label: 'deploy', value: 'build · push · wait', note: 'never wired' },
     log: [
@@ -124,23 +126,28 @@ return {
   out: {
     n: '06', label: 'already out there',
     headline: 'Lit tonight.',
-    lede: 'Six kennels. Written by an AI, run by SlopDogs, each one a public address.',
-    dogsWord: 'dogs',
-    kennels: [
-      { id: 'rennkarte', title: 'Race Map', type: 'map', dogs: 17, size: 'wide',
-        blurb: 'Multiplayer hiking map with rain radar, wind field and a spoken distance to the other runners.' },
-      { id: 'tap-duell', title: 'Tap Duel', type: 'game', dogs: 7, size: 'big',
-        blurb: 'Lobby, live score, a host. Whoever taps first takes the point.' },
-      { id: 'piratencrew', title: 'Pirate Crew', type: 'game', dogs: 7, size: 'small',
-        blurb: 'Co-op space pirates. Four roles, one shared treasure, turn by turn.' },
-      { id: 'enrich-befund', title: 'Enrich: Findings', type: 'report', dogs: 11, size: 'mid',
-        blurb: 'What the hunt for a timeout FIN actually turned up. Checked, ruled out, confirmed, fixed.' },
-      { id: 'testbericht-antwortzeiten', title: 'Response Times', type: 'report', dogs: 8, size: 'small',
-        blurb: 'Thirty measured calls against three pages of the instance, with findings and the limits of the test.' },
-      { id: 'doc-track', title: 'Reading Trail', type: 'service', dogs: 3, size: 'strip',
-        blurb: 'Collects read signals for shared documents. POST takes a signal, GET returns the tally.' }
-    ],
-    kennelPath: '/k/'
+    lede: 'Written by an AI, run by SlopDogs, each one a public address. Counted live.',
+    live: {
+      api: '/api/landing',
+      limit: 6,
+      emoji: '🐕',
+      dogHref: '/kennels?q=',
+      sizes: ['wide', 'big', 'small', 'mid', 'small', 'strip'],
+      lists: [
+        { key: 'topByCalls30d', kind: 'kennel', label: 'most called · 30 days', empty: 'No kennel has been called yet.' },
+        { key: 'topByRating', kind: 'kennel', label: 'top rated', empty: 'No stars given yet.' },
+        { key: 'provenDogs', kind: 'dog', label: 'proven dogs', empty: 'No dog has earned the badge yet.' }
+      ],
+      words: { calls: 'calls', call: 'call', reuse: 'kennels', reuseOne: 'kennel', proven: 'proven dog' },
+      states: {
+        loading: 'Tuning in…',
+        waking: 'Waking the pack. A cold start can take up to two minutes.',
+        empty: 'Nothing on the charts yet. Run a kennel and it lands here.',
+        error: "Can't reach the pack right now.",
+        retry: 'Again'
+      }
+    },
+    more: { label: 'All kennels', href: '/kennels' }
   },
   footer: {
     line: 'SlopDogs · formerly dataDogs',

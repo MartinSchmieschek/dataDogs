@@ -1,6 +1,8 @@
 // SlopDogs landing · skin B "Zine" (Follie, 2026-09-25). Dog body: renders SlopdogsLandingContent as HTML.
 // Black-and-white xerox, airy: huge Anton type, lots of paper, one sticker or stamp per section, spray red as the only accent.
 // Every text and list comes from C; sticker words are picked from C too. Placeholder <host> is shown as ‹host›.
+// Fonts are self-hosted under /static/landing/ (Latin subset, OFL: public/landing/OFL.txt), no font CDN.
+// "Already out there" is #sd-live: the lead dog fills its cards from /api/landing (states in PLAN P5).
 var C = SlopdogsLandingContent;
 var LOOK = 'b';
 if (!C || typeof C !== 'object' || !Array.isArray(C.order)) {
@@ -21,6 +23,9 @@ function sticker(t, r, red) { return '<span class="sticker' + (red ? ' sticker--
 function stamp(t, r) { return '<span class="stamp" style="--r:' + r + 'deg" aria-hidden="true">' + esc(t) + '</span>'; }
 
 var CSS = ''
++ '@font-face{font-family:"Anton";src:url(/static/landing/anton.woff2) format("woff2");font-display:swap}'
++ '@font-face{font-family:"IBM Plex Mono";src:url(/static/landing/ibm-plex-mono-400.woff2) format("woff2");font-weight:400;font-display:swap}'
++ '@font-face{font-family:"IBM Plex Mono";src:url(/static/landing/ibm-plex-mono-700.woff2) format("woff2");font-weight:700;font-display:swap}'
 + ':root{--paper:#f4f1ea;--ink:#111;--muted:#5f5c56;--faint:#a49f95;--line:rgba(17,17,17,.16);--red:#ff2a1a;--display:"Anton","Impact","Arial Narrow",sans-serif;--mono:"IBM Plex Mono","Courier New",monospace;--gutter:22px;--max:1240px}'
 + '@media(min-width:768px){:root{--gutter:56px}}*{box-sizing:border-box}html{scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}'
 + 'body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--mono);font-size:1rem;line-height:1.55;overflow-x:hidden}'
@@ -69,7 +74,8 @@ var CSS = ''
 + '.dead{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.dead s{text-decoration-color:var(--red);text-decoration-thickness:2px}'
 + '.log{border:2px solid var(--ink);padding:12px 16px;font-size:.78rem;line-height:1.7;color:var(--muted);min-height:7em;background:#fff}.log div{opacity:.25;transition:opacity .4s}.log div.on{opacity:1}.log b{color:var(--faint);font-weight:400;display:inline-block;width:6.5em}.log .live{color:var(--red);font-weight:700}.nojs .log div{opacity:1}'
 /* out */
-+ '.six{display:grid;border-top:2px solid var(--ink);border-left:1px solid var(--line)}@media(min-width:640px){.six{grid-template-columns:1fr 1fr}}@media(min-width:1024px){.six{grid-template-columns:repeat(3,1fr)}.k.wide{grid-column:span 2}}'
++ '.six{display:grid;border-top:2px solid var(--ink);border-left:1px solid var(--line);list-style:none;margin:0;padding:0}.six>li{display:grid}.six>li.ph{opacity:.4}@media(min-width:640px){.six{grid-template-columns:1fr 1fr}}@media(min-width:1024px){.six{grid-template-columns:repeat(3,1fr)}.six>li.wide{grid-column:span 2}}'
++ '.grp{margin-top:44px}.grp .no{margin-bottom:16px}.k .stars{font-size:.72rem;font-weight:700;letter-spacing:.12em;color:var(--ink)}.st p{margin-top:30px;font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.st .btn{margin-left:12px;color:var(--ink);cursor:pointer}'
 + '.k{padding:24px 22px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:grid;gap:8px;align-content:start;min-height:200px;transition:background .15s}.k:hover{background:#fff}.k .id{font-size:.68rem;color:var(--faint);display:flex;justify-content:space-between;gap:8px}.k h3{font:1.6rem var(--display);text-transform:uppercase;letter-spacing:.01em}.k p{color:var(--muted);font-size:.86rem;line-height:1.45}'
 + '.foot{padding:36px 0 56px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px 28px;font-size:.74rem;color:var(--muted);border-top:2px solid var(--ink)}.foot .vers{margin:0}';
 
@@ -142,13 +148,24 @@ R.breakout = function () {
     + '</div></div></section>';
 };
 R.out = function () {
-  var O = C.out;
+  var O = C.out, sizes = ((O.live || {}).sizes || []).join('|');
   return '<section class="screen" id="out"><div class="wrap">' + head(O) + '<h2>' + lines(O.headline) + '</h2>' + sticker(C.footer.tag || O.label, -3, false)
     + '<p class="one">' + hst(O.lede) + '</p>'
-    + '<div class="el six">' + (O.kennels || []).map(function (k) {
-      return '<a class="k ' + esc(k.size) + '" href="' + esc(O.kennelPath + k.id) + '"><span class="id"><span>' + esc(O.kennelPath + k.id) + '</span><span>' + esc(k.type) + ' · ' + esc(k.dogs) + ' ' + esc(O.dogsWord) + '</span></span><h3>' + esc(k.title) + '</h3><p>' + esc(k.blurb) + '</p></a>';
-    }).join('') + '</div></div></section>';
+    + live(function (l) {
+      return '<div class="grp" data-group="' + esc(l.key) + '"><p class="no">' + esc(l.label) + '</p><ol class="six" data-list="' + esc(l.key) + '" data-kind="' + esc(l.kind) + '" data-sizes="' + esc(sizes) + '"></ol><p class="one" data-empty="' + esc(l.key) + '" hidden>' + esc(l.empty) + '</p></div>';
+    }, '<li><a class="k" data-f-href href="/kennels"><span class="id"><span data-f="path"></span><span data-f="calls"></span></span><h3><span data-f="emoji" aria-hidden="true"></span> <span data-f="name"></span></h3><p data-f="description"></p><span class="stars" data-f="stars"></span></a></li>')
+    + (O.more ? '<div class="el"><a class="btn" href="' + esc(O.more.href) + '">' + esc(O.more.label) + '</a></div>' : '')
+    + '</div></section>';
 };
+/* #sd-live: states, one ranking per list, a card <template>; the lead's page script fills it from /api/landing. */
+function live(group, card) {
+  var L = C.out.live || {}, st = L.states || {}, w = L.words || {};
+  return '<div id="sd-live" data-state="loading" aria-busy="true" data-api="' + esc(L.api) + '" data-limit="' + esc(L.limit) + '" data-emoji="' + esc(L.emoji) + '" data-dog-href="' + esc(L.dogHref) + '" data-w-calls="' + esc(w.calls) + '" data-w-call="' + esc(w.call) + '" data-w-reuse="' + esc(w.reuse) + '" data-w-reuse-one="' + esc(w.reuseOne) + '" data-w-proven="' + esc(w.proven) + '">'
+    + '<div class="st" role="status" aria-live="polite">' + ['loading', 'waking', 'empty'].map(function (k) { return '<p data-when="' + k + '">' + esc(st[k]) + '</p>'; }).join('')
+    + '<p data-when="error">' + esc(st.error) + ' <button type="button" class="btn" data-retry>' + esc(st.retry) + '</button></p></div>'
+    + (L.lists || []).map(group).join('')
+    + '<template data-tpl="card">' + card + '</template></div>';
+}
 function footer() {
   var F = C.footer;
   return '<footer class="wrap foot"><span>' + esc(F.line) + ' · <a href="#' + esc(F.commandAnchor) + '">' + esc(F.command) + '</a> · ' + esc(F.tag) + '</span>' + verse(F.verse) + '</footer>';
@@ -168,8 +185,8 @@ var JS = ''
 /* ---------- assemble ---------- */
 var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
   + '<title>' + esc(C.meta.title) + '</title><meta name="description" content="' + esc(C.meta.description) + '">'
+  + '<meta property="og:type" content="website"><meta property="og:title" content="' + esc(C.meta.title) + '"><meta property="og:description" content="' + esc(C.meta.description) + '"><meta property="og:url" content="https://‹host›/">'
   + '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 fill=%27%23f4f1ea%27/%3E%3Ctext x=%2732%27 y=%2746%27 font-family=%27Impact,sans-serif%27 font-size=%2740%27 text-anchor=%27middle%27 fill=%27%23111%27%3ESD%3C/text%3E%3Ccircle cx=%2752%27 cy=%2714%27 r=%278%27 fill=%27%23ff2a1a%27/%3E%3C/svg%3E">'
-  + '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;700&display=swap">'
   + '<style>' + CSS + '</style></head><body>'
   + '<header class="top"><div class="wrap"><a class="mark" href="/" aria-label="' + esc(C.brand.name) + '">' + esc(C.brand.wordmark) + '<i aria-hidden="true"></i></a>'
   + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + looks() + '</nav></div></header>'

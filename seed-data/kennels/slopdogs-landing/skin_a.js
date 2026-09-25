@@ -1,6 +1,8 @@
 // SlopDogs landing · skin A "Breakout" (Follie, 2026-09-25). Dog body: renders SlopdogsLandingContent as HTML.
 // Night black, one line per screen, one motif: the network boundary a signal crosses. Vanilla JS + SVG only.
 // Nothing content-wise is hard-coded here; every text and list comes from C. Placeholder <host> is shown as ‹host›.
+// Fonts are self-hosted under /static/landing/ (Latin subset, OFL: public/landing/OFL.txt), no font CDN.
+// "Already out there" is #sd-live: the lead dog fills its cards from /api/landing (states in PLAN P5).
 var C = SlopdogsLandingContent;
 var LOOK = 'a';
 if (!C || typeof C !== 'object' || !Array.isArray(C.order)) {
@@ -19,6 +21,8 @@ function head(sec) { return '<p class="no">' + esc(sec.n) + ' · ' + esc(sec.lab
 function hl(x) { return Array.isArray(x) ? x.map(function (l, i) { return '<span class="l">' + (i === x.length - 1 ? '<em>' + esc(l) + '</em>' : esc(l)) + '</span>'; }).join('') : esc(x); }
 
 var CSS = ''
++ '@font-face{font-family:"Geist";src:url(/static/landing/geist.woff2) format("woff2");font-weight:500 600;font-display:swap}'
++ '@font-face{font-family:"Geist Mono";src:url(/static/landing/geist-mono.woff2) format("woff2");font-weight:400 500;font-display:swap}'
 + ':root{--bg:#06070a;--fg:#ececec;--muted:#8b8f98;--faint:#4a4e57;--line:rgba(236,236,236,.12);--sig:#39ff7a;--sans:"Geist",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"Geist Mono","JetBrains Mono",Consolas,monospace;--gutter:22px;--max:1240px}'
 + '@media(min-width:768px){:root{--gutter:56px}}'
 + '*{box-sizing:border-box}html{scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}'
@@ -76,7 +80,8 @@ var CSS = ''
 + '.log{border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-family:var(--mono);font-size:.78rem;line-height:1.7;color:var(--muted);min-height:7em}.log div{opacity:.25;transition:opacity .4s}.log div.on{opacity:1}.log b{color:var(--faint);font-weight:400;display:inline-block;width:6.5em}.log .live{color:var(--sig)}.log .live b{color:var(--sig)}'
 + '.nojs .log div{opacity:1}'
 /* out */
-+ '.six{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}@media(min-width:640px){.six{grid-template-columns:1fr 1fr}}@media(min-width:1024px){.six{grid-template-columns:repeat(3,1fr)}.k.wide{grid-column:span 2}}'
++ '.six{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden;list-style:none;margin:0;padding:0}.six>li{display:grid}.six>li.ph{opacity:.4}@media(min-width:640px){.six{grid-template-columns:1fr 1fr}}@media(min-width:1024px){.six{grid-template-columns:repeat(3,1fr)}.six>li.wide{grid-column:span 2}}'
++ '.grp{margin-top:44px}.grp .no{margin-bottom:18px}.k .stars{font-family:var(--mono);font-size:.74rem;color:var(--sig)}.st p{margin-top:30px;font-family:var(--mono);font-size:.8rem;color:var(--muted)}.st .btn{margin-left:12px;background:none;color:var(--fg);font-family:inherit;cursor:pointer}'
 + '.k{background:var(--bg);padding:24px;display:grid;gap:10px;min-height:190px;align-content:start;transition:background .2s}.k:hover{background:#0c0e14}.k .id{font-family:var(--mono);font-size:.7rem;color:var(--faint);display:flex;justify-content:space-between;gap:8px}.k h3{font-size:1.25rem;font-weight:600;letter-spacing:-.02em}.k p{color:var(--muted);font-size:.92rem;line-height:1.45}'
 + '.foot{padding:40px 0 56px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px 28px;font-family:var(--mono);font-size:.76rem;color:var(--faint);border-top:1px solid var(--line)}.foot a:hover{color:var(--fg)}.foot .vers{margin:0}';
 
@@ -150,12 +155,23 @@ R.breakout = function () {
     + '<div class="log" id="log">' + (B.log || []).map(function (l) { return '<div data-at="' + (+l.at || 0) + '"' + (l.live ? ' class="live"' : '') + '><b>' + esc(l.who) + '</b>' + hst(l.text) + '</div>'; }).join('') + '</div>'
     + '</div></div></section>';
 };
+/* #sd-live: states, one ranking per list, a card <template>; the lead's page script fills it from /api/landing. */
+function live(group, card) {
+  var L = C.out.live || {}, st = L.states || {}, w = L.words || {};
+  return '<div id="sd-live" data-state="loading" aria-busy="true" data-api="' + esc(L.api) + '" data-limit="' + esc(L.limit) + '" data-emoji="' + esc(L.emoji) + '" data-dog-href="' + esc(L.dogHref) + '" data-w-calls="' + esc(w.calls) + '" data-w-call="' + esc(w.call) + '" data-w-reuse="' + esc(w.reuse) + '" data-w-reuse-one="' + esc(w.reuseOne) + '" data-w-proven="' + esc(w.proven) + '">'
+    + '<div class="st" role="status" aria-live="polite">' + ['loading', 'waking', 'empty'].map(function (k) { return '<p data-when="' + k + '">' + esc(st[k]) + '</p>'; }).join('')
+    + '<p data-when="error">' + esc(st.error) + ' <button type="button" class="btn" data-retry>' + esc(st.retry) + '</button></p></div>'
+    + (L.lists || []).map(group).join('')
+    + '<template data-tpl="card">' + card + '</template></div>';
+}
 R.out = function () {
-  var O = C.out;
+  var O = C.out, sizes = ((O.live || {}).sizes || []).join('|');
   return '<section class="screen" id="out"><div class="wrap">' + head(O) + '<h2>' + esc(O.headline) + '</h2><p class="one">' + hst(O.lede) + '</p>'
-    + '<div class="el six">' + (O.kennels || []).map(function (k) {
-      return '<a class="k ' + esc(k.size) + '" href="' + esc(O.kennelPath + k.id) + '"><span class="id"><span>' + esc(O.kennelPath + k.id) + '</span><span>' + esc(k.type) + ' · ' + esc(k.dogs) + ' ' + esc(O.dogsWord) + '</span></span><h3>' + esc(k.title) + '</h3><p>' + esc(k.blurb) + '</p></a>';
-    }).join('') + '</div></div></section>';
+    + live(function (l) {
+      return '<div class="grp" data-group="' + esc(l.key) + '"><p class="no">' + esc(l.label) + '</p><ol class="six" data-list="' + esc(l.key) + '" data-kind="' + esc(l.kind) + '" data-sizes="' + esc(sizes) + '"></ol><p class="one" data-empty="' + esc(l.key) + '" hidden>' + esc(l.empty) + '</p></div>';
+    }, '<li><a class="k" data-f-href href="/kennels"><span class="id"><span data-f="path"></span><span data-f="calls"></span></span><h3><span data-f="emoji" aria-hidden="true"></span> <span data-f="name"></span></h3><p data-f="description"></p><span class="stars" data-f="stars"></span></a></li>')
+    + (O.more ? '<div class="el"><a class="btn" href="' + esc(O.more.href) + '">' + esc(O.more.label) + '</a></div>' : '')
+    + '</div></section>';
 };
 function footer() {
   var F = C.footer;
@@ -177,8 +193,8 @@ var JS = ''
 /* ---------- assemble ---------- */
 var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
   + '<title>' + esc(C.meta.title) + '</title><meta name="description" content="' + esc(C.meta.description) + '">'
+  + '<meta property="og:type" content="website"><meta property="og:title" content="' + esc(C.meta.title) + '"><meta property="og:description" content="' + esc(C.meta.description) + '"><meta property="og:url" content="https://‹host›/">'
   + '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 fill=%27%2306070a%27/%3E%3Cpath d=%27M32 6v52%27 stroke=%27%23ececec%27 stroke-width=%273%27 stroke-dasharray=%275 5%27/%3E%3Ccircle cx=%2746%27 cy=%2732%27 r=%277%27 fill=%27%2339ff7a%27/%3E%3C/svg%3E">'
-  + '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@500;600&family=Geist+Mono:wght@400;500&display=swap">'
   + '<style>' + CSS + '</style></head><body>'
   + '<header class="top"><a class="mark" href="/" aria-label="' + esc(C.brand.name) + '"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1v18" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2.5"/><circle cx="15" cy="10" r="3.2" fill="#39ff7a"/></svg>' + esc(C.brand.wordmark) + '</a>'
   + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + looks() + '</nav></header>'

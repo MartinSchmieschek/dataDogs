@@ -3,6 +3,8 @@
 // tracklist "Side A" for the base dogs, a tape deck with turning reels for the breakout log, covers that flip in.
 // Two accents (tape orange, inlay teal) on cream and black; deliberately not the xerox black-and-white of Zine.
 // v4 rules: English, one thought per screen, room. Every text and list comes from C. <host> is shown as ‹host›.
+// Fonts are self-hosted under /static/landing/ (Latin subset, OFL: public/landing/OFL.txt), no font CDN.
+// "Already out there" is #sd-live: the lead dog fills its covers from /api/landing (states in PLAN P5).
 var C = SlopdogsLandingContent;
 var LOOK = 'c';
 if (!C || typeof C !== 'object' || !Array.isArray(C.order)) {
@@ -25,6 +27,10 @@ function emblem() {
 }
 
 var CSS = ''
++ '@font-face{font-family:"Bebas Neue";src:url(/static/landing/bebas-neue.woff2) format("woff2");font-display:swap}'
++ '@font-face{font-family:"Courier Prime";src:url(/static/landing/courier-prime-400.woff2) format("woff2");font-weight:400;font-display:swap}'
++ '@font-face{font-family:"Courier Prime";src:url(/static/landing/courier-prime-700.woff2) format("woff2");font-weight:700;font-display:swap}'
++ '@font-face{font-family:"Pirata One";src:url(/static/landing/pirata-one-sd.woff2) format("woff2");font-display:swap}'
 + ':root{--cream:#f0e6c8;--cream2:#f7f0da;--ink:#1b1712;--muted:#5a5142;--faint:#9c917a;--line:rgba(27,23,18,.18);--org:#ff6a00;--teal:#117f7f;--display:"Bebas Neue","Impact","Arial Narrow",sans-serif;--mono:"Courier Prime","Courier New",monospace;--black:"Pirata One",serif;--gutter:22px;--max:1240px}'
 + '@media(min-width:768px){:root{--gutter:56px}}*{box-sizing:border-box}html{scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}'
 + 'body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--mono);font-size:1rem;line-height:1.55;overflow-x:hidden}'
@@ -70,11 +76,12 @@ var CSS = ''
 + '.dead{padding:0 16px 12px;display:flex;flex-wrap:wrap;gap:10px 16px;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.dead s{text-decoration-color:var(--org);text-decoration-thickness:2px}'
 + '.log{margin:0 16px 16px;border:2px solid var(--ink);padding:12px 16px;font-size:.78rem;line-height:1.7;color:var(--muted);min-height:7em;background:var(--cream2)}.log div{opacity:.25;transition:opacity .4s}.log div.on{opacity:1}.log b{color:var(--faint);font-weight:400;display:inline-block;width:6.5em}.log .live{color:var(--teal);font-weight:700}.nojs .log div{opacity:1}'
 /* out: covers */
-+ '.covers{display:grid;gap:22px;perspective:1200px}@media(min-width:640px){.covers{grid-template-columns:1fr 1fr}}@media(min-width:1024px){.covers{grid-template-columns:repeat(3,1fr);gap:26px}.cv.wide{grid-column:span 2}}'
++ '.covers{display:grid;gap:22px;perspective:1200px;list-style:none;margin:0;padding:0}.covers>li{display:flex}.covers>li>.cv{flex:1 1 auto}.covers>li.ph{opacity:.4}@media(min-width:640px){.covers{grid-template-columns:1fr 1fr}}@media(min-width:1024px){.covers{grid-template-columns:repeat(3,1fr);gap:26px}.covers>li.wide{grid-column:span 2}}'
++ '.grp{margin-top:44px}.grp .no{margin-bottom:22px}.st p{margin-top:30px;font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}.st .btn{margin-left:14px;min-height:44px;font-size:1.05rem;vertical-align:middle;color:var(--ink);cursor:pointer}'
 + '.cv{position:relative;display:flex;flex-direction:column;gap:10px;padding:18px;border:3px solid var(--ink);background:var(--cream2);box-shadow:6px 6px 0 var(--ink);min-height:230px;transform:rotate(var(--r,0deg)) rotateY(80deg);opacity:0;transition:transform .9s cubic-bezier(.16,1,.3,1),opacity .6s}.cv.in{transform:rotate(var(--r,0deg)) rotateY(0);opacity:1}.nojs .cv{transform:none;opacity:1}'
-+ '.cv:nth-child(4n+1){--r:-1.5deg}.cv:nth-child(4n+2){--r:1deg}.cv:nth-child(4n+3){--r:-.5deg}.cv:nth-child(4n){--r:1.5deg}'
++ '.covers>li:nth-child(4n+1)>.cv{--r:-1.5deg}.covers>li:nth-child(4n+2)>.cv{--r:1deg}.covers>li:nth-child(4n+3)>.cv{--r:-.5deg}.covers>li:nth-child(4n)>.cv{--r:1.5deg}'
 + '.cv .id{font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px}.cv h3{font-size:1.5rem;letter-spacing:.02em}.cv p{color:var(--muted);font-size:.84rem;line-height:1.45;flex:1 1 auto}'
-+ '.cv .badge{position:absolute;right:-10px;top:-12px;width:56px;height:56px;border-radius:50%;background:var(--org);border:3px solid var(--ink);display:grid;place-items:center;font:.58rem var(--mono);letter-spacing:.06em;text-transform:uppercase;transform:rotate(12deg);text-align:center;line-height:1.1}'
++ '.cv .badge{position:absolute;right:-10px;top:-12px;width:56px;height:56px;border-radius:50%;background:var(--org);border:3px solid var(--ink);display:grid;place-items:center;font-size:1.5rem;transform:rotate(12deg);text-align:center;line-height:1.1}.cv .stars{font-size:.72rem;font-weight:700;letter-spacing:.12em;color:var(--teal)}'
 + '.foot{padding:30px 0 56px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px 28px;font-size:.74rem;color:var(--muted);border-top:3px solid var(--ink)}.foot .vers{margin:0}';
 
 /* ---------- sections ---------- */
@@ -142,12 +149,23 @@ R.breakout = function () {
     + '<div class="log" id="log">' + (B.log || []).map(function (l) { return '<div data-at="' + (+l.at || 0) + '"' + (l.live ? ' class="live"' : '') + '><b>' + esc(l.who) + '</b>' + hst(l.text) + '</div>'; }).join('') + '</div>'
     + '</div></div></section>';
 };
+/* #sd-live: states, one ranking per list, a card <template>; the lead's page script fills it from /api/landing. */
+function live(group, card) {
+  var L = C.out.live || {}, st = L.states || {}, w = L.words || {};
+  return '<div id="sd-live" data-state="loading" aria-busy="true" data-api="' + esc(L.api) + '" data-limit="' + esc(L.limit) + '" data-emoji="' + esc(L.emoji) + '" data-dog-href="' + esc(L.dogHref) + '" data-w-calls="' + esc(w.calls) + '" data-w-call="' + esc(w.call) + '" data-w-reuse="' + esc(w.reuse) + '" data-w-reuse-one="' + esc(w.reuseOne) + '" data-w-proven="' + esc(w.proven) + '">'
+    + '<div class="st" role="status" aria-live="polite">' + ['loading', 'waking', 'empty'].map(function (k) { return '<p data-when="' + k + '">' + esc(st[k]) + '</p>'; }).join('')
+    + '<p data-when="error">' + esc(st.error) + ' <button type="button" class="btn" data-retry>' + esc(st.retry) + '</button></p></div>'
+    + (L.lists || []).map(group).join('')
+    + '<template data-tpl="card">' + card + '</template></div>';
+}
 R.out = function () {
-  var O = C.out;
+  var O = C.out, sizes = ((O.live || {}).sizes || []).join('|');
   return chapter({ id: 'out', n: O.n, label: O.label }, 'covers') + '<section class="screen"><div class="wrap"><h2 class="big">' + lines(O.headline) + '</h2><p class="one">' + hst(O.lede) + '</p>'
-    + '<div class="el covers" id="covers">' + (O.kennels || []).map(function (k) {
-      return '<a class="cv ' + esc(k.size) + '" href="' + esc(O.kennelPath + k.id) + '"><span class="badge" aria-hidden="true">' + esc(k.type) + '</span><span class="id"><span>' + esc(O.kennelPath + k.id) + '</span><span>' + esc(k.dogs) + ' ' + esc(O.dogsWord) + '</span></span><h3>' + esc(k.title) + '</h3><p>' + esc(k.blurb) + '</p></a>';
-    }).join('') + '</div></div></section>';
+    + live(function (l) {
+      return '<div class="grp" data-group="' + esc(l.key) + '"><p class="no">' + label(l.label) + '</p><ol class="covers" data-list="' + esc(l.key) + '" data-kind="' + esc(l.kind) + '" data-sizes="' + esc(sizes) + '"></ol><p class="one" data-empty="' + esc(l.key) + '" hidden>' + esc(l.empty) + '</p></div>';
+    }, '<li><a class="cv" data-f-href href="/kennels"><span class="badge" aria-hidden="true" data-f="emoji"></span><span class="id"><span data-f="path"></span><span data-f="calls"></span></span><h3 data-f="name"></h3><p data-f="description"></p><span class="stars" data-f="stars"></span></a></li>')
+    + (O.more ? '<div class="el"><a class="btn" href="' + esc(O.more.href) + '">' + esc(O.more.label) + '</a></div>' : '')
+    + '</div></section>';
 };
 function footer() {
   var F = C.footer;
@@ -163,14 +181,17 @@ var JS = ''
 + 'if(id=="fc"){var ps=e.target.querySelectorAll(".pane"),ts=e.target.querySelectorAll(".f-tabs span"),i=0;setInterval(function(){i=(i+1)%ps.length;ps.forEach(function(p,j){p.classList.toggle("on",j==i);});ts.forEach(function(t,j){t.classList.toggle("on",j==i);});document.getElementById("fline").textContent=ps[i].dataset.line;document.getElementById("fsuf").textContent=ps[i].dataset.suffix;},2600);}'
 + 'if(id=="rack"){var ms=e.target.querySelectorAll("li:not(.yours)"),m=0;setInterval(function(){m=(m+1)%ms.length;ms.forEach(function(x,j){x.classList.toggle("on",j==m);});},900);}'
 + 'if(id=="log"){var ls=e.target.querySelectorAll("div"),T=4000;function run(){ls.forEach(function(l){l.classList.remove("on");setTimeout(function(){l.classList.add("on");},(+l.dataset.at)*T);});}run();setInterval(run,T+3500);}'
-+ 'if(id=="covers"){e.target.querySelectorAll(".cv").forEach(function(c,j){setTimeout(function(){c.classList.add("in");},j*110);});}'
-+ '});},{threshold:.25});["fc","rack","log","covers"].forEach(function(id){var el=document.getElementById(id);if(el)io.observe(el);});})();';
++ 'if(id=="sd-live"){seen=true;flip();}'
++ '});},{threshold:.25});'
+/* covers arrive later (from /api/landing): flip whatever is new once the section was seen */
++ 'var seen=false;function flip(){if(!seen)return;document.querySelectorAll("#sd-live .cv:not(.in)").forEach(function(c,j){setTimeout(function(){c.classList.add("in");},j*110);});}document.addEventListener("sdlanding",flip);'
++ '["fc","rack","log","sd-live"].forEach(function(id){var el=document.getElementById(id);if(el)io.observe(el);});})();';
 
 /* ---------- assemble ---------- */
 var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
   + '<title>' + esc(C.meta.title) + '</title><meta name="description" content="' + esc(C.meta.description) + '">'
+  + '<meta property="og:type" content="website"><meta property="og:title" content="' + esc(C.meta.title) + '"><meta property="og:description" content="' + esc(C.meta.description) + '"><meta property="og:url" content="https://‹host›/">'
   + '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2730%27 fill=%27%231b1712%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2722%27 fill=%27none%27 stroke=%27%23f0e6c8%27 stroke-width=%272%27/%3E%3Ctext x=%2732%27 y=%2741%27 font-family=%27serif%27 font-weight=%27700%27 font-size=%2724%27 text-anchor=%27middle%27 fill=%27%23ff6a00%27%3ESD%3C/text%3E%3C/svg%3E">'
-  + '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&family=Pirata+One&display=swap">'
   + '<style>' + CSS + '</style></head><body>'
   + '<header class="top"><div class="wrap"><a class="mark" href="/" aria-label="' + esc(C.brand.name) + '">' + emblem() + esc(C.brand.wordmark) + '</a>'
   + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + looks() + '</nav></div></header>'

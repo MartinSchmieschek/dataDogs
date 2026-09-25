@@ -13,6 +13,7 @@ import { seedSunKennel, seedWikiNearbyKennel, seedGeocodingKennel, seedIsochrone
 import { seedNaturkundlerKennel, seedElevationKennel, seedTrailScoutKennel } from './kennels/nature-trails';
 import { seedEarthPulseKennel } from './kennels/earth-pulse';
 import { seedVoidStormsKennel } from './kennels/void-storms';
+import { seedSlopdogsLandingKennel } from './kennels/slopdogs-landing';
 
 export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
     const seedLineageId = await seedSerializedDog(nodesStore);
@@ -37,6 +38,7 @@ export async function runSeeds(nodesStore: IStore, kennelsStore: IStore): Promis
     await seedVoidStormsKennel(nodesStore, kennelsStore);
     await seedElevationKennel(nodesStore, kennelsStore);
     await seedTrailScoutKennel(nodesStore, kennelsStore);
+    await seedSlopdogsLandingKennel(nodesStore, kennelsStore);
 }
 
 async function prismaSeedMain(): Promise<void> {
