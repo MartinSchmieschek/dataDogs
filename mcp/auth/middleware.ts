@@ -28,6 +28,28 @@ export function isAuthRequired(): boolean {
     return process.env.MCP_AUTH_REQUIRED === 'true';
 }
 
+/** Exit-Code des Startup-Guards: EX_CONFIG (sysexits.h) — die Konfiguration ist falsch, nicht der Code. */
+export const EX_CONFIG = 78;
+
+/**
+ * Startup-Guard (P3.5): der Super-User-Modus (jede Anfrage darf alles) ist nur fuer die lokale
+ * Entwicklung. In production/integration ohne `MCP_AUTH_REQUIRED=true` waere jeder Besucher
+ * Super-User — dann startet der Dienst nicht. Liefert die Fehlerzeile oder null; in dev die
+ * einmalige Hinweiszeile ueber `onOpen`.
+ */
+export function authModeBootError(
+    env: NodeJS.ProcessEnv,
+    onOpen: (line: string) => void = () => undefined,
+): string | null {
+    const nodeEnv = (env.NODE_ENV || 'development').trim();
+    if (env.MCP_AUTH_REQUIRED === 'true') return null;
+    if (nodeEnv === 'production' || nodeEnv === 'integration') {
+        return '[boot] MCP_AUTH_REQUIRED must be true in production/integration';
+    }
+    onOpen('[boot] superuser mode (MCP_AUTH_REQUIRED unset)');
+    return null;
+}
+
 export function createAuthContextMiddleware(prisma: PrismaClient): RequestHandler {
     return async (req: Request, _res: Response, next: NextFunction) => {
         try {

@@ -34,6 +34,8 @@ import { getSnapshotTools } from './mcp/tools/snapshots';
 import { getKennelTools } from './mcp/tools/kennels';
 import { getNodeTools } from './mcp/tools/nodes';
 import { AclRouteHandler } from './api/routes/AclRouteHandler';
+import { EX_CONFIG, authModeBootError } from './mcp/auth/middleware';
+import { spawn } from 'child_process';
 import { KennelSnapshotCache } from './mcp/snapshots/KennelSnapshotCache';
 import type { ToolDeps } from './mcp/tools/types';
 import type { AuthCtx } from './mcp/auth/middleware';
@@ -196,6 +198,7 @@ export class StartupTest {
             await this.testRunOnlyForeignDogPinnedAndScoped(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testFreezeBlocksEveryMutation(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testAclRestRoutes(kennelsController as KennelController, nodesController);
+            await this.testBootGuardRefusesSuperUserOutsideDev();
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -3894,6 +3897,68 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Startet main.ts als Kindprozess — ohne load-env und mit leerer DATABASE_URL: kommt der Guard
+     * nicht zum Zug, scheitert der Start an assertRequiredDbEnv (Exit 1) und beruehrt keine DB.
+     * Die Variablen stehen ausdruecklich (leer) in der Umgebung, weil der Prisma-Client beim Import
+     * die .env nachlaedt — aber nie ueberschreibt, was schon gesetzt ist.
+     */
+    private bootMain(env: Record<string, string>): Promise<{ code: number | null; out: string }> {
+        return new Promise((resolve) => {
+            const child = spawn(process.execPath, ['-r', 'ts-node/register', '-r', 'tsconfig-paths/register', 'main.ts'], {
+                cwd: process.cwd(),
+                env: {
+                    PATH: process.env.PATH ?? '',
+                    SystemRoot: process.env.SystemRoot ?? '',
+                    TS_NODE_TRANSPILE_ONLY: 'true',
+                    MCP_AUTH_REQUIRED: '',
+                    DATABASE_URL: '',
+                    RUN_STARTUP_TESTS: '0',
+                    PORT: '3098',
+                    ...env,
+                },
+            });
+            let out = '';
+            child.stdout.on('data', (c) => { out += c; });
+            child.stderr.on('data', (c) => { out += c; });
+            const timer = setTimeout(() => child.kill(), 120_000);
+            child.on('exit', (code) => { clearTimeout(timer); resolve({ code, out }); });
+        });
+    }
+
+    /**
+     * Test T8: Super-User-Modus nur in dev. production/integration ohne MCP_AUTH_REQUIRED=true ->
+     * der Prozess startet nicht (Exit 78, EX_CONFIG); dev -> offen, einmal geloggt.
+     */
+    private async testBootGuardRefusesSuperUserOutsideDev(): Promise<void> {
+        const testName = 'P3.5 T8: Startup-Guard verweigert Super-User in production/integration';
+        try {
+            const opened: string[] = [];
+            if (authModeBootError({ NODE_ENV: 'development' }, (l) => opened.push(l)) !== null) throw new Error('dev verweigert');
+            if (opened[0] !== '[boot] superuser mode (MCP_AUTH_REQUIRED unset)') throw new Error(`dev-Hinweis: ${opened[0]}`);
+            if (authModeBootError({ NODE_ENV: 'production', MCP_AUTH_REQUIRED: 'true' }) !== null) throw new Error('production mit Auth verweigert');
+            if (!authModeBootError({ NODE_ENV: 'integration', MCP_AUTH_REQUIRED: 'false' })) throw new Error('integration ohne Auth erlaubt');
+
+            const [prod, integ, prodAuth, dev] = await Promise.all([
+                this.bootMain({ NODE_ENV: 'production' }),
+                this.bootMain({ NODE_ENV: 'integration', MCP_AUTH_REQUIRED: 'false' }),
+                this.bootMain({ NODE_ENV: 'production', MCP_AUTH_REQUIRED: 'true' }),
+                this.bootMain({ NODE_ENV: 'development' }),
+            ]);
+            for (const [label, r] of [['production', prod], ['integration', integ]] as const) {
+                if (r.code !== EX_CONFIG) throw new Error(`${label}: Exit ${r.code} statt ${EX_CONFIG}: ${r.out.slice(-300)}`);
+                if (!r.out.includes('[boot] MCP_AUTH_REQUIRED must be true in production/integration')) throw new Error(`${label}: Meldung fehlt`);
+            }
+            if (prodAuth.code === EX_CONFIG) throw new Error('production mit MCP_AUTH_REQUIRED=true vom Guard gestoppt');
+            if (dev.code === EX_CONFIG || !dev.out.includes('[boot] superuser mode (MCP_AUTH_REQUIRED unset)')) {
+                throw new Error(`dev: Exit ${dev.code}, Hinweis fehlt: ${dev.out.slice(-300)}`);
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 

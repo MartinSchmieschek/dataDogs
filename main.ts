@@ -31,6 +31,7 @@ import { runSeeds } from './seed-data/seed';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
 import { createHttpApplication } from './server-app/createHttpApplication';
+import { EX_CONFIG, authModeBootError } from './mcp/auth/middleware';
 import {
     assertSlimRegistryCoversKennelDbRefs,
     collectBaseDogNamesFromLatestKennels,
@@ -51,6 +52,14 @@ start().catch(e => {
 });
 
 async function start() {
+    // Vor allem anderen — vor der Datenbank und vor createHttpApplication: ein Dienst, in dem
+    // jeder Besucher Super-User ist, darf ausserhalb von dev gar nicht erst hochkommen (P3.5).
+    const bootError = authModeBootError(process.env, (line) => console.log(line));
+    if (bootError) {
+        console.error(bootError);
+        process.exit(EX_CONFIG);
+    }
+
     dbEnv.assertRequiredDbEnv();
     const dbUrl = dbEnv.resolveStoreDatabaseUrl();
 
