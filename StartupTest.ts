@@ -67,6 +67,7 @@ import { ListQuery } from './api/routes/ListQuery';
 import { LandingRouteHandler } from './api/routes/LandingRouteHandler';
 import type { DogCallDelta, IDogStatsStore, IKennelStatsStore, KennelCallAggregate, KennelCallSource } from './store/IKennelStatsStore';
 import { dogStatsKeyOf } from './services/dogStatsKey';
+import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
@@ -253,6 +254,9 @@ export class StartupTest {
             await this.testRecordDogAndFlush(statsStore, dogStatsStore);
             await this.testDogCallAggregate(dogStatsStore);
             await this.testDogCounterCost(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testReferenceDerivation(nodesStore, kennelsStore, dogStatsStore, baseDogsMap);
+            await this.testReferenceRebuildIdempotent(nodesStore, kennelsStore, dogStatsStore, baseDogsMap);
+            await this.testDogDeleteClearsStats(nodesStore, kennelsStore, statsStore, dogStatsStore, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4902,6 +4906,167 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /** Ein Referenzindex mit eigenen Controllern — dieselbe Verdrahtung wie createHttpApplication. */
+    private p4bIndexed(nodesStore: IStore, kennelsStore: IStore, dogStore: IDogStatsStore, baseDogsMap: Map<string, any>, counter?: KennelCallCounter) {
+        const refIndex = new DogReferenceIndex(dogStore, nodesStore, baseDogsMap, counter);
+        const nodes = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name, true, { refIndex });
+        const kennels = new KennelController(kennelsStore, { refIndex });
+        return { refIndex, nodes, kennels };
+    }
+
+    /** Die Referenzzeilen eines Ursprungs, lesbar sortiert: `kind:toKey@position/resolved`. */
+    private async refsFrom(dogStore: IDogStatsStore, fromKind: 'kennel' | 'dog', fromKey: string): Promise<string> {
+        return (await dogStore.readAllReferences())
+            .filter((r) => r.fromKind === fromKind && r.fromKey === fromKey)
+            .sort((a, b) => a.kind.localeCompare(b.kind) || a.position - b.position)
+            .map((r) => `${r.kind}:${r.toKey}@${r.position}/${r.resolved}`)
+            .join(',');
+    }
+
+    /**
+     * Test P4b 7: Ableitung am Controller — Kennel-Crew mit lineageId, `base:`-Eintrag und Version-GUID
+     * (normalisiert auf die Lineage); Dog-parents mit blankem Base-Namen, lineageId und unbekannter GUID
+     * (dangling, resolved 0); ein zweiter Save ersetzt die alten Zeilen.
+     */
+    private async testReferenceDerivation(nodesStore: IStore, kennelsStore: IStore, dogStore: IDogStatsStore, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 7: Referenz-Ableitung (Crew, parents, Normalisierung)';
+        const kennelId = `test-p4b-refs-${Date.now()}`;
+        const lineages: string[] = [];
+        const { nodes, kennels } = this.p4bIndexed(nodesStore, kennelsStore, dogStore, baseDogsMap);
+        try {
+            const make = async (name: string) => {
+                const created = await nodes.create({ displayName: name, theRun: 'return 1;', parentsRequired: [], parentsOptional: [], visibility: 'private', ownerId: 'UO' });
+                if (!created.ok || !created.data?.lineageId) throw new Error(`Dog ${name}: ${created.error}`);
+                lineages.push(created.data.lineageId);
+                return { lineageId: created.data.lineageId as string, versionId: created.id as string };
+            };
+            const l1 = await make('P4bRef1');
+            const l2 = await make('P4bRef2');
+            const l3 = await make('P4bRef3');
+            const k = await kennels.create({ id: kennelId, name: 'P4b Refs', dogIds: [l1.lineageId, 'base:QueryRetriever', l2.versionId], visibility: 'private', ownerId: 'UO' });
+            if (!k.ok) throw new Error(`Kennel: ${k.error}`);
+            const crew = await this.refsFrom(dogStore, 'kennel', kennelId);
+            if (crew !== `crew:${l1.lineageId}@0/1,crew:base:QueryRetriever@1/1,crew:${l2.lineageId}@2/1`) throw new Error(`Crew: ${crew}`);
+
+            const saved = await nodes.save({ id: l1.lineageId, theRun: 'return 2;', parentsRequired: ['QueryRetriever', l3.lineageId], parentsOptional: ['unbekannt-guid'] });
+            if (!saved.ok) throw new Error(`Dog-Save: ${saved.error}`);
+            const parents = await this.refsFrom(dogStore, 'dog', l1.lineageId);
+            if (parents !== `optional:unbekannt-guid@0/0,required:base:QueryRetriever@0/1,required:${l3.lineageId}@1/1`) throw new Error(`parents: ${parents}`);
+            const again = await nodes.save({ id: l1.lineageId, theRun: 'return 3;', parentsRequired: [l2.lineageId], parentsOptional: [] });
+            if (!again.ok) throw new Error(`zweiter Save: ${again.error}`);
+            const replaced = await this.refsFrom(dogStore, 'dog', l1.lineageId);
+            if (replaced !== `required:${l2.lineageId}@0/1`) throw new Error(`nach zweitem Save: ${replaced}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennels.delete(kennelId); } catch { /* ignore */ }
+            for (const l of lineages) {
+                for (const v of await nodesStore.findAllVersions(SerializedDog.name, l).catch(() => [])) {
+                    try { await nodes.delete(v.id); } catch { /* ignore */ }
+                }
+            }
+        }
+    }
+
+    /**
+     * Test P4b 8: der Boot-Rebuild ist idempotent — zweimal gebaut, dieselbe Menge; ihre Groesse ist
+     * die Summe der Kopf-dogIds und Kopf-parents (Abnahme 4b.11); nach einer Kennel-Aenderung per
+     * Controller entspricht der Rebuild dem Kopfstand.
+     */
+    private async testReferenceRebuildIdempotent(nodesStore: IStore, kennelsStore: IStore, dogStore: IDogStatsStore, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 8: Rebuild idempotent, Zeilen = Kopf-dogIds + Kopf-parents';
+        const kennelId = `test-p4b-rebuild-${Date.now()}`;
+        const { refIndex, kennels } = this.p4bIndexed(nodesStore, kennelsStore, dogStore, baseDogsMap);
+        try {
+            const setOf = async () => (await dogStore.readAllReferences())
+                .map((r) => `${r.fromKind}|${r.fromKey}|${r.toKey}|${r.kind}|${r.position}|${r.fromOwnerId}|${r.resolved}`).sort().join('\n');
+            const first = await refIndex.rebuild();
+            const a = await setOf();
+            const second = await refIndex.rebuild();
+            const b = await setOf();
+            if (a !== b || first.rows !== second.rows) throw new Error(`zwei Rebuilds verschieden (${first.rows} / ${second.rows})`);
+            const heads = async (type: string) => nodesStore.findLatestByType(type);
+            const count = (raw: unknown) => {
+                const list = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(String(raw)); } catch { return []; } })();
+                return Array.isArray(list) ? list.filter((x: unknown) => typeof x === 'string' && x.length > 0).length : 0;
+            };
+            let expected = 0;
+            for (const k of await heads('KennelConfig')) expected += count(k.dogIds);
+            // Ein Kopf je Dog-Lineage ueber BEIDE Typen (eine Lineage kann SerializedDog- und MimicDog-Zeilen tragen).
+            const dogHeads = new Map<string, any>();
+            for (const type of ['SerializedDog', 'MimicDog']) {
+                for (const d of await heads(type)) {
+                    const cfg = (() => { try { return JSON.parse(d.serializedDogConfig); } catch { return {}; } })();
+                    const key = d.lineageId || cfg?.lineageId || d.id;
+                    const t = d.createdAt ? new Date(d.createdAt).getTime() : -Infinity;
+                    const prev = dogHeads.get(key);
+                    if (!prev || t > prev.t || (t === prev.t && String(d.id) > String(prev.id))) dogHeads.set(key, { t, id: d.id, cfg });
+                }
+            }
+            for (const { cfg } of dogHeads.values()) expected += count(cfg?.parentsRequired) + count(cfg?.parentsOptional);
+            if (first.rows !== expected) throw new Error(`Zeilen ${first.rows}, Kopf-dogIds + Kopf-parents ${expected}`);
+            if (refIndex.referenceRows !== expected) throw new Error(`referenceRows ${refIndex.referenceRows} statt ${expected}`);
+
+            const created = await kennels.create({ id: kennelId, name: 'P4b Rebuild', dogIds: ['base:QueryRetriever'], visibility: 'private', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel: ${created.error}`);
+            const saved = await kennels.save({ id: kennelId, dogIds: ['base:QueryRetriever', 'base:BodyRetriever'] });
+            if (!saved.ok) throw new Error(`Kennel-Save: ${saved.error}`);
+            const viaController = await this.refsFrom(dogStore, 'kennel', kennelId);
+            await refIndex.rebuild();
+            const viaRebuild = await this.refsFrom(dogStore, 'kennel', kennelId);
+            if (viaController !== 'crew:base:QueryRetriever@0/1,crew:base:BodyRetriever@1/1' || viaRebuild !== viaController) {
+                throw new Error(`Controller ${viaController} / Rebuild ${viaRebuild}`);
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennels.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test P4b 12: letzte Version geloescht — DogCallDaily des Dogs leer, Referenzen VON ihm weg,
+     * ungeflushte Deltas weg; Referenzen AUF ihn (Kennel-Crew) bleiben.
+     */
+    private async testDogDeleteClearsStats(nodesStore: IStore, kennelsStore: IStore, statsStore: IKennelStatsStore, dogStore: IDogStatsStore, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 12: Dog-Delete raeumt Laeufe, Referenzen von ihm, pending';
+        const kennelId = `test-p4b-dogdel-${Date.now()}`;
+        const counter = new KennelCallCounter(statsStore, { flushIntervalMs: 0 });
+        const { nodes, kennels } = this.p4bIndexed(nodesStore, kennelsStore, dogStore, baseDogsMap, counter);
+        let lineageId = '';
+        try {
+            const created = await nodes.create({ displayName: 'P4bDelDog', theRun: 'return 1;', parentsRequired: ['QueryRetriever'], parentsOptional: [], visibility: 'private', ownerId: 'UO' });
+            if (!created.ok || !created.data?.lineageId) throw new Error(`Dog: ${created.error}`);
+            lineageId = created.data.lineageId;
+            const k = await kennels.create({ id: kennelId, name: 'P4b DogDel', dogIds: [lineageId], visibility: 'private', ownerId: 'UO' });
+            if (!k.ok) throw new Error(`Kennel: ${k.error}`);
+            const record = () => counter.recordDog({ dogKey: lineageId, kennelLineageId: kennelId, source: 'public', outcome: 'ok', cached: false, cacheHits: 0, cacheMisses: 0, durationMs: 3 });
+            record();
+            await counter.flush();
+            record();
+            const since = utcDay(new Date(Date.now() - 29 * 86_400_000));
+            if ((await dogStore.readDogCallAggregates(since, [lineageId])).length !== 1) throw new Error('Vorbedingung: keine DogCallDaily-Zeile');
+            if (!(await this.refsFrom(dogStore, 'dog', lineageId))) throw new Error('Vorbedingung: keine Referenz von D');
+
+            const del = await nodes.delete(created.id as string);
+            if (!del.ok) throw new Error(`Delete: ${del.error}`);
+            if ((await dogStore.readDogCallAggregates(since, [lineageId])).length !== 0) throw new Error('DogCallDaily fuer D nicht leer');
+            if (await this.refsFrom(dogStore, 'dog', lineageId)) throw new Error('Referenzen von D bleiben');
+            if (counter.pendingDogAggregates(since).has(lineageId)) throw new Error('ungeflushte Deltas von D bleiben');
+            const crew = await this.refsFrom(dogStore, 'kennel', kennelId);
+            if (crew !== `crew:${lineageId}@0/1`) throw new Error(`Referenz auf D: ${crew}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennels.delete(kennelId); } catch { /* ignore */ }
+            try { await statsStore.deleteKennelStats(kennelId); } catch { /* ignore */ }
+            if (lineageId) try { await dogStore.deleteDogCalls(lineageId); } catch { /* ignore */ }
         }
     }
 

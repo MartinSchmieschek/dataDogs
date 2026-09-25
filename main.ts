@@ -33,6 +33,7 @@ import { CompilerCache } from './services/CompilerCache';
 import { createHttpApplication } from './server-app/createHttpApplication';
 import { EX_CONFIG, authModeBootError } from './mcp/auth/middleware';
 import { KennelCallCounter } from './services/KennelCallCounter';
+import { DogReferenceIndex } from './services/DogReferenceIndex';
 import {
     assertSlimRegistryCoversKennelDbRefs,
     collectBaseDogNamesFromLatestKennels,
@@ -181,6 +182,17 @@ async function start() {
         baseDogsMap.set(instance.name, PactClass);
     });
 
+    // Wiederverwendung (P4b): wer wen referenziert, aus den Kopfversionen — nach den Seeds (die am
+    // Controller vorbeischreiben) und mit voller baseDogsMap (blanke Klassennamen -> base:X), vor den
+    // Routen. Idempotent; ein Fehler kostet nur die Referenzzahlen bis zum naechsten Boot.
+    const refIndex = new DogReferenceIndex(store, store, baseDogsMap, callCounter);
+    try {
+        const rebuilt = await refIndex.rebuild();
+        console.log(`[DogReferenceIndex] rebuild: ${rebuilt.rows} Referenzen aus ${rebuilt.kennels} Kennels und ${rebuilt.dogs} Dogs in ${rebuilt.durationMs} ms`);
+    } catch (err) {
+        console.error('[DogReferenceIndex] rebuild gescheitert — Referenzzahlen leer bis zum naechsten Start:', err);
+    }
+
     const envForTypeDefs = process.env.NODE_ENV;
     if (envForTypeDefs === 'production' || envForTypeDefs === 'integration') {
         const typeDefsPath = path.resolve(process.cwd(), 'dist', 'type-defs.json');
@@ -218,6 +230,7 @@ async function start() {
         resolveCacheDatabaseUrl: dbEnv.resolveCacheDatabaseUrl,
         callCounter,
         statsStore: store,
+        refIndex,
     });
 
     const port = Number(process.env.PORT) || 3000;

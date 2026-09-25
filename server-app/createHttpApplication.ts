@@ -33,6 +33,7 @@ import { HeavyRequestLimiter } from './heavyRequestLimiter';
 import type { KennelCallCounter } from '../services/KennelCallCounter';
 import { KennelStatsService } from '../services/KennelStatsService';
 import type { IKennelStatsStore } from '../store/IKennelStatsStore';
+import type { DogReferenceIndex } from '../services/DogReferenceIndex';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
@@ -50,6 +51,8 @@ export type CreateHttpApplicationInput = {
     callCounter: KennelCallCounter;
     /** Aufrufe und Sterne (P4) — derselbe Store-Client wie die Kennels, kein eigener Pool. */
     statsStore: IKennelStatsStore;
+    /** Referenzindex (P4b): main.ts baut ihn beim Boot neu auf; die Controller melden jede Kopfversion. */
+    refIndex: DogReferenceIndex;
 };
 
 export type CreateHttpApplicationResult = {
@@ -191,8 +194,9 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     frontBinder.beforeControllers(app, frontCtx);
 
     const registry = new ControllerRegistry();
-    const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name);
-    const kennelsController = new KennelController(kennelsStore);
+    // P4b: beide Controller melden jede neue Kopfversion an den Referenzindex (Konstruktor-Option).
+    const nodesController = new Controller<ISerializedDogConfig>(nodesStore, SerializedDog.name, true, { refIndex: input.refIndex });
+    const kennelsController = new KennelController(kennelsStore, { refIndex: input.refIndex });
     registry.register('nodes', nodesController);
     registry.register('kennels', kennelsController);
 

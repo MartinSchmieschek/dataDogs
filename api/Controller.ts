@@ -11,17 +11,72 @@ import { aclOf, normalizeVisibility } from '../mcp/auth/visibility';
  * Versioning is enabled by default, fer the past must not be forgotten.
  * Now each incarnation carries a GUID, and the lineage branches like cursed coral in the void.
  */
+/** Wohin die parents eines gespeicherten Dogs gemeldet werden und wer einen geloeschten vergisst (P4b: DogReferenceIndex). */
+export interface IDogReferenceSink {
+    replaceDogRefs(lineageId: string, ownerId: string | null | undefined, required: unknown, optional: unknown): Promise<void>;
+    /** Letzte Version geloescht: Referenzen von ihm, seine Laeufe, seine ungeflushten Deltas. */
+    forgetDog(lineageId: string): Promise<void>;
+}
+
+export interface ControllerOptions {
+    refIndex?: IDogReferenceSink;
+}
+
 export class Controller<T extends { id?: string; lineageId?: string; parentId?: string | null; displayName?: string; version?: number; [key: string]: any }> extends AbstractController<T> {
     private enableVersioning: boolean;
+    private readonly refIndex: IDogReferenceSink | null;
 
     /**
      * @param store - The eldritch store in which all data sleeps.
      * @param entityType - The type brand; defaults to 'Config' if ye name it not.
      * @param enableVersioning - Whether the branching rite shall be performed (default: true).
+     * @param options - refIndex: the reference index the parents of every new head version go to (P4b).
      */
-    constructor(store: IStore, entityType?: string, enableVersioning: boolean = true) {
+    constructor(store: IStore, entityType?: string, enableVersioning: boolean = true, options: ControllerOptions = {}) {
         super(store, entityType || 'Config');
         this.enableVersioning = enableVersioning;
+        this.refIndex = options.refIndex ?? null;
+    }
+
+    /** Die parents der Kopfversion in den Referenzindex — scheitert es, heilt der naechste Boot. */
+    private async syncParentRefs(lineageId: string | undefined, ownerId: unknown, cfg: any): Promise<void> {
+        if (!this.refIndex || !lineageId) return;
+        try {
+            await this.refIndex.replaceDogRefs(lineageId, typeof ownerId === 'string' ? ownerId : null, cfg?.parentsRequired, cfg?.parentsOptional);
+        } catch (err) {
+            console.warn(`[Controller] references of ${lineageId} not updated:`, err);
+        }
+    }
+
+    /**
+     * Loescht EINE Version (wie bisher). War es die letzte ihrer Lineage, vergisst der Referenzindex
+     * den Dog: Referenzen von ihm, DogCallDaily, ungeflushte Deltas (P4b 4b.9). Referenzen AUF ihn bleiben.
+     */
+    async delete(id: string): Promise<IControllerResponse<void>> {
+        const lineageId = this.refIndex ? await this.lineageOfVersion(id) : null;
+        const result = await super.delete(id);
+        if (result.ok && this.refIndex && lineageId) {
+            try {
+                const left = await this.store.findAllVersions(this.entityType, lineageId);
+                if (left.length === 0) await this.refIndex.forgetDog(lineageId);
+            } catch (err) {
+                console.warn(`[Controller.delete] dog ${lineageId} not forgotten:`, err);
+            }
+        }
+        return result;
+    }
+
+    /** Die Lineage einer Version (PK-Lookup); ohne Zeile ist die id selbst gemeint. */
+    private async lineageOfVersion(id: string): Promise<string | null> {
+        try {
+            const row = await this.store.load(id);
+            if (!row) return null;
+            const cfg = typeof row === 'string' ? JSON.parse(row) : row;
+            const inner = typeof cfg?.serializedDogConfig === 'string' ? JSON.parse(cfg.serializedDogConfig) : null;
+            return cfg?.lineageId || inner?.lineageId || id;
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -68,6 +123,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 ...(runners !== undefined ? { runners } : {}),
                 createdAt: new Date(),
             });
+            await this.syncParentRefs(lineageId, ownerId, entity);
 
             return {
                 ok: true,
@@ -210,6 +266,7 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
                 ...(nextRunners !== undefined ? { runners: nextRunners } : {}),
                 createdAt: new Date(),
             });
+            await this.syncParentRefs(lineageId, nextOwnerId, nextCfg);
 
             return {
                 ok: true,

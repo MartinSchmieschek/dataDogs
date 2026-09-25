@@ -64,12 +64,37 @@ export interface IKennelStatsJanitor {
     forgetKennel(lineageId: string): Promise<void>;
 }
 
+/** Wohin die Crew eines gespeicherten Kennels gemeldet wird (P4b: DogReferenceIndex). */
+export interface IKennelReferenceSink {
+    replaceKennelRefs(lineageId: string, ownerId: string | null | undefined, dogIds: unknown): Promise<void>;
+    removeFrom(kind: 'kennel', key: string): Promise<void>;
+}
+
+export interface KennelControllerOptions {
+    refIndex?: IKennelReferenceSink;
+}
+
 export class KennelController extends AbstractController<IKennelConfig> {
     private readonly KENNEL_TYPE = 'KennelConfig';
     private statsJanitor: IKennelStatsJanitor | null = null;
+    private readonly refIndex: IKennelReferenceSink | null;
 
-    constructor(store: IStore) {
+    constructor(store: IStore, options: KennelControllerOptions = {}) {
         super(store, 'KennelConfig');
+        this.refIndex = options.refIndex ?? null;
+    }
+
+    /**
+     * Die Crew der Kopfversion in den Referenzindex (P4b). Nach dem Store-Save; scheitert es, bleibt
+     * der Kennel gespeichert — der naechste Boot-Rebuild heilt die Luecke.
+     */
+    private async syncCrewRefs(lineageId: string, ownerId: string | null | undefined, dogIds: unknown): Promise<void> {
+        if (!this.refIndex) return;
+        try {
+            await this.refIndex.replaceKennelRefs(lineageId, ownerId, dogIds);
+        } catch (err) {
+            console.warn(`[KennelController] references of ${lineageId} not updated:`, err);
+        }
     }
 
     /** Per Setter, weil der Stats-Dienst erst nach dem Controller entsteht (createHttpApplication). */
@@ -156,6 +181,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
 
             // Cascade: a public kennel needs its own nodes to be public too.
             await this.cascadeVisibilityToOwnedNodes(config.dogIds, visibility, ownerId);
+            await this.syncCrewRefs(lineageId, ownerId, config.dogIds);
 
             // Attach ACL fields to the returned config.
             const result = {
@@ -290,6 +316,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
             if (nextVisibility === 'public' && existingVisibility !== 'public') {
                 await this.cascadeVisibilityToOwnedNodes(config.dogIds, 'public', nextOwnerId);
             }
+            await this.syncCrewRefs(lineageId, nextOwnerId, config.dogIds);
 
             const result = {
                 ...config,
@@ -427,6 +454,7 @@ export class KennelController extends AbstractController<IKennelConfig> {
                 createdAt: existing.createdAt?.toISOString(),
                 updatedAt: new Date().toISOString(),
             });
+            await this.syncCrewRefs(lineageId, (existing as any).ownerId ?? null, patch.dogIds !== undefined ? patch.dogIds : existing.dogIds);
 
             return { ok: true, id: lineageId, data: existing };
         } catch (error) {
@@ -483,6 +511,14 @@ export class KennelController extends AbstractController<IKennelConfig> {
                     await this.statsJanitor.forgetKennel(lineageId);
                 } catch (err) {
                     console.warn(`[KennelController.delete] stats of ${lineageId} not removed:`, err);
+                }
+            }
+            // P4b: seine Crew-Referenzen fallen; die DogCallDaily-Zeilen der Dogs in ihm bleiben (Dog-Historie).
+            if (this.refIndex) {
+                try {
+                    await this.refIndex.removeFrom('kennel', lineageId);
+                } catch (err) {
+                    console.warn(`[KennelController.delete] references of ${lineageId} not removed:`, err);
                 }
             }
 
