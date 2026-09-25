@@ -24,7 +24,8 @@ export interface PagedApiResponse<T> extends ApiResponse<T[]> {
   offset?: number;
 }
 
-export type KennelSortKey = 'name' | 'createdAt' | 'updatedAt';
+/** calls/calls30d = Aufrufe (ranked), rating = Bayes-Score (P4). */
+export type KennelSortKey = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating';
 export type KennelSortDir = 'asc' | 'desc';
 
 export interface KennelPageQuery {
@@ -37,6 +38,21 @@ export interface KennelPageQuery {
   mine?: boolean;
   sort?: KennelSortKey;
   dir?: KennelSortDir;
+  /** Nur Kennels mit Rohschnitt >= minStars (1..5). */
+  minStars?: number;
+  /** Nur Kennels mit mindestens so vielen gezaehlten Aufrufen. */
+  minCalls?: number;
+}
+
+/** Antwort von GET/PUT/DELETE /api/kennels/:id/rating (P4). `mine` ist null anonym oder unbewertet. */
+export interface IRatingView {
+  ok: boolean;
+  lineageId: string;
+  avg: number | null;
+  count: number;
+  score: number;
+  histogram: { 1: number; 2: number; 3: number; 4: number; 5: number };
+  mine: number | null;
 }
 
 export interface RunResponse {
@@ -67,6 +83,8 @@ export class KennelService {
     if (query.mine) params = params.set('mine', '1');
     if (query.sort) params = params.set('sort', query.sort);
     if (query.dir) params = params.set('dir', query.dir);
+    if (query.minStars !== undefined) params = params.set('minStars', String(query.minStars));
+    if (query.minCalls !== undefined) params = params.set('minCalls', String(query.minCalls));
     return this.http.get<PagedApiResponse<IKennelConfig>>(this.baseUrl, { params });
   }
 
@@ -91,6 +109,19 @@ export class KennelService {
 
   delete(id: string): Observable<ApiResponse> {
     return this.http.delete<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
+  }
+
+  /** Sterne (P4): Aggregat, Verteilung, eigene Bewertung. Relativ — laeuft ueber den Dev-Proxy. */
+  getRating(id: string): Observable<IRatingView> {
+    return this.http.get<IRatingView>(`${this.baseUrl}/${encodeURIComponent(id)}/rating`);
+  }
+
+  setRating(id: string, stars: number): Observable<IRatingView> {
+    return this.http.put<IRatingView>(`${this.baseUrl}/${encodeURIComponent(id)}/rating`, { stars });
+  }
+
+  deleteRating(id: string): Observable<IRatingView> {
+    return this.http.delete<IRatingView>(`${this.baseUrl}/${encodeURIComponent(id)}/rating`);
   }
 
   getVersions(id: string): Observable<ApiResponse<KennelVersionEntry[]>> {

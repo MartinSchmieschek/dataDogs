@@ -378,6 +378,32 @@ async function run() {
     fail('snapshot pipeline', e.message);
   }
 
+  // P4 (11): der execute_kennel oben zaehlt sofort — die Liste addiert die ungeflushten Deltas.
+  try {
+    const byCalls = await mcpCall('list_kennels', { search: KENNEL_ID, sort: 'calls', dir: 'desc' });
+    const probe = Array.isArray(byCalls) ? byCalls.find((k) => k.lineageId === KENNEL_ID) : null;
+    if (!probe?.stats?.calls) fail('list_kennels stats', 'no stats on the probe');
+    else if (probe.stats.calls.ranked >= 1) pass('list_kennels stats', `ranked ${probe.stats.calls.ranked}, ranked30d ${probe.stats.calls.ranked30d}, rating ${JSON.stringify(probe.stats.rating)}`);
+    else fail('list_kennels stats', `ranked ${probe.stats.calls.ranked} after execute_kennel`);
+
+    const bare = await mcpCall('list_kennels', {});
+    const paged = await mcpCall('list_kennels', { limit: 3 });
+    if (!Array.isArray(bare)) fail('list_kennels shapes', 'without limit not a bare array');
+    else if (!Array.isArray(paged?.kennels) || typeof paged.total !== 'number' || typeof paged.hasMore !== 'boolean' || paged.kennels.length > 3) {
+      fail('list_kennels shapes', `with limit: ${JSON.stringify(paged).slice(0, 160)}`);
+    } else pass('list_kennels shapes', `bare ${bare.length}, envelope ${paged.kennels.length}/${paged.total}, hasMore ${paged.hasMore}`);
+
+    const header = await mcpCall('get_kennel', { id: KENNEL_ID });
+    if (typeof header?.stats?.calls?.total !== 'number' || !('avg' in (header.stats.rating || {}))) fail('get_kennel stats', JSON.stringify(header?.stats));
+    else pass('get_kennel stats', `total ${header.stats.calls.total}`);
+
+    const h = await mcpCall('health_check', {});
+    if (typeof h?.stats?.pending !== 'number' || typeof h.stats.dropped !== 'number') fail('health_check stats', JSON.stringify(h?.stats));
+    else pass('health_check stats', `pending ${h.stats.pending}, dropped ${h.stats.dropped}, lastFlushError ${h.stats.lastFlushError}`);
+  } catch (e) {
+    fail('P4 stats', e.message);
+  }
+
   // P3.5 T7: ohne Token kein MCP, sobald der Server Auth verlangt (mcp.ts: 401 + WWW-Authenticate).
   // Im Super-User-Modus (MCP_AUTH_REQUIRED nicht true, nur dev) antwortet er 200 — das wird benannt.
   try {

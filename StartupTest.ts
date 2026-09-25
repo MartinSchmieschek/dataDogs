@@ -59,6 +59,7 @@ import { toSwaggridCast } from './services/swaggridAdapter';
 import { KennelCallCounter, utcDay } from './services/KennelCallCounter';
 import { KennelStatsService } from './services/KennelStatsService';
 import { KennelRatingHandler } from './api/routes/KennelRatingHandler';
+import { ListQuery } from './api/routes/ListQuery';
 import type { IKennelStatsStore, KennelCallAggregate } from './store/IKennelStatsStore';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
@@ -234,6 +235,7 @@ export class StartupTest {
             await this.testRatingAggregateAndBayes(statsStore);
             await this.testKennelDeleteClearsStats(kennelsStore, statsStore);
             await this.testRatingRules(kennelsController as KennelController, statsStore);
+            await this.testListQuerySortsAndFiltersByStats();
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -2370,6 +2372,7 @@ export class StartupTest {
             projectRoot: process.cwd(),
             snapshotCache: new KennelSnapshotCache(),
             kennelStats: new KennelStatsService(StartupTest.NO_STATS_STORE, this.testCallCounter),
+            callCounter: this.testCallCounter,
         };
     }
 
@@ -4488,6 +4491,47 @@ export class StartupTest {
                 try { await kennelsController.delete(id); } catch { /* ignore */ }
                 try { await statsStore.deleteKennelStats(id); } catch { /* ignore */ }
             }
+        }
+    }
+
+    /**
+     * Test P4 8: ListQuery sortiert nach Aufrufen und Sternen und filtert nach minStars (Rohschnitt)
+     * und minCalls (ranked); total zaehlt nach den Filtern; q kombiniert; Gleichstand nach id.
+     */
+    private async testListQuerySortsAndFiltersByStats(): Promise<void> {
+        const testName = 'P4 8: ListQuery nach Aufrufen und Sternen';
+        try {
+            const kennel = (id: string, name: string, ranked: number, avg: number | null, score: number, count: number) => ({
+                id, name, stats: { calls: { total: ranked, last30d: ranked, leadFailed: 0, ranked, ranked30d: ranked }, rating: { avg, count, score } },
+            });
+            const items = [
+                kennel('a', 'Alpha Wetter', 10, 4.0, 4.0, 1),
+                kennel('b', 'Beta Wetter', 50, 4.5, 4.27, 10),
+                kennel('c', 'Gamma', 0, null, 0, 0),
+                kennel('d', 'Delta', 10, 3.0, 3.0, 2),
+            ];
+            const run = (q: Record<string, unknown>) => {
+                const query = ListQuery.from(q);
+                const page = query.apply(items, undefined);
+                return { ids: page.data.map((k) => k.id).join(','), total: page.total, body: query.envelope(page) };
+            };
+            const expect = (label: string, got: string, want: string) => { if (got !== want) throw new Error(`${label}: ${got} statt ${want}`); };
+            expect('sort=calls desc', run({ sort: 'calls', dir: 'desc' }).ids, 'b,d,a,c');   // Gleichstand a/d: id, umgekehrt
+            expect('sort=calls asc', run({ sort: 'calls', dir: 'asc' }).ids, 'c,a,d,b');
+            expect('sort=calls30d desc', run({ sort: 'calls30d', dir: 'desc' }).ids, 'b,d,a,c');
+            expect('sort=rating desc', run({ sort: 'rating', dir: 'desc' }).ids, 'b,a,d,c');
+            const starred = run({ minStars: '4' });
+            expect('minStars=4', starred.ids, 'a,b');
+            if (starred.total !== 2) throw new Error(`minStars total: ${starred.total}`);
+            expect('minCalls=20', run({ minCalls: '20' }).ids, 'b');
+            expect('minCalls=0', run({ minCalls: 0 }).ids, 'a,b,d,c');
+            expect('q + rating', run({ q: 'wetter', sort: 'rating', dir: 'desc' }).ids, 'b,a');
+            expect('minStars kaputt', run({ minStars: 'viel', sort: 'nonsense' }).ids, 'a,b,d,c');
+            const paged = run({ sort: 'calls30d', dir: 'desc', limit: '2', minStars: 3 });
+            if (paged.ids !== 'b,d' || paged.total !== 3 || (paged.body as any).total !== 3) throw new Error(`Seite: ${JSON.stringify(paged)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 

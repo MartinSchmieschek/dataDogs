@@ -303,6 +303,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         projectRoot: serverRootDir,
         snapshotCache,
         kennelStats,
+        callCounter: input.callCounter,
     };
     app.use('/mcp', createMcpRouter(toolDeps));
     app.use('/actions', createActionsRouter(toolDeps));

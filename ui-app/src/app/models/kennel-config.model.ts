@@ -27,6 +27,17 @@ export interface IKennelConfig {
   viewers?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /** Aufrufe und Sterne (P4) — fehlt bei einem Server vor P4. */
+  stats?: IKennelStats;
+}
+
+/**
+ * Aufrufe und Sterne eines Kennels (P4). Sichtbare Zahl ist `calls.ranked30d` (W3); `ranked*` zaehlt
+ * nur echte Nutzung (/k/:id, execute). `rating.avg` ist null ohne Bewertung, `score` der Bayes-Rang.
+ */
+export interface IKennelStats {
+  calls: { total: number; last30d: number; leadFailed: number; ranked: number; ranked30d: number };
+  rating: { avg: number | null; count: number; score: number };
 }
 
 export interface IKennelNodeAnnotation {

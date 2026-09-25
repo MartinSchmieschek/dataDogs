@@ -45,14 +45,15 @@ export function getMetaTools(): ToolDef[] {
         },
         {
             name: 'health_check',
-            description: 'Cheap liveness probe. Returns the current server time and authenticated user (if any).',
+            description: 'Cheap liveness probe. Returns the current server time, the authenticated user (if any) and the kennel call counter `stats` {pending, dropped, lastFlushError}: pending = unflushed (kennel, day, source) keys, flushed every KENNEL_CALL_FLUSH_MS.',
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-            handler: async (_args, ctx) => {
+            handler: async (_args, ctx, deps) => {
                 return ok({
                     ok: true,
                     serverTime: new Date().toISOString(),
                     user: ctx.user ? { id: ctx.user.id, email: ctx.user.email } : null,
                     isSuperUser: ctx.isSuperUser,
+                    stats: deps.callCounter.status(),
                 });
             },
         },

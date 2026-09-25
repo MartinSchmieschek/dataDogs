@@ -7,14 +7,19 @@
 //
 // Order of operations is fixed and must not be reordered:
 //   ACL visibility (the caller applies it BEFORE handing the list in)
-//     -> mine -> q -> sort -> offset/limit
-// `total` counts after `mine` and `q`, before the page is cut. Slicing earlier yields
+//     -> mine -> q -> minStars -> minCalls -> sort -> offset/limit
+// `total` counts after the filters, before the page is cut. Slicing earlier yields
 // wrong pages; counting before the ACL filter would leak how many private entries of
 // other users exist.
 
 import type { AuthCtx } from '../../mcp/auth/middleware';
 
-export type SortField = 'name' | 'createdAt' | 'updatedAt';
+/**
+ * calls/calls30d = ranked usage (`stats.calls.ranked` / `.ranked30d`), rating = Bayes score
+ * (`stats.rating.score`). The numeric keys need `stats` on the items (KennelStatsService.attach);
+ * an item without stats counts as 0.
+ */
+export type SortField = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating';
 export type SortDirection = 'asc' | 'desc';
 
 export interface IListPage<T> {
@@ -26,8 +31,9 @@ export class ListQuery {
     /** Hard ceiling — a caller may ask for more, but never receives more. */
     static readonly MAX_LIMIT = 200;
 
-    private static readonly SORT_FIELDS: readonly string[] = ['name', 'createdAt', 'updatedAt'];
-    private static readonly SEARCHABLE_FIELDS: readonly string[] = ['name', 'displayName', 'description'];
+    private static readonly SORT_FIELDS: readonly string[] = ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating'];
+    /** lineageId too: the kennel id is what people and agents know a kennel by. */
+    private static readonly SEARCHABLE_FIELDS: readonly string[] = ['name', 'displayName', 'description', 'lineageId'];
 
     private constructor(
         readonly limit: number | null,
@@ -36,6 +42,10 @@ export class ListQuery {
         readonly sort: SortField,
         readonly dir: SortDirection,
         readonly mineOnly: boolean,
+        /** Keep items whose raw average rating is >= this (1..5), or no filter. */
+        readonly minStars: number | null = null,
+        /** Keep items with at least this many ranked calls, or no filter. */
+        readonly minCalls: number | null = null,
     ) { }
 
     /**
@@ -51,6 +61,8 @@ export class ListQuery {
             ListQuery.parseSort(q.sort),
             ListQuery.parseDirection(q.dir),
             ListQuery.parseFlag(q.mine),
+            ListQuery.parseMinStars(q.minStars),
+            ListQuery.parseMinCalls(q.minCalls),
         );
     }
 
@@ -59,11 +71,13 @@ export class ListQuery {
         return this.limit !== null;
     }
 
-    /** Apply mine -> q -> sort -> page. The caller has already applied the ACL filter. */
+    /** Apply mine -> q -> minStars -> minCalls -> sort -> page. The caller has already applied the ACL filter. */
     apply<T>(items: T[], ctx: AuthCtx | undefined): IListPage<T> {
         const owned = this.mineOnly ? items.filter(item => ListQuery.isOwnedBy(item, ctx)) : items;
         const found = this.search ? owned.filter(item => this.matches(item)) : owned;
-        const ordered = this.ordered(found);
+        const starred = this.minStars === null ? found : found.filter(item => (ListQuery.statsOf(item)?.rating?.avg ?? -1) >= this.minStars!);
+        const called = this.minCalls === null ? starred : starred.filter(item => (ListQuery.statsOf(item)?.calls?.ranked ?? 0) >= this.minCalls!);
+        const ordered = this.ordered(called);
 
         if (this.limit === null) {
             return { data: ordered, total: ordered.length };
@@ -120,8 +134,16 @@ export class ListQuery {
         return String((item as { id?: unknown })?.id ?? '');
     }
 
+    /** The `stats` a list item carries (P4) — undefined for nodes and for callers that did not attach. */
+    private static statsOf(item: unknown): { calls?: { ranked?: number; ranked30d?: number }; rating?: { avg?: number | null; score?: number } } | undefined {
+        return (item as { stats?: any })?.stats;
+    }
+
     private static sortValue(item: unknown, field: SortField): string | number {
         const record = item as Record<string, unknown>;
+        if (field === 'calls') return ListQuery.statsOf(item)?.calls?.ranked ?? 0;
+        if (field === 'calls30d') return ListQuery.statsOf(item)?.calls?.ranked30d ?? 0;
+        if (field === 'rating') return ListQuery.statsOf(item)?.rating?.score ?? 0;
         if (field === 'name') {
             // Kennels carry `name`, dogs carry `displayName` — one route serves both.
             const label = record?.name ?? record?.displayName ?? '';
@@ -158,6 +180,24 @@ export class ListQuery {
     private static parseSort(raw: unknown): SortField {
         const value = ListQuery.first(raw);
         return ListQuery.SORT_FIELDS.includes(value as string) ? (value as SortField) : 'name';
+    }
+
+    /** 1..5 (fractions allowed: "4.5" keeps 4.5 and up); anything else means no filter. */
+    private static parseMinStars(raw: unknown): number | null {
+        const value = ListQuery.parseNumber(raw);
+        return value !== null && value >= 1 && value <= 5 ? value : null;
+    }
+
+    private static parseMinCalls(raw: unknown): number | null {
+        const value = ListQuery.parseNumber(raw);
+        return value !== null && value >= 0 ? value : null;
+    }
+
+    private static parseNumber(raw: unknown): number | null {
+        const value = ListQuery.first(raw);
+        if (value === undefined || value === null || value === '') return null;
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
     }
 
     private static parseDirection(raw: unknown): SortDirection {

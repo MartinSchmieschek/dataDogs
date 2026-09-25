@@ -32,6 +32,7 @@ import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief
 import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/wavesRedaction';
 import { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 import { firstRefusedDogRef, refusedDogRefMessage } from '../../services/dogAccess';
+import { ListQuery } from '../../api/routes/ListQuery';
 
 /** Status notebook — see mcp/skill.md § Spuren & Rechtfertigung */
 const KENNEL_TRACE_NODE_SCHEMA = {
@@ -309,20 +310,63 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'list_kennels',
             description:
-                'Lists kennels visible to the current user — every kennel you may run, run-only kennels included. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt). Use get_kennel for the header, and the get_kennel_* tools for payload fields (they need the read right).',
-            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-            handler: async (_args, ctx, deps) => {
+                'Lists kennels visible to the current user — every kennel you may run, run-only kennels included. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt) and `stats` {calls: {total, last30d, leadFailed, ranked, ranked30d}, rating: {avg, count, score}}. Find kennels by usage and stars: `{search, sort: "rating" | "calls30d", dir: "desc"}`; filter with minStars (raw average) and minCalls (ranked calls). WITHOUT limit the result is a bare array (legacy shape); WITH limit an envelope {kennels, total, offset, limit, hasMore}. Use get_kennel for the header, and the get_kennel_* tools for payload fields (they need the read right).',
+            inputSchema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    search: { type: 'string', description: 'case-insensitive substring on name, displayName, description, lineageId' },
+                    mine: { type: 'boolean', description: 'only kennels owned by the caller' },
+                    sort: {
+                        type: 'string',
+                        enum: ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating'],
+                        description: 'calls/calls30d = ranked usage (public + execute paths), rating = Bayes score. Default name.',
+                    },
+                    dir: { type: 'string', enum: ['asc', 'desc'] },
+                    minStars: { type: 'number', minimum: 1, maximum: 5, description: 'keep kennels whose raw average rating is >= minStars' },
+                    minCalls: { type: 'number', minimum: 0, description: 'keep kennels with at least this many ranked calls' },
+                    limit: {
+                        type: 'number',
+                        minimum: 1,
+                        maximum: 200,
+                        description: 'page size. WITHOUT limit the result is a bare array (legacy shape); WITH limit an envelope {kennels,total,offset,limit,hasMore}.',
+                    },
+                    offset: { type: 'number', minimum: 0 },
+                },
+            },
+            handler: async (args, ctx, deps) => {
                 const result = await deps.kennelsController.listLatest();
                 if (!result.ok) return fail(result.error ?? 'list failed');
                 // W17 (8.17): what you may run is listed — run-only kennels included.
                 const visible = filterRunnable(result.data ?? [], ctx);
-                return ok(await deps.kennelStats.attach(visible.map(leanKennel)));
+                // Dieselbe Klasse wie REST: stats haengen VOR dem Filtern und Sortieren.
+                await deps.kennelStats.attach(visible as any[]);
+                const query = ListQuery.from({
+                    q: args.search,
+                    mine: args.mine ? '1' : undefined,
+                    sort: args.sort,
+                    dir: args.dir,
+                    minStars: args.minStars,
+                    minCalls: args.minCalls,
+                    limit: args.limit,
+                    offset: args.offset,
+                });
+                const page = query.apply(visible, ctx);
+                const kennels = page.data.map((k: any) => ({ ...leanKennel(k), stats: k.stats }));
+                if (!query.isPaged) return ok(kennels);
+                return ok({
+                    kennels,
+                    total: page.total,
+                    offset: query.offset,
+                    limit: query.limit,
+                    hasMore: query.offset + kennels.length < page.total,
+                });
             },
         },
         {
             name: 'get_kennel',
             description:
-                'Returns the header of one kennel — identity, dogIds, visibility, owner, frozen, presence flags for the heavy fields (defaultBody/defaultQuery/task/nodes/edges) and `myRights: {run, read, edit, own, frozen}`. Use get_kennel_default_body / _default_query / _task / _layout to fetch those. If you may only run the kennel (run-only), you get {id, lineageId, name, emoji, visibility, frozen, myRights} — no dogIds, no config.',
+                'Returns the header of one kennel — identity, dogIds, visibility, owner, frozen, presence flags for the heavy fields (defaultBody/defaultQuery/task/nodes/edges) and `myRights: {run, read, edit, own, frozen}`. Use get_kennel_default_body / _default_query / _task / _layout to fetch those. If you may only run the kennel (run-only), you get {id, lineageId, name, emoji, visibility, frozen, myRights} — no dogIds, no config. Both forms carry `stats` (calls.ranked30d = ranked calls in the last 30 days; rating.avg/count/score, score = Bayes).',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
