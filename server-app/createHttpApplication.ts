@@ -40,6 +40,7 @@ import type { DogReferenceIndex } from '../services/DogReferenceIndex';
 import { DogStatsService } from '../services/DogStatsService';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
+import { LandingPage } from './LandingPage';
 
 export type CreateHttpApplicationInput = {
     nodeEnv: string;
@@ -106,7 +107,9 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
             : (await import('./httpFrontEnd.builtUi')).bindHttpFrontEnd;
 
     const publicDir = resolvePublicDir(serverRootDir);
-    const frontCtx: HttpFrontEndContext = { devUiOrigin, angularBrowserDir, publicDir };
+    // P5: `/` = Lead-Ausgabe des Landing-Kennels aus dem Memo; den Lauf-Lieferanten bekommt sie unten.
+    const landingPage = LandingPage.fromEnv(publicDir);
+    const frontCtx: HttpFrontEndContext = { devUiOrigin, angularBrowserDir, publicDir, landingPage };
 
     const app = express();
 
@@ -290,6 +293,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const cacheHandler: ICacheHandler = withResilientCacheInfra(prismaCacheHandler);
 
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler, callCounter: input.callCounter });
+    landingPage.useRunner(kennelRunHandler);
     const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler, nodesStore);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
 

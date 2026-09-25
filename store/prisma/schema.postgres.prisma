@@ -57,7 +57,7 @@ model Dog {
 model KennelCallDaily {
   lineageId  String
   day        String   // 'YYYY-MM-DD' in UTC — String, damit SQLite und Postgres gleich vergleichen
-  source     String   // public | api-execute | mcp-execute | api-run | mcp-run | mcp-snapshot | mcp-build | swagger | unknown
+  source     String   // public | api-execute | mcp-execute | api-run | mcp-run | mcp-snapshot | mcp-build | swagger | unknown | landing
   count      Int      @default(0)
   leadFailed Int      @default(0)   // Laeufe, deren Lead-Dog ein error-Brandzeichen trug
 

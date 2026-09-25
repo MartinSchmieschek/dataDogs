@@ -84,6 +84,12 @@ import {
     type KeysNetwork,
     type KeysOutboundRequest,
 } from './services/keysCapability';
+import fs from 'fs';
+import path from 'path';
+import { gzipSync } from 'zlib';
+import { LandingPage, type LandingRunner } from './server-app/LandingPage';
+import { resolvePublicDir } from './server-app/expressPaths';
+import { SLOPDOGS_LANDING_KENNEL_ID, seedSlopdogsLandingKennel } from './seed-data/kennels/slopdogs-landing';
 
 /** Was die Laufzeit-Tests des Key-Stores brauchen (P4c). */
 interface KeysTestDeps {
@@ -340,6 +346,14 @@ export class StartupTest {
             }
             await this.testExportScansRawKeys(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testWorkerFetchBlocksPrivateNetworks(nodesStore, kennelsController as KennelController, baseDogsMap);
+
+            // P5: Landing — / ist der Kennel slopdogs-landing (Memo je Look, Quelle landing, statischer Fallback)
+            await this.testLandingSeedIdempotent(nodesStore, kennelsStore);
+            await this.testLandingMemoLooksAndSource(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testLandingFallback();
+            await this.testLandingFallbackIsBuilt();
+            await this.testLandingBudgetAndFonts();
+            await this.testLandingOverHttp();
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -5790,6 +5804,227 @@ export class StartupTest {
             const open = targets.filter((t) => !String(out[t]).startsWith('egress_blocked'));
             if (open.length) throw new Error(`nicht geblockt: ${open.map((t) => `${t} -> ${out[t]}`).join(' | ')}`);
             if (out.data !== 'p4c-ok') throw new Error(`data: ${out.data}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Der `public/`-Ordner wie im Server (ts-node: neben StartupTest.ts, dist/: eine Ebene hoeher). */
+    private landingPublicDir(): string {
+        const dir = resolvePublicDir(__dirname);
+        if (!dir) throw new Error('public/ nicht gefunden');
+        return dir;
+    }
+
+    /** Die vier Looks enthalten je vier Umschalter-Links, und der eigene traegt aria-current. */
+    private static assertLookSwitch(html: string, look: string): void {
+        for (const key of LandingPage.LOOKS) {
+            if (!html.includes(`href="?look=${key}"`)) throw new Error(`look ${look}: Umschalter ?look=${key} fehlt`);
+        }
+        if (!new RegExp(`href="\\?look=${look}"[^>]*aria-current="page"`).test(html)) throw new Error(`look ${look}: aria-current nicht am eigenen Look`);
+    }
+
+    /**
+     * P5: der Landing-Seed ist idempotent (kennelExists-Guard) und legt einen oeffentlichen Community-Kennel an:
+     * Lead, Inhalt, vier Skins, base:QueryRetriever.
+     */
+    private async testLandingSeedIdempotent(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
+        const testName = 'P5: Landing-Seed idempotent, public, Community';
+        try {
+            const landingDogs = async () => (await nodesStore.findByType(SerializedDog.name))
+                .filter((row: any) => String(row.displayName ?? '').startsWith('SlopdogsLanding')).length;
+            const versionsBefore = (await kennelsStore.findByLineage('KennelConfig', SLOPDOGS_LANDING_KENNEL_ID)).length;
+            const dogsBefore = await landingDogs();
+            if (versionsBefore < 1) throw new Error('Kennel slopdogs-landing fehlt nach dem Boot-Seed');
+            await seedSlopdogsLandingKennel(nodesStore, kennelsStore);
+            const versionsAfter = (await kennelsStore.findByLineage('KennelConfig', SLOPDOGS_LANDING_KENNEL_ID)).length;
+            if (versionsAfter !== versionsBefore || (await landingDogs()) !== dogsBefore) {
+                throw new Error(`zweiter Seed hat geschrieben: Versionen ${versionsBefore}->${versionsAfter}, Dogs ${dogsBefore}->${await landingDogs()}`);
+            }
+            const rows = await kennelsStore.findByLineage('KennelConfig', SLOPDOGS_LANDING_KENNEL_ID);
+            const first = rows.sort((a: any, b: any) => String(a.createdAt).localeCompare(String(b.createdAt)))[0];
+            const dogIds: string[] = typeof first.dogIds === 'string' ? JSON.parse(first.dogIds) : first.dogIds;
+            if (first.visibility !== 'public' || first.ownerId) throw new Error(`Sichtbarkeit ${first.visibility}, Owner ${first.ownerId}`);
+            if (dogIds.length !== 7 || dogIds[6] !== 'base:QueryRetriever') throw new Error(`dogIds: ${dogIds.join(',')}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * P5: `/` aus dem Memo — ein Lauf je Look und Fenster, Quelle `landing` (rankt nicht), vier Looks mit
+     * Umschalter, Default c Mixtape, abgelaufenes Memo liefert sofort und erneuert im Hintergrund, Host je Anfrage.
+     */
+    private async testLandingMemoLooksAndSource(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P5: Landing aus dem Kennel — Memo je Look, Quelle landing, vier Looks';
+        try {
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
+            const handler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            let clock = 1_000_000;
+            const landing = new LandingPage({ publicDir: this.landingPublicDir(), kennelId: SLOPDOGS_LANDING_KENNEL_ID, memoMs: 60_000, now: () => clock });
+            landing.useRunner(handler);
+            const runs = (): number => landing.runs;
+
+            const first = await landing.page('c');
+            const second = await landing.page('c');
+            if (!first || first.source !== 'kennel') throw new Error(`erste Seite: ${first?.source}`);
+            if (runs() !== 1 || second?.html !== first.html) throw new Error(`zweiter Aufruf im Fenster: ${runs()} Laeufe`);
+            if (!first.html.includes('id="sd-live"') || !first.html.includes('/static/landing/bebas-neue.woff2')) throw new Error('Mixtape ohne #sd-live oder ohne eigene Schrift');
+            StartupTest.assertLookSwitch(first.html, 'c');
+
+            const calls = counter.pendingAggregates('1970-01-01').get(SLOPDOGS_LANDING_KENNEL_ID);
+            if (!calls || calls.total !== 1 || calls.ranked30d !== 0 || calls.rankedTotal !== 0) throw new Error(`Zaehler: ${JSON.stringify(calls)}`);
+
+            const pages = new Set<string>([first.html]);
+            for (const look of ['a', 'b', 'd']) {
+                const page = await landing.page(look);
+                if (!page || page.source !== 'kennel') throw new Error(`look ${look}: ${page?.source}`);
+                StartupTest.assertLookSwitch(page.html, look);
+                pages.add(page.html);
+            }
+            if (pages.size !== 4 || runs() !== 4) throw new Error(`Looks: ${pages.size} Seiten, ${runs()} Laeufe`);
+            if (LandingPage.lookOf('zz') !== 'c' || LandingPage.lookOf(['B']) !== 'b') throw new Error('lookOf');
+
+            clock += 60_001;
+            const stale = await landing.page('c');
+            if (stale?.html !== first.html) throw new Error('abgelaufenes Memo liefert nicht sofort die gemerkte Seite');
+            await (landing as any).inFlight.get('c');
+            if (runs() !== 5) throw new Error(`Hintergrund-Refresh: ${runs()} Laeufe`);
+
+            const hosted = LandingPage.withHost(first.html, new URL('https://slop.example'));
+            if (hosted.includes(LandingPage.HOST_MARK) || !hosted.includes('https://slop.example/mcp')) throw new Error('Host nicht eingesetzt');
+            const badHost = { protocol: 'http', get: () => 'evil"><script>' } as any;
+            const saved = process.env.MCP_BASE_URL;
+            delete process.env.MCP_BASE_URL;
+            try {
+                if (LandingPage.baseOf(badHost) !== null) throw new Error('ungueltiger Host-Header wird uebernommen');
+                if (LandingPage.baseOf({ protocol: 'http', get: () => '127.0.0.1:3099' } as any)?.host !== '127.0.0.1:3099') throw new Error('Request-Host');
+            } finally {
+                if (saved !== undefined) process.env.MCP_BASE_URL = saved;
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * P5: Fallback — fehlt der Kennel, liefert `/` die statische Seite (und merkt sich das fuer das Fenster);
+     * wirft ein Lauf, bleibt eine gute Seite stehen; liefert er nichts mehr, gilt wieder der Fallback.
+     */
+    private async testLandingFallback(): Promise<void> {
+        const testName = 'P5: Landing-Fallback ohne Kennel, bei Fehler, ohne Runner';
+        try {
+            const publicDir = this.landingPublicDir();
+            const file = fs.readFileSync(path.join(publicDir, 'landing', 'index.html'), 'utf8');
+            let clock = 0;
+            let answer: () => Promise<unknown> = async () => null;
+            const seen = { asked: 0 };
+            const runner: LandingRunner = { runLeadAsAnonymous: async () => { seen.asked += 1; return answer(); } };
+            const asked = (): number => seen.asked;
+            const landing = new LandingPage({ publicDir, kennelId: '__st_no_landing', memoMs: 1_000, now: () => clock });
+
+            const cold = await landing.page('c');
+            if (cold?.source !== 'fallback' || cold.html !== file || asked() !== 0) throw new Error('ohne Runner kein Fallback');
+            landing.useRunner(runner);
+            const missing = await landing.page('c');
+            await landing.page('c');
+            if (missing?.source !== 'fallback' || missing.html !== file || asked() !== 1) throw new Error(`fehlender Kennel: ${missing?.source}, ${asked()} Laeufe`);
+
+            clock += 1_001;
+            answer = async () => '<!DOCTYPE html><html><body>kennel</body></html>';
+            await landing.page('c');
+            await (landing as any).inFlight.get('c');
+            if ((await landing.page('c'))?.source !== 'kennel') throw new Error('Kennel wieder da, Seite nicht');
+
+            clock += 1_001;
+            answer = async () => { throw new Error('boom'); };
+            await landing.page('c');
+            await (landing as any).inFlight.get('c');
+            if ((await landing.page('c'))?.source !== 'kennel') throw new Error('geworfener Lauf verdraengt die gute Seite');
+
+            clock += 1_001;
+            answer = async () => ({ not: 'html' });
+            await landing.page('c');
+            await (landing as any).inFlight.get('c');
+            if ((await landing.page('c'))?.source !== 'fallback') throw new Error('Lead ohne HTML liefert nicht den Fallback');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** P5: der Fallback ist der gebaute Default-Look der Repo-Quellen (scripts/build-landing.cjs), nicht veraltet. */
+    private async testLandingFallbackIsBuilt(): Promise<void> {
+        const testName = 'P5: public/landing/index.html == gebauter Default-Look';
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { renderLook: (look: string) => Promise<string> };
+            const built = await builder.renderLook(LandingPage.DEFAULT_LOOK);
+            const file = fs.readFileSync(path.join(this.landingPublicDir(), 'landing', 'index.html'), 'utf8');
+            if (built !== file) throw new Error('veraltet — node scripts/build-landing.cjs ausfuehren');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** P5: Budget je Look (<= 40 KB, <= 15 KB gzip), kein Font-CDN, jede Schrift liegt self-hosted und <= 30 KB. */
+    private async testLandingBudgetAndFonts(): Promise<void> {
+        const testName = 'P5: Landing-Budget, self-hosted Fonts, kein Font-CDN';
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { renderLook: (look: string) => Promise<string> };
+            const landingDir = path.join(this.landingPublicDir(), 'landing');
+            for (const look of LandingPage.LOOKS) {
+                const html = await builder.renderLook(look);
+                const bytes = Buffer.byteLength(html, 'utf8');
+                const gzip = gzipSync(html).length;
+                if (bytes > 40_960 || gzip > 15_360) throw new Error(`look ${look}: ${bytes} B / ${gzip} B gzip`);
+                if (/fonts\.googleapis|fonts\.gstatic/.test(html)) throw new Error(`look ${look}: Google-Fonts-Link`);
+                const fonts = [...html.matchAll(/url\(\/static\/landing\/([a-z0-9-]+\.woff2)\)/g)].map((m) => m[1]);
+                if (!fonts.length) throw new Error(`look ${look}: keine eigene Schrift`);
+                for (const font of fonts) {
+                    const file = path.join(landingDir, font);
+                    if (!fs.existsSync(file) || fs.statSync(file).size > 30_720) throw new Error(`${font}: fehlt oder > 30 KB`);
+                }
+            }
+            if (!fs.existsSync(path.join(landingDir, 'OFL.txt'))) throw new Error('OFL.txt fehlt');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * P5 gegen den laufenden Server: GET / 200 text/html mit Cache-Control und ohne Set-Cookie, Host eingesetzt,
+     * ?look=a der Breakout-Look, HEAD / ohne Body, robots.txt und die Schrift unter /static/landing/.
+     */
+    private async testLandingOverHttp(): Promise<void> {
+        const testName = 'P5: GET|HEAD / ueber HTTP, robots.txt, /static/landing';
+        try {
+            const base = this.selfBaseUrl();
+            const root = await fetch(`${base}/`, { headers: { Accept: 'text/html' } });
+            const html = await root.text();
+            if (root.status !== 200 || !String(root.headers.get('content-type')).startsWith('text/html')) throw new Error(`GET /: ${root.status} ${root.headers.get('content-type')}`);
+            if (root.headers.get('cache-control') !== LandingPage.CACHE_CONTROL) throw new Error(`Cache-Control: ${root.headers.get('cache-control')}`);
+            if (root.headers.get('set-cookie')) throw new Error('GET / setzt ein Cookie');
+            if (root.headers.get('x-landing-source') !== 'kennel') throw new Error(`Quelle: ${root.headers.get('x-landing-source')}`);
+            if (html.includes(LandingPage.HOST_MARK)) throw new Error('Host-Platzhalter in der Antwort');
+            StartupTest.assertLookSwitch(html, 'c');
+            const breakout = await fetch(`${base}/?look=a`);
+            StartupTest.assertLookSwitch(await breakout.text(), 'a');
+            const head = await fetch(`${base}/`, { method: 'HEAD' });
+            if (head.status !== 200 || (await head.text()) !== '') throw new Error(`HEAD /: ${head.status}`);
+            const robots = await fetch(`${base}/robots.txt`);
+            if (robots.status !== 200 || !String(robots.headers.get('content-type')).startsWith('text/plain') || !(await robots.text()).includes('Disallow: /api/')) {
+                throw new Error(`robots.txt: ${robots.status} ${robots.headers.get('content-type')}`);
+            }
+            const font = await fetch(`${base}/static/landing/bebas-neue.woff2`);
+            if (font.status !== 200 || font.headers.get('content-type') !== 'font/woff2') throw new Error(`Schrift: ${font.status} ${font.headers.get('content-type')}`);
+            await font.arrayBuffer();
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

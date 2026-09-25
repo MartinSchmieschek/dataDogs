@@ -3,8 +3,8 @@ import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndType
 import { bindLandingFiles } from './httpFrontEnd.landing';
 
 /**
- * Development: keine gebaute SPA von Express. `/` liefert die Landing, sobald sie existiert;
- * bis dahin leitet Root auf ng serve (:4300) um.
+ * Development: keine gebaute SPA von Express. `/` liefert die Landing wie deployed (Kennel oder Fallback, P5);
+ * die SPA bleibt unter ng serve (:4300) erreichbar. Nur wenn beides fehlt, leitet Root dorthin um.
  */
 export const bindHttpFrontEnd: HttpFrontEndBinder = {
     beforeControllers(app: Application, ctx: HttpFrontEndContext): void {

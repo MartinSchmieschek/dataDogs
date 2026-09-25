@@ -17,6 +17,7 @@ import { API_ROUTE, LEGACY_ROUTE, PUBLIC_ROUTE } from './routeTable';
 import { IStore } from '../../store/IStore';
 import { KennelController } from '../KennelController';
 import { accessOf, aclOf, withMyRights, type Access } from '../../mcp/auth/visibility';
+import type { AuthCtx } from '../../mcp/auth/middleware';
 import { convertSeasonToWaves, Waves } from '../../services/WavesConverter';
 import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/wavesRedaction';
 import { DogAclIndex, DogRunPolicy } from '../../services/dogAccess';
@@ -62,6 +63,9 @@ export interface IKennelRunDeps {
     /** Zaehlt jeden begonnenen Lauf (P4) — synchron, im Speicher. */
     callCounter: KennelCallCounter;
 }
+
+/** Ein Besucher ohne Login — die Landing laeuft immer so (P5), unabhaengig vom Request-Kontext. */
+const ANONYMOUS: AuthCtx = { user: null, isSuperUser: false };
 
 /** Wer einen Lauf ausgeloest hat — die Quelle der Zaehlung (P4 4.5). */
 export interface KennelRunAttribution {
@@ -119,6 +123,23 @@ export class KennelRunHandler {
             result[key.toLowerCase()] = val.toLowerCase();
         });
         return result;
+    }
+
+    /**
+     * Die Lead-Ausgabe eines Kennels, wie ein anonymer Besucher sie unter GET /k/:id bekaeme — fuer die
+     * Landing (P5): dasselbe Gate (RUN fuer Anonyme), derselbe Lauf, aber die Quelle bestimmt der Aufrufer
+     * (`landing` rankt nicht). `null`, wenn der Kennel fehlt, fuer Anonyme nicht ausfuehrbar ist oder der
+     * Lead kein Ergebnis traegt; ein abgebrochener Lauf wirft wie bei runKennel.
+     */
+    public async runLeadAsAnonymous(kennelId: string, query: Record<string, string>, attribution: KennelRunAttribution): Promise<unknown | null> {
+        const config = await this.loadKennelConfig(kennelId);
+        if (!config || accessOf(config as any, ANONYMOUS) === 'none') return null;
+        const leadRef = config.dogIds?.[0];
+        if (!leadRef) return null;
+        const waves = await this.runKennel(config, this.mergeQueryParams(config.defaultQuery, query), config.defaultBody, undefined, undefined, attribution);
+        const lead: any = this.findDogInWaves(waves, leadRef);
+        if (!lead || lead.error) return null;
+        return KeyRunState.forResult(waves).scrubValue(lead.result);
     }
 
     /**

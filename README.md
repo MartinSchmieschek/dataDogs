@@ -473,6 +473,29 @@ Calls: every kennel run is counted once, per day (UTC) and source; `stats.calls.
 
 ---
 
+## Landing
+
+`/` is a kennel: the lead output of `slopdogs-landing` (env `LANDING_KENNEL_ID`). One content dog, four skin dogs and a lead that picks the look by `?look=a|b|c|d` — a Breakout, b Zine, c Mixtape (default), d Neon Alley; every look carries a switcher. The same page is reachable as a kennel at `/k/slopdogs-landing`.
+
+- **Source:** `seed-data/kennels/slopdogs-landing/` (content, skins, lead) — seeded at boot when the kennel is missing (public, community-owned). Changes in the repo reach an existing instance only after the kennel is removed (the seed never overwrites).
+- **No run per visit:** `GET /` serves the lead output from an HTML memo per look (`LANDING_HTML_MEMO_MS`, default 300000). When the window is over, the visitor gets the remembered page at once and the kennel runs again in the background. The run counts with source `landing` — in `total`, never in `ranked`/`ranked30d`. `HEAD /` never runs the kennel.
+- **Fallback:** if the kennel is missing or its run fails, `/` serves `public/landing/index.html` — the default look rendered from the same sources at build time (`node scripts/build-landing.cjs`, part of `npm run build`). The page is never empty, not even on a cold start.
+- **Host:** the page shows `‹host›` where the address goes; `/` puts in the host of `MCP_BASE_URL` (else the request's host), the page script does the same from `location` on any other address.
+- **Headers:** `Content-Type: text/html; charset=utf-8`, `Cache-Control: public, max-age=300`, `X-Landing-Source: kennel|fallback`, no cookie. `/robots.txt` lives in `public/landing/`.
+- **Fonts:** self-hosted Latin subsets under `/static/landing/*.woff2` (OFL, `public/landing/OFL.txt`); no font CDN.
+
+"Already out there" loads `GET /api/landing?limit=6` — the only request of the page — and renders `topByCalls30d`, `topByRating` and `provenDogs` (links: kennel `url`, dogs to `/kennels?q=<name>`; numbers en-US, `ranked30d` shown, total in the tooltip, no stars when `avg` is null). States on `#sd-live[data-state]`:
+
+| State | When | Page |
+|---|---|---|
+| `loading` | fetch running, under 2.5 s | placeholder cards, no numbers |
+| `waking` | over 2.5 s without an answer | cold-start note (`aria-live="polite"`), fetch goes on |
+| `data` | 200, at least one list filled | the lists; an empty list shows its own line |
+| `empty` | 200, all lists empty | one honest line, no numbers |
+| `error` | 4xx, or network/5xx after 150 s (backoff 2 s, 5 s, 10 s, then every 15 s) | message and an "Again" button |
+
+---
+
 ## Startup tests
 
 On every boot, `main.ts` runs [`StartupTest.runAllTests`](StartupTest.ts) — a self-check against the freshly initialised stores, controllers and BaseDogs map. Failures are logged and surface in the boot console; pass lines are summarised at the end. The suite covers Store / Controller plumbing, BaseDog availability, Pact / Mimic resolution, auto-mimic adoption, kennel export / import round-trip, the tile feature cache, and the **Kennel status-tracking contract** for `task`, `nodes` and `edges`:

@@ -5,6 +5,7 @@
 export const KENNEL_CALL_SOURCES = [
     'public', 'api-execute', 'mcp-execute',                                 // "Nutzung" — rankt
     'api-run', 'mcp-run', 'mcp-snapshot', 'mcp-build', 'swagger', 'unknown', // gespeichert, rankt nicht
+    'landing',                                                               // Lauf fuer / (P5): gespeichert, rankt nicht
 ] as const;
 export type KennelCallSource = typeof KENNEL_CALL_SOURCES[number];
 /** Quellen, die in rankedTotal/ranked30d einfliessen. Einzige Stelle fuer diese Regel. */
