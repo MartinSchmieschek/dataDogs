@@ -57,6 +57,7 @@ import {
 } from './mcp/auth/visibility';
 import { toSwaggridCast } from './services/swaggridAdapter';
 import { KennelCallCounter, utcDay } from './services/KennelCallCounter';
+import { KennelStatsService } from './services/KennelStatsService';
 import type { IKennelStatsStore, KennelCallAggregate } from './store/IKennelStatsStore';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
@@ -229,6 +230,8 @@ export class StartupTest {
             await this.testCallCounterStopFlushes(statsStore);
             await this.testEveryRunPathIsAttributed(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testFailedRunCountsLeadFailed(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testRatingAggregateAndBayes(statsStore);
+            await this.testKennelDeleteClearsStats(kennelsStore, statsStore);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -2364,6 +2367,7 @@ export class StartupTest {
             baseDogsList: [],
             projectRoot: process.cwd(),
             snapshotCache: new KennelSnapshotCache(),
+            kennelStats: new KennelStatsService(StartupTest.NO_STATS_STORE, this.testCallCounter),
         };
     }
 
@@ -4335,6 +4339,88 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test P4 6: Upsert (eine Zeile je Nutzer), Aggregat, Verteilung und Bayes-Score. Der globale
+     * Mittelwert m kommt aus allen Bewertungen der DB — erwartet wird die Formel mit demselben m.
+     */
+    private async testRatingAggregateAndBayes(statsStore: IKennelStatsStore): Promise<void> {
+        const testName = 'P4 6: Rating-Upsert, Aggregat, Histogramm, Bayes';
+        const stamp = Date.now();
+        const lineage = `__st_r_${stamp}`;
+        const unrated = `__st_r0_${stamp}`;
+        try {
+            const stats = new KennelStatsService(statsStore, new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 }));
+            const globalMean = async () => {
+                const all = await statsStore.readKennelRatingAggregates();
+                const n = all.reduce((s, r) => s + r.count, 0);
+                return n === 0 ? 0 : all.reduce((s, r) => s + r.sum, 0) / n;
+            };
+            const check = async (label: string, count: number, sum: number, histogram: Record<number, number>) => {
+                stats.invalidate();
+                const got = (await stats.attachOne({ id: lineage })).stats.rating;
+                const m = await globalMean();
+                const score = (KennelStatsService.BAYES_C * m + sum) / (KennelStatsService.BAYES_C + count);
+                if (got.count !== count || got.avg !== sum / count || Math.abs(got.score - score) > 1e-9) {
+                    throw new Error(`${label}: ${JSON.stringify(got)} statt count ${count}, avg ${sum / count}, score ${score}`);
+                }
+                const view = await stats.ratingView(lineage, 'UA');
+                const want = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, ...histogram };
+                if (JSON.stringify(view.histogram) !== JSON.stringify(want)) throw new Error(`${label}: Histogramm ${JSON.stringify(view.histogram)}`);
+                return view;
+            };
+            await statsStore.upsertKennelRating(lineage, 'UA', 3);
+            await statsStore.upsertKennelRating(lineage, 'UA', 5);
+            const first = await check('UA 5', 1, 5, { 5: 1 });
+            if (first.mine !== 5) throw new Error(`mine: ${first.mine}`);
+            await statsStore.upsertKennelRating(lineage, 'UB', 1);
+            await check('UA 5 + UB 1', 2, 6, { 1: 1, 5: 1 });
+            if (!(await statsStore.deleteKennelRating(lineage, 'UA'))) throw new Error('delete UA meldet nichts');
+            const after = await check('nur UB 1', 1, 1, { 1: 1 });
+            if (after.mine !== null) throw new Error('mine nach delete nicht null');
+            if (await statsStore.deleteKennelRating(lineage, 'UA')) throw new Error('zweites delete meldet einen Treffer');
+            const none = (await stats.attachOne({ id: unrated })).stats;
+            if (none.rating.avg !== null || none.rating.score !== 0 || none.rating.count !== 0 || none.calls.total !== 0) {
+                throw new Error(`unbewertet: ${JSON.stringify(none)}`);
+            }
+            // Das Rechenbeispiel aus 4.4: m = 3,8; A (1, 5) -> 4,00; B (10, 45) -> 4,27.
+            if (KennelStatsService.score(1, 5, 3.8).toFixed(2) !== '4.00' || KennelStatsService.score(10, 45, 3.8).toFixed(2) !== '4.27') {
+                throw new Error('Bayes-Rechenbeispiel stimmt nicht');
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
+        }
+    }
+
+    /** Test P4 9: ein Kennel-Delete raeumt beide Tabellen und die ungeflushten Deltas seiner Lineage. */
+    private async testKennelDeleteClearsStats(kennelsStore: IStore, statsStore: IKennelStatsStore): Promise<void> {
+        const testName = 'P4 9: Kennel-Delete raeumt Zaehler, Sterne, pending';
+        const lineage = `test-st-d-${Date.now()}`;
+        try {
+            const counter = new KennelCallCounter(statsStore, { flushIntervalMs: 0 });
+            const controller = new KennelController(kennelsStore);
+            controller.setStatsJanitor(new KennelStatsService(statsStore, counter));
+            const created = await controller.create({ id: lineage, name: 'Delete raeumt', dogIds: [], visibility: 'private', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            counter.record(lineage, 'public', false);
+            await counter.flush();
+            await statsStore.upsertKennelRating(lineage, 'UA', 4);
+            counter.record(lineage, 'public', false);
+            const deleted = await controller.delete(lineage);
+            if (!deleted.ok) throw new Error(`delete: ${deleted.error}`);
+            if ((await statsStore.readKennelCallAggregates('2000-01-01', [lineage])).length !== 0) throw new Error('KennelCallDaily nicht leer');
+            if ((await statsStore.readKennelRatingAggregates([lineage])).length !== 0) throw new Error('KennelRating nicht leer');
+            if (counter.pendingAggregates('2000-01-01').has(lineage)) throw new Error('pending traegt die Lineage noch');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await statsStore.deleteKennelStats(lineage); } catch { /* ignore */ }
         }
     }
 

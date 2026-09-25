@@ -20,6 +20,7 @@ import { IStore } from '../../store/IStore';
 import { paramString } from '../utils/routeParams';
 import { ListQuery } from './ListQuery';
 import { firstRefusedDogRef, refusedDogRefMessage, type RefusedDogRef } from '../../services/dogAccess';
+import type { KennelStatsService } from '../../services/KennelStatsService';
 
 /**
  * Returns true when the request has a logged-in user OR is in super-user dev mode.
@@ -82,10 +83,13 @@ export class ConfigRouteHandler {
     private registry: ControllerRegistry;
     /** Used by node-mutation routes to check the kennel-owner-bypass rule. */
     private kennelStore?: IStore;
+    /** P4: haengt `stats` an jede Kennel-Antwort (Liste und Einzelabruf). */
+    private kennelStats?: KennelStatsService;
 
-    constructor(registry: ControllerRegistry, kennelStore?: IStore) {
+    constructor(registry: ControllerRegistry, kennelStore?: IStore, kennelStats?: KennelStatsService) {
         this.registry = registry;
         this.kennelStore = kennelStore;
+        this.kennelStats = kennelStats;
     }
 
     /** True if subpath==='nodes' and the user can mutate this node (owner / editor / community / super). */
@@ -217,6 +221,9 @@ export class ConfigRouteHandler {
                 const visible = filterRunnable(result.data, req.ctx).map((entity: any) =>
                     accessOf(entity, req.ctx) === 'read' ? withMyRights(entity, req.ctx) : runView(entity, req.ctx),
                 );
+                // P4: stats haengen VOR ListQuery.apply — sortiert und gefiltert wird nach ihnen, und
+                // nur an dem, was der Rechtefilter schon durchgelassen hat.
+                if (subpath === 'kennels' && this.kennelStats) await this.kennelStats.attach(visible as any[]);
                 const listQuery = ListQuery.from(req.query);
                 res.status(200).json(listQuery.envelope(listQuery.apply(visible, req.ctx)));
             } else {
@@ -252,7 +259,9 @@ export class ConfigRouteHandler {
                 }
                 // myRights fuer die UI-Chips (read only, run only, Editor-Sperre); ACL-Listen nur
                 // fuer Owner und Editoren.
-                res.status(200).json({ ok: true, data: result.data ? withMyRights(result.data, req.ctx) : result.data });
+                const data: any = result.data ? withMyRights(result.data, req.ctx) : result.data;
+                if (data && subpath === 'kennels' && this.kennelStats) await this.kennelStats.attachOne(data);
+                res.status(200).json({ ok: true, data });
             } else {
                 res.status(404).json({ error: result.error });
             }

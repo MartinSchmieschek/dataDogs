@@ -59,11 +59,22 @@ export interface ISaveKennelInput extends IUpdateInput {
  * The KennelController — a versioned captain for IKennelConfig entities.
  * Each save creates a new version row; the lineageId (user-chosen kennel ID) stays stable.
  */
+/** Wer die Statistik einer Lineage wegraeumt, wenn ihr Kennel stirbt (P4: KennelStatsService). */
+export interface IKennelStatsJanitor {
+    forgetKennel(lineageId: string): Promise<void>;
+}
+
 export class KennelController extends AbstractController<IKennelConfig> {
     private readonly KENNEL_TYPE = 'KennelConfig';
+    private statsJanitor: IKennelStatsJanitor | null = null;
 
     constructor(store: IStore) {
         super(store, 'KennelConfig');
+    }
+
+    /** Per Setter, weil der Stats-Dienst erst nach dem Controller entsteht (createHttpApplication). */
+    setStatsJanitor(janitor: IKennelStatsJanitor): void {
+        this.statsJanitor = janitor;
     }
 
     /**
@@ -463,6 +474,16 @@ export class KennelController extends AbstractController<IKennelConfig> {
             // If no versions found, try deleting by the id directly (fallback).
             if (versions.length === 0) {
                 await this.store.delete(id);
+            }
+
+            // Zaehler und Sterne sterben mit (P4 4.11). Der Kennel ist schon weg — scheitert das
+            // Aufraeumen, bleibt eine Waise, die der naechste Delete derselben Lineage mitnimmt.
+            if (this.statsJanitor) {
+                try {
+                    await this.statsJanitor.forgetKennel(lineageId);
+                } catch (err) {
+                    console.warn(`[KennelController.delete] stats of ${lineageId} not removed:`, err);
+                }
             }
 
             return { ok: true };

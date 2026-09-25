@@ -9,6 +9,7 @@ import type { KennelRunHandler } from '../../api/routes/KennelRunHandler';
 import type { IStore } from '../../store/IStore';
 import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import type { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
+import type { KennelStatsService } from '../../services/KennelStatsService';
 
 export interface BaseDogInfo {
     id: string;
@@ -48,6 +49,8 @@ export interface ToolDeps {
     projectRoot: string;
     /** In-memory snapshot store for the inspection tools. Created inside createMcpRouter. */
     snapshotCache: KennelSnapshotCache;
+    /** P4: `stats` an list_kennels und get_kennel. */
+    kennelStats: KennelStatsService;
 }
 
 export interface ToolResult {

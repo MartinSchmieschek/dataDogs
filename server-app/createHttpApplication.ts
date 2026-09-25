@@ -29,6 +29,8 @@ import { KennelSnapshotCache } from '../mcp/snapshots/KennelSnapshotCache';
 import { resolveAngularBrowserDir, resolvePublicDir } from './expressPaths';
 import { HeavyRequestLimiter } from './heavyRequestLimiter';
 import type { KennelCallCounter } from '../services/KennelCallCounter';
+import { KennelStatsService } from '../services/KennelStatsService';
+import type { IKennelStatsStore } from '../store/IKennelStatsStore';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 
@@ -44,6 +46,8 @@ export type CreateHttpApplicationInput = {
     resolveCacheDatabaseUrl: () => string;
     /** Zaehlt jeden Kennel-Lauf (P4); main.ts besitzt ihn und flusht ihn beim Shutdown. */
     callCounter: KennelCallCounter;
+    /** Aufrufe und Sterne (P4) — derselbe Store-Client wie die Kennels, kein eigener Pool. */
+    statsStore: IKennelStatsStore;
 };
 
 export type CreateHttpApplicationResult = {
@@ -190,6 +194,11 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     registry.register('nodes', nodesController);
     registry.register('kennels', kennelsController);
 
+    // P4: stats an jeder Kennel-Antwort. Ein Flush und ein Kennel-Delete machen das Memo ungueltig.
+    const kennelStats = new KennelStatsService(input.statsStore, input.callCounter);
+    input.callCounter.setOnFlushed(() => kennelStats.invalidate());
+    kennelsController.setStatsJanitor(kennelStats);
+
     // Die Selbsttest-Suite lief frueher GENAU HIER -- vor dem Montieren aller Routen und vor
     // httpServer.listen. Ein Fehlschlag, ein stiller Kill oder auch nur eine lange Laufzeit hat
     // damit den ganzen Dienst am Hochkommen gehindert: die Plattform sah keinen offenen Port und
@@ -214,7 +223,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const readmeRouteHandler = new ReadmeRouteHandler(serverRootDir);
     readmeRouteHandler.registerRoutes(app);
 
-    const routeHandler = new ConfigRouteHandler(registry, kennelsStore);
+    const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats);
     routeHandler.registerRoutes(app, '/api');
     // Rechte v2 (P3.5): /api/:subpath/:id/acl, …/acl/transfer, …/freeze, …/unfreeze.
     const aclRouteHandler = new AclRouteHandler(kennelsController, nodesController, authPrisma);
@@ -292,6 +301,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         baseDogsList,
         projectRoot: serverRootDir,
         snapshotCache,
+        kennelStats,
     };
     app.use('/mcp', createMcpRouter(toolDeps));
     app.use('/actions', createActionsRouter(toolDeps));

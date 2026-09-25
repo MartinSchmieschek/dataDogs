@@ -316,7 +316,7 @@ export function getKennelTools(): ToolDef[] {
                 if (!result.ok) return fail(result.error ?? 'list failed');
                 // W17 (8.17): what you may run is listed — run-only kennels included.
                 const visible = filterRunnable(result.data ?? [], ctx);
-                return ok(visible.map(leanKennel));
+                return ok(await deps.kennelStats.attach(visible.map(leanKennel)));
             },
         },
         {
@@ -336,8 +336,8 @@ export function getKennelTools(): ToolDef[] {
                 if (!result.ok || !result.data) return fail(result.error ?? 'not found');
                 const access = accessOf(result.data as any, ctx);
                 if (access === 'none') return fail(`Kennel ${args.id} not found`);
-                if (access === 'run') return ok(kennelRunHeader(result.data, ctx));
-                return ok(kennelHeader(result.data, ctx));
+                const header = access === 'run' ? kennelRunHeader(result.data, ctx) : kennelHeader(result.data, ctx);
+                return ok(await deps.kennelStats.attachOne(header));
             },
         },
         {
