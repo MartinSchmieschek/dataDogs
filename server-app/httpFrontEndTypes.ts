@@ -3,6 +3,8 @@ export type HttpFrontEndContext = {
     devUiOrigin: string;
     /** Nur production/integration gesetzt, sonst null. */
     angularBrowserDir: string | null;
+    /** `public/` (Quelle fuer /static und die Landing-Dateien unter public/landing/), sonst null. */
+    publicDir: string | null;
 };
 
 export type HttpFrontEndBinder = {

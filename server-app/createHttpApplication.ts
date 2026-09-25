@@ -84,7 +84,8 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
             ? (await import('./httpFrontEnd.development')).bindHttpFrontEnd
             : (await import('./httpFrontEnd.builtUi')).bindHttpFrontEnd;
 
-    const frontCtx: HttpFrontEndContext = { devUiOrigin, angularBrowserDir };
+    const publicDir = resolvePublicDir(serverRootDir);
+    const frontCtx: HttpFrontEndContext = { devUiOrigin, angularBrowserDir, publicDir };
 
     const app = express();
 
@@ -173,7 +174,6 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     // warten nicht vor der UI, die UI nicht hinter Besuchern. Vor /static und dem SPA-Fallback.
     HeavyRequestLimiter.publicRuns().applyTo(app);
 
-    const publicDir = resolvePublicDir(serverRootDir);
     if (publicDir) {
         app.use('/static', express.static(publicDir));
     }
