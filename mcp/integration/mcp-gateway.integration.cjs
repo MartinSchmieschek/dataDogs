@@ -37,6 +37,22 @@ const REQUIRED_TOOLS = [
   'get_snapshot_errors',
 ];
 
+/**
+ * Alte Muster, die ein Agent nicht mehr lesen darf — dieselbe Negativliste wie der Doc-Lint
+ * (scripts/check-doc-paths.cjs); Zeilen, die 308/legacy/alias/deprecated sagen, sind erlaubt.
+ */
+const NEGATIVE_ALLOWED_LINE = /308|legacy|alias|deprecated/i;
+const NEGATIVE = [/\/:kennelId\b/, /datadogs:\/\//i, /\bDATADOGS_[A-Z_]+/, /\bdataDogs\b/, /localhost:4300\/kennel\//, /(^|[^A-Za-z0-9_-])\/kennel\//i];
+
+function negativeHits(text) {
+  const hits = [];
+  String(text || '').split(/\r?\n/).forEach((line, idx) => {
+    if (NEGATIVE_ALLOWED_LINE.test(line)) return;
+    for (const re of NEGATIVE) if (re.test(line)) hits.push(`${idx + 1}: ${line.trim().slice(0, 80)}`);
+  });
+  return hits;
+}
+
 let rpcId = 0;
 const results = [];
 
@@ -164,6 +180,9 @@ async function run() {
       const si = envelope.result.serverInfo;
       if (si.name === 'slopdogs') pass('initialize', `${si.name} ${si.version}`);
       else fail('initialize', `serverInfo.name ${si.name} (expected slopdogs)`);
+      const instructions = String(envelope.result.instructions || '');
+      if (instructions.includes('slopdogs://skill')) pass('initialize instructions', 'names slopdogs://skill');
+      else fail('initialize instructions', 'slopdogs://skill missing');
     }
   } catch (e) {
     fail('initialize', e.message);
@@ -188,6 +207,9 @@ async function run() {
     }
     if (!texts[0] || texts[0] !== texts[1]) fail('resources/read', 'alias text differs or empty');
     else pass('resources/read', `${texts[0].length} chars, alias identical`);
+    const stale = negativeHits(texts[0]);
+    if (stale.length) fail('resources/read paths', `old patterns: ${stale.slice(0, 3).join(' | ')}`);
+    else pass('resources/read paths', 'no old patterns');
   } catch (e) {
     fail('resources', e.message);
   }

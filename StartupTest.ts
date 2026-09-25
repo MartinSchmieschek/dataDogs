@@ -41,7 +41,7 @@ import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
 import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
 import { getAclTools } from './mcp/tools/acl';
 import { toSwaggridCast } from './services/swaggridAdapter';
-import { LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
+import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
 /**
@@ -80,6 +80,8 @@ export class StartupTest {
         nodesController: Controller<ISerializedDogConfig>,
         kennelsController: AbstractController<IKennelConfig>,
         baseDogsMap: Map<string, any>,
+        /** Die fertig montierte Express-App — fuer den Abgleich Routentabelle <-> Stack. */
+        app?: any,
     ): Promise<TestResult[]> {
         if (isRuntimeLogVerbose()) {
             console.log('\n🧪 Starte Startup-Tests...\n');
@@ -123,13 +125,14 @@ export class StartupTest {
             await this.testPublicLimiterCoversPublicPaths();
             await this.testPublicLimiterQueuesAndReleases();
 
-            // P3: /k/, Segment-Regel, Alt-Weiche, HEAD ohne Lauf, Swagger unter /k
+            // P3: /k/, Segment-Regel, Alt-Weiche, HEAD ohne Lauf, Swagger unter /k, Routentabelle
             await this.testKennelIdRule();
             await this.testCreateRejectsCaseCollision(kennelsController as KennelController);
             await this.testLegacyRedirectKeepsQueryAndMethod();
             await this.testPublicUnknownIs404();
             await this.testPublicHeadDoesNotRun(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testSwaggerRedirectAndPaths(nodesStore, kennelsController as KennelController);
+            if (app) await this.testRouteTableMatchesExpressStack(app);
 
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
@@ -1597,6 +1600,35 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test: Express kennt genau die Routen der Routentabelle — Diff in beide Richtungen ist ein Fehler.
+     */
+    private async testRouteTableMatchesExpressStack(app: any): Promise<void> {
+        const testName = 'P3: Routentabelle == Express-Stack';
+        try {
+            const stack: any[] = app?.router?.stack ?? app?._router?.stack ?? [];
+            if (!stack.length) throw new Error('Express-Stack nicht lesbar');
+            const registered = new Set<string>();
+            for (const layer of stack) {
+                const p = layer?.route?.path;
+                if (typeof p === 'string') registered.add(p);
+            }
+            const expected = new Set<string>(
+                [...EXPRESS_APP_ROUTES, ...FRONTEND_ROUTES].filter(
+                    (p) => p !== LEGACY_ROUTE.kennel || KennelRunHandler.legacyRedirectEnabled(),
+                ),
+            );
+            const missing = [...expected].filter((p) => !registered.has(p));
+            const extra = [...registered].filter((p) => !expected.has(p));
+            if (missing.length || extra.length) {
+                throw new Error(`fehlt in Express: [${missing.join(', ')}]; fehlt in der Tabelle: [${extra.join(', ')}]`);
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 
