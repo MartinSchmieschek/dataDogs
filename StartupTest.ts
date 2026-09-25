@@ -21,6 +21,8 @@ import { AbstractController } from './api/AbstractController';
 import { KennelController } from './api/KennelController';
 import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
+import { HeavyRequestLimiter } from './server-app/heavyRequestLimiter';
+import { EventEmitter } from 'events';
 import { CompilerCache } from './services/CompilerCache';
 import { generateVersionId, generateLineageId } from './api/utils/versioning';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
@@ -96,6 +98,10 @@ export class StartupTest {
             // TypeDefBuilder-Tests
             await this.testTypeDefBuilder();
             await this.testPactFromSourceType();
+
+            // Gate: zweite Schleuse fuer oeffentliche Kennel-Laeufe
+            await this.testPublicLimiterCoversPublicPaths();
+            await this.testPublicLimiterQueuesAndReleases();
 
             // SerializedDog-Tests
             await this.testSerializedDogExists(nodesStore);
@@ -1126,6 +1132,95 @@ export class StartupTest {
             if (globalDeclarations < 1) {
                 throw new Error('Zu wenige declare global Blocks');
             }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Die Public-Schleuse trifft oeffentliche Kennel-Laeufe und die Spec-Erzeugung —
+     * aber keine Angular-Artefakte, keine festen Segmente, keine Heavy-Pfade und kein HEAD.
+     */
+    private async testPublicLimiterCoversPublicPaths(): Promise<void> {
+        const testName = 'Gate: Public-Schleuse trifft /:kennelId und swagger.json';
+        try {
+            const limiter = HeavyRequestLimiter.publicRuns();
+            const hits: Array<[string, string]> = [
+                ['/wetter', 'GET'],
+                ['/wetter/', 'POST'],
+                ['/api/kennels/w/swagger.json', 'GET'],
+            ];
+            const misses: Array<[string, string | undefined]> = [
+                ['/kennels', undefined],
+                ['/main-abc.js', undefined],
+                ['/favicon.ico', undefined],
+                ['/api/kennels', undefined],
+                ['/kennel/w', undefined],
+                ['/wetter', 'HEAD'],
+            ];
+            for (const [path, method] of hits) {
+                if (!limiter.isHeavy(path, method)) throw new Error(`${method} ${path} sollte gebremst werden`);
+            }
+            for (const [path, method] of misses) {
+                if (limiter.isHeavy(path, method)) throw new Error(`${method ?? '*'} ${path} darf nicht gebremst werden`);
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: Die Schleuse laesst maxConcurrent durch, reiht den Rest ein, gibt den Platz bei
+     * 'finish' weiter und antwortet nach dem Wartebudget mit 503 + Retry-After.
+     */
+    private async testPublicLimiterQueuesAndReleases(): Promise<void> {
+        const testName = 'Gate: Public-Schleuse reiht ein, gibt frei, 503 nach Wartebudget';
+        try {
+            const limiter = new HeavyRequestLimiter({
+                name: 'public',
+                paths: [/^\/x$/],
+                methods: ['GET', 'POST'],
+                maxConcurrent: 2,
+                queueTimeoutMs: 200,
+            });
+            let middleware: any = null;
+            limiter.applyTo({ use: (mw: any) => { middleware = mw; } } as any);
+            if (typeof middleware !== 'function') throw new Error('applyTo hat keine Middleware montiert');
+
+            const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+            const fire = () => {
+                const res: any = new EventEmitter();
+                res.statusCode = 200;
+                res.headers = {} as Record<string, string>;
+                res.setHeader = (k: string, v: string) => { res.headers[k.toLowerCase()] = v; };
+                res.status = (code: number) => { res.statusCode = code; return res; };
+                res.json = (body: any) => { res.body = body; return res; };
+                const state = { passed: false, res };
+                middleware({ path: '/x', method: 'GET' }, res, () => { state.passed = true; });
+                return state;
+            };
+
+            const r1 = fire();
+            const r2 = fire();
+            const r3 = fire();
+            await tick();
+            if (!r1.passed || !r2.passed) throw new Error('die ersten zwei Requests muessen durch');
+            if (r3.passed) throw new Error('der dritte Request muss warten');
+
+            r1.res.emit('finish');
+            await tick();
+            if (!r3.passed) throw new Error('der dritte Request muss nach finish durch');
+
+            const r4 = fire();
+            await tick();
+            if (r4.passed) throw new Error('der vierte Request muss warten (zwei laufen noch)');
+            await new Promise<void>((resolve) => setTimeout(resolve, 300));
+            if (r4.passed) throw new Error('der vierte Request darf nie durch');
+            if (r4.res.statusCode !== 503) throw new Error(`erwartet 503, erhalten ${r4.res.statusCode}`);
+            if (r4.res.headers['retry-after'] !== '1') throw new Error(`Retry-After erwartet 1, erhalten ${r4.res.headers['retry-after']}`);
 
             this.addResult(testName, true);
         } catch (error) {

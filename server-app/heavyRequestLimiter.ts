@@ -15,6 +15,11 @@
  * Bewusst grosszuegig: eine zu enge Bremse bricht die UI, die beim Seitenaufbau
  * mehrere dieser Pfade parallel zieht. Die Schleuse soll die SPITZE kappen, nicht
  * den Normalbetrieb takten.
+ *
+ * Zwei Instanzen, zwei Toepfe: `heavy()` fuer UI-Listen und Runs der Werkstatt,
+ * `publicRuns()` fuer oeffentliche Kennel-Laeufe (`/:kennelId`, swagger.json).
+ * Getrennt, damit die UI nicht hinter einer Besucherwelle wartet — und Besucher
+ * nicht an jeder Bremse vorbeilaufen.
  */
 
 import type { Application, RequestHandler } from 'express';
@@ -31,6 +36,16 @@ const DEFAULT_MAX_CONCURRENT_HEAVY_REQUESTS = 8;
 /** Wartebudget in der Schlange, bevor 503 gemeldet wird. */
 const DEFAULT_HEAVY_REQUEST_QUEUE_TIMEOUT_MS = 20_000;
 
+/**
+ * Breite der Public-Schleuse. 4 statt 8: 512 MB, --max-old-space-size=320, und jeder
+ * oeffentliche Lauf haelt seine Waves im Heap. Gesetzt, nicht gemessen — wer misst,
+ * setzt MAX_CONCURRENT_PUBLIC_RUNS.
+ */
+const DEFAULT_MAX_CONCURRENT_PUBLIC_RUNS = 4;
+
+/** Wartebudget in der Public-Schlange, bevor 503 gemeldet wird. */
+const DEFAULT_PUBLIC_RUN_QUEUE_TIMEOUT_MS = 20_000;
+
 /** Liest einen positiven Integer aus der Umgebung; alles andere faellt auf den Default. */
 function positiveIntFromEnv(name: string, fallback: number): number {
     const parsed = Number.parseInt((process.env[name] || '').trim(), 10);
@@ -40,6 +55,17 @@ function positiveIntFromEnv(name: string, fallback: number): number {
 interface QueuedRequest {
     grant: (granted: boolean) => void;
     timer: ReturnType<typeof setTimeout>;
+}
+
+export interface HeavyRequestLimiterOptions {
+    /** Fuer Log und 503-Text: 'heavy' | 'public'. */
+    name: string;
+    /** Getestet gegen req.path. */
+    paths: readonly RegExp[];
+    /** Gebremste Methoden; ohne Angabe alle. */
+    methods?: readonly string[];
+    maxConcurrent: number;
+    queueTimeoutMs: number;
 }
 
 export class HeavyRequestLimiter {
@@ -54,19 +80,56 @@ export class HeavyRequestLimiter {
         /^\/api\/kennels\/[^/]+\/(run|execute)\/?$/,
     ];
 
+    /**
+     * Die oeffentlichen Laeufe: `/:kennelId` (ein Segment) und die Spec-Erzeugung.
+     * Die Schleuse sitzt VOR express.static und dem SPA-Fallback — deshalb fallen alles
+     * mit Punkt im Namen (Angular-Artefakte, favicon.ico) und jedes feste Segment heraus
+     * (Backend-Praefixe, SPA-Routen, KENNEL_RESERVED_SLUGS).
+     * Bekannte Luecke bis `/k/`: ein Kennel-Name mit Punkt wird nicht gebremst.
+     * Disjunkt zu HEAVY_PATHS — kein Request wird doppelt gebremst.
+     */
+    private static readonly PUBLIC_PATHS: readonly RegExp[] = [
+        /^\/(?!(?:api|auth|static|mcp|actions|save|kennel|kennels|edit|nodes|\.well-known)(?:\/|$))[^/.]+\/?$/,
+        /^\/api\/kennels\/[^/]+\/swagger\.json\/?$/,
+    ];
+
+    /** UI-Listen und Runs der Werkstatt. */
+    public static heavy(): HeavyRequestLimiter {
+        return new HeavyRequestLimiter({
+            name: 'heavy',
+            paths: HeavyRequestLimiter.HEAVY_PATHS,
+            maxConcurrent: positiveIntFromEnv('MAX_CONCURRENT_HEAVY_REQUESTS', DEFAULT_MAX_CONCURRENT_HEAVY_REQUESTS),
+            queueTimeoutMs: positiveIntFromEnv('HEAVY_REQUEST_QUEUE_TIMEOUT_MS', DEFAULT_HEAVY_REQUEST_QUEUE_TIMEOUT_MS),
+        });
+    }
+
+    /** Oeffentliche Kennel-Laeufe. HEAD bleibt ungebremst — er fuehrt keinen Lauf aus. */
+    public static publicRuns(): HeavyRequestLimiter {
+        return new HeavyRequestLimiter({
+            name: 'public',
+            paths: HeavyRequestLimiter.PUBLIC_PATHS,
+            methods: ['GET', 'POST'],
+            maxConcurrent: positiveIntFromEnv('MAX_CONCURRENT_PUBLIC_RUNS', DEFAULT_MAX_CONCURRENT_PUBLIC_RUNS),
+            queueTimeoutMs: positiveIntFromEnv('PUBLIC_RUN_QUEUE_TIMEOUT_MS', DEFAULT_PUBLIC_RUN_QUEUE_TIMEOUT_MS),
+        });
+    }
+
     private active = 0;
     private readonly waiting: QueuedRequest[] = [];
+    private readonly name: string;
+    private readonly paths: readonly RegExp[];
+    /** Grossgeschriebene Methoden; null = alle. */
+    private readonly methods: ReadonlySet<string> | null;
+    private readonly maxConcurrent: number;
+    private readonly queueTimeoutMs: number;
 
-    constructor(
-        private readonly maxConcurrent: number = positiveIntFromEnv(
-            'MAX_CONCURRENT_HEAVY_REQUESTS',
-            DEFAULT_MAX_CONCURRENT_HEAVY_REQUESTS,
-        ),
-        private readonly queueTimeoutMs: number = positiveIntFromEnv(
-            'HEAVY_REQUEST_QUEUE_TIMEOUT_MS',
-            DEFAULT_HEAVY_REQUEST_QUEUE_TIMEOUT_MS,
-        ),
-    ) {}
+    constructor(options: HeavyRequestLimiterOptions) {
+        this.name = options.name;
+        this.paths = options.paths;
+        this.methods = options.methods ? new Set(options.methods.map((m) => m.toUpperCase())) : null;
+        this.maxConcurrent = options.maxConcurrent;
+        this.queueTimeoutMs = options.queueTimeoutMs;
+    }
 
     /**
      * Haengt die Schleuse in die App. Muss VOR den Route-Handlern montiert werden —
@@ -78,7 +141,7 @@ export class HeavyRequestLimiter {
 
     private middleware(): RequestHandler {
         return (req, res, next) => {
-            if (!this.isHeavy(req.path)) {
+            if (!this.isHeavy(req.path, req.method)) {
                 next();
                 return;
             }
@@ -88,7 +151,7 @@ export class HeavyRequestLimiter {
                     res.setHeader('Retry-After', String(Math.ceil(this.queueTimeoutMs / 1000)));
                     res.status(503).json({
                         error:
-                            `Server ist ausgelastet: mehr als ${this.maxConcurrent} teure Anfragen gleichzeitig. `
+                            `Server ist ausgelastet (${this.name}): mehr als ${this.maxConcurrent} teure Anfragen gleichzeitig. `
                             + 'Bitte in Kuerze erneut versuchen.',
                     });
                     return;
@@ -111,8 +174,13 @@ export class HeavyRequestLimiter {
         };
     }
 
-    private isHeavy(path: string): boolean {
-        return HeavyRequestLimiter.HEAVY_PATHS.some((pattern) => pattern.test(path));
+    /**
+     * Trifft die Schleuse diesen Request? Ohne `method` zaehlt nur der Pfad.
+     * Oeffentlich fuer den StartupTest.
+     */
+    public isHeavy(path: string, method?: string): boolean {
+        if (this.methods && method !== undefined && !this.methods.has(method.toUpperCase())) return false;
+        return this.paths.some((pattern) => pattern.test(path));
     }
 
     /** Liefert true, sobald ein Platz frei ist — oder false, wenn das Wartebudget reisst. */

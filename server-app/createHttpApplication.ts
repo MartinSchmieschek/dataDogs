@@ -168,7 +168,10 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     // Schleuse vor den teuren Pfaden — MUSS vor allen Route-Handlern montiert sein.
     // Body-Limits deckeln nur die Eingabe; die Spitze entsteht durch parallele Runs
     // und Listen-Abfragen, die gleichzeitig im Heap stehen.
-    new HeavyRequestLimiter().applyTo(app);
+    HeavyRequestLimiter.heavy().applyTo(app);
+    // Zweiter Topf fuer oeffentliche Kennel-Laeufe (/:kennelId, swagger.json): Besucher
+    // warten nicht vor der UI, die UI nicht hinter Besuchern. Vor /static und dem SPA-Fallback.
+    HeavyRequestLimiter.publicRuns().applyTo(app);
 
     const publicDir = resolvePublicDir(serverRootDir);
     if (publicDir) {
