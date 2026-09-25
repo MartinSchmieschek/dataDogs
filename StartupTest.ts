@@ -19,7 +19,7 @@ import {
 import { Controller } from './api/Controller';
 import { AbstractController } from './api/AbstractController';
 import { KennelController } from './api/KennelController';
-import { ControllerRegistry } from './api/routes/ConfigRouteHandler';
+import { ControllerRegistry, ConfigRouteHandler } from './api/routes/ConfigRouteHandler';
 import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { HeavyRequestLimiter } from './server-app/heavyRequestLimiter';
 import { EventEmitter } from 'events';
@@ -90,6 +90,7 @@ export class StartupTest {
             await this.testKennelNodeCommentMutations(kennelsController);
             await this.testKennelEdgeCommentMutations(kennelsController);
             await this.testKennelStatusTrackingVersioning(kennelsController);
+            await this.testVersionsRespectCanRead(kennelsController as KennelController);
             
             // BaseDogs-Tests
             await this.testBaseDogsAvailability(baseDogsMap);
@@ -1296,6 +1297,60 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Minimal-Response fuer Route-Handler ohne Express: haelt Status, Body und Header fest.
+     */
+    private fakeResponse(): { res: any; out: { statusCode: number; body: any; headers: Record<string, string> } } {
+        const out = { statusCode: 200, body: undefined as any, headers: {} as Record<string, string> };
+        const res: any = {
+            status(code: number) { out.statusCode = code; return res; },
+            json(body: any) { out.body = body; return res; },
+            send(body: any) { out.body = body; return res; },
+            setHeader(k: string, v: string) { out.headers[k.toLowerCase()] = v; },
+        };
+        return { res, out };
+    }
+
+    /**
+     * Test: GET /api/:subpath/:id/versions prueft canRead — Regressionstest, kein Codefix (W5).
+     */
+    private async testVersionsRespectCanRead(kennelsController: KennelController): Promise<void> {
+        const testName = 'ACL: /versions respektiert canRead';
+        const kennelId = `test-versions-acl-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({
+                id: kennelId,
+                name: `Versions ACL ${kennelId}`,
+                dogIds: [],
+                visibility: 'private',
+                ownerId: 'U1',
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+
+            const registry = new ControllerRegistry();
+            registry.register('kennels', kennelsController);
+            const handler = new ConfigRouteHandler(registry);
+            const call = async (ctx: any) => {
+                const { res, out } = this.fakeResponse();
+                await (handler as any).handleGetVersions({ params: { subpath: 'kennels', id: kennelId }, ctx }, res);
+                return out;
+            };
+
+            const anon = await call({ user: null, isSuperUser: false });
+            if (anon.statusCode !== 404) throw new Error(`anonym: erwartet 404, erhalten ${anon.statusCode}`);
+
+            const owner = await call({ user: { id: 'U1', email: 'u1@test.invalid', name: null }, isSuperUser: false });
+            if (owner.statusCode !== 200) throw new Error(`Owner: erwartet 200, erhalten ${owner.statusCode}`);
+            if (!Array.isArray(owner.body?.data)) throw new Error('Owner: data ist kein Array');
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 
