@@ -607,10 +607,13 @@ JSON-Roundtrip an den Schnittstellen. Folgen:
 - **VM-Global-Capabilities (Welle 7):** SerializedDogs sehen folgende globale
   Capabilities im VM-Context -- **keine Parent-Deklaration noetig**:
 
-  - `console` -- Logging
-  - `fetch` -- HTTP-Requests
+  - `console` -- Logging (laeuft ueber die Bridge; der Server ersetzt benutzte Schluessel-Werte vor der Ausgabe)
+  - `fetch` -- HTTP-Requests an oeffentliche Ziele; private und lokale Netze (127/8, 10/8, 172.16/12,
+    192.168/16, 169.254/16, ::1, fc00::/7) sind gesperrt (`egress_blocked`), auch nach Umleitungen
   - `jsonStore.get/set/delete/has/list/snapshot` -- persistente Key-Value-Ablage
-    (eigene SQLite-Truhe, async)
+    (eigene SQLite-Truhe, async) -- Klartext, keine Schluessel hier ablegen
+  - `keys.fetch(url, opts)` / `keys.list()` -- Aufrufe mit hinterlegten Schluesseln ueber
+    `{{key:<alias>}}`, siehe "Keys" unten; kein `keys.get`
 
   Beispiel:
 
@@ -681,8 +684,13 @@ return JSON.parse(r.body);
 - **Whose key?** Always the keys of whoever **runs** the kennel — never the kennel owner's. Anonymous runs and
   the dev super-user have none (`keys_unavailable`); a foreign dog you may only run, not read, gets none of
   yours. `keys.list()` returns your aliases, `last4` and domains.
-- Never put a secret into dog code, `defaultQuery`, `defaultBody` or `jsonStore` — they are plain text there. A
-  database reset deletes the key store: the user adds the key again.
+- **Public kennels with the owner's key:** only by opt-in — `set_key {…, kennelGrants: ['<your-kennel-id>'],
+  quotaPerDay: 100}`. Then runs of exactly those kennels use the key for any runner (anonymous visitors included)
+  when the runner has no key of that alias; the owner pays, capped per UTC day (`quota_exceeded`).
+- Never put a secret into dog code, `defaultQuery`, `defaultBody` or `jsonStore` — they are plain text there, and
+  the export replaces raw key patterns (`sk-…`, `AKIA…`, `ghp_…`, `Bearer …`) with `[redacted]`; `{{key:…}}`
+  placeholders travel unchanged, the importer needs his own key of that alias. A database reset deletes the key
+  store: the user adds the key again.
 
 ### VM-Variable-Naming
 

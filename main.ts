@@ -136,7 +136,8 @@ async function start() {
     },
         'jsonStore.get(key) / .set(key, value) / .delete(key) / .has(key) / .list() / .snapshot() — '
         + 'persistente JSON-Ablage, direkt als Global im Dog-Code verfuegbar (kein Parent noetig, alle Methoden async). '
-        + 'Keys sind pro eingeloggtem User isoliert. Nutze sie fuer Caches und Zustand, statt dir eine eigene Ablage zu bauen.');
+        + 'Keys sind pro eingeloggtem User isoliert. Nutze sie fuer Caches und Zustand, statt dir eine eigene Ablage zu bauen. '
+        + 'Die Ablage ist Klartext: API-Schluessel gehoeren nicht hierher, sondern in den Key-Store (set_key, dann keys.fetch).');
 
     // Lobby-Hub: In-Memory-Raeume fuer den WebSocketChannelRetriever.
     const channelHub = new ChannelHub({

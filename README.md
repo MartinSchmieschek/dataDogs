@@ -446,6 +446,16 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 
 `PUT /api/nodes/:id` no longer takes `ownerId`/`editors`/`viewers`/`runners`/`frozen` — rights move only through `/acl`, `/acl/transfer`, `/freeze` and `/unfreeze`.
 
+### Keys (user key store)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/keys` | Your keys, masked: `{alias, last4, allowedDomains, kennelGrants, quotaPerDay, createdAt, lastUsedAt}` — never the value |
+| `POST` | `/api/keys` | Create or replace `{alias, secret, allowedDomains[], kennelGrants?, quotaPerDay?}`; `400 invalid_alias\|invalid_secret\|invalid_domains\|quota_required`, `403 no_identity` (super-user without user), `503 keystore_disabled` (no `KEYSTORE_MASTER_KEY_V1`) |
+| `DELETE` | `/api/keys/:alias` | Delete one of yours; foreign and unknown both answer `404` |
+
+Login required. Keys are AES-256-GCM encrypted in the auth database and never returned; dogs use them through `keys.fetch(url, opts)` with `{{key:<alias>}}` — substituted on the server, only to the key's `allowedDomains` (https, no private networks, no redirects), with the keys of whoever runs the kennel. `kennelGrants` (opt-in, needs `quotaPerDay`) lets runs of your own listed kennels use the key for any runner. A database reset deletes the key store. MCP: `set_key`, `list_keys`, `delete_key` — no `get_key`.
+
 ### Public
 
 | Method | Endpoint | Purpose |
