@@ -13,6 +13,7 @@ import { getKennelTools } from '../tools/kennels';
 import { getNodeTools } from '../tools/nodes';
 import { getMetaTools } from '../tools/meta';
 import { getAclTools } from '../tools/acl';
+import { getKeyTools } from '../tools/keys';
 import { paramString } from '../../api/utils/routeParams';
 import { getSnapshotTools } from '../tools/snapshots';
 import { type ToolDeps, type ToolDef } from '../tools/types';
@@ -62,6 +63,7 @@ export function createActionsRouter(deps: ToolDeps): Router {
         ...getNodeTools(),
         ...getSnapshotTools(),
         ...getAclTools(),
+        ...getKeyTools(),
         ...getMetaTools(),
     ];
     const toolMap = new Map(tools.map((t) => [t.name, t]));

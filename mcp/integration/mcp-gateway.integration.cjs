@@ -39,6 +39,10 @@ const REQUIRED_TOOLS = [
   'grant_access',
   'freeze_entity',
   'unfreeze_entity',
+  // P4c Key-Store (kein Lese-Werkzeug, niemals)
+  'set_key',
+  'list_keys',
+  'delete_key',
 ];
 
 /**
@@ -180,6 +184,97 @@ async function mcpCall(toolName, args = {}) {
     throw new Error(`${toolName}: tool error — ${typeof t === 'string' ? t : JSON.stringify(t)}`);
   }
   return toolTextContent(envelope);
+}
+
+/** Ein Werkzeug-Aufruf, der den Fehlertext zurueckgibt statt zu werfen — fuer erwartete Fehler. */
+async function mcpCallRaw(toolName, args = {}) {
+  const { status, raw, envelope } = await mcpRequest('tools/call', { name: toolName, arguments: args });
+  return { status, raw, isError: !!envelope?.result?.isError, value: toolTextContent(envelope) };
+}
+
+/** Ein Dog-Kennel per build_kennel, einmal ausgefuehrt, danach geloescht; liefert die rohen Antworten. */
+async function runProbeKennel(id, tsCode) {
+  const raws = [];
+  try {
+    const built = await mcpCallRaw('build_kennel', { id, name: id, refresh: false, dogs: [{ displayName: 'P4cProbe', tsCode }] });
+    raws.push(built.raw);
+    if (built.isError) throw new Error(`build_kennel: ${String(built.value).slice(0, 200)}`);
+    const exec = await mcpCallRaw('execute_kennel', { id });
+    raws.push(exec.raw);
+    if (exec.isError) throw new Error(`execute_kennel: ${String(exec.value).slice(0, 200)}`);
+    return { result: exec.value, raws };
+  } finally {
+    try { raws.push((await mcpCallRaw('delete_kennel', { id })).raw); } catch { /* best effort */ }
+  }
+}
+
+async function keyStoreChecks(toolNames) {
+  const readers = toolNames.filter((n) => /^(get|read|show|reveal)_?keys?$/.test(n));
+  if (readers.length) fail('keys: no read tool', `tools/list carries ${readers.join(', ')}`);
+  else pass('keys: no read tool', `${toolNames.filter((n) => /_keys?$/.test(n)).join(', ')}`);
+
+  const secret = `p4c-it-${require('crypto').randomBytes(16).toString('hex')}`;
+  const alias = 'p4cgateway';
+  const raws = [];
+  try {
+    const set = await mcpCallRaw('set_key', { alias, secret, allowedDomains: ['httpbin.org'] });
+    raws.push(set.raw);
+    if (!bearer) {
+      if (set.isError && /^no_identity/.test(String(set.value))) pass('set_key', 'no_identity — super-user mode (dev), T11 needs MCP_BEARER');
+      else fail('set_key', `super-user without identity: ${String(set.raw).slice(0, 160)}`);
+      return;
+    }
+    if (set.isError || set.value?.key?.last4 !== secret.slice(-4)) {
+      fail('set_key', String(set.raw).slice(0, 200));
+      return;
+    }
+    pass('set_key', `alias ${alias}, last4 ${set.value.key.last4}`);
+
+    const list = await mcpCallRaw('list_keys', {});
+    raws.push(list.raw);
+    const mine = (list.value?.keys || []).find((k) => k.alias === alias);
+    if (!mine || mine.last4 !== secret.slice(-4) || 'secret' in mine) fail('list_keys', String(list.raw).slice(0, 200));
+    else pass('list_keys', `masked (last4 ${mine.last4}, domains ${mine.allowedDomains.join(',')})`);
+
+    const dog = [
+      `const r = await keys.fetch('https://httpbin.org/anything?k={{key:${alias}}}', { headers: { Authorization: 'Bearer {{key:${alias}}}' } });`,
+      'let echoed = null;',
+      'try { echoed = JSON.parse(r.body).headers.Authorization; } catch (e) { echoed = String(r.body).slice(0, 80); }',
+      'console.log("p4c-gateway echo", echoed);',
+      'return { status: r.status, echoed };',
+    ].join('\n');
+    const run = await runProbeKennel(`p4c-gateway-${Date.now()}`, dog);
+    raws.push(...run.raws);
+    if (run.result?.status !== 200) fail('keys.fetch via execute_kennel', JSON.stringify(run.result).slice(0, 200));
+    else if (run.result.echoed !== 'Bearer [redacted:key]') fail('keys.fetch via execute_kennel', `echo ${run.result.echoed}`);
+    else pass('keys.fetch via execute_kennel', `status 200, upstream echo = ${run.result.echoed}`);
+  } catch (e) {
+    fail('keys', e.message);
+  } finally {
+    try { raws.push((await mcpCallRaw('delete_key', { alias })).raw); } catch { /* best effort */ }
+    const leaks = raws.filter((r) => [secret, encodeURIComponent(secret)].some((s) => String(r).includes(s)));
+    if (leaks.length) fail('keys: no plaintext in responses', `${leaks.length} response(s) carry the value`);
+    else pass('keys: no plaintext in responses', `${raws.length} responses clean`);
+  }
+}
+
+async function egressChecks() {
+  const targets = ['http://127.0.0.1:9/', 'http://169.254.169.254/latest/meta-data/'];
+  const dog = [
+    'const out = {};',
+    `for (const u of ${JSON.stringify(targets)}) { try { const r = await fetch(u); out[u] = 'reached ' + r.status; } catch (e) { out[u] = String(e.message); } }`,
+    "try { out.public = (await fetch('https://example.com/')).status; } catch (e) { out.public = String(e.message); }",
+    'return out;',
+  ].join('\n');
+  try {
+    const { result } = await runProbeKennel(`p4c-egress-${Date.now()}`, dog);
+    const open = targets.filter((t) => !String(result?.[t]).startsWith('egress_blocked'));
+    if (open.length) fail('egress blocklist', open.map((t) => `${t} -> ${result?.[t]}`).join(' | '));
+    else if (result?.public !== 200) fail('egress blocklist', `public target: ${result?.public}`);
+    else pass('egress blocklist', `127.0.0.1 + 169.254.169.254 blocked, example.com ${result.public}`);
+  } catch (e) {
+    fail('egress blocklist', e.message);
+  }
 }
 
 function shallowEqualLead(a, b) {
@@ -492,6 +587,14 @@ async function run() {
   } catch (e) {
     fail('legacy 308 counts not', e.message);
   }
+
+  // P4c T11: set_key per MCP, list_keys maskiert, kein Lese-Werkzeug; ein Kennel mit {{key:…}} laeuft gegen
+  // einen oeffentlichen Echo-Dienst (httpbin.org echot den Authorization-Header) — der Wert steht in
+  // keiner Antwort. Ohne Bearer (Super-User, dev) hat der Aufrufer keine Identitaet: no_identity.
+  await keyStoreChecks(toolNames);
+
+  // 8.9: der native fetch im Dog erreicht keine privaten Netze; ein oeffentliches Ziel geht weiter.
+  await egressChecks();
 
   // P3.5 T7: ohne Token kein MCP, sobald der Server Auth verlangt (mcp.ts: 401 + WWW-Authenticate).
   // Im Super-User-Modus (MCP_AUTH_REQUIRED nicht true, nur dev) antwortet er 200 — das wird benannt.

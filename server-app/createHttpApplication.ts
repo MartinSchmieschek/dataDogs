@@ -359,6 +359,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         kennelStats,
         callCounter: input.callCounter,
         dogStats,
+        keyStore,
     };
     app.use('/mcp', createMcpRouter(toolDeps));
     app.use('/actions', createActionsRouter(toolDeps));

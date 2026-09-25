@@ -12,6 +12,7 @@ import type { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 import type { KennelStatsService } from '../../services/KennelStatsService';
 import type { KennelCallCounter } from '../../services/KennelCallCounter';
 import type { DogStatsService } from '../../services/DogStatsService';
+import type { KeyStoreService } from '../../services/KeyStoreService';
 
 export interface BaseDogInfo {
     id: string;
@@ -57,6 +58,8 @@ export interface ToolDeps {
     callCounter: KennelCallCounter;
     /** P4b: `stats` an list_nodes/get_node, `usage` an get_node, dogStats in health_check. */
     dogStats: DogStatsService;
+    /** P4c: set_key/list_keys/delete_key — derselbe Key-Store wie /api/keys. */
+    keyStore: KeyStoreService;
 }
 
 export interface ToolResult {

@@ -70,7 +70,7 @@ End with one line: *"What shall we hunt?"* or similar.
 
 The greeting is for the **opening**, not every turn.
 
-## What you can do — 50 tools
+## What you can do — 53 tools
 
 **Start here — discovery, not guessing.** `list_nodes` is the inventory: every entry carries its `description`, its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax `build_kennel` wants) and, for Pacts, `isPact: true` plus the demanded shape in `pactTypeDef`. Some entries also carry a `guidance` field — a binding instruction straight from the dog class, for infrastructure you must **not** re-implement. Search it by keyword (name, displayName and description are matched) instead of inventing class names. `describe_tool` gives you any tool's full schema.
 
@@ -87,6 +87,8 @@ The greeting is for the **opening**, not every turn.
 **Inspecting a run (cheap, focused):** `get_kennel_snapshot`, `get_kennel_snapshot_summary`, `get_kennel_snapshot_lead_result`, `get_snapshot_graph`, `get_snapshot_layout`, `get_snapshot_errors`, `list_snapshot_waves`, `find_snapshot_dogs`, `get_snapshot_lead_dependency_path` and the per-dog readers `get_snapshot_dog`, `get_snapshot_dog_result`, `get_snapshot_dog_code`, `get_snapshot_dog_error`, `get_snapshot_dog_chain`, `get_snapshot_dog_parents`, `get_snapshot_dog_typedef`, `get_snapshot_dog_vmcontext`, `get_snapshot_dog_read_by`, `get_snapshot_dog_read_from`.
 
 **Access (ACL):** `grant_access`, `revoke_access`, `release_ownership`, `list_collaborators`, `freeze_entity`, `unfreeze_entity`. See the visibility section below for who can call what.
+
+**Keys:** `set_key`, `list_keys` (masked), `delete_key` — no tool reads a key back. Agents may set keys, never read them; dogs use `keys.fetch` with `{{key:alias}}` (see "Keys" below).
 
 **Meta:** `get_readme` (call once at start), `health_check`, `describe_tool`.
 
@@ -653,6 +655,34 @@ JSON-Roundtrip an den Schnittstellen. Folgen:
   `vmTimeoutMs` > `SLOPDOGS_VM_TIMEOUT_MS` env > 10000ms. **Niemals persistent**
   am Kennel haengen -- gehoert pro Aufruf mitgegeben, nicht in `create_kennel` /
   `update_kennel`.
+
+### Keys — API-Schluessel ohne Klartext im Dog
+
+A user stores a secret once under an alias (`set_key {alias, secret, allowedDomains}`, or `POST /api/keys`
+in the app). **Agents may set keys, never read them** — no tool returns the value, and `list_keys` shows only
+`alias`, `last4`, the domains and the dates. In dog code the key is used through the host:
+
+```ts
+const r = await keys.fetch('https://api.openai.com/v1/chat/completions', {
+  method: 'POST',
+  headers: { Authorization: 'Bearer {{key:openai}}', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'hi' }] }),
+});
+// r = { status, headers (no set-cookie/authorization), body: string }
+return JSON.parse(r.body);
+```
+
+- `{{key:<alias>}}` works in the url (path/query, not the host), in header values and in the body. The server
+  substitutes it behind the worker membrane; the dog never sees the value, and any echo of it comes back as
+  `[redacted:key]` — in the response, waves, snapshots, errors and logs.
+- Only the key's `allowedDomains` (exact host or `*.example.com`), https only, no private networks, no
+  redirects (a 3xx comes back as status). Errors: `keys_unavailable`, `key_not_found:<alias>`,
+  `domain_not_allowed`, `quota_exceeded`, `key_undecryptable:<alias>`.
+- **Whose key?** Always the keys of whoever **runs** the kennel — never the kennel owner's. Anonymous runs and
+  the dev super-user have none (`keys_unavailable`); a foreign dog you may only run, not read, gets none of
+  yours. `keys.list()` returns your aliases, `last4` and domains.
+- Never put a secret into dog code, `defaultQuery`, `defaultBody` or `jsonStore` — they are plain text there. A
+  database reset deletes the key store: the user adds the key again.
 
 ### VM-Variable-Naming
 

@@ -2476,6 +2476,8 @@ export class StartupTest {
             callCounter: this.testCallCounter,
             dogStats: new DogStatsService(StartupTest.NO_DOG_STATS_STORE, this.testCallCounter,
                 new KennelStatsService(StartupTest.NO_STATS_STORE, this.testCallCounter)),
+            // Ein Key-Store ohne Master-Key (P4c): die Werkzeug-Tests fassen keine Schluessel an.
+            keyStore: new KeyStoreService(null as unknown as KeyStorePrisma, null),
         };
     }
 
