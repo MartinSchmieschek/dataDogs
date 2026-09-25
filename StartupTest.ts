@@ -335,7 +335,9 @@ export class StartupTest {
                 await this.testKeysAnonPublicYield(keysRun);
                 await this.testKeysLogScrub(keysRun);
                 await this.testKeysSuperUserTrap(keysRun);
+                await this.testKeysSnapshotCrossRead(keysRun, kennelsStore, nodesController);
             }
+            await this.testExportScansRawKeys(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testWorkerFetchBlocksPrivateNetworks(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
@@ -5627,6 +5629,92 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test T4 (Snapshot-Quergriff): U1 refresht einen Snapshot mit Key-Nutzung; U2 liest ihn nicht
+     * (Snapshot je Betrachter), U1s Snapshot traegt den Wert nicht. Defense-in-Depth: selbst Waves,
+     * die den rohen Wert truegen, legt der Cache nur bereinigt ab; ein Laufzeitfehler verliert ihn
+     * aus Text und Stack.
+     */
+    private async testKeysSnapshotCrossRead(deps: KeysTestDeps, kennelsStore: IStore, nodesController: Controller<ISerializedDogConfig>): Promise<void> {
+        const testName = 'P4c T4: Snapshot-Quergriff und Scrub vor markOk/Fehlern';
+        const stamp = Date.now();
+        const u1 = `test-p4c-t4a-${stamp}`;
+        const u2 = `test-p4c-t4b-${stamp}`;
+        const kennelId = `test-p4c-t4-${stamp}`;
+        await this.withKeysHarness(deps, [u1, u2], async ({ store }) => {
+            try {
+                const secret = StartupTest.keyTestSecret('t4');
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                const dog = await this.saveAclTestDog(deps.nodesStore, 'P4cSnapDog', StartupTest.keyFetchDog('openai'), { visibility: 'private', ownerId: u1 });
+                const created = await deps.kennelsController.create({ id: kennelId, name: 'P4c T4', dogIds: [dog], visibility: 'private', ownerId: u1, viewers: [u2] } as any);
+                if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+                const runHandler = new KennelRunHandler({ kennelsController: deps.kennelsController, nodesStore: deps.nodesStore, baseDogsMap: deps.baseDogsMap, callCounter: this.testCallCounter });
+                const toolDeps = this.toolDeps(deps.nodesStore, kennelsStore, nodesController, deps.kennelsController, runHandler);
+                const tools = getSnapshotTools();
+                const call = (name: string, ctx: AuthCtx, args: Record<string, any> = {}) =>
+                    tools.find((t) => t.name === name)!.handler({ id: kennelId, ...args }, ctx, toolDeps);
+                const seen: unknown[] = [];
+
+                seen.push(await call('refresh_kennel_snapshot', this.fakeUser(u1)));
+                const header = await call('wait_for_kennel_snapshot', this.fakeUser(u1), { timeoutMs: 30_000 });
+                seen.push(header);
+                if (!/"status":\s*"ok"/.test(header.content[0].text)) throw new Error(`Snapshot U1: ${header.content[0].text.slice(0, 200)}`);
+                const own = await call('get_snapshot_dog_result', this.fakeUser(u1), { dogId: dog });
+                const ownVm = await call('get_snapshot_dog_vmcontext', this.fakeUser(u1), { dogId: dog });
+                seen.push(own, ownVm);
+                if (!own.content[0].text.includes(REDACTED_KEY)) throw new Error('U1-Snapshot: Upstream-Echo nicht bereinigt');
+                for (const name of ['get_snapshot_dog_result', 'get_snapshot_dog_vmcontext']) {
+                    const foreign = await call(name, this.fakeUser(u2), { dogId: dog });
+                    seen.push(foreign);
+                    if (!foreign.isError || !/no snapshot/.test(foreign.content[0]?.text ?? '')) throw new Error(`U2 liest U1s Snapshot (${name})`);
+                }
+                StartupTest.assertNoSecret('T4 Werkzeuge', seen, [secret]);
+
+                const run = new KeyRunState();
+                run.remember(secret);
+                const rawWaves: any = [[{ id: 'd', result: { echo: `Bearer ${secret}` }, error: `boom ${secret}`, vmContext: { Parent: { token: secret } } }]];
+                KeyRunState.attach(rawWaves, run);
+                const cache = new KennelSnapshotCache();
+                cache.startJob('k', 'user:x', 'v', {}, undefined, 'x');
+                cache.markOk('k', 'user:x', { waves: rawWaves, kennelConfig: {} as any, leadDogId: 'd', leadResult: { echo: secret } });
+                const err = run.scrubError(new Error(`upstream said ${secret}`));
+                StartupTest.assertNoSecret('T4 markOk/Fehler', [cache.get('k', 'user:x'), err.message, err.stack], [secret]);
+                this.addResult(testName, true);
+            } catch (error) {
+                this.addResult(testName, false, String(error));
+            } finally {
+                try { await deps.kennelsController.delete(kennelId); } catch { /* ignore */ }
+            }
+        });
+    }
+
+    /** Test T9 (Export-Scan): roher Schluessel im Dog-Code und in den Defaults -> [redacted]; `{{key:x}}` reist unveraendert. */
+    private async testExportScansRawKeys(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4c T9: Export ersetzt rohe Key-Muster, Platzhalter reisen';
+        const kennelId = `test-p4c-t9-${Date.now()}`;
+        try {
+            const raw = 'sk-abcdefghijklmnopqrstuvwx';
+            const gh = `ghp_${'a1'.repeat(18)}`;
+            const dog = await this.saveAclTestDog(nodesStore, 'P4cExportDog',
+                `const legacy = '${raw}';\nconst r = await keys.fetch('https://api.example.com/', { headers: { Authorization: 'Bearer {{key:x}}' } });\nreturn r.status;`,
+                { visibility: 'public', ownerId: 'UT9' });
+            const created = await kennelsController.create({ id: kennelId, name: 'P4c T9', dogIds: [dog], visibility: 'public', ownerId: 'UT9', defaultQuery: { token: gh } } as any);
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: this.testCallCounter });
+            const bundle = await this.callHandler(new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap), 'handleExport', { params: { id: kennelId }, ctx: this.fakeUser('UT9') });
+            const text = JSON.stringify(bundle.body);
+            if (bundle.statusCode !== 200) throw new Error(`Export: ${bundle.statusCode}`);
+            if (text.includes(raw) || text.includes(gh)) throw new Error('roher Schluessel im Bundle');
+            if (!text.includes('{{key:x}}')) throw new Error('Platzhalter fehlt im Bundle');
+            if ((bundle.body?.redactions?.count ?? 0) < 2) throw new Error(`redactions: ${JSON.stringify(bundle.body?.redactions)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 

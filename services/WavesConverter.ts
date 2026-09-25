@@ -318,6 +318,12 @@ function applyLeadPathAnnotation(
     }
 }
 
+/** Der Scrub eines Laufs (P4c, KeyRunState) — hier nur die Form, damit der Konverter nichts vom Key-Store weiss. */
+export interface WavesScrub {
+    scrubValue<T>(value: T): T;
+    scrubText(text: string): string;
+}
+
 /**
  * Convert the raw IHuntingSeason into Waves — the structured chronicle of the hunt.
  * Each wave is a parallel surge; each node entry is a dog's full account of what it seized.
@@ -325,8 +331,10 @@ function applyLeadPathAnnotation(
  *
  * @param kennelConfig — wenn gesetzt, markiert jeder Knoten `onLeadDependencyPath`, ob er
  *   nach einem Run transitiv zum Lead-Ergebnis beiträgt (Eltern-Graph rekursiv + readFrom).
+ * @param scrub — P4c (Defense-in-Depth): ersetzt jeden im Lauf benutzten Schluessel-Wert in
+ *   result, error (`__error`) und vmContext durch `[redacted:key]`, bevor die Waves irgendwohin gehen.
  */
-export function convertSeasonToWaves(theHunt: IHuntingSeason, kennelConfig?: IKennelConfig): Waves {
+export function convertSeasonToWaves(theHunt: IHuntingSeason, kennelConfig?: IKennelConfig, scrub?: WavesScrub): Waves {
     const waves: Waves = [];
 
     theHunt.wave.forEach((wave: IWaveEntry[]) => {
@@ -387,8 +395,8 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason, kennelConfig?: IKe
                 icon: (isSerialized
                     ? (instance as SerializedDog<unknown>).icon
                     : (instance as IHuntingDog<unknown>).icon) ?? undefined,
-                result: instance.collected,
-                error: (instance as any).__error || undefined,
+                result: scrub ? scrub.scrubValue(instance.collected) : instance.collected,
+                error: ((instance as any).__error && scrub ? scrub.scrubText((instance as any).__error) : (instance as any).__error) || undefined,
                 // Mimics are pact-bound shapeshifters — they cannot be deleted from the kennel.
                 // BaseDogs are born of code, not the store — they too resist deletion.
                 deletable: !isMimic,
@@ -405,7 +413,7 @@ export function convertSeasonToWaves(theHunt: IHuntingSeason, kennelConfig?: IKe
                 // Through endless faces, countless forms: each SerializedDog may have unique typings.
                 const seDog = entry.instance as SerializedDog<unknown>;
                 nodeEntry.codeTs = seDog.instanceConfig.theRun;
-                const vmCtx = seDog.simpleVmContext || {};
+                const vmCtx = scrub ? scrub.scrubValue(seDog.simpleVmContext || {}) : (seDog.simpleVmContext || {});
                 nodeEntry.vmContext = vmCtx;
                 nodeEntry.vmExpectedReturnTypeName = TypeDefBuilder.expectedReturnAliasTypeName(instanceId);
                 nodeEntry.vmContextTypeDef = TypeDefBuilder.buildContextLib(

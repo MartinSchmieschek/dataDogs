@@ -146,6 +146,7 @@ export class KennelRunHandler {
             console.warn(`[KennelRunHandler] Lauf ohne Quelle (${lineageId}) — zaehlt als unknown`, new Error('attribution').stack);
         }
         let leadFailed = false;
+        const keyRun = new KeyRunState();
         try {
             const policy = new DogRunPolicy(config, capabilityCtx);
             const mimicAdopter = await this.createMimicAdopter(config, policy);
@@ -155,7 +156,7 @@ export class KennelRunHandler {
                 ...(capabilityCtx ?? {}),
                 kennelLineageId: lineageId,
                 kennelOwnerId: (config as any).ownerId ?? null,
-                runState: new KeyRunState(),
+                runState: keyRun,
             };
 
             const kennelRun = new KennelRun(
@@ -189,7 +190,10 @@ export class KennelRunHandler {
             const season = await kennelRun.run();
             await this.persistNewMimics(config, season.exhausted, policy);
             // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.
-            const waves = convertSeasonToWaves(season, config);
+            // P4c: jeder im Lauf benutzte Schluessel-Wert faellt hier aus result, error und vmContext;
+            // die Waves tragen ihren Lauf mit, damit Antwort und Snapshot noch einmal scrubben koennen.
+            const waves = convertSeasonToWaves(season, config, keyRun);
+            KeyRunState.attach(waves, keyRun);
             // Ein Lead, der gar nicht in den Waves steht (durfte nicht laufen), ist so gescheitert
             // wie einer mit error-Brandzeichen — die Handler antworten dann `lead_failed`.
             const leadRef = config.dogIds?.[0];
@@ -198,7 +202,7 @@ export class KennelRunHandler {
             return waves;
         } catch (err) {
             leadFailed = true;                                               // "Nothing to harvest" oder Infrastruktur
-            throw err;
+            throw keyRun.scrubError(err);                                    // P4c: kein Wert in Text oder Stack
         } finally {
             this.deps.callCounter.record(lineageId, source, leadFailed);     // genau ein record je begonnenem Lauf
         }
@@ -466,7 +470,12 @@ export class KennelRunHandler {
         return null;
     }
 
-    private sendResult(res: any, result: any, req?: any) {
+    /**
+     * Das Lead-Ergebnis als Antwort. P4c: vorher noch einmal der Scrub des Laufs (`waves`) — die
+     * Waves sind schon bereinigt, das hier ist die letzte Tuer vor dem Draht (Defense-in-Depth).
+     */
+    private sendResult(res: any, rawResult: any, req: any, waves: Waves) {
+        const result = KeyRunState.forResult(waves).scrubValue(rawResult);
         // Lobby-Shape { snapshot, live }: Browser bekommt das HTML, API-Clients den Snapshot.
         if (isLobbyLeadShape(result)) {
             const wantsJson = clientWantsJson(req);
@@ -583,7 +592,7 @@ export class KennelRunHandler {
                 this.sendLeadMissing(res, dogIds[0], access);
                 return;
             }
-            this.sendResult(res, firstDog.result, req);
+            this.sendResult(res, firstDog.result, req, waves);
         } catch (err) {
             console.error('[KennelRunHandler.handleExecute]', err);
             res.status(500).json({ error: KennelRunHandler.errorText(err, access) });
@@ -661,7 +670,7 @@ export class KennelRunHandler {
                 this.sendLeadMissing(res, dogIds[0], access);
                 return;
             }
-            this.sendResult(res, firstDog.result, req);
+            this.sendResult(res, firstDog.result, req, waves);
         } catch (err) {
             console.error(err);
             res.status(500).json({ error: KennelRunHandler.errorText(err, access) });
@@ -695,7 +704,7 @@ export class KennelRunHandler {
                 this.sendLeadMissing(res, dogIds[0], access);
                 return;
             }
-            this.sendResult(res, firstDog.result, req);
+            this.sendResult(res, firstDog.result, req, waves);
         } catch (err) {
             console.error(err);
             res.status(500).json({ error: KennelRunHandler.errorText(err, access) });

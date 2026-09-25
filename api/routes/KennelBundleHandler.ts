@@ -17,6 +17,36 @@ import { canRead, applyCreateDefaults, normalizeVisibility } from '../../mcp/aut
 import { DogAclIndex } from '../../services/dogAccess';
 
 /**
+ * Export-Scan (P4c, L10): rohe Schluessel-Muster in Dog-Code und Kennel-Defaults. Eine Obermenge von
+ * Plan 4c.6 bei `sk-` (auch `sk-proj-…` mit Binde- und Unterstrich). `{{key:alias}}` trifft keins davon.
+ */
+const RAW_KEY_PATTERNS: RegExp[] = [
+    /sk-[A-Za-z0-9_-]{20,}/g,
+    /AKIA[0-9A-Z]{16}/g,
+    /ghp_[A-Za-z0-9]{36}/g,
+    /Bearer [A-Za-z0-9._-]{20,}/g,
+];
+
+/** Ersetzt rohe Schluessel-Muster auf dem serialisierten Wert und zaehlt die Treffer. */
+export class RawKeyScan {
+    hits = 0;
+
+    redact<T>(value: T): T {
+        if (value === undefined || value === null) return value;
+        const json = JSON.stringify(value);
+        if (json === undefined) return value;
+        let out = json;
+        for (const rx of RAW_KEY_PATTERNS) {
+            out = out.replace(rx, () => {
+                this.hits++;
+                return '[redacted]';
+            });
+        }
+        return out === json ? value : (JSON.parse(out) as T);
+    }
+}
+
+/**
  * Handles kennel export and import — the rites of passage across systems.
  *
  * Rules:
@@ -123,6 +153,9 @@ export class KennelBundleHandler {
                 config: cfg,
             });
 
+            // P4c (L10): der Key-Store reist nie mit; rohe Schluessel, die jemand in Code oder
+            // Defaults geschrieben hat, werden ersetzt. `{{key:*}}`-Platzhalter reisen unveraendert.
+            const scan = new RawKeyScan();
             const bundle = {
                 bundleVersion: 2,
                 kennel: {
@@ -131,13 +164,19 @@ export class KennelBundleHandler {
                     description: config.description,
                     emoji: config.emoji,
                     dogIds: config.dogIds,
-                    defaultQuery: config.defaultQuery,
-                    defaultBody: config.defaultBody,
+                    defaultQuery: scan.redact(config.defaultQuery),
+                    defaultBody: scan.redact(config.defaultBody),
                     task: config.task,
                     nodes: config.nodes,
                     edges: config.edges,
                 },
-                dogs,
+                dogs: dogs.map((d: any) => (d.config ? { ...d, config: scan.redact(d.config) } : d)),
+                ...(scan.hits > 0 ? {
+                    redactions: {
+                        count: scan.hits,
+                        note: 'Raw API keys were found in dog code or kennel defaults and replaced by [redacted]. Store keys with set_key and use {{key:<alias>}} with keys.fetch instead.',
+                    },
+                } : {}),
             };
 
             res.json(bundle);

@@ -11,6 +11,7 @@ import type { IKennelConfig } from '@slopdogs/core';
 import type { AuthCtx } from '../auth/middleware';
 import type { Waves } from '../../services/WavesConverter';
 import type { KennelSnapshotEntry } from './types';
+import { KeyRunState } from '../../services/keysCapability';
 
 interface CacheOptions {
     maxEntries?: number;
@@ -72,18 +73,22 @@ export class KennelSnapshotCache {
         this.evict();
     }
 
-    /** Beute trifft ein. */
+    /**
+     * Beute trifft ein. P4c: vor dem Ablegen der Scrub des Laufs, der die Waves erzeugt hat — kein
+     * Schluessel-Wert erreicht den Speicher, aus dem die Snapshot-Werkzeuge lesen (Defense-in-Depth).
+     */
     markOk(lineageId: string, viewer: string, params: MarkOkParams): void {
         const entry = this.entries.get(KennelSnapshotCache.keyOf(lineageId, viewer));
         if (!entry) return;
         const now = new Date();
+        const run = KeyRunState.forResult(params.waves);
         entry.status = 'ok';
         entry.finishedAt = now;
         entry.durationMs = now.getTime() - entry.startedAt.getTime();
-        entry.waves = params.waves;
+        entry.waves = run.scrubValue(params.waves);
         entry.kennelConfig = params.kennelConfig;
         entry.leadDogId = params.leadDogId;
-        entry.leadResult = params.leadResult;
+        entry.leadResult = run.scrubValue(params.leadResult);
         entry.lastAccessedAt = now;
     }
 
