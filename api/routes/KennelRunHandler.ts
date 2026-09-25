@@ -22,6 +22,7 @@ import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/
 import { DogAclIndex, DogRunPolicy } from '../../services/dogAccess';
 import { isHtmlResultString, isMarkdownResultString } from '../../services/leadResultStringFormat';
 import type { KennelCallCounter } from '../../services/KennelCallCounter';
+import { dogStatsKeyOf } from '../../services/dogStatsKey';
 import type { KennelCallSource } from '../../store/IKennelStatsStore';
 
 /** Lead-Yield mit { snapshot, live } — Lobby-Konvention fuer den Socket-Dog. */
@@ -164,6 +165,20 @@ export class KennelRunHandler {
             if (typeof vmTimeoutMs === 'number' && vmTimeoutMs > 0) {
                 kennelRun.setVmTimeoutMs(vmTimeoutMs);
             }
+            // P4b: jeder einzelne Dog-Lauf zaehlt — mit derselben Lineage und Quelle wie der Kennel.
+            // Synchron im finally von letOut(), im Speicher; kein await, keine Query zwischen Wellen.
+            const callCounter = this.deps.callCounter;
+            kennelRun.setDogRunObserver({
+                onDogRun: (r) => {
+                    const dogKey = dogStatsKeyOf(r.dog);
+                    if (!dogKey) return;
+                    callCounter.recordDog({
+                        dogKey, kennelLineageId: lineageId, source, outcome: r.outcome,
+                        cached: r.outcome === 'ok' && r.cacheHits > 0 && r.cacheMisses === 0,
+                        cacheHits: r.cacheHits, cacheMisses: r.cacheMisses, durationMs: r.durationMs,
+                    });
+                },
+            });
             const season = await kennelRun.run();
             await this.persistNewMimics(config, season.exhausted, policy);
             // Pass config so onLeadDependencyPath is annotated — the lead-trail must be visible.

@@ -2,7 +2,12 @@
 // EINER Transaktion in die DB (P4 4.3). Der Lauf selbst merkt davon nichts: record() ist
 // synchron, O(1), ohne DB und wirft nie. Verlust bei SIGKILL/OOM <= ein Flush-Intervall
 // (akzeptiert, Amar-Empfehlung 5); SIGTERM flusht ueber stop().
+//
+// P4b: derselbe Zaehler zaehlt auch jeden einzelnen Dog-Lauf (recordDog) — zweite Map, derselbe
+// Deckel (gemeinsam gegen KENNEL_CALL_MAX_PENDING), derselbe Flush (eine Transaktion fuer beide).
 import type {
+    DogCallAggregate,
+    DogCallDelta,
     IKennelStatsStore,
     KennelCallAggregate,
     KennelCallDelta,
@@ -34,8 +39,42 @@ function intFromEnv(name: string, fallback: number, allowZero: boolean): number 
 
 const RANKED = new Set<KennelCallSource>(RANKED_CALL_SOURCES);
 
+/** Ein einzelner Dog-Lauf, wie ihn der Observer in runKennel meldet (P4b 4b.5). */
+export interface DogRunRecord {
+    dogKey: string;
+    kennelLineageId: string;
+    source: KennelCallSource;
+    outcome: 'ok' | 'error' | 'timeout' | 'oom';
+    /** ok ohne Fetch, mindestens ein Cache-Treffer — zaehlt als `cached` statt `ok`. */
+    cached: boolean;
+    cacheHits: number;
+    cacheMisses: number;
+    durationMs: number;
+}
+
+/** Ungeflushte Dog-Laeufe je Dog — wie DogCallAggregate, dazu die Kennels der Deltas (fuer kennelsRun30d). */
+export type PendingDogAggregate = Omit<DogCallAggregate, 'dogKey' | 'kennelsRun30d'> & { kennels: Set<string> };
+
+function dogDeltaKey(d: { dogKey: string; kennelLineageId: string; day: string; source: string }): string {
+    return `${d.dogKey}\u0000${d.kennelLineageId}\u0000${d.day}\u0000${d.source}`;
+}
+
+function addDogDelta(into: DogCallDelta, d: DogCallDelta): void {
+    into.count += d.count;
+    into.ok += d.ok;
+    into.cached += d.cached;
+    into.errors += d.errors;
+    into.timeouts += d.timeouts;
+    into.oom += d.oom;
+    into.cacheHits += d.cacheHits;
+    into.cacheMisses += d.cacheMisses;
+    into.durationMsSum += d.durationMsSum;
+    into.durationMsMax = Math.max(into.durationMsMax, d.durationMsMax);
+}
+
 export class KennelCallCounter {
     private readonly pending = new Map<string, KennelCallDelta>();
+    private readonly pendingDogs = new Map<string, DogCallDelta>();
     private readonly flushIntervalMs: number;
     private readonly maxPending: number;
     private readonly now: () => Date;
@@ -69,13 +108,89 @@ export class KennelCallCounter {
                 return;
             }
             // Deckel: ein NEUER Schluessel ueber dem Deckel wird verworfen — nie ein alter.
-            if (this.pending.size >= this.maxPending) {
+            if (this.isFull()) {
                 this.dropped += 1;
                 return;
             }
             this.pending.set(key, { lineageId, day, source, count: 1, leadFailed: leadFailed ? 1 : 0 });
         } catch {
             // Zaehlen darf keinen Lauf stoeren.
+        }
+    }
+
+    /**
+     * Ein Dog-Lauf (P4b). Synchron, O(1), ohne DB, wirft nie — der Observer ruft es im finally von
+     * letOut(), mitten in der Welle. Genau eine Ergebnisklasse je Lauf.
+     */
+    recordDog(input: DogRunRecord): void {
+        try {
+            const day = utcDay(this.now());
+            const durationMs = Math.max(0, Math.round(Number(input.durationMs) || 0));
+            const delta: DogCallDelta = {
+                dogKey: input.dogKey,
+                kennelLineageId: input.kennelLineageId,
+                day,
+                source: input.source,
+                count: 1,
+                ok: input.outcome === 'ok' && !input.cached ? 1 : 0,
+                cached: input.outcome === 'ok' && input.cached ? 1 : 0,
+                errors: input.outcome === 'error' ? 1 : 0,
+                timeouts: input.outcome === 'timeout' ? 1 : 0,
+                oom: input.outcome === 'oom' ? 1 : 0,
+                cacheHits: input.cacheHits,
+                cacheMisses: input.cacheMisses,
+                durationMsSum: durationMs,
+                durationMsMax: durationMs,
+            };
+            const key = dogDeltaKey(delta);
+            const existing = this.pendingDogs.get(key);
+            if (existing) {
+                addDogDelta(existing, delta);
+                return;
+            }
+            if (this.isFull()) {
+                this.dropped += 1;
+                return;
+            }
+            this.pendingDogs.set(key, delta);
+        } catch {
+            // Zaehlen darf keinen Lauf stoeren.
+        }
+    }
+
+    /** Kennel- und Dog-Schluessel teilen sich einen Deckel. */
+    private isFull(): boolean {
+        return this.pending.size + this.pendingDogs.size >= this.maxPending;
+    }
+
+    /** Ungeflushte Dog-Laeufe als Aggregat je Dog — dieselben Fenster-Regeln wie readDogCallAggregates. */
+    pendingDogAggregates(sinceDay: string): Map<string, PendingDogAggregate> {
+        const out = new Map<string, PendingDogAggregate>();
+        for (const d of this.pendingDogs.values()) {
+            const agg = out.get(d.dogKey) ?? {
+                total: 0, last30d: 0, ranked30d: 0, failures30d: 0, cached30d: 0,
+                durationMsSum30d: 0, count30d: 0, durationMsMax30d: 0, kennels: new Set<string>(),
+            };
+            agg.total += d.count;
+            if (d.day >= sinceDay) {
+                agg.last30d += d.count;
+                agg.count30d += d.count;
+                if (RANKED.has(d.source)) agg.ranked30d += d.count;
+                agg.failures30d += d.errors + d.timeouts + d.oom;
+                agg.cached30d += d.cached;
+                agg.durationMsSum30d += d.durationMsSum;
+                agg.durationMsMax30d = Math.max(agg.durationMsMax30d, d.durationMsMax);
+                if (d.count > 0) agg.kennels.add(d.kennelLineageId);
+            }
+            out.set(d.dogKey, agg);
+        }
+        return out;
+    }
+
+    /** Dog geloescht (letzte Version): seine ungeflushten Deltas fallen weg. */
+    forgetDog(dogKey: string): void {
+        for (const [key, d] of this.pendingDogs) {
+            if (d.dogKey === dogKey) this.pendingDogs.delete(key);
         }
     }
 
@@ -96,10 +211,13 @@ export class KennelCallCounter {
         return out;
     }
 
-    /** Kennel geloescht: seine ungeflushten Deltas fallen weg. */
-    forget(lineageId: string): void {
+    /** Kennel geloescht: seine ungeflushten Deltas fallen weg — die Kennel-Zaehlung und die Dog-Laeufe in ihm. */
+    forgetKennel(lineageId: string): void {
         for (const [key, d] of this.pending) {
             if (d.lineageId === lineageId) this.pending.delete(key);
+        }
+        for (const [key, d] of this.pendingDogs) {
+            if (d.kennelLineageId === lineageId) this.pendingDogs.delete(key);
         }
     }
 
@@ -112,16 +230,20 @@ export class KennelCallCounter {
     }
 
     private async flushOnce(): Promise<void> {
-        if (this.pending.size === 0) return;
+        if (this.pending.size === 0 && this.pendingDogs.size === 0) return;
         const batch = Array.from(this.pending.values());
+        const dogBatch = Array.from(this.pendingDogs.values());
         this.pending.clear();
+        this.pendingDogs.clear();
         try {
-            await this.store.incrementKennelCalls(batch);
+            // Eine Transaktion fuer Kennel- und Dog-Deltas (P4b): beide oder keins.
+            await this.store.incrementKennelCalls(batch, dogBatch);
             this.lastFlushError = null;
         } catch (err) {
             this.retain(batch);
+            this.retainDogs(dogBatch);
             this.lastFlushError = (err as Error)?.message ?? String(err);
-            const line = `[KennelCallCounter] flush failed, ${batch.length} deltas retained: ${this.lastFlushError.slice(0, 160)}`;
+            const line = `[KennelCallCounter] flush failed, ${batch.length + dogBatch.length} deltas retained: ${this.lastFlushError.slice(0, 160)}`;
             // Eine belegte/traege DB ist Betrieb, kein Defekt — wie beim Cache nur eine Warnung.
             if (isCacheInfraError(err)) console.warn(line); else console.error(line);
             return;
@@ -137,11 +259,22 @@ export class KennelCallCounter {
             if (existing) {
                 existing.count += d.count;
                 existing.leadFailed += d.leadFailed;
-            } else if (this.pending.size >= this.maxPending) {
+            } else if (this.isFull()) {
                 this.dropped += d.count;
             } else {
                 this.pending.set(key, { ...d });
             }
+        }
+    }
+
+    /** Dasselbe fuer die Dog-Deltas eines gescheiterten Batches. */
+    private retainDogs(batch: DogCallDelta[]): void {
+        for (const d of batch) {
+            const key = dogDeltaKey(d);
+            const existing = this.pendingDogs.get(key);
+            if (existing) addDogDelta(existing, d);
+            else if (this.isFull()) this.dropped += d.count;
+            else this.pendingDogs.set(key, { ...d });
         }
     }
 
@@ -159,10 +292,10 @@ export class KennelCallCounter {
             this.timer = null;
         }
         await this.flush();
-        if (this.pending.size > 0) await this.flush();
+        if (this.pending.size > 0 || this.pendingDogs.size > 0) await this.flush();
     }
 
-    status(): { pending: number; dropped: number; lastFlushError: string | null } {
-        return { pending: this.pending.size, dropped: this.dropped, lastFlushError: this.lastFlushError };
+    status(): { pending: number; pendingDogs: number; dropped: number; lastFlushError: string | null } {
+        return { pending: this.pending.size, pendingDogs: this.pendingDogs.size, dropped: this.dropped, lastFlushError: this.lastFlushError };
     }
 }

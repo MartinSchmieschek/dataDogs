@@ -161,7 +161,7 @@ export class KennelStatsService {
 
     /** Kennel geloescht: Zaehler und Sterne der Lineage fallen, ungeflushte Deltas auch. */
     async forgetKennel(lineageId: string): Promise<void> {
-        this.counter.forget(lineageId);
+        this.counter.forgetKennel(lineageId);
         await this.store.deleteKennelStats(lineageId);
         this.invalidate();
     }

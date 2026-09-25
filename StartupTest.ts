@@ -65,7 +65,8 @@ import { KennelStatsService } from './services/KennelStatsService';
 import { KennelRatingHandler } from './api/routes/KennelRatingHandler';
 import { ListQuery } from './api/routes/ListQuery';
 import { LandingRouteHandler } from './api/routes/LandingRouteHandler';
-import type { IKennelStatsStore, KennelCallAggregate } from './store/IKennelStatsStore';
+import type { DogCallDelta, IDogStatsStore, IKennelStatsStore, KennelCallAggregate, KennelCallSource } from './store/IKennelStatsStore';
+import { dogStatsKeyOf } from './services/dogStatsKey';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 
@@ -247,6 +248,11 @@ export class StartupTest {
             await this.testDogRunObserverOncePerDog(baseDogsMap);
             await this.testDogRunClassification(baseDogsMap);
             await this.testDogCacheStatsWrapper(baseDogsMap);
+            await this.testDogStatsKeyOf(baseDogsMap);
+            const dogStatsStore = this.dogStatsStoreOf(kennelsStore);
+            await this.testRecordDogAndFlush(statsStore, dogStatsStore);
+            await this.testDogCallAggregate(dogStatsStore);
+            await this.testDogCounterCost(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4163,9 +4169,9 @@ export class StartupTest {
     private countingStatsStore(inner: IKennelStatsStore): { store: IKennelStatsStore; flushes: () => number } {
         let flushes = 0;
         const store: IKennelStatsStore = Object.create(inner);
-        store.incrementKennelCalls = async (deltas) => {
-            if (deltas.length > 0) flushes += 1;
-            return inner.incrementKennelCalls(deltas);
+        store.incrementKennelCalls = async (deltas, dogDeltas) => {
+            if (deltas.length > 0 || (dogDeltas?.length ?? 0) > 0) flushes += 1;
+            return inner.incrementKennelCalls(deltas, dogDeltas);
         };
         return { store, flushes: () => flushes };
     }
@@ -4258,7 +4264,10 @@ export class StartupTest {
     /** Ein Zaehler-Stub, der jede Zaehlung festhaelt: [lineageId, source, leadFailed]. */
     private recordingCounter(): { counter: KennelCallCounter; calls: Array<[string, string, boolean]> } {
         const calls: Array<[string, string, boolean]> = [];
-        const counter = { record: (l: string, s: string, f: boolean) => { calls.push([l, s, f]); } } as unknown as KennelCallCounter;
+        const counter = {
+            record: (l: string, s: string, f: boolean) => { calls.push([l, s, f]); },
+            recordDog: () => { /* P4b: Dog-Laeufe zaehlt dieser Stub nicht */ },
+        } as unknown as KennelCallCounter;
         return { counter, calls };
     }
 
@@ -4731,6 +4740,168 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Test P4b 4: der Zaehl-Schluessel — Lineage, `base:Name`, Platzhalter-Mimic null. */
+    private async testDogStatsKeyOf(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 4: dogStatsKeyOf';
+        try {
+            const serialized = this.p4bDog('P4bKey', 'return 1;');
+            if (dogStatsKeyOf(serialized) !== serialized.lineageId) throw new Error(`SerializedDog: ${dogStatsKeyOf(serialized)}`);
+            const QueryRetrieverClass = baseDogsMap.get('QueryRetriever');
+            if (dogStatsKeyOf(new QueryRetrieverClass({})) !== 'base:QueryRetriever') throw new Error('Base-Dog nicht base:QueryRetriever');
+            const placeholder = new MimicDog<unknown>({ theRun: 'throw new Error("x");', imitates: 'P4bPact', displayName: 'auto-mimic-P4bPact' }, 'auto-mimic-P4bPact');
+            if (dogStatsKeyOf(placeholder) !== null) throw new Error(`Platzhalter-Mimic: ${dogStatsKeyOf(placeholder)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Der Store traegt die Dog-Tabellen (PrismaStore) — sonst ist die Montage falsch. */
+    private dogStatsStoreOf(store: IStore): IDogStatsStore {
+        if (typeof (store as any)?.incrementDogCalls !== 'function') throw new Error('Store implementiert IDogStatsStore nicht');
+        return store as unknown as IDogStatsStore;
+    }
+
+    /**
+     * Test P4b 5: recordDog + Flush — drei Laeufe (ok 812 ms, cached 5 ms, timeout 10 000 ms) von D in K
+     * landen in EINER Zeile; ein zweiter Flush mit 20 000 ms hebt das Maximum (MAX/GREATEST).
+     */
+    private async testRecordDogAndFlush(statsStore: IKennelStatsStore, dogStore: IDogStatsStore): Promise<void> {
+        const testName = 'P4b 5: recordDog + Flush (Klassen, Summe, Maximum)';
+        const dogKey = `__st_dog_${Date.now()}`;
+        const kennel = `__st_dogk_${Date.now()}`;
+        try {
+            const { store, flushes } = this.countingStatsStore(statsStore);
+            const counter = new KennelCallCounter(store, { flushIntervalMs: 0 });
+            const run = (outcome: 'ok' | 'timeout', cached: boolean, durationMs: number, hits = 0, misses = 1) =>
+                counter.recordDog({ dogKey, kennelLineageId: kennel, source: 'public', outcome, cached, cacheHits: hits, cacheMisses: misses, durationMs });
+            run('ok', false, 812);
+            run('ok', true, 5, 1, 0);
+            run('timeout', false, 10_000);
+            counter.record(kennel, 'public', false);
+            if (counter.status().pendingDogs !== 1 || counter.status().pending !== 1) throw new Error(`status: ${JSON.stringify(counter.status())}`);
+            await counter.flush();
+            if (flushes() !== 1) throw new Error(`Transaktionen: ${flushes()} statt 1 (Kennel + Dog gemeinsam)`);
+            const since = utcDay(new Date(Date.now() - 29 * 86_400_000));
+            const agg = (await dogStore.readDogCallAggregates(since, [dogKey]))[0];
+            const got = agg ? [agg.count30d, agg.count30d - agg.cached30d - agg.failures30d, agg.cached30d, agg.failures30d, agg.durationMsSum30d, agg.durationMsMax30d].join(',') : 'keine Zeile';
+            if (got !== '3,1,1,1,10817,10000') throw new Error(`count,ok,cached,timeouts,sum,max: ${got}`);
+            run('ok', false, 20_000);
+            await counter.flush();
+            const again = (await dogStore.readDogCallAggregates(since, [dogKey]))[0];
+            if (again?.durationMsMax30d !== 20_000 || again.count30d !== 4) throw new Error(`zweiter Flush: ${JSON.stringify(again)}`);
+            if (counter.status().pendingDogs !== 0) throw new Error('pendingDogs nach Flush nicht 0');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await dogStore.deleteDogCalls(dogKey); } catch { /* ignore */ }
+            try { await statsStore.deleteKennelStats(kennel); } catch { /* ignore */ }
+        }
+    }
+
+    /** Test P4b 6: das Aggregat — 30-Tage-Fenster, Rangquellen, distinct Kennels. */
+    private async testDogCallAggregate(dogStore: IDogStatsStore): Promise<void> {
+        const testName = 'P4b 6: Dog-Aggregat (total, last30d, ranked30d, kennelsRun30d)';
+        const dogKey = `__st_dogagg_${Date.now()}`;
+        try {
+            const today = utcDay(new Date());
+            const old = utcDay(new Date(Date.now() - 31 * 86_400_000));
+            const delta = (kennelLineageId: string, day: string, source: KennelCallSource, count: number): DogCallDelta => ({
+                dogKey, kennelLineageId, day, source, count, ok: count, cached: 0, errors: 0, timeouts: 0, oom: 0,
+                cacheHits: 0, cacheMisses: 0, durationMsSum: 0, durationMsMax: 0,
+            });
+            await dogStore.incrementDogCalls([
+                delta('__st_k1', today, 'public', 99),
+                delta('__st_k2', today, 'api-run', 21),
+                delta('__st_k3', old, 'public', 500),
+            ]);
+            const since = utcDay(new Date(Date.now() - 29 * 86_400_000));
+            const agg = (await dogStore.readDogCallAggregates(since, [dogKey]))[0];
+            const got = agg ? [agg.total, agg.last30d, agg.ranked30d, agg.kennelsRun30d].join(',') : 'keine Zeile';
+            if (got !== '620,120,99,2') throw new Error(`total,last30d,ranked30d,kennelsRun30d: ${got}`);
+            const usage = (await dogStore.readDogKennelUsage(since, dogKey)).map((u) => `${u.kennelLineageId}:${u.count30d}`).sort().join(',');
+            if (usage !== '__st_k1:99,__st_k2:21') throw new Error(`Nutzung je Kennel: ${usage}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await dogStore.deleteDogCalls(dogKey); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test P4b 14 (Messpunkt): ein Lauf eines 20-Dog-Kennels legt <= 20 pending-Eintraege an, der
+     * Observer kostet Mikrosekunden je Dog. Gemessen und protokolliert: RSS/heapUsed vor und nach der
+     * Welle, heapUsed-Zuwachs je 1 000 pending-Eintraege (10 000 verschiedene Schluessel) — die Zahl,
+     * die Amars ~200-Byte-Rechnung ersetzt. Mit P4B_MEASURE_RUNS=<n> zusaetzlich n Laeufe ohne Flush.
+     */
+    private async testDogCounterCost(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P4b 14: Kosten des Dog-Zaehlers (Messpunkt)';
+        const kennelId = `test-p4b-cost-${Date.now()}`;
+        try {
+            const dogIds: string[] = [];
+            for (let i = 0; i < 20; i++) {
+                dogIds.push(await this.saveAclTestDog(nodesStore, `P4bCost${i}`, `return { i: ${i} };`, { visibility: 'public', ownerId: 'UO' }));
+            }
+            const created = await kennelsController.create({ id: kennelId, name: 'P4b Kosten', dogIds, visibility: 'public', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            const config = await runHandler.loadKennelConfig(kennelId);
+            const mb = (n: number) => (n / 1_048_576).toFixed(2);
+
+            const before = process.memoryUsage();
+            const t0 = Date.now();
+            await runHandler.runKennel(config!, {}, undefined, undefined, undefined, { source: 'api-execute' });
+            const waveMs = Date.now() - t0;
+            const after = process.memoryUsage();
+            const pendingDogs = counter.status().pendingDogs;
+            if (pendingDogs < 1 || pendingDogs > 20) throw new Error(`pendingDogs nach einem Lauf: ${pendingDogs}`);
+
+            const extraRuns = Math.max(0, Number.parseInt(process.env.P4B_MEASURE_RUNS || '0', 10) || 0);
+            let runsLine = '';
+            if (extraRuns > 0) {
+                const h0 = process.memoryUsage().heapUsed;
+                for (let i = 0; i < extraRuns; i++) {
+                    await runHandler.runKennel(config!, {}, undefined, undefined, undefined, { source: 'api-execute' });
+                }
+                runsLine = `; ${extraRuns} Laeufe ohne Flush: pendingDogs ${counter.status().pendingDogs}, heapUsed ${mb(process.memoryUsage().heapUsed - h0)} MB`;
+            }
+
+            // Observer-Kosten: 100 000 recordDog-Aufrufe auf bestehende Schluessel.
+            const probe = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0, maxPending: 1_000_000 });
+            const c0 = process.hrtime.bigint();
+            for (let i = 0; i < 100_000; i++) {
+                probe.recordDog({ dogKey: `d${i % 20}`, kennelLineageId: 'k', source: 'public', outcome: 'ok', cached: false, cacheHits: 0, cacheMisses: 1, durationMs: 5 });
+            }
+            const usPerDog = Number(process.hrtime.bigint() - c0) / 1000 / 100_000;
+            if (usPerDog >= 1000) throw new Error(`recordDog kostet ${usPerDog} us je Dog`);
+
+            // Speicher je pending-Eintrag: 10 000 verschiedene Schluessel mit echten Laengen (GUID-Dog, Kennel-Name).
+            const keys = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0, maxPending: 1_000_000 });
+            const dogKeys = Array.from({ length: 500 }, () => generateLineageId());
+            const kennels = Array.from({ length: 20 }, (_, i) => `kennel-lineage-${i}-${Date.now()}`);
+            (globalThis as any).gc?.();
+            const h1 = process.memoryUsage().heapUsed;
+            for (let i = 0; i < 10_000; i++) {
+                keys.recordDog({ dogKey: dogKeys[i % 500], kennelLineageId: kennels[Math.floor(i / 500)], source: 'public', outcome: 'ok', cached: false, cacheHits: 0, cacheMisses: 1, durationMs: 5 });
+            }
+            (globalThis as any).gc?.();
+            const perThousand = (process.memoryUsage().heapUsed - h1) / 10;
+            if (keys.status().pendingDogs !== 10_000) throw new Error(`Schluessel: ${keys.status().pendingDogs}`);
+
+            console.log(`[P4b 14] 20-Dog-Kennel, 1 Lauf ${waveMs} ms: pendingDogs ${pendingDogs}; RSS ${mb(before.rss)} -> ${mb(after.rss)} MB, `
+                + `heapUsed ${mb(before.heapUsed)} -> ${mb(after.heapUsed)} MB; recordDog ${usPerDog.toFixed(2)} us/Dog; `
+                + `heapUsed je 1 000 pending-Eintraege ${(perThousand / 1024).toFixed(1)} KB (${Math.round(perThousand / 1000)} B/Eintrag, gc ${typeof (globalThis as any).gc === 'function' ? 'ja' : 'nein'})${runsLine}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 
