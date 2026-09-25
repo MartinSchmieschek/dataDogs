@@ -16,6 +16,8 @@ import { KennelSwaggerHandler } from '../api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from '../api/routes/KennelBundleHandler';
 import { KennelRatingHandler } from '../api/routes/KennelRatingHandler';
 import { LandingRouteHandler } from '../api/routes/LandingRouteHandler';
+import { KeysRouteHandler } from '../api/routes/KeysRouteHandler';
+import { KeyStoreService } from '../services/KeyStoreService';
 import { NodesRouteHandler } from '../api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from '../api/routes/ReadmeRouteHandler';
 import { StartupTest } from '../StartupTest';
@@ -176,6 +178,8 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     app.use(express.json({ limit: '5mb' }));
 
     const authPrisma = createPrismaAuthClient();
+    // Key-Store (P4c): im Auth-Client, Master-Key aus der Env; ohne KEYSTORE_MASTER_KEY_V1 aus (503).
+    const keyStore = KeyStoreService.fromEnv(authPrisma);
     app.use(cookieParser());
     app.use(express.urlencoded({ extended: false, limit: '1mb' }));
     app.use(createSessionMiddleware());
@@ -269,6 +273,8 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         listDogs: listAllDogs,
         dogStats,
     }).registerRoutes(app);
+    // Key-Store (P4c): /api/keys und /api/keys/:alias — ebenfalls VOR /api/:subpath.
+    new KeysRouteHandler(keyStore).registerRoutes(app);
 
     const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats, dogStats);
     routeHandler.registerRoutes(app, '/api');

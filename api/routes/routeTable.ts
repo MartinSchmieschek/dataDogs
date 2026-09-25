@@ -56,6 +56,10 @@ export const API_ROUTE = {
     /** Wo ein Dog laeuft (P4b): Kennels, Abhaengige, Abhaengigkeiten — vor ConfigRouteHandler registriert. */
     nodeUsage: '/api/nodes/:id/usage',
     readme: '/api/readme',
+    /** Key-Store (P4c): GET (maskiert) und POST — vor ConfigRouteHandler registriert. */
+    keys: '/api/keys',
+    /** Key-Store (P4c): DELETE; kein GET mit Wert. */
+    keyByAlias: '/api/keys/:alias',
     /** WebSocket-Upgrade am http.Server (ChannelHub), keine Express-Route. */
     channels: '/api/channels',
 } as const;
@@ -86,6 +90,8 @@ export const API_ROUTES = [
     '/api/nodes/:id/usage',
     '/api/readme',
     '/api/landing',
+    '/api/keys',
+    '/api/keys/:alias',
     '/api/channels',
 ] as const;
 
@@ -146,6 +152,8 @@ export const EXPRESS_APP_ROUTES = [
     API_ROUTE.nodeUsage,
     API_ROUTE.readme,
     API_ROUTE.landing,
+    API_ROUTE.keys,
+    API_ROUTE.keyByAlias,
     ...LEGACY_308,
     ROOT_ROUTE.legacySave,
 ] as const;

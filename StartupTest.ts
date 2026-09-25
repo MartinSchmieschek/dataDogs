@@ -73,6 +73,7 @@ import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from 
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 import { randomBytes } from 'crypto';
 import { KeyStoreService, MasterKeyring, type KeyStorePrisma } from './services/KeyStoreService';
+import { KeysRouteHandler } from './api/routes/KeysRouteHandler';
 
 /**
  * Arr, the testament of a single trial endured upon the eldritch seas —
@@ -282,6 +283,7 @@ export class StartupTest {
             if (authPrisma) {
                 await this.testKeyStoreDbReader(authPrisma);
                 await this.testKeyStoreRotation(authPrisma);
+                await this.testKeysRestIdor(authPrisma);
             }
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
@@ -5286,6 +5288,58 @@ export class StartupTest {
             this.addResult(testName, false, String(error));
         } finally {
             try { await prisma.userKey.deleteMany({ where: { ownerId: { in: [ownerService, ownerScript] } } }); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test T8 (IDOR) ueber REST: U2 sieht U1s Keys nicht und loescht sie nicht (404, nichts verraten);
+     * keine Antwort traegt den Wert. Dazu die Tuer selbst: anonym 401, Super-User ohne user 403
+     * no_identity, Store aus 503 keystore_disabled.
+     */
+    private async testKeysRestIdor(prisma: KeyStorePrisma): Promise<void> {
+        const testName = 'P4c T8: /api/keys ohne IDOR, maskiert, 401/403/503';
+        const stamp = Date.now();
+        const u1 = `test-p4c-t8a-${stamp}`;
+        const u2 = `test-p4c-t8b-${stamp}`;
+        try {
+            const secret = StartupTest.keyTestSecret('t8');
+            const handler = new KeysRouteHandler(new KeyStoreService(prisma, StartupTest.keyTestRing()));
+            const as = (uid: string) => this.fakeUser(uid);
+            const responses: unknown[] = [];
+            const call = async (method: string, req: Record<string, any>) => {
+                const out = await this.callHandler(handler, method, req);
+                responses.push(out.body);
+                return out;
+            };
+
+            const created = await call('handleSet', { method: 'POST', ctx: as(u1), body: { alias: 'openai', secret, allowedDomains: ['api.openai.com'] } });
+            if (created.statusCode !== 200 || created.body?.key?.last4 !== secret.slice(-4)) throw new Error(`POST U1: ${created.statusCode} ${JSON.stringify(created.body)}`);
+            const foreignList = await call('handleList', { ctx: as(u2) });
+            if (foreignList.statusCode !== 200 || foreignList.body?.keys?.length !== 0) throw new Error(`GET U2: ${JSON.stringify(foreignList.body)}`);
+            const foreignDelete = await call('handleDelete', { method: 'DELETE', ctx: as(u2), params: { alias: 'openai' } });
+            if (foreignDelete.statusCode !== 404) throw new Error(`DELETE U2: ${foreignDelete.statusCode}`);
+            const unknownDelete = await call('handleDelete', { method: 'DELETE', ctx: as(u1), params: { alias: 'nope' } });
+            if (unknownDelete.statusCode !== 404 || JSON.stringify(unknownDelete.body) !== JSON.stringify(foreignDelete.body)) throw new Error('fremd und unbekannt sehen verschieden aus');
+            const ownList = await call('handleList', { ctx: as(u1) });
+            if (ownList.body?.keys?.length !== 1 || ownList.body.keys[0].alias !== 'openai') throw new Error(`GET U1 nach fremdem DELETE: ${JSON.stringify(ownList.body)}`);
+
+            const anon = await call('handleList', { ctx: { user: null, isSuperUser: false } });
+            if (anon.statusCode !== 401) throw new Error(`anonym: ${anon.statusCode}`);
+            const su = await call('handleSet', { method: 'POST', ctx: { user: null, isSuperUser: true }, body: { alias: 'x', secret, allowedDomains: ['api.example.com'] } });
+            if (su.statusCode !== 403 || su.body?.error !== 'no_identity') throw new Error(`Super-User: ${su.statusCode} ${JSON.stringify(su.body)}`);
+            const off = await this.callHandler(new KeysRouteHandler(new KeyStoreService(prisma, null)), 'handleSet', { method: 'POST', ctx: as(u1), body: { alias: 'x', secret, allowedDomains: ['api.example.com'] } });
+            if (off.statusCode !== 503 || off.body?.error !== 'keystore_disabled') throw new Error(`Store aus: ${off.statusCode} ${JSON.stringify(off.body)}`);
+            const invalid = await call('handleSet', { method: 'POST', ctx: as(u1), body: { alias: 'Bad Alias', secret, allowedDomains: ['api.example.com'] } });
+            if (invalid.statusCode !== 400 || invalid.body?.error !== 'invalid_alias') throw new Error(`invalid_alias: ${invalid.statusCode}`);
+
+            const ownDelete = await call('handleDelete', { method: 'DELETE', ctx: as(u1), params: { alias: 'openai' } });
+            if (ownDelete.statusCode !== 200 || ownDelete.body?.ok !== true) throw new Error(`DELETE U1: ${ownDelete.statusCode}`);
+            this.assertNoLeak('T8', responses, [secret]);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await prisma.userKey.deleteMany({ where: { ownerId: { in: [u1, u2] } } }); } catch { /* ignore */ }
         }
     }
 
