@@ -327,8 +327,17 @@ export class ConfigRouteHandler {
                 }
             }
 
-            const existingConfig = req.body.serializedDogConfig || {};
-            const input = {
+            // SECURITY: /save never takes ACL fields from the client — not even tucked into
+            // serializedDogConfig. Existing nodes keep theirs (Controller.save carries them over),
+            // new ones get the create defaults below. Rights change only via the ACL tools.
+            const {
+                ownerId: _ownerIn,
+                visibility: _visibilityIn,
+                editors: _editorsIn,
+                viewers: _viewersIn,
+                ...existingConfig
+            } = req.body.serializedDogConfig || {};
+            let input: any = {
                 ...existingConfig,
                 id,
                 theRun: tsCode,
@@ -340,6 +349,13 @@ export class ConfigRouteHandler {
                 ...(typeof req.body.description === 'string' ? { description: req.body.description } : {}),
                 ...(req.body.lineDocs !== undefined ? { lineDocs: sanitizeLineDocs(req.body.lineDocs) } : {}),
             };
+            // SECURITY (Nira F5): an unknown id makes /save a CREATE. Without the create
+            // defaults the new node was stored with no owner and no visibility — i.e.
+            // community-owned and public. Same rule as POST /api/:subpath: owner = caller,
+            // visibility private unless explicitly public.
+            if (!(existing.ok && existing.data)) {
+                input = applyCreateDefaults(input, req.ctx);
+            }
 
             // The controller handles versioning — a new incarnation is forged with a fresh GUID.
             const result = await controller.save(input);

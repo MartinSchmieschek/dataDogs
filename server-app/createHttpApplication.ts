@@ -219,7 +219,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     const cacheHandler: ICacheHandler = withResilientCacheInfra(prismaCacheHandler);
 
     const kennelRunHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, cacheHandler });
-    const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler);
+    const kennelSwaggerHandler = new KennelSwaggerHandler(kennelRunHandler, nodesStore);
     const kennelBundleHandler = new KennelBundleHandler(kennelRunHandler, kennelsController, nodesStore, baseDogsMap);
 
     // Abhaengigkeits-Klassen -> blanke Namen. Pacts tragen ihren wahren Namen am Konstruktor

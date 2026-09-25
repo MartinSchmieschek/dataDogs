@@ -14,7 +14,7 @@ import { KennelController } from '../KennelController';
 import { IStore } from '../../store/IStore';
 import { generateVersionId, generateLineageId } from '../utils/versioning';
 import { KennelRunHandler } from './KennelRunHandler';
-import { canRead } from '../../mcp/auth/visibility';
+import { canRead, applyCreateDefaults } from '../../mcp/auth/visibility';
 
 /**
  * Handles kennel export and import — the rites of passage across systems.
@@ -89,6 +89,14 @@ export class KennelBundleHandler {
                 ]);
 
                 for (const row of [...serialized, ...mimics]) {
+                    // SECURITY (Nira F1): a readable kennel may reference dogs the caller
+                    // may NOT read. Those travel as a reference stub — identity only, no
+                    // config — and their parents are not walked (that would be the code's
+                    // structure, again).
+                    if (!canRead(row as any, req.ctx)) {
+                        collectedRows.push({ row, cfg: null });
+                        continue;
+                    }
                     const cfg = this.parseDogConfig(row);
                     collectedRows.push({ row, cfg });
                     for (const ref of this.collectRefs(cfg)) {
@@ -99,13 +107,18 @@ export class KennelBundleHandler {
                 }
             }
 
-            const dogs = collectedRows.map(({ row, cfg }) => ({
+            const dogs = collectedRows.map(({ row, cfg }) => cfg === null ? {
+                lineageId: row.lineageId,
+                versionId: row.id,
+                displayName: row.displayName,
+                redacted: true,
+            } : {
                 lineageId: row.lineageId || cfg.lineageId,
                 versionId: row.id,
                 displayName: row.displayName || cfg.displayName,
                 type: cfg.imitates ? 'MimicDog' : 'SerializedDog',
                 config: cfg,
-            }));
+            });
 
             const bundle = {
                 bundleVersion: 2,
@@ -225,9 +238,19 @@ export class KennelBundleHandler {
                 return;
             }
 
+            // Reference stubs (export of a dog the exporter could not read): no config to
+            // persist. The reference stays as it is — it resolves if the dog exists on this
+            // server and the importer may run it; otherwise the kennel reports it missing.
+            const stubs = bundle.dogs.filter((dog: any) => dog?.redacted === true || !dog?.config);
+            const hinweise: string[] = stubs.map((dog: any) =>
+                `Dog ${dog?.displayName ?? dog?.lineageId ?? '?'} (${dog?.lineageId ?? dog?.versionId ?? '?'}) `
+                + 'kam als Referenz ohne Code (redacted) — nicht importiert, die Referenz bleibt stehen.',
+            );
+            const importDogs = bundle.dogs.filter((dog: any) => !stubs.includes(dog));
+
             // 3. Build ID mapping for serialized/mimic dogs: old lineageId + old versionId → new lineageId.
             const idMap = new Map<string, string>();
-            for (const dog of bundle.dogs) {
+            for (const dog of importDogs) {
                 const newLineageId = generateLineageId();
                 if (dog.lineageId) idMap.set(dog.lineageId, newLineageId);
                 if (dog.versionId) idMap.set(dog.versionId, newLineageId);
@@ -239,8 +262,14 @@ export class KennelBundleHandler {
                 return idMap.get(ref) ?? ref;
             };
 
+            // SECURITY: imported dogs are never ownerless. Without ACL columns they were
+            // community-owned and public — the importer's copy of someone's code, open to all.
+            // Same rule as every other create: owner = importer, visibility by his default.
+            // Nothing ACL-related is taken from the bundle.
+            const dogAcl = applyCreateDefaults({ ownerId: req.ctx?.user?.id ?? null }, req.ctx);
+
             // 4. Persist every dog with fresh GUIDs and remapped parent refs.
-            for (const dog of bundle.dogs) {
+            for (const dog of importDogs) {
                 const newLineageId = idMap.get(dog.lineageId) || idMap.get(dog.versionId) || generateLineageId();
                 const newVersionId = generateVersionId();
 
@@ -266,16 +295,24 @@ export class KennelBundleHandler {
                     parentId: null,
                     displayName: cfg.displayName,
                     serializedDogConfig: JSON.stringify(cfg),
+                    visibility: dogAcl.visibility,
+                    ownerId: dogAcl.ownerId,
                     createdAt: new Date(),
                 });
             }
 
             // 5. Create the kennel as a single fresh version — no history restore.
-            //    Imported kennels get ownerId from the importer; visibility defaults to private
-            //    (the bundle's visibility hint can override).
+            //    Imported kennels get ownerId from the importer; visibility follows the create
+            //    defaults (the bundle's 'public' hint can override). A public kennel makes the
+            //    importer's own dogs public via the controller's cascade.
             const remappedDogIds = (bundle.kennel.dogIds || []).map(remap);
-            const importerId = req.ctx?.user?.id ?? null;
-            const importedVisibility = bundle.kennel.visibility === 'public' ? 'public' : 'private';
+            const kennelAcl = applyCreateDefaults(
+                {
+                    visibility: bundle.kennel.visibility === 'public' ? 'public' : undefined,
+                    ownerId: req.ctx?.user?.id ?? null,
+                },
+                req.ctx,
+            );
             const remappedNodes = Array.isArray(bundle.kennel.nodes)
                 ? bundle.kennel.nodes.map((n: any) => ({ ...n, id: remap(n.id) }))
                 : undefined;
@@ -295,8 +332,8 @@ export class KennelBundleHandler {
                 task: bundle.kennel.task,
                 nodes: remappedNodes,
                 edges: remappedEdges,
-                visibility: importedVisibility,
-                ownerId: req.ctx?.isSuperUser ? null : importerId,
+                visibility: kennelAcl.visibility,
+                ownerId: kennelAcl.ownerId,
             } as any);
             if (!createResult.ok) {
                 res.status(500).json({ error: createResult.error });
@@ -315,6 +352,7 @@ export class KennelBundleHandler {
                 kennelId,
                 name: kennelName,
                 idMap: Object.fromEntries(idMap),
+                ...(hinweise.length > 0 ? { hinweise } : {}),
             });
         } catch (err) {
             console.error('[KennelBundleHandler.handleImport]', err);

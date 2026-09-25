@@ -3,8 +3,16 @@ import type { Rune, SwaggridCast } from '@datadogs/swaggrid';
 import type { Waves } from './WavesConverter';
 import { findLeadNodeEntry } from './WavesConverter';
 
-/** Mappt Kennel-Laufdaten auf das neutrale Swaggrid-Cast-Format. */
-export function toSwaggridCast(config: IKennelConfig, waves: Waves): SwaggridCast {
+/**
+ * Mappt Kennel-Laufdaten auf das neutrale Swaggrid-Cast-Format.
+ * `includeDefaults: false` laesst defaultQuery/defaultBody weg (leere Beispiele) —
+ * die Defaults sind Konfiguration und gehen nur an Aufrufer mit Leserecht.
+ */
+export function toSwaggridCast(
+    config: IKennelConfig,
+    waves: Waves,
+    options: { includeDefaults: boolean } = { includeDefaults: true },
+): SwaggridCast {
     const lead = findLeadNodeEntry(waves, config);
     const heraldId = lead?.id ?? (config.dogIds?.[0] ?? '');
     const strata: Rune[][] = waves.map((wave) =>
@@ -22,8 +30,8 @@ export function toSwaggridCast(config: IKennelConfig, waves: Waves): SwaggridCas
         title: config.name,
         scroll: config.description,
         heraldId,
-        whispers: config.defaultQuery,
-        offering: config.defaultBody,
+        whispers: options.includeDefaults ? config.defaultQuery : undefined,
+        offering: options.includeDefaults ? config.defaultBody : undefined,
         strata,
     };
 }

@@ -5,7 +5,7 @@
 // user — granting access effectively claims the entity if 'owner' role is used.
 
 import type { PrismaClient } from '../../store/generated/prisma-auth-client';
-import { canMutate, parseList, serializeList, isCommunityOwned } from '../auth/visibility';
+import { canMutate, canRead, parseList, serializeList, isCommunityOwned } from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail } from './types';
 
 type EntityType = 'kennel' | 'node';
@@ -57,6 +57,17 @@ async function saveEntity(
     }
     const r = await deps.nodesController.save({ id, ...patch } as any);
     return { ok: r.ok, error: r.error };
+}
+
+/**
+ * Who sees collaborator e-mails: owner, editors, super-user. Readers (viewers, or anyone
+ * on a public entity) see only ids and counts — an ACL listing is not an address book.
+ */
+function seesCollaboratorEmails(entity: any, ctx: any): boolean {
+    if (ctx?.isSuperUser) return true;
+    if (!ctx?.user) return false;
+    if (entity.ownerId === ctx.user.id) return true;
+    return parseList(entity.editors).includes(ctx.user.id);
 }
 
 /** Owner / super-user / community-owned can manage ACL. Pure editors cannot. */
@@ -222,7 +233,7 @@ export function getAclTools(): ToolDef[] {
         {
             name: 'list_collaborators',
             description:
-                'Returns the full ACL of a kennel or node: owner, editors[], viewers[]. Each user is resolved with id, email and name.',
+                'Returns the ACL of a kennel or node: owner, editors[], viewers[]. Not found unless you can read the entity. Owner and editors see each user resolved with id, email and name; everyone else sees only ids and counts.',
             inputSchema: {
                 type: 'object',
                 required: ['entity_type', 'id'],
@@ -232,11 +243,12 @@ export function getAclTools(): ToolDef[] {
                     id: { type: 'string' },
                 },
             },
-            handler: async (args, _ctx, deps) => {
+            handler: async (args, ctx, deps) => {
                 const entityType = args.entity_type as EntityType;
                 const id = String(args.id);
                 const entity = await loadEntity(deps, entityType, id);
-                if (!entity) return fail(`${entityType} ${id} not found`);
+                // SECURITY (Nira F4): same answer for "missing" and "not yours to read".
+                if (!entity || !canRead(entity as any, ctx)) return fail(`${entityType} ${id} not found`);
 
                 const editorIds = parseList((entity as any).editors);
                 const viewerIds = parseList((entity as any).viewers);
@@ -245,6 +257,21 @@ export function getAclTools(): ToolDef[] {
                     ...editorIds,
                     ...viewerIds,
                 ];
+
+                if (!seesCollaboratorEmails(entity, ctx)) {
+                    const idOnly = (uid: string) => ({ id: uid });
+                    return ok({
+                        entity_type: entityType,
+                        id,
+                        visibility: (entity as any).visibility ?? 'public',
+                        owner: (entity as any).ownerId ? idOnly((entity as any).ownerId) : null,
+                        editors: editorIds.map(idOnly),
+                        viewers: viewerIds.map(idOnly),
+                        editorCount: editorIds.length,
+                        viewerCount: viewerIds.length,
+                        is_community: isCommunityOwned(entity as any),
+                    });
+                }
 
                 const users = allIds.length === 0
                     ? []

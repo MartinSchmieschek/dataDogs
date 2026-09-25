@@ -266,8 +266,8 @@ Nutzt du den MCP **nicht nur für einmalige Jagden**, sondern als Infrastruktur 
 
 | Aktion | Endpoint | Inhalt |
 |--------|----------|--------|
-| **Export** | `GET /api/kennels/:id/export` | Bundle: Kennel-Config + alle SerializedDogs/Mimics + `task` / `nodes` / `edges` |
-| **Import** | `POST /api/kennels/import` | Body = Bundle-JSON; Response: `{ ok, kennelId, idMap }` |
+| **Export** | `GET /api/kennels/:id/export` | Bundle: Kennel-Config + alle SerializedDogs/Mimics + `task` / `nodes` / `edges`. Dogs you cannot read are exported as reference stubs (`redacted: true`, no `config`) |
+| **Import** | `POST /api/kennels/import` | Body = Bundle-JSON; Response: `{ ok, kennelId, idMap }`, plus `hinweise` when reference stubs were skipped (the reference stays) |
 
 Kein separates MCP-Tool — dieselbe API-Basis wie der Gateway (`MCP_BASE_URL` bzw. dein dataDogs-Host). Pretty-printed JSON ins Projekt schreiben; das Bundle ist dein **offline Datenstand**, nicht der Chat.
 

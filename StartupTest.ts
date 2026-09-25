@@ -31,6 +31,10 @@ import type { ToolDeps } from './mcp/tools/types';
 import type { AuthCtx } from './mcp/auth/middleware';
 import { REDACTED_RESULT } from './services/wavesRedaction';
 import { generateVersionId, generateLineageId } from './api/utils/versioning';
+import { KennelBundleHandler } from './api/routes/KennelBundleHandler';
+import { KennelSwaggerHandler } from './api/routes/KennelSwaggerHandler';
+import { getAclTools } from './mcp/tools/acl';
+import { toSwaggridCast } from './services/swaggridAdapter';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@datadogs/dogs-geo';
 
 /**
@@ -136,6 +140,14 @@ export class StartupTest {
 
             // Export/Import Tests
             await this.testKennelExportImport(nodesStore, kennelsStore, kennelsController);
+
+            // ACL-Lecks F1, F3, F4, F5
+            await this.testExportStubsUnreadableDogs(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testSwaggerHiddenForUnreadable(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testListCollaboratorsGated(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            await this.testLegacySaveAppliesCreateDefaults(nodesStore, nodesController);
+            await this.testImportAppliesCreateDefaults(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testLegacySaveIgnoresClientAcl(nodesStore, nodesController);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -2408,6 +2420,382 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Loescht alle Versionen einer Dog-Lineage (Test-Cleanup fuer Dogs, deren Version-ID der Test nicht kennt). */
+    private async deleteDogLineage(nodesStore: IStore, lineageId: string): Promise<void> {
+        for (const type of [SerializedDog.name, MimicDog.name]) {
+            try {
+                const versions = await nodesStore.findAllVersions(type, lineageId);
+                for (const v of versions) await nodesStore.delete(v.id);
+            } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test: Export liefert nicht lesbare Dogs als Referenz-Stub (Nira F1); Import laeuft durch,
+     * warnt und laesst die Referenz stehen.
+     */
+    private async testExportStubsUnreadableDogs(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'ACL: Export stubbt nicht lesbare Dogs, Import warnt';
+        const stamp = Date.now();
+        const kennelId = `test-export-stub-${stamp}`;
+        const importId = `test-import-stub-${stamp}`;
+        let importedLineages: string[] = [];
+        try {
+            const open = await this.saveAclTestDog(nodesStore, 'ExportOpenDog', 'return { open: 1 };',
+                { visibility: 'public', ownerId: 'UK' });
+            const hidden = await this.saveAclTestDog(nodesStore, 'ExportHiddenDog', 'return { secret: "export-secret" };',
+                { visibility: 'private', ownerId: 'UF' });
+            const created = await kennelsController.create({
+                id: kennelId,
+                name: `Export Stub ${stamp}`,
+                dogIds: [open, hidden],
+                visibility: 'public',
+                ownerId: 'UK',
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const bundleHandler = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
+
+            const exp = this.fakeResponse();
+            await (bundleHandler as any).handleExport(
+                { params: { id: kennelId }, query: {}, ctx: { user: null, isSuperUser: false } },
+                exp.res,
+            );
+            if (exp.out.statusCode !== 200) throw new Error(`Export: Status ${exp.out.statusCode}`);
+            const bundle = exp.out.body;
+            const stub = bundle.dogs.find((d: any) => d.lineageId === hidden);
+            const full = bundle.dogs.find((d: any) => d.lineageId === open);
+            if (!stub || stub.redacted !== true || 'config' in stub) throw new Error(`Stub falsch: ${JSON.stringify(stub)}`);
+            if (!full || !full.config) throw new Error('lesbarer Dog ohne config exportiert');
+            if (JSON.stringify(bundle).includes('export-secret')) throw new Error('Code des privaten Dogs im Bundle');
+
+            const imp = this.fakeResponse();
+            await (bundleHandler as any).handleImport(
+                {
+                    body: { ...bundle, importTarget: { kennelId: importId, name: `Import Stub ${stamp}` } },
+                    ctx: { user: { id: 'UI', email: 'ui@test.invalid', name: null }, isSuperUser: false },
+                },
+                imp.res,
+            );
+            if (imp.out.statusCode !== 200 || !imp.out.body?.ok) throw new Error(`Import: ${JSON.stringify(imp.out.body)}`);
+            importedLineages = Object.values(imp.out.body.idMap ?? {}) as string[];
+            if (!Array.isArray(imp.out.body.hinweise) || imp.out.body.hinweise.length !== 1) {
+                throw new Error(`Import-Hinweise erwartet 1, erhalten ${JSON.stringify(imp.out.body.hinweise)}`);
+            }
+            const imported = await kennelsController.getById(importId);
+            if (!imported.ok || !imported.data) throw new Error('importierter Kennel fehlt');
+            if (!(imported.data.dogIds ?? []).includes(hidden)) throw new Error('Referenz auf den Stub-Dog ist nicht stehen geblieben');
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+            try { await kennelsController.delete(importId); } catch { /* ignore */ }
+            for (const lineageId of new Set(importedLineages)) await this.deleteDogLineage(nodesStore, lineageId);
+        }
+    }
+
+    /**
+     * Test: Spec und Swagger-UI eines privaten Kennels sind fuer Nicht-Leser 404 (Nira F3);
+     * Defaults gehen nur bei includeDefaults in die Spec; private Dogs eines oeffentlichen
+     * Kennels geben ihr Ergebnis nicht als Schema-Beispiel preis.
+     */
+    private async testSwaggerHiddenForUnreadable(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'ACL: Swagger/Spec hinter canRead';
+        const stamp = Date.now();
+        const privateId = `test-swagger-private-${stamp}`;
+        const publicId = `test-swagger-public-${stamp}`;
+        try {
+            const createdPrivate = await kennelsController.create({
+                id: privateId,
+                name: `Swagger Private ${stamp}`,
+                dogIds: [],
+                defaultBody: { hidden: 'swagger-default' },
+                visibility: 'private',
+                ownerId: 'U1',
+            });
+            if (!createdPrivate.ok) throw new Error(`privater Kennel nicht angelegt: ${createdPrivate.error}`);
+
+            const open = await this.saveAclTestDog(nodesStore, 'SwaggerOpenDog', 'return { open: 1 };',
+                { visibility: 'public', ownerId: 'U0' });
+            const hidden = await this.saveAclTestDog(nodesStore, 'SwaggerHiddenDog', 'return { secret: "swagger-secret" };',
+                { visibility: 'private', ownerId: 'U1' });
+            const createdPublic = await kennelsController.create({
+                id: publicId,
+                name: `Swagger Public ${stamp}`,
+                dogIds: [open, hidden],
+                visibility: 'public',
+                ownerId: 'U0',
+            });
+            if (!createdPublic.ok) throw new Error(`oeffentlicher Kennel nicht angelegt: ${createdPublic.error}`);
+
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const swagger = new KennelSwaggerHandler(runHandler, nodesStore);
+            const anon = { user: null, isSuperUser: false };
+            const call = async (method: string, id: string) => {
+                const { res, out } = this.fakeResponse();
+                await (swagger as any)[method]({ params: { id }, query: {}, ctx: anon, get: () => undefined }, res);
+                return out;
+            };
+
+            const json = await call('handleSwaggerJson', privateId);
+            const docs = await call('handleSwaggerUi', privateId);
+            if (json.statusCode !== 404) throw new Error(`swagger.json privat anonym: erwartet 404, erhalten ${json.statusCode}`);
+            if (docs.statusCode !== 404) throw new Error(`/docs privat anonym: erwartet 404, erhalten ${docs.statusCode}`);
+            if (JSON.stringify(docs.body ?? '').includes('Swagger Private')) throw new Error('/docs verraet den Titel');
+
+            const pub = await call('handleSwaggerJson', publicId);
+            if (pub.statusCode !== 200) throw new Error(`swagger.json oeffentlich: Status ${pub.statusCode}`);
+            if (JSON.stringify(pub.body).includes('swagger-secret')) throw new Error('Spec traegt das Ergebnis eines privaten Dogs');
+
+            const withDefaults = toSwaggridCast({ id: 'x', dogIds: [], defaultQuery: { q: '1' }, defaultBody: { b: 2 } } as any, []);
+            const withoutDefaults = toSwaggridCast(
+                { id: 'x', dogIds: [], defaultQuery: { q: '1' }, defaultBody: { b: 2 } } as any, [], { includeDefaults: false },
+            );
+            if (!withDefaults.whispers || !withDefaults.offering) throw new Error('Defaults fehlen trotz includeDefaults');
+            if (withoutDefaults.whispers !== undefined || withoutDefaults.offering !== undefined) {
+                throw new Error('Defaults in der Spec ohne includeDefaults');
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(privateId); } catch { /* ignore */ }
+            try { await kennelsController.delete(publicId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test: list_collaborators ist hinter canRead (Nira F4); E-Mails nur fuer Owner/Editors.
+     */
+    private async testListCollaboratorsGated(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'ACL: list_collaborators hinter canRead, E-Mails nur fuer Owner/Editors';
+        const kennelId = `test-collaborators-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({
+                id: kennelId,
+                name: `Collaborators ${kennelId}`,
+                dogIds: [],
+                visibility: 'private',
+                ownerId: 'U1',
+                editors: ['U2'],
+                viewers: ['U3'],
+            });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+
+            const users = ['U1', 'U2', 'U3'].map((id) => ({ id, email: `${id.toLowerCase()}@test.invalid`, name: null }));
+            const fakePrisma = { user: { findMany: async () => users } };
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler, fakePrisma);
+            const tool = getAclTools().find((t) => t.name === 'list_collaborators');
+            if (!tool) throw new Error('Werkzeug list_collaborators fehlt');
+            const call = (ctx: AuthCtx) => tool.handler({ entity_type: 'kennel', id: kennelId }, ctx, deps);
+            const user = (id: string): AuthCtx => ({ user: { id, email: `${id.toLowerCase()}@test.invalid`, name: null }, isSuperUser: false });
+
+            const anon = await call({ user: null, isSuperUser: false });
+            if (!anon.isError) throw new Error('anonym: erwartet not found');
+            const stranger = await call(user('U9'));
+            if (!stranger.isError) throw new Error('Fremder: erwartet not found');
+
+            const viewer = await call(user('U3'));
+            if (viewer.isError) throw new Error(`Viewer: ${viewer.content[0]?.text}`);
+            const viewerBody = JSON.parse(viewer.content[0].text);
+            if (viewer.content[0].text.includes('@test.invalid')) throw new Error('Viewer sieht E-Mails');
+            if (viewerBody.owner?.id !== 'U1' || viewerBody.editorCount !== 1 || viewerBody.viewerCount !== 1) {
+                throw new Error(`Viewer: ids/Anzahl falsch: ${viewer.content[0].text}`);
+            }
+
+            for (const id of ['U1', 'U2']) {
+                const r = await call(user(id));
+                if (r.isError) throw new Error(`${id}: ${r.content[0]?.text}`);
+                if (!r.content[0].text.includes('u1@test.invalid')) throw new Error(`${id}: E-Mails fehlen`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Test: Legacy POST /save mit unbekannter id legt die Node mit Create-Defaults an (Nira F5):
+     * Owner = Aufrufer, visibility private — nicht herrenlos und oeffentlich.
+     */
+    private async testLegacySaveAppliesCreateDefaults(
+        nodesStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+    ): Promise<void> {
+        const testName = 'ACL: Legacy /save wendet Create-Defaults an';
+        let lineageId: string | undefined;
+        try {
+            const registry = new ControllerRegistry();
+            registry.register('nodes', nodesController);
+            const handler = new ConfigRouteHandler(registry);
+            const { res, out } = this.fakeResponse();
+            await (handler as any).handleSave(
+                {
+                    query: {},
+                    body: { id: `test-legacy-save-${Date.now()}`, tsCode: 'return 1;' },
+                    ctx: { user: { id: 'U1', email: 'u1@test.invalid', name: null }, isSuperUser: false },
+                    get: () => undefined,
+                },
+                res,
+            );
+            if (out.statusCode !== 200 || !out.body?.ok) throw new Error(`/save: ${out.statusCode} ${JSON.stringify(out.body)}`);
+            lineageId = out.body.lineageId;
+            if (!lineageId) throw new Error('/save lieferte keine lineageId');
+
+            const rows = await nodesStore.findLatestVersionsByType(SerializedDog.name, [lineageId]);
+            const row: any = rows[0];
+            if (!row) throw new Error('gespeicherte Node nicht gefunden');
+            if (row.ownerId !== 'U1') throw new Error(`ownerId erwartet U1, erhalten ${row.ownerId}`);
+            if (row.visibility !== 'private') throw new Error(`visibility erwartet private, erhalten ${row.visibility}`);
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            if (lineageId) await this.deleteDogLineage(nodesStore, lineageId);
+        }
+    }
+
+    /**
+     * Test: Import legt Dogs und Kennel mit Create-Defaults an — Owner = Importeur, privat,
+     * nie herrenlos/community.
+     */
+    private async testImportAppliesCreateDefaults(
+        nodesStore: IStore,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'ACL: Import vergibt Owner und Sichtbarkeit (nie herrenlos)';
+        const stamp = Date.now();
+        const importId = `test-import-acl-${stamp}`;
+        let importedLineages: string[] = [];
+        try {
+            const oldLineage = generateLineageId();
+            const bundle = {
+                bundleVersion: 2,
+                kennel: { kennelId: `bundle-${stamp}`, name: `Bundle ${stamp}`, dogIds: [oldLineage] },
+                dogs: [{
+                    lineageId: oldLineage,
+                    versionId: generateVersionId(),
+                    displayName: 'ImportAclDog',
+                    type: 'SerializedDog',
+                    config: { displayName: 'ImportAclDog', theRun: 'return 1;', parentsRequired: [], parentsOptional: [] },
+                }],
+            };
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap });
+            const bundleHandler = new KennelBundleHandler(runHandler, kennelsController, nodesStore, baseDogsMap);
+            const { res, out } = this.fakeResponse();
+            await (bundleHandler as any).handleImport(
+                {
+                    body: { ...bundle, importTarget: { kennelId: importId, name: `Import ACL ${stamp}` } },
+                    ctx: { user: { id: 'UI', email: 'ui@test.invalid', name: null }, isSuperUser: false },
+                },
+                res,
+            );
+            if (out.statusCode !== 200 || !out.body?.ok) throw new Error(`Import: ${JSON.stringify(out.body)}`);
+            importedLineages = Object.values(out.body.idMap ?? {}) as string[];
+            const newLineage = out.body.idMap?.[oldLineage];
+            if (!newLineage) throw new Error('idMap ohne den importierten Dog');
+
+            const rows: any[] = await nodesStore.findLatestVersionsByType(SerializedDog.name, [newLineage]);
+            const dog = rows[0];
+            if (!dog) throw new Error('importierter Dog nicht gefunden');
+            if (dog.ownerId !== 'UI') throw new Error(`Dog-ownerId erwartet UI, erhalten ${dog.ownerId}`);
+            if (dog.visibility !== 'private') throw new Error(`Dog-visibility erwartet private, erhalten ${dog.visibility}`);
+
+            const kennel: any = (await kennelsController.getById(importId)).data;
+            if (!kennel) throw new Error('importierter Kennel fehlt');
+            if (kennel.ownerId !== 'UI') throw new Error(`Kennel-ownerId erwartet UI, erhalten ${kennel.ownerId}`);
+            if (kennel.visibility !== 'private') throw new Error(`Kennel-visibility erwartet private, erhalten ${kennel.visibility}`);
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(importId); } catch { /* ignore */ }
+            for (const lineageId of new Set(importedLineages)) await this.deleteDogLineage(nodesStore, lineageId);
+        }
+    }
+
+    /**
+     * Test: Legacy /save uebernimmt keine ACL-Felder aus serializedDogConfig — bestehende
+     * Nodes behalten ihre, neue bekommen die Create-Defaults.
+     */
+    private async testLegacySaveIgnoresClientAcl(
+        nodesStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+    ): Promise<void> {
+        const testName = 'ACL: Legacy /save ignoriert ACL-Felder des Clients';
+        let createdLineage: string | undefined;
+        let existing: string | undefined;
+        try {
+            existing = await this.saveAclTestDog(nodesStore, 'SaveAclDog', 'return 1;',
+                { visibility: 'private', ownerId: 'U1' });
+            const registry = new ControllerRegistry();
+            registry.register('nodes', nodesController);
+            const handler = new ConfigRouteHandler(registry);
+            const forged = { ownerId: 'U9', visibility: 'public', editors: 'U9', viewers: 'U9' };
+            const save = async (id: string) => {
+                const { res, out } = this.fakeResponse();
+                await (handler as any).handleSave(
+                    {
+                        query: {},
+                        body: { id, tsCode: 'return 2;', serializedDogConfig: forged },
+                        ctx: { user: { id: 'U1', email: 'u1@test.invalid', name: null }, isSuperUser: false },
+                        get: () => undefined,
+                    },
+                    res,
+                );
+                if (out.statusCode !== 200 || !out.body?.ok) throw new Error(`/save ${id}: ${out.statusCode} ${JSON.stringify(out.body)}`);
+                return out.body.lineageId as string;
+            };
+            const check = async (lineageId: string, label: string) => {
+                const row: any = (await nodesStore.findLatestVersionsByType(SerializedDog.name, [lineageId]))[0];
+                if (!row) throw new Error(`${label}: Node nicht gefunden`);
+                if (row.ownerId !== 'U1') throw new Error(`${label}: ownerId erwartet U1, erhalten ${row.ownerId}`);
+                if (row.visibility !== 'private') throw new Error(`${label}: visibility erwartet private, erhalten ${row.visibility}`);
+                if (String(row.editors ?? '').includes('U9') || String(row.viewers ?? '').includes('U9')) {
+                    throw new Error(`${label}: editors/viewers vom Client uebernommen`);
+                }
+                const cfg = JSON.parse(row.serializedDogConfig || '{}');
+                if ('ownerId' in cfg || 'visibility' in cfg) throw new Error(`${label}: ACL-Felder in serializedDogConfig gelandet`);
+            };
+
+            await check(await save(existing), 'bestehend');
+            createdLineage = await save(`test-legacy-save-acl-${Date.now()}`);
+            await check(createdLineage, 'neu');
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            if (createdLineage) await this.deleteDogLineage(nodesStore, createdLineage);
+            if (existing) await this.deleteDogLineage(nodesStore, existing);
         }
     }
 
