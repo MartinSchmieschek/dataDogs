@@ -1,4 +1,5 @@
 import { IStore } from './store/IStore';
+import { kennelExists } from './seed-data/seed-helpers';
 import {
     SerializedDog,
     ISerializedDogConfig,
@@ -69,6 +70,7 @@ export class StartupTest {
             // Store-Tests
             await this.testStoreSaveAndLoad(nodesStore);
             await this.testStoreFindByType(nodesStore);
+            await this.testKennelExistsUsesLineageLookup();
             
             // Controller-Tests
             await this.testControllerList(nodesController);
@@ -212,6 +214,35 @@ export class StartupTest {
             const results = await store.findByType(SerializedDog.name);
             if (!Array.isArray(results)) {
                 throw new Error('Ergebnis ist kein Array');
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test: kennelExists fragt per (type, lineageId) nach, statt die KennelConfig-Partition
+     * zu ziehen — der Seed ruft das 21 Mal je Boot.
+     */
+    private async testKennelExistsUsesLineageLookup(): Promise<void> {
+        const testName = 'Seed: kennelExists ueber findByLineage (kein Vollscan)';
+        try {
+            let findByTypeCalls = 0;
+            const lineageLookups: Array<[string, string]> = [];
+            const fakeStore = {
+                findByType: async () => { findByTypeCalls++; return []; },
+                findByLineage: async (type: string, lineageId: string) => {
+                    lineageLookups.push([type, lineageId]);
+                    return [{ id: 'v1', lineageId, type }];
+                },
+            } as unknown as IStore;
+
+            const exists = await kennelExists(fakeStore, 'x');
+            if (exists !== true) throw new Error(`kennelExists lieferte ${exists}, erwartet true`);
+            if (findByTypeCalls !== 0) throw new Error(`findByType wurde ${findByTypeCalls} Mal gerufen`);
+            if (lineageLookups.length !== 1 || lineageLookups[0][0] !== 'KennelConfig' || lineageLookups[0][1] !== 'x') {
+                throw new Error(`findByLineage-Aufrufe unerwartet: ${JSON.stringify(lineageLookups)}`);
             }
             this.addResult(testName, true);
         } catch (error) {

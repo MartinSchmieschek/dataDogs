@@ -2,10 +2,13 @@ import { randomUUID } from 'crypto';
 import { IStore } from '../store/IStore';
 import { SerializedDog, type IMimicDogConfig } from '@datadogs/core';
 
-/** Check if a kennel with this lineageId already exists. */
+/**
+ * Check if a kennel with this lineageId already exists.
+ * Punkt-Lookup ueber (type, lineageId) — kein Scan der ganzen KennelConfig-Partition je Seed-Kennel.
+ */
 export async function kennelExists(store: IStore, kennelLineageId: string): Promise<boolean> {
-    const all = await store.findByType('KennelConfig');
-    return all.some((r: any) => r.lineageId === kennelLineageId);
+    const rows = await store.findByLineage('KennelConfig', kennelLineageId);
+    return rows.length > 0;
 }
 
 /** Save a versioned kennel seed — lineageId is the stable kennel ID, id is a fresh GUID. */
