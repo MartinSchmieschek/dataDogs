@@ -48,6 +48,8 @@ export const API_ROUTE = {
     kennelExecute: '/api/kennels/:id/execute',
     /** Sterne (P4): GET/PUT/DELETE. */
     kennelRating: '/api/kennels/:id/rating',
+    /** Ranglisten fuer die Landing (P4), vor ConfigRouteHandler registriert. */
+    landing: '/api/landing',
     kennelExport: '/api/kennels/:id/export',
     kennelImport: '/api/kennels/import',
     nodesList: '/api/nodes',
@@ -80,6 +82,7 @@ export const API_ROUTES = [
     '/api/nodes/:id/freeze',
     '/api/nodes/:id/unfreeze',
     '/api/readme',
+    '/api/landing',
     '/api/channels',
 ] as const;
 
@@ -138,6 +141,7 @@ export const EXPRESS_APP_ROUTES = [
     API_ROUTE.kennelImport,
     API_ROUTE.nodesList,
     API_ROUTE.readme,
+    API_ROUTE.landing,
     ...LEGACY_308,
     ROOT_ROUTE.legacySave,
 ] as const;

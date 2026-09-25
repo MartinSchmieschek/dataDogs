@@ -60,6 +60,7 @@ import { KennelCallCounter, utcDay } from './services/KennelCallCounter';
 import { KennelStatsService } from './services/KennelStatsService';
 import { KennelRatingHandler } from './api/routes/KennelRatingHandler';
 import { ListQuery } from './api/routes/ListQuery';
+import { LandingRouteHandler } from './api/routes/LandingRouteHandler';
 import type { IKennelStatsStore, KennelCallAggregate } from './store/IKennelStatsStore';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
@@ -236,6 +237,7 @@ export class StartupTest {
             await this.testKennelDeleteClearsStats(kennelsStore, statsStore);
             await this.testRatingRules(kennelsController as KennelController, statsStore);
             await this.testListQuerySortsAndFiltersByStats();
+            await this.testLandingRanksOnlyPublic();
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4529,6 +4531,75 @@ export class StartupTest {
             expect('minStars kaputt', run({ minStars: 'viel', sort: 'nonsense' }).ids, 'a,b,d,c');
             const paged = run({ sort: 'calls30d', dir: 'desc', limit: '2', minStars: 3 });
             if (paged.ids !== 'b,d' || paged.total !== 3 || (paged.body as any).total !== 3) throw new Error(`Seite: ${JSON.stringify(paged)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test P4 12: GET /api/landing — X (public, Aufrufe) nur in topByCalls30d, Y (public, Sterne) nur
+     * in topByRating, der private Kennel mit hohen Zahlen in keiner Liste; ein run-only-Kennel rankt
+     * (8.17), aber ohne defaultQuery in der url; jede url beginnt mit /k/; der zweite Aufruf liest
+     * nichts (Memo); If-None-Match mit dem ETag -> 304.
+     */
+    private async testLandingRanksOnlyPublic(): Promise<void> {
+        const testName = 'P4 12: /api/landing nur Oeffentliches, Memo, ETag';
+        try {
+            const kennels = [
+                { id: 'vx', lineageId: 'land-x', name: 'X', visibility: 'public', ownerId: 'UO', dogIds: ['d'], defaultQuery: { lat: '51.72', lng: '8.75' }, description: 'x'.repeat(200) },
+                { id: 'vy', lineageId: 'land-y', name: 'Y', visibility: 'public', ownerId: 'UO', dogIds: ['d'] },
+                { id: 'vz', lineageId: 'land-z', name: 'Z', visibility: 'private', ownerId: 'UO', dogIds: ['d'] },
+                { id: 'vr', lineageId: 'land-r', name: 'R', visibility: 'run-only', ownerId: 'UO', dogIds: ['d'], defaultQuery: { secret: 'p4-default-r' } },
+            ];
+            let reads = 0;
+            const store: IKennelStatsStore = {
+                ...StartupTest.NO_STATS_STORE,
+                readKennelCallAggregates: async () => {
+                    reads += 1;
+                    return [
+                        { lineageId: 'land-x', total: 5, last30d: 5, leadFailed: 0, rankedTotal: 5, ranked30d: 5 },
+                        { lineageId: 'land-z', total: 900, last30d: 900, leadFailed: 0, rankedTotal: 900, ranked30d: 900 },
+                        { lineageId: 'land-r', total: 2, last30d: 2, leadFailed: 0, rankedTotal: 2, ranked30d: 2 },
+                    ];
+                },
+                readKennelRatingAggregates: async () => [
+                    { lineageId: 'land-y', count: 3, sum: 13 },
+                    { lineageId: 'land-z', count: 40, sum: 200 },
+                ],
+            };
+            const stats = new KennelStatsService(store, new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 }));
+            const controller = { listLatest: async () => ({ ok: true, data: kennels.map((k) => ({ ...k })) }) } as unknown as KennelController;
+            const handler = new LandingRouteHandler(controller, stats);
+            const loads = (): number => handler.memoLoads;
+            const get = (headers: Record<string, string> = {}) => {
+                const { res, out } = this.fakeResponse();
+                (res as any).end = () => res;
+                return (handler as any).handleLanding({ query: { limit: '10' }, headers, get: (h: string) => headers[h.toLowerCase()] }, res).then(() => out);
+            };
+            const first = await get();
+            const body = JSON.parse(first.body);
+            const ids = (list: any[]) => list.map((e) => e.lineageId).join(',');
+            if (first.statusCode !== 200) throw new Error(`Status ${first.statusCode}`);
+            if (ids(body.topByCalls30d) !== 'land-x,land-r') throw new Error(`topByCalls30d: ${ids(body.topByCalls30d)}`);
+            if (ids(body.topByRating) !== 'land-y') throw new Error(`topByRating: ${ids(body.topByRating)}`);
+            if (first.body.includes('land-z') || first.body.includes('p4-default-r')) throw new Error('privater Kennel oder run-only-Default in der Landing');
+            const all = [...body.topByCalls30d, ...body.topByRating];
+            if (all.some((e: any) => !String(e.url).startsWith('/k/'))) throw new Error('url ohne /k/');
+            const x = body.topByCalls30d[0];
+            if (x.url !== '/k/land-x?lat=51.72&lng=8.75' || x.description.length !== 140 || !x.description.endsWith('…')) {
+                throw new Error(`Eintrag X: ${x.url} ${x.description.length}`);
+            }
+            if (body.windowDays !== 30 || typeof body.generatedAt !== 'string') throw new Error('Kopf der Antwort');
+            if (first.headers['cache-control'] !== 'public, max-age=60' || !first.headers['etag']) throw new Error(`Header: ${JSON.stringify(first.headers)}`);
+
+            const second = await get();
+            if (second.body !== first.body || loads() !== 1 || reads !== 1) throw new Error(`Memo: loads ${loads()}, reads ${reads}`);
+            const cached = await get({ 'if-none-match': first.headers['etag'] });
+            if (cached.statusCode !== 304) throw new Error(`If-None-Match: ${cached.statusCode}`);
+            stats.invalidate();
+            await get();
+            if (loads() !== 2) throw new Error('invalidate() leert das Landing-Memo nicht');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

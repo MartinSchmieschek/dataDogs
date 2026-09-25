@@ -14,6 +14,7 @@ import { KennelRunHandler } from '../api/routes/KennelRunHandler';
 import { KennelSwaggerHandler } from '../api/routes/KennelSwaggerHandler';
 import { KennelBundleHandler } from '../api/routes/KennelBundleHandler';
 import { KennelRatingHandler } from '../api/routes/KennelRatingHandler';
+import { LandingRouteHandler } from '../api/routes/LandingRouteHandler';
 import { NodesRouteHandler } from '../api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from '../api/routes/ReadmeRouteHandler';
 import { StartupTest } from '../StartupTest';
@@ -223,6 +224,9 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     nodesRouteHandler.registerRoutes(app);
     const readmeRouteHandler = new ReadmeRouteHandler(serverRootDir);
     readmeRouteHandler.registerRoutes(app);
+
+    // Landing-Daten (P4) VOR /api/:subpath — sonst antwortet dort der Controller-404. Keine Bremse.
+    new LandingRouteHandler(kennelsController, kennelStats).registerRoutes(app);
 
     const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats);
     routeHandler.registerRoutes(app, '/api');
