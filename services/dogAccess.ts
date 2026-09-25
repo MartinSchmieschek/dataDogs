@@ -185,43 +185,53 @@ export class DogRunPolicy {
         if (!this.isForeignToRunner(dog)) {
             return isMimic ? new MimicDog(config as IMimicDogConfig, storageId) : new SerializedDog(config, storageId);
         }
+        const scope: ForeignDogScope = { lineageId, ownerMayRead: canRead(dog, this.kennelOwnerCtx) };
         return isMimic
-            ? new RunnerScopedMimicDog(config as IMimicDogConfig, storageId, lineageId)
-            : new RunnerScopedSerializedDog(config, storageId, lineageId);
+            ? new RunnerScopedMimicDog(config as IMimicDogConfig, storageId, scope)
+            : new RunnerScopedSerializedDog(config, storageId, scope);
     }
+}
+
+/** Wer ein fremder Dog ist: seine Lineage und ob der Kennel-Owner seinen Code lesen darf (P4c 8.8). */
+export interface ForeignDogScope {
+    lineageId: string;
+    ownerMayRead: boolean;
 }
 
 /**
  * Der Kapazitaets-Kontext eines fremden Dogs: die userId wird zu `<user>:dog:<lineage>`. Jede
- * Kapazitaet, die nach userId trennt (jsonStore heute, Keys in P4c), sieht damit einen eigenen,
- * leeren Namensraum statt der Ablage des Aufrufers — fail-closed, auch fuer kuenftige Kapazitaeten.
+ * Kapazitaet, die nach userId trennt (jsonStore), sieht damit einen eigenen, leeren Namensraum statt
+ * der Ablage des Aufrufers — fail-closed, auch fuer kuenftige Kapazitaeten. `foreignDog` sagt es
+ * ausdruecklich (auch Anonymen): `keys` gibt einem solchen Dog keinen Schluessel des Runners (P4c).
  */
 export function scopeCapabilityToDog(
     ctx: VmGlobalCapabilityContext | undefined,
-    lineageId: string,
+    scope: ForeignDogScope,
 ): VmGlobalCapabilityContext | undefined {
-    if (!ctx || ctx.isSuperUser || !ctx.userId) return ctx;
-    return { ...ctx, userId: `${ctx.userId}:dog:${lineageId}` };
+    if (!ctx || ctx.isSuperUser) return ctx;
+    const foreignDog = { lineageId: scope.lineageId, ownerMayRead: scope.ownerMayRead };
+    if (!ctx.userId) return { ...ctx, foreignDog };
+    return { ...ctx, userId: `${ctx.userId}:dog:${scope.lineageId}`, foreignDog };
 }
 
 /** Ein SerializedDog, der dem Aufrufer fremd ist: gleicher Code, eigener Namensraum. */
 export class RunnerScopedSerializedDog<T> extends SerializedDog<T> {
-    constructor(config: ISerializedDogConfig, storageId: string, private readonly scopeLineageId: string) {
+    constructor(config: ISerializedDogConfig, storageId: string, private readonly scope: ForeignDogScope) {
         super(config, storageId);
     }
 
     public setCapabilityContext(ctx: VmGlobalCapabilityContext | undefined): void {
-        super.setCapabilityContext(scopeCapabilityToDog(ctx, this.scopeLineageId));
+        super.setCapabilityContext(scopeCapabilityToDog(ctx, this.scope));
     }
 }
 
 /** Dasselbe fuer einen MimicDog. */
 export class RunnerScopedMimicDog<T> extends MimicDog<T> {
-    constructor(config: IMimicDogConfig, storageId: string, private readonly scopeLineageId: string) {
+    constructor(config: IMimicDogConfig, storageId: string, private readonly scope: ForeignDogScope) {
         super(config, storageId);
     }
 
     public setCapabilityContext(ctx: VmGlobalCapabilityContext | undefined): void {
-        super.setCapabilityContext(scopeCapabilityToDog(ctx, this.scopeLineageId));
+        super.setCapabilityContext(scopeCapabilityToDog(ctx, this.scope));
     }
 }

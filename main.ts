@@ -19,7 +19,7 @@ process.on('uncaughtException', (err) => {
     process.exit(1);
 });
 
-import { WebSocketChannelRetriever, registerVmGlobalCapability } from '@slopdogs/core';
+import { WebSocketChannelRetriever, registerVmGlobalCapability, setVmConsoleSink } from '@slopdogs/core';
 import http from 'http';
 import fs from 'fs';
 import { ChannelHub } from './services/ChannelHub';
@@ -34,6 +34,7 @@ import { createHttpApplication } from './server-app/createHttpApplication';
 import { EX_CONFIG, authModeBootError } from './mcp/auth/middleware';
 import { KennelCallCounter } from './services/KennelCallCounter';
 import { DogReferenceIndex } from './services/DogReferenceIndex';
+import { KeysCapability, scrubbingConsoleSink } from './services/keysCapability';
 import {
     assertSlimRegistryCoversKennelDbRefs,
     collectBaseDogNamesFromLatestKennels,
@@ -219,7 +220,7 @@ async function start() {
     const nodeEnv = process.env.NODE_ENV || 'development';
     const devUiOrigin = (process.env.DEV_UI_ORIGIN || 'http://localhost:4300').replace(/\/$/, '');
 
-    const { app, serveBuiltAngular, runStartupTests, disconnect: disconnectHttpApplication } = await createHttpApplication({
+    const { app, serveBuiltAngular, runStartupTests, disconnect: disconnectHttpApplication, keyStore } = await createHttpApplication({
         nodeEnv,
         devUiOrigin,
         serverRootDir: __dirname,
@@ -233,6 +234,13 @@ async function start() {
         refIndex,
         dogStatsStore: store,
     });
+
+    // Key-Store (P4c): die zweite VM-Global-Capability neben jsonStore. Sie haengt am Auth-Client, den
+    // createHttpApplication besitzt — deshalb erst hier. keys.fetch ersetzt `{{key:<alias>}}` auf dem
+    // Host, der Klartext betritt nie die VM. `console` im Dog-Code laeuft ab jetzt ueber die Bridge und
+    // wird vor der Ausgabe um die im Lauf benutzten Werte bereinigt (Leck L7).
+    new KeysCapability(keyStore).register();
+    setVmConsoleSink(scrubbingConsoleSink);
 
     const port = Number(process.env.PORT) || 3000;
 

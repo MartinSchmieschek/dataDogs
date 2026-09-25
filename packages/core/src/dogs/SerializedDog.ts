@@ -53,6 +53,20 @@ export type VmGlobalCapabilityContext = {
     userId?: string | null;
     /** Dev-Mode / Super-User (z.B. MCP_AUTH_REQUIRED=false). */
     isSuperUser?: boolean;
+    /** Lineage des laufenden Kennels — Host-Capabilities, die je Kennel freigeben (P4c kennelGrants). */
+    kennelLineageId?: string | null;
+    /** Owner des laufenden Kennels (Rechte vom Kopf der Lineage). */
+    kennelOwnerId?: string | null;
+    /**
+     * Gesetzt, wenn der Dog dem Runner fremd ist (unterhalb READ, P3.5): solche Dogs bekommen keine
+     * Kapazitaeten des Runners. `ownerMayRead`: der Kennel-Owner darf den Code lesen (P4c 8.8).
+     */
+    foreignDog?: { lineageId: string; ownerMayRead: boolean };
+    /**
+     * Zustand, den der Server je Lauf anlegt und seine Capabilities teilen (P4c: benutzte Werte fuer
+     * den Scrub, Memo der Schluessel). Der Core reicht ihn nur durch — er landet nie im VM-Kontext.
+     */
+    runState?: object;
 };
 
 /**
@@ -111,6 +125,75 @@ export function listVmGlobalCapabilities(): Array<{ name: string; doc: string | 
 export function unregisterVmGlobalCapability(name: string): boolean {
     vmGlobalCapabilityDocs.delete(name);
     return vmGlobalCapabilities.delete(name);
+}
+
+/** Stufe einer Log-Zeile aus dem Dog-Code. */
+export type VmConsoleLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
+
+/**
+ * Wohin `console` im Dog-Code schreibt, wenn der Server es so will (P4c, Leck L7): der Worker
+ * formatiert die Zeile und schickt sie per Bridge auf den Host, der sie vor der Ausgabe bereinigt.
+ * Ohne Senke bleibt `console` im Worker nativ. Kosten: ein RPC je Log-Zeile.
+ */
+export type VmConsoleSink = (level: VmConsoleLevel, line: string, ctx: VmGlobalCapabilityContext) => void;
+
+let vmConsoleSink: VmConsoleSink | null = null;
+
+/** Die Senke fuer `console` im Dog-Code setzen (null = nativ im Worker). */
+export function setVmConsoleSink(sink: VmConsoleSink | null): void {
+    vmConsoleSink = sink;
+}
+
+/**
+ * Private oder lokale Netzadresse? Die Blocklist des Worker-`fetch` (8.9) und der Host-Capability
+ * `keys.fetch` (P4c): 127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, ::1, fc00::/7 — dazu 0/8, ::,
+ * fe80::/10 und IPv4 in IPv6 (::ffff:a.b.c.d), die auf dieselben Ziele fuehren. Kein Hostname, nur
+ * Adressen. Die Funktion reist als Quelltext in den Worker: keine Abhaengigkeiten, kein Template-String.
+ */
+export function isPrivateNetworkAddress(address: string): boolean {
+    let a = String(address || '').trim().toLowerCase();
+    if (a.charAt(0) === '[' && a.charAt(a.length - 1) === ']') a = a.slice(1, -1);
+    const zone = a.indexOf('%');
+    if (zone >= 0) a = a.slice(0, zone);
+    const privateV4 = (v4: string): boolean | null => {
+        const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(v4);
+        if (!m) return null;
+        const o1 = Number(m[1]);
+        const o2 = Number(m[2]);
+        return o1 === 127 || o1 === 10 || o1 === 0
+            || (o1 === 172 && o2 >= 16 && o2 <= 31)
+            || (o1 === 192 && o2 === 168)
+            || (o1 === 169 && o2 === 254);
+    };
+    const direct = privateV4(a);
+    if (direct !== null) return direct;
+    if (a.indexOf(':') < 0) return false;
+    // IPv6 auf acht Gruppen aufklappen; eine eingebettete IPv4 (::ffff:1.2.3.4) zaehlt als zwei.
+    let tail: string | null = null;
+    const lastColon = a.lastIndexOf(':');
+    if (a.indexOf('.', lastColon) > lastColon) {
+        tail = a.slice(lastColon + 1);
+        a = a.slice(0, lastColon + 1) + '0:0';
+    }
+    const halves = a.split('::');
+    if (halves.length > 2) return false;
+    const head = halves[0] ? halves[0].split(':') : [];
+    const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+    const fill = halves.length === 2 ? 8 - head.length - rest.length : 0;
+    const groups = head.concat(new Array(Math.max(0, fill)).fill('0'), rest).map((g) => parseInt(g || '0', 16));
+    if (groups.length !== 8 || groups.some((g) => isNaN(g) || g < 0 || g > 0xffff)) return false;
+    const zeroUpTo = (n: number): boolean => groups.slice(0, n).every((g) => g === 0);
+    if (zeroUpTo(8)) return true;
+    if (zeroUpTo(7) && groups[7] === 1) return true;
+    if (zeroUpTo(5) && (groups[5] === 0xffff || groups[5] === 0)) {
+        const v4 = tail !== null
+            ? tail
+            : [groups[6] >> 8, groups[6] & 255, groups[7] >> 8, groups[7] & 255].join('.');
+        return privateV4(v4) === true;
+    }
+    if ((groups[0] & 0xfe00) === 0xfc00) return true;
+    if ((groups[0] & 0xffc0) === 0xfe80) return true;
+    return false;
 }
 
 /**
@@ -204,7 +287,8 @@ function resolveDogWorkerYoungHeapMb(maxHeapMb: number): number {
 /**
  * Worker source -- a tiny script inlined via `new Worker(code, { eval: true })`.
  * Runs the spirit's incantation inside its own isolate, far from the captain's heart.
- * Native fetch/console live in the worker realm naturally; only structured-clone-safe
+ * fetch/console live in the worker realm (fetch behind the private-network blocklist, 8.9;
+ * console via the bridge when the server sets a sink, P4c); only structured-clone-safe
  * data crosses the membrane.
  *
  * Worker output passes through JSON.parse(JSON.stringify(...)) to escape the VM realm.
@@ -217,6 +301,69 @@ function resolveDogWorkerYoungHeapMb(maxHeapMb: number): number {
 const SANDBOX_WORKER_SOURCE = `
     const { parentPort } = require('worker_threads');
     const vm = require('vm');
+    const dns = require('dns');
+    const net = require('net');
+    const util = require('util');
+
+    // Egress-Blocklist (8.9): der native fetch des Dogs erreicht keine privaten oder lokalen
+    // Netze (Container, Postgres, Metadaten-Dienst). Blocklist, keine Allowlist -- jede
+    // oeffentliche API bleibt erreichbar. Jede Umleitung wird vor dem naechsten Sprung geprueft.
+    const isPrivateNetworkAddress = ${isPrivateNetworkAddress.toString()};
+    const nativeFetch = fetch;
+    const REDIRECT_STATUS = [301, 302, 303, 307, 308];
+
+    async function assertPublicTarget(href) {
+        let url;
+        try { url = new URL(href); } catch (e) { return; }
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+        const host = url.hostname.replace(/^\\[|\\]$/g, '');
+        const addresses = net.isIP(host)
+            ? [host]
+            : (await dns.promises.lookup(host, { all: true, verbatim: true })).map((r) => r.address);
+        if (addresses.length === 0 || addresses.some(isPrivateNetworkAddress)) {
+            throw new Error('egress_blocked: ' + url.hostname + ' is a private or local network address');
+        }
+    }
+
+    async function guardedFetch(input, init) {
+        const isRequest = input && typeof input === 'object' && !(input instanceof URL) && typeof input.url === 'string';
+        let href = isRequest ? input.url : String(input);
+        await assertPublicTarget(href);
+        const mode = (init && init.redirect) || (isRequest && input.redirect) || 'follow';
+        if (mode !== 'follow') return nativeFetch(input, init);
+        let target = input;
+        let options = Object.assign({}, init || {}, { redirect: 'manual' });
+        for (let hop = 0; hop < 20; hop++) {
+            const res = await nativeFetch(target, options);
+            const location = res.headers.get('location');
+            if (REDIRECT_STATUS.indexOf(res.status) < 0 || !location) return res;
+            href = new URL(location, href).href;
+            await assertPublicTarget(href);
+            const method = String(options.method || (isRequest ? input.method : 'GET') || 'GET').toUpperCase();
+            if (res.status === 303 ? method !== 'HEAD' : ((res.status === 301 || res.status === 302) && method === 'POST')) {
+                options = Object.assign({}, options, { method: 'GET', body: undefined });
+            }
+            target = href;
+        }
+        throw new TypeError('fetch failed: too many redirects');
+    }
+
+    // console ueber die Bridge (P4c, L7): die Zeile wird hier formatiert, der Host bereinigt sie
+    // vor der Ausgabe. Zaehler/Timer bleiben nativ -- sie tragen nur Labels.
+    function makeBridgedConsole(bridge) {
+        const levels = { log: 'log', info: 'info', warn: 'warn', error: 'error', debug: 'debug', trace: 'error', dir: 'log', table: 'log' };
+        const bridged = Object.create(console);
+        const send = (level, args) => {
+            let line;
+            try { line = util.format.apply(util, args); } catch (e) { line = '[unformattable]'; }
+            bridge[level](line).catch(() => undefined);
+        };
+        for (const name of Object.keys(levels)) {
+            bridged[name] = (...args) => send(levels[name], args);
+        }
+        bridged.assert = (cond, ...args) => { if (!cond) send('error', ['Assertion failed'].concat(args)); };
+        return bridged;
+    }
 
     // RPC plumbing for bridge-namespace callbacks. The worker exposes Proxy objects
     // (built from a whitelisted method list) that postMessage their calls back to the
@@ -268,8 +415,8 @@ const SANDBOX_WORKER_SOURCE = `
             const context = vm.createContext({
                 ...contextObj,
                 ...bridges,
-                console,
-                fetch,
+                console: bridges.console ? makeBridgedConsole(bridges.console) : console,
+                fetch: guardedFetch,
             });
             const script = new vm.Script(wrappedCode);
             const raw = await script.runInContext(context);
@@ -869,7 +1016,8 @@ export class SerializedDog<T> extends Dog<T> {
         const wrappedCode = `(async () => { try { ${runnable}\n} catch (err) { throw err; } })()`;
 
         // Build the context -- only declared parents' yields become global variables.
-        // (fetch/console are provided inside the worker itself, not crossed via postMessage.)
+        // (fetch/console are provided inside the worker itself, not crossed via postMessage —
+        // fetch behind the private-network blocklist, console via the bridge when a sink is set.)
         // VM-global capabilities (z.B. jsonStore) werden additiv eingestreut -- sie sind
         // Infrastruktur, kein Parent-Vertrag, und damit fuer jeden Dog ohne Deklaration sichtbar.
         // Welle 8: capabilityCtx (userId/isSuperUser) wird in jede Factory durchgereicht,
@@ -947,6 +1095,16 @@ export class SerializedDog<T> extends Dog<T> {
                     delete (contextObj as any)[key];
                 }
             }
+        }
+        // console ueber die Bridge, wenn der Server eine Senke gesetzt hat (P4c, L7): der Worker
+        // schickt jede formatierte Zeile hierher, die Senke bereinigt sie mit dem Laufkontext.
+        const consoleSink = vmConsoleSink;
+        if (consoleSink && !bridges.console) {
+            const ctx = this.capabilityCtx;
+            const line = (level: VmConsoleLevel) => (text: unknown) => {
+                consoleSink(level, typeof text === 'string' ? text : String(text), ctx);
+            };
+            bridges.console = { log: line('log'), info: line('info'), warn: line('warn'), error: line('error'), debug: line('debug') };
         }
         const bridgeNamespaces = Object.keys(bridges).map((ns) => ({
             namespace: ns,
@@ -1113,7 +1271,9 @@ export class SerializedDog<T> extends Dog<T> {
             // and WavesConverter surfaces hasError=true via get_snapshot_dog_error.
             // Returning a result string here would mask the failure as a successful yield
             // and leave hasError=false in the snapshot -- the original sin of this method.
-            console.error(`[SerializedDog ${this.storageId}] Script Error:`, err?.message ?? err);
+            const scriptError = `[SerializedDog ${this.storageId}] Script Error: ${err?.message ?? err}`;
+            if (vmConsoleSink) vmConsoleSink('error', scriptError, this.capabilityCtx);
+            else console.error(scriptError);
             throw err instanceof Error
                 ? err
                 : new Error(typeof err === 'string' ? err : String(err));

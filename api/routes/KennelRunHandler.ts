@@ -24,6 +24,7 @@ import { isHtmlResultString, isMarkdownResultString } from '../../services/leadR
 import type { KennelCallCounter } from '../../services/KennelCallCounter';
 import { dogStatsKeyOf } from '../../services/dogStatsKey';
 import type { KennelCallSource } from '../../store/IKennelStatsStore';
+import { KeyRunState } from '../../services/keysCapability';
 
 /** Lead-Yield mit { snapshot, live } — Lobby-Konvention fuer den Socket-Dog. */
 function isLobbyLeadShape(v: any): boolean {
@@ -148,6 +149,14 @@ export class KennelRunHandler {
         try {
             const policy = new DogRunPolicy(config, capabilityCtx);
             const mimicAdopter = await this.createMimicAdopter(config, policy);
+            // P4c: jeder Lauf traegt seinen Kennel und einen eigenen Laufzustand (benutzte Schluessel,
+            // Memo) — die Capabilities aller Dogs teilen ihn. Ohne Request-Kontext bleibt es anonym.
+            const runCtx: VmGlobalCapabilityContext = {
+                ...(capabilityCtx ?? {}),
+                kennelLineageId: lineageId,
+                kennelOwnerId: (config as any).ownerId ?? null,
+                runState: new KeyRunState(),
+            };
 
             const kennelRun = new KennelRun(
                 config,
@@ -159,9 +168,7 @@ export class KennelRunHandler {
                 this.deps.cacheHandler,
                 mimicAdopter
             );
-            if (capabilityCtx) {
-                kennelRun.setCapabilityContext(capabilityCtx);
-            }
+            kennelRun.setCapabilityContext(runCtx);
             if (typeof vmTimeoutMs === 'number' && vmTimeoutMs > 0) {
                 kennelRun.setVmTimeoutMs(vmTimeoutMs);
             }

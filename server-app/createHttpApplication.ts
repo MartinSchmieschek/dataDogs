@@ -75,6 +75,8 @@ export type CreateHttpApplicationResult = {
      * globale Variable dafuer waere ein schlechterer Handel. Wirft nie.
      */
     disconnect: () => Promise<void>;
+    /** Der Key-Store (P4c) — main.ts registriert damit die VM-Capability `keys`. */
+    keyStore: KeyStoreService;
 };
 
 /**
@@ -255,7 +257,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         }
         try {
             const startupTest = new StartupTest();
-            await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap, app, authPrisma);
+            await startupTest.runAllTests(nodesStore, kennelsStore, nodesController, kennelsController, baseDogsMap, app, authPrisma, keyStore);
         } catch (err) {
             // Laut scheitern, aber weiterlaufen -- der Dienst ist wichtiger als seine Selbstpruefung.
             console.error('[StartupTest] Suite abgebrochen -- der Dienst laeuft weiter:', err);
@@ -378,5 +380,5 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         ]);
     };
 
-    return { app, serveBuiltAngular, runStartupTests, disconnect };
+    return { app, serveBuiltAngular, runStartupTests, disconnect, keyStore };
 }
