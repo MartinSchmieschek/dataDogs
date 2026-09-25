@@ -7,7 +7,9 @@ export async function seedCompareKennel(nodesStore: IStore, kennelsStore: IStore
     const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
-    // Wave 2: Fetch both locations by calling /smart-guide kennel
+    // Wave 2: Fetch both locations by calling the public smart-guide kennel (/k/smart-guide).
+    // Zwei Laeufe mit verschiedenen Adressen — als Parent-Dog nicht verdrahtbar (ein Parent laeuft
+    // einmal je Lauf). Die VM kennt weder Host noch PORT: `?base=` setzt die Basis-URL, Default lokal.
     const fetcherVersionId = randomUUID();
     const fetcherDogId = randomUUID();
     const fetcherCfg = {
@@ -23,7 +25,8 @@ const to = QueryRetriever.to;
 
 if (!from || !to) throw new Error("Bitte 'from' und 'to' Adressen angeben");
 
-const base = "http://localhost:3000/smart-guide?address=";
+const origin = String(QueryRetriever.base || "http://localhost:3000");
+const base = (origin.endsWith("/") ? origin.slice(0, -1) : origin) + "/k/smart-guide?address=";
 
 const [locationA, locationB] = await Promise.all([
     fetch(base + encodeURIComponent(from)).then(r => r.json()),
