@@ -366,6 +366,26 @@
     }
   </sd-drawer>
 
+  <!-- Settings drawer (S3): /kennels/:id/edit; access panel, freeze, order, defaults -->
+  @if (mode() === 'full') {
+    <sd-kennel-settings
+      [open]="settingsOpen()"
+      [kennel]="kennelConfig()"
+      [kennelId]="kennelId"
+      [rights]="rights()"
+      [frozen]="frozen()"
+      [dogs]="flatDogList()"
+      [latestVersion]="latestVersionLabel()"
+      [versionCount]="kennelVersions().length"
+      (closed)="closeSettings()"
+      (saved)="onSettingsSaved()"
+      (frozenChange)="onFrozenChanged($event)"
+      (ownershipChanged)="onOwnershipChanged()"
+      (visibilityChange)="onVisibilityChanged($event)"
+      (openVersions)="settingsToVersions()"
+      (deleteRequested)="pendingDelete.set(true)" />
+  }
+
   <!-- Branch-cut confirmation -->
   <app-waves-confirm-dialog
     [open]="!!pendingCut()"

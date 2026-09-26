@@ -1,86 +1,49 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
-import type { AclRole, ICollaborators } from '../models/user.model';
+import { Observable } from 'rxjs';
+import type { IAclUpdate, IAclView, IAclPerson } from '../models/user.model';
+
+/** Kennel or dog: the ACL routes take the REST subpath. */
+export type AclEntity = 'kennel' | 'node';
+
+const SUBPATH: Record<AclEntity, string> = { kennel: 'kennels', node: 'nodes' };
 
 /**
- * ACL operations against the gateway's /actions/* REST endpoints — same backend
- * tools that MCP exposes, just over plain HTTP. Cookie session authenticates;
- * no Bearer token needed from the UI.
+ * Access (P3.5 3.5.6, P6 U6) over REST: `GET/PUT /api/:sub/:id/acl`, `POST …/acl/transfer`,
+ * `POST …/freeze|unfreeze`. Cookie session authenticates. Releasing ownership has no REST route —
+ * it goes through the `/actions/release_ownership` tool bridge, like MCP.
  */
 @Injectable({ providedIn: 'root' })
 export class AclService {
-    private http = inject(HttpClient);
+  private readonly http = inject(HttpClient);
 
-    async listCollaborators(entityType: 'kennel' | 'node', id: string): Promise<ICollaborators | null> {
-        const resp = await firstValueFrom(
-            this.http.post<{ result?: ICollaborators; error?: unknown }>(
-                '/actions/list_collaborators',
-                { entity_type: entityType, id },
-            ),
-        );
-        return resp?.result ?? null;
-    }
+  private base(entity: AclEntity, id: string): string {
+    return `/api/${SUBPATH[entity]}/${encodeURIComponent(id)}`;
+  }
 
-    async grantAccess(
-        entityType: 'kennel' | 'node',
-        id: string,
-        user: string,
-        role: AclRole,
-    ): Promise<{ ok: boolean; error?: string; action?: string }> {
-        try {
-            const resp = await firstValueFrom(
-                this.http.post<{ result?: any; error?: any }>('/actions/grant_access', {
-                    entity_type: entityType,
-                    id,
-                    user,
-                    role,
-                }),
-            );
-            if (resp?.error) return { ok: false, error: typeof resp.error === 'string' ? resp.error : JSON.stringify(resp.error) };
-            return { ok: true, action: resp?.result?.action };
-        } catch (err: any) {
-            return { ok: false, error: err?.error?.error ?? err?.message ?? 'grant failed' };
-        }
-    }
+  get(entity: AclEntity, id: string): Observable<IAclView> {
+    return this.http.get<IAclView>(`${this.base(entity, id)}/acl`);
+  }
 
-    async revokeAccess(
-        entityType: 'kennel' | 'node',
-        id: string,
-        user: string,
-        role: 'editor' | 'viewer',
-    ): Promise<{ ok: boolean; error?: string; action?: string }> {
-        try {
-            const resp = await firstValueFrom(
-                this.http.post<{ result?: any; error?: any }>('/actions/revoke_access', {
-                    entity_type: entityType,
-                    id,
-                    user,
-                    role,
-                }),
-            );
-            if (resp?.error) return { ok: false, error: typeof resp.error === 'string' ? resp.error : JSON.stringify(resp.error) };
-            return { ok: true, action: resp?.result?.action };
-        } catch (err: any) {
-            return { ok: false, error: err?.error?.error ?? err?.message ?? 'revoke failed' };
-        }
-    }
+  update(entity: AclEntity, id: string, patch: IAclUpdate): Observable<IAclView> {
+    return this.http.put<IAclView>(`${this.base(entity, id)}/acl`, patch);
+  }
 
-    async releaseOwnership(
-        entityType: 'kennel' | 'node',
-        id: string,
-    ): Promise<{ ok: boolean; error?: string; action?: string }> {
-        try {
-            const resp = await firstValueFrom(
-                this.http.post<{ result?: any; error?: any }>('/actions/release_ownership', {
-                    entity_type: entityType,
-                    id,
-                }),
-            );
-            if (resp?.error) return { ok: false, error: typeof resp.error === 'string' ? resp.error : JSON.stringify(resp.error) };
-            return { ok: true, action: resp?.result?.action };
-        } catch (err: any) {
-            return { ok: false, error: err?.error?.error ?? err?.message ?? 'release failed' };
-        }
-    }
+  /** The new owner may be an email or a user id. */
+  transfer(entity: AclEntity, id: string, toUser: string): Observable<{ ok: true; owner?: IAclPerson }> {
+    return this.http.post<{ ok: true; owner?: IAclPerson }>(`${this.base(entity, id)}/acl/transfer`, { toUserId: toUser });
+  }
+
+  freeze(entity: AclEntity, id: string): Observable<{ ok: true; frozen: boolean }> {
+    return this.http.post<{ ok: true; frozen: boolean }>(`${this.base(entity, id)}/freeze`, {});
+  }
+
+  unfreeze(entity: AclEntity, id: string): Observable<{ ok: true; frozen: boolean }> {
+    return this.http.post<{ ok: true; frozen: boolean }>(`${this.base(entity, id)}/unfreeze`, {});
+  }
+
+  /** Back to community (no owner). The tool bridge answers 200 with `{ error }` when it refuses. */
+  release(entity: AclEntity, id: string): Observable<{ result?: { action?: string }; error?: unknown }> {
+    return this.http.post<{ result?: { action?: string }; error?: unknown }>('/actions/release_ownership', { entity_type: entity, id });
+  }
 }

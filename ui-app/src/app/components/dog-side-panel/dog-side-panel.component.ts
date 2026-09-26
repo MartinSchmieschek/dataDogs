@@ -19,7 +19,7 @@ import { DogSidePanelVmTypedefArtifactComponent } from './artifacts/dog-side-pan
 import { DogSidePanelResultArtifactComponent } from './artifacts/dog-side-panel-result-artifact.component';
 import { DogSidePanelParentsArtifactComponent } from './artifacts/dog-side-panel-parents-artifact.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
-import { AclPanelComponent } from '../acl-panel/acl-panel.component';
+import { SdAccessPanelComponent } from '../sd-access-panel/sd-access-panel.component';
 
 export type { DogPanelSectionId } from '../../utils/dog-panel-sections';
 export { DEFAULT_PANEL_SECTION, getDefaultPanelSection } from '../../utils/dog-panel-sections';
@@ -34,7 +34,7 @@ export { DEFAULT_PANEL_SECTION, getDefaultPanelSection } from '../../utils/dog-p
     DogSidePanelVmTypedefArtifactComponent,
     DogSidePanelResultArtifactComponent,
     DogSidePanelParentsArtifactComponent,
-    AclPanelComponent,
+    SdAccessPanelComponent,
     SdDogInsightComponent,
   ],
   templateUrl: './dog-side-panel.component.html',

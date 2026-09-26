@@ -1,4 +1,5 @@
 import { isBaseDog, type DogInfo, type IDogStats } from './dog.model';
+import type { KennelVisibility } from './kennel-config.model';
 
 /** Filter `group` of the browser (6.4 S6): base and dogs share one list, `base` is a filter. */
 export type DogGroup = 'base' | 'dogs' | 'mimic';
@@ -64,6 +65,11 @@ export class DogCatalogEntry {
   /** Foreign and run without read: code stays with its owner, a kennel pins it (8.15). */
   get runOnly(): boolean {
     return !this.isBase && this.right === 'run';
+  }
+
+  /** Visibility of a stored dog; base dogs have none. */
+  get visibility(): KennelVisibility | null {
+    return isBaseDog(this.raw) ? null : this.raw.visibility ?? null;
   }
 
   get canReadCode(): boolean {

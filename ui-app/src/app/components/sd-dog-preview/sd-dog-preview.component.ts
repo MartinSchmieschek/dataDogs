@@ -9,8 +9,9 @@ import { SdUsageListComponent, type SdUsageState } from '../sd-usage-list/sd-usa
 import { SdRightsChipComponent } from '../sd-rights-chip/sd-rights-chip.component';
 import { SdKennelPickerComponent } from '../sd-kennel-picker/sd-kennel-picker.component';
 import { DogEditorComponent } from '../dog-editor/dog-editor.component';
+import { SdAccessPanelComponent } from '../sd-access-panel/sd-access-panel.component';
 
-export type DogPreviewTab = 'overview' | 'usage' | 'code';
+export type DogPreviewTab = 'overview' | 'usage' | 'code' | 'access';
 
 const OVERVIEW_USAGE_ROWS = 5;
 
@@ -19,12 +20,12 @@ const OVERVIEW_USAGE_ROWS = 5;
  * (440, 480 from 1440), bottom sheet on a phone. Ink head from the row at once — icon, name, pack or
  * owner, version, rights chip. Tabs overview (stat tiles, the proven rule, five kennels, depends on /
  * used by), usage (every kennel), code (Monaco inlay, read-only — only with READ; a run-only dog has
- * no code tab and its head says so). Footer: `[USE IN KENNEL ▾]`.
+ * no code tab and its head says so), access (owner and editors: the access panel). Footer: `[USE IN KENNEL ▾]`.
  */
 @Component({
   selector: 'sd-dog-preview',
   standalone: true,
-  imports: [SdDrawerComponent, SdDogStatsComponent, SdUsageListComponent, SdRightsChipComponent, SdKennelPickerComponent, DogEditorComponent],
+  imports: [SdDrawerComponent, SdDogStatsComponent, SdUsageListComponent, SdRightsChipComponent, SdKennelPickerComponent, DogEditorComponent, SdAccessPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sd-dog-preview.component.html',
   styleUrls: ['./sd-dog-preview.component.scss'],
@@ -46,7 +47,14 @@ export class SdDogPreviewComponent {
   readonly codeState = signal<'idle' | 'loading' | 'error' | 'ready'>('idle');
   readonly version = signal<number | null>(null);
 
-  readonly tabs = computed<DogPreviewTab[]>(() => (this.dog()?.canReadCode ? ['overview', 'usage', 'code'] : ['overview', 'usage']));
+  /** code only with READ; access only for the owner and editors (the ACL answers 404 to everyone else). */
+  readonly tabs = computed<DogPreviewTab[]>(() => {
+    const d = this.dog();
+    const out: DogPreviewTab[] = ['overview', 'usage'];
+    if (d?.canReadCode) out.push('code');
+    if (d && !d.isBase && (d.right === 'edit' || d.own)) out.push('access');
+    return out;
+  });
   readonly headMeta = computed(() => {
     const d = this.dog();
     if (!d) return '';

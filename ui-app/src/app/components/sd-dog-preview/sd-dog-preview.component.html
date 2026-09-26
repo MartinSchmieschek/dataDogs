@@ -29,6 +29,9 @@
         @case ('usage') {
           <sd-usage-list [usage]="usage()" [state]="usageState()" (retry)="loadUsage()" />
         }
+        @case ('access') {
+          <sd-access-panel entity="node" [entityId]="d.key" [visibility]="d.visibility" />
+        }
         @case ('code') {
           @switch (codeState()) {
             @case ('error') {

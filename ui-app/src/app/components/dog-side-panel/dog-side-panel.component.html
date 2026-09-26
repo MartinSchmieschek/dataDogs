@@ -119,7 +119,7 @@
         <sd-dog-insight [dogKey]="key" [mode]="activeSection() === 'usage' ? 'usage' : 'stats'" />
       }
       @if (!isRedacted && activeSection() === 'acl' && dog.lineageId) {
-        <app-acl-panel entityType="node" [id]="dog.lineageId" />
+        <sd-access-panel entity="node" [entityId]="dog.lineageId" />
       }
     </div>
   </div>

@@ -70,11 +70,9 @@
   <span class="scrim" (click)="menuOpen.set(false)" aria-hidden="true"></span>
   <span class="menu sd-lift" role="group" aria-label="Kennel actions">
     @if (!runOnly()) {
-      @if (frozen()) {
-        <button type="button" disabled [title]="frozenTitle">Edit</button>
-      } @else if (rights().edit) {
-        <button type="button" (click)="pick('edit')">Edit</button>
-      }
+      <!-- Settings (S3): editors edit; readers read; frozen shows the unfreeze banner there. -->
+      <button type="button" [title]="frozen() ? frozenTitle : rights().edit ? 'Name, access, dogs, defaults' : 'Read only'"
+        (click)="pick('edit')">Settings</button>
     }
     <button type="button" (click)="pick('open')">Open page</button>
     <button type="button" (click)="pick('docs')">Docs</button>

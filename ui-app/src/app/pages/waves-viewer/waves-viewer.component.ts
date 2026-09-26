@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, computed, DestroyRef } from '@angular/core';
+import { Component, inject, signal, OnInit, computed, DestroyRef, effect, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -51,8 +51,11 @@ import { SdBannerComponent } from '../../components/sd-banner/sd-banner.componen
 import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
 import { SdUrlChipComponent } from '../../components/sd-url-chip/sd-url-chip.component';
 import { formatCount } from '../../components/sd-plaque/sd-plaque.component';
+import { SdKennelSettingsComponent } from '../../components/sd-kennel-settings/sd-kennel-settings.component';
+import type { KennelVisibility } from '../../models/kennel-config.model';
+import { CANT_EDIT_TOAST, editDeepLinkOpens, isListedEditor } from '../../utils/kennel-settings';
 
-/** Inspector tabs of the kennel (6.4 S2; `access` arrives with U6). `?panel=` opens one directly. */
+/** Inspector tabs of the kennel (6.4 S2; access lives in the settings drawer, U6). `?panel=` opens one directly. */
 export type KennelTab = 'brief' | 'versions' | 'rating' | 'stats';
 const KENNEL_TABS: readonly KennelTab[] = ['brief', 'versions', 'rating', 'stats'];
 /** A run-only kennel has no brief and no versions for the caller (W17): only rating and stats. */
@@ -71,6 +74,7 @@ const TOAST_MS = 4000;
  * the kennel inspector (brief, versions, rating, stats), the dog inspector and edge notes. Rights come from
  * `myRights` (P3.5): readers get text instead of fields, frozen keeps every mutation control visible but
  * disabled with `Frozen. Unfreeze in settings.`; runs, ratings and export keep working (8.25).
+ * `/kennels/:id/edit` is the same page with the settings drawer (S3, U6) open over it.
  */
 @Component({
   selector: 'app-waves-viewer',
@@ -83,6 +87,7 @@ const TOAST_MS = 4000;
     WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
     SdKennelHeadComponent, SdBottomBarComponent, SdWaveCanvasComponent, SdDrawerComponent, SdRatingComponent,
     SdHistogramComponent, SdStatTilesComponent, SdBannerComponent, SdVeilComponent, SdUrlChipComponent,
+    SdKennelSettingsComponent,
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
@@ -168,6 +173,12 @@ export class WavesViewerComponent implements OnInit {
   readonly kennelInspectorOpen = signal(false);
   readonly kennelInspectorTab = signal<KennelTab>('brief');
   readonly paletteOpen = signal(false);
+  /** Settings drawer (6.4 S3) — open while the URL is `/kennels/:id/edit`. */
+  readonly settingsOpen = signal(false);
+  /** A deep link to `/edit` waits for the rights before it opens (or toasts). */
+  private readonly settingsPending = signal(false);
+  /** The `⋯` menu opens settings for readers too (read-only); only the deep link asks for edit rights. */
+  private settingsFromMenu = false;
   /** Edge-cut staged but not confirmed yet — drives confirm dialog. */
   readonly pendingCut = signal<{ fromId: string; toId: string } | null>(null);
   readonly pendingDelete = signal(false);
@@ -295,6 +306,26 @@ export class WavesViewerComponent implements OnInit {
     return { version: d.version ?? null, latestVersion: d.latestVersion ?? null, newer };
   });
 
+  /** `v12 · 2026-09-20` of the newest version, for the settings drawer. */
+  readonly latestVersionLabel = computed<string | null>(() => {
+    const list = this.kennelVersions();
+    if (!list.length) return null;
+    const date = list[0].createdAt ? String(list[0].createdAt).slice(0, 10) : '';
+    return `v${list.length}${date ? ' · ' + date : ''}`;
+  });
+
+  constructor() {
+    // `/kennels/:id/edit` as a deep link: decide once the rights are known (8.25, 6.8 test 8).
+    effect(() => {
+      if (!this.settingsPending()) return;
+      const mode = this.mode();
+      const cfg = this.kennelConfig();
+      const ready = this.auth.isReady();
+      if (mode === 'loading' || (mode === 'full' && (!cfg?.myRights || !ready))) return;
+      untracked(() => this.settleSettingsDeepLink());
+    }, { allowSignalWrites: true });
+  }
+
   readonly origin = typeof window !== 'undefined' ? window.location.origin : '';
   readonly mcpCommand = `claude mcp add --transport http slopdogs ${this.origin}/mcp`;
 
@@ -358,6 +389,12 @@ export class WavesViewerComponent implements OnInit {
       this.loadWaves();
       this.loadAvailableDogs();
       this.loadKennelVersions();
+    });
+
+    // One route for `/kennels/:id` and `/kennels/:id/edit` (app.routes `kennelPageMatcher`): the instance
+    // stays, the last segment opens and closes the settings drawer.
+    this.route.url.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((segs) => {
+      this.onSettingsUrl(segs.length === 3 && segs[2].path === 'edit');
     });
 
     // `?panel=brief|versions|rating|stats` opens the inspector on that tab (P4 4.9, 8.6).
@@ -515,7 +552,7 @@ export class WavesViewerComponent implements OnInit {
 
   onHeadAction(action: KennelHeadAction): void {
     switch (action) {
-      case 'edit': void this.router.navigate(['/kennels', this.kennelId, 'edit']); return;
+      case 'edit': this.openSettings(); return;
       case 'open': window.open(this.kennelRunBrowserUrl, '_blank', 'noopener'); return;
       case 'docs': window.open(this.swaggerDocsUrl, '_blank', 'noopener'); return;
       case 'copy-link': this.copyLink(); return;
@@ -541,12 +578,94 @@ export class WavesViewerComponent implements OnInit {
   private setFrozen(frozen: boolean): void {
     const call = frozen ? this.kennelService.freeze(this.kennelId) : this.kennelService.unfreeze(this.kennelId);
     call.subscribe({
-      next: () => {
-        this.kennelConfig.update((c) => (c ? { ...c, frozen, myRights: c.myRights ? { ...c.myRights, frozen } : c.myRights } : c));
-        this.showToast(frozen ? 'Frozen. Runs, ratings and copies keep working.' : 'Unfrozen.');
-        this.loadHeader();
-      },
+      next: () => this.onFrozenChanged(frozen),
       error: (err: HttpErrorResponse) => this.showToast(`Couldn't ${frozen ? 'freeze' : 'unfreeze'}: ${err.error?.error_description ?? err.error?.error ?? err.status}`),
+    });
+  }
+
+  /** Freeze changed (head menu, access panel, unfreeze banner): chips, locks and rights follow. */
+  onFrozenChanged(frozen: boolean): void {
+    this.kennelConfig.update((c) => (c ? { ...c, frozen, myRights: c.myRights ? { ...c.myRights, frozen } : c.myRights } : c));
+    this.showToast(frozen ? 'Frozen. Runs, ratings and copies keep working.' : 'Unfrozen.');
+    this.loadHeader();
+  }
+
+  // === Settings drawer (6.4 S3) ===
+
+  /** `⋯ Settings`: readers get the drawer read-only, frozen shows the unfreeze banner. */
+  openSettings(): void {
+    if (this.mode() !== 'full') return;
+    this.settingsFromMenu = true;
+    void this.router.navigate(['/kennels', this.kennelId, 'edit'], { queryParams: { panel: null }, queryParamsHandling: 'merge' });
+  }
+
+  closeSettings(): void {
+    this.settingsOpen.set(false);
+    this.leaveSettingsUrl();
+  }
+
+  private onSettingsUrl(edit: boolean): void {
+    if (!edit) {
+      this.settingsOpen.set(false);
+      this.settingsPending.set(false);
+      return;
+    }
+    if (this.settingsFromMenu) {
+      this.settingsFromMenu = false;
+      this.showSettings();
+      return;
+    }
+    this.settingsPending.set(true);
+  }
+
+  /** The deep link opens for editors (frozen: owner and editors, read-only); others get the toast. */
+  private settleSettingsDeepLink(): void {
+    this.settingsPending.set(false);
+    const cfg = this.kennelConfig();
+    const opens = this.mode() === 'full'
+      && editDeepLinkOpens(this.rights(), this.frozen(), isListedEditor(cfg, this.auth.user()?.id));
+    if (opens) {
+      this.showSettings();
+      return;
+    }
+    if (this.mode() !== 'missing') this.showToast(CANT_EDIT_TOAST);
+    this.leaveSettingsUrl();
+  }
+
+  private showSettings(): void {
+    this.cancelEdgeComment();
+    this.closeSidePanel();
+    this.kennelInspectorOpen.set(false);
+    this.settingsOpen.set(true);
+  }
+
+  private leaveSettingsUrl(): void {
+    if (!this.route.snapshot.url.some((s) => s.path === 'edit')) return;
+    void this.router.navigate(['/kennels', this.kennelId], { queryParamsHandling: 'preserve', replaceUrl: true });
+  }
+
+  onSettingsSaved(): void {
+    this.showToast('Saved.');
+    this.loadHeader();
+    this.loadWaves();
+  }
+
+  onVisibilityChanged(visibility: KennelVisibility): void {
+    this.kennelConfig.update((c) => (c ? { ...c, visibility } : c));
+  }
+
+  /** Transfer or release: the caller's rights moved — reload them. */
+  onOwnershipChanged(): void {
+    this.loadHeader();
+  }
+
+  /** One navigation: off `/edit`, onto `?panel=versions` (the query subscription opens the tab). */
+  settingsToVersions(): void {
+    this.settingsOpen.set(false);
+    void this.router.navigate(['/kennels', this.kennelId], {
+      queryParams: { panel: 'versions' },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
     });
   }
 
