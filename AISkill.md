@@ -145,7 +145,7 @@ Both Kennels and SerializedDogs have:
 - `viewers[]` — READ (role name `reader`; `viewer` still works as an alias).
 - `runners[]` — RUN without READ.
 
-`myRights: {run, read, edit, own, frozen}` comes back on `get_kennel`, `get_node` and on every entry of the REST lists `GET /api/nodes` / `GET /api/kennels` — use it instead of re-deriving rights from the raw lists.
+`myRights: {run, read, edit, own, frozen, locked}` (`locked: 'landing'` = listed in the server env `LANDING_KENNEL_IDS`, read-only for everyone; `'frozen'`; or null) comes back on `get_kennel`, `get_node` and on every entry of the REST lists `GET /api/nodes` / `GET /api/kennels` — use it instead of re-deriving rights from the raw lists.
 
 Special:
 - Legacy/community entities with `ownerId = null` are **community-editable** (any logged-in user reads + edits). Managing the ACL or freezing one is super-user only; nobody can grant themselves ownership of it.

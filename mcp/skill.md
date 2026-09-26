@@ -72,9 +72,11 @@ The greeting is for the **opening**, not every turn.
 
 ## What you can do — 54 tools
 
-**Start here — discovery, not guessing.** `list_nodes` is the inventory: every entry carries its `description`, its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax `build_kennel` wants) and, for Pacts, `isPact: true` plus the demanded shape in `pactTypeDef`. Some entries also carry a `guidance` field — a binding instruction straight from the dog class, for infrastructure you must **not** re-implement. Search it by keyword (name, displayName and description are matched) instead of inventing class names. `describe_tool` gives you any tool's full schema.
+**Start here — discovery, not guessing.** `list_nodes` is the inventory: every entry carries its `description`, its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax `build_kennel` wants) and, for Pacts, `isPact: true` plus the demanded shape in `pactTypeDef`. Some entries also carry a `guidance` field — a binding instruction straight from the dog class, for infrastructure you must **not** re-implement. Search it by keyword (name, displayName and description are matched) instead of inventing class names. `describe_tool` gives you any tool's full schema. Every tool rejects arguments its schema doesn't know — nothing runs, and the error names the field and the likely meant one (`dogIds` on `build_kennel` -> `extraDogIds`).
 
 **Proven dogs first.** Before building: `list_nodes {search, sort:'proven'}` — battle-tested dogs come first, reuse them instead of rebuilding. A proven badge (`stats.proven.badge`) means >=5 runs in 30 days, at least one public run, used in at least one kennel, reliability >= 0.8. The score multiplies usage (log of public runs), reliability, reuse (foreign kennels count fully, your own from the second on a quarter) and the stars of the kennels using it. `provenOnly: true` keeps only badged dogs.
+
+**Reused dogs change.** A dog you reference by its lineageId runs its newest version — its author may change it tomorrow, and a newer version can be the better one. The old version doesn't vanish: pin it by its version GUID (`get_node_versions`, the history) or copy it into a dog of your own. We all change; nothing lasts forever — pin what must stay, follow the lineage where newer is welcome.
 
 **Building the pack:** `build_kennel` is the primary path — it creates a fresh set of Breeds **and** assembles the kennel in one atomic call, with rollback on failure. Prefer it over hand-wiring `create_node` + `create_kennel`. Then `update_kennel`, `delete_kennel`, `run_kennel`, `execute_kennel`, `refresh_kennel_snapshot`, `wait_for_kennel_snapshot`, `list_kennels`, `get_kennel`, `create_kennel`. A kennel is a reusable API endpoint — same hounds, different game depending on query parameters or body.
 
@@ -94,7 +96,7 @@ The greeting is for the **opening**, not every turn.
 
 **Meta:** `get_readme` (call once at start), `health_check`, `describe_tool`.
 
-**The landing is a kennel:** `/` serves the lead output of the kennel `slopdogs-landing` (server env `LANDING_KENNEL_ID`) — a content dog, four skins, a lead that picks the look by `?look=a|b|c|d` (default `c` Mixtape). Its rankings come from `GET /api/landing`. Runs for `/` count with source `landing`, never in `ranked*`. Read it like any kennel (`get_kennel {id:'slopdogs-landing'}`); don't edit it as a playground — it is seeded from the repo and the page everyone sees first.
+**The landing is a kennel:** `/` serves the lead output of one of the kennels in the server env `LANDING_KENNEL_IDS` (comma-separated; each visit picks one at random, `?landing=<id>` forces a listed one; a listed kennel that is missing or yields no HTML is skipped). Behind them stands the seeded `slopdogs-landing` — a content dog, the Mixtape skin and a lead, no look switcher. Its rankings come from `GET /api/landing`. Runs for `/` count with source `landing`, never in `ranked*`. Read it like any kennel (`get_kennel {id:'slopdogs-landing'}`). **A kennel listed in `LANDING_KENNEL_IDS` is locked for everyone** — owner and super-user included — while it is listed: `myRights.locked: 'landing'`, and every change (update, rename, delete, access, freeze) answers `locked_landing`. Runs, stars, reading and copying still work; to build on it, copy it.
 
 ## Cold start — the machine sleeps (MANDATORY handling)
 
@@ -124,7 +126,7 @@ Rights are a strict ladder: **NONE < RUN < READ < EDIT < OWN**. COPY is not a ri
 
 **`frozen`** — the owner (super-user for community entities) freezes an entity. While frozen, nothing mutates it — not even the owner: no edit, rename, delete, new version, or ACL change, until unfrozen. Runs, reads, exports and copies keep working; freezing never creates a new version.
 
-`myRights: {run, read, edit, own, frozen}` rides along on `get_kennel` and `get_node` (and on every entry of the REST lists `GET /api/nodes` / `GET /api/kennels`). The ACL lists themselves (`editors`/`viewers`/`runners`) are visible only to the owner and editors.
+`myRights: {run, read, edit, own, frozen, locked}` rides along (`locked`: `'landing'` for a landing kennel, `'frozen'`, or `null`) on `get_kennel` and `get_node` (and on every entry of the REST lists `GET /api/nodes` / `GET /api/kennels`). The ACL lists themselves (`editors`/`viewers`/`runners`) are visible only to the owner and editors.
 
 **Referencing dogs** (`create_kennel`, `update_kennel`, `build_kennel` `extraDogIds`): you can only reference dogs you may run. A dog you may run but not read can only be pinned to a version GUID (from `list_nodes` / `get_node_schema`) — referencing it by lineage fails with `pin_required`. That keeps its author from slipping new code under a kennel that depends on it.
 

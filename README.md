@@ -338,7 +338,7 @@ Both Kennels and SerializedDogs carry:
 - **`viewers[]`** — READ (the UI/MCP call this role "reader"; "viewer" still works as an alias).
 - **`runners[]`** — RUN without READ ("run without read").
 
-The highest right any of these grants wins. `myRights: {run, read, edit, own, frozen}` is attached to `GET /api/kennels/:id`, `GET /api/nodes/:id`, and every entry of `GET /api/nodes` and `GET /api/kennels`.
+The highest right any of these grants wins. `myRights: {run, read, edit, own, frozen, locked}` (`locked`: `landing`, `frozen` or null) is attached to `GET /api/kennels/:id`, `GET /api/nodes/:id`, and every entry of `GET /api/nodes` and `GET /api/kennels`.
 
 **Special rules:**
 - Legacy/community entities (`ownerId = null`) are **community-editable** — any logged-in user reads + edits. OWN (ACL management, freeze) belongs to the super-user only; nobody can claim ownership of a community entity through `grant_access`.
@@ -405,7 +405,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | `GET` | `/api/kennels/:id` | Load a Kennel's covenant |
 | `POST` | `/api/kennels` | Forge a new Kennel |
 | `PUT` | `/api/kennels/:id` | Rewrite the covenant |
-| `DELETE` | `/api/kennels/:id` | Dissolve the pack |
+| `DELETE` | `/api/kennels/:id` | Dissolve the pack — the kennel id (lineage) takes every version, a version GUID exactly that one; answers `{ok, scope, lineageId, deleted}`, errors as codes (`not_found`, `forbidden`, `frozen`, `locked_landing`, `delete_failed`) |
 | `GET/POST` | `/api/kennels/:id/run` | Unleash the hunt, return Waves + config |
 | `GET/POST` | `/api/kennels/:id/execute` | Unleash the hunt, return the lead's yield |
 | `GET` | `/api/kennels/:id/versions` | List all versions of a Kennel's lineage |
@@ -442,7 +442,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | `POST` | `/save?id=:id` | Save code + parents (breeds new version) |
 | `PUT` | `/api/nodes/:id` | Update a dog (creates new version, keeps lineage) |
 | `PATCH` | `/api/nodes/:id/rename` | Rename a dog across all versions (`{ "displayName": "new-name" }`) |
-| `DELETE` | `/api/nodes/:id` | Put a dog down |
+| `DELETE` | `/api/nodes/:id` | Put a dog down — lineageId: every version, version GUID: that one (MCP `delete_node`); same answer and codes as for kennels |
 
 `PUT /api/nodes/:id` no longer takes `ownerId`/`editors`/`viewers`/`runners`/`frozen` — rights move only through `/acl`, `/acl/transfer`, `/freeze` and `/unfreeze`.
 
@@ -475,13 +475,15 @@ Calls: every kennel run is counted once, per day (UTC) and source; `stats.calls.
 
 ## Landing
 
-`/` is a kennel: the lead output of `slopdogs-landing` (env `LANDING_KENNEL_ID`). One content dog, four skin dogs and a lead that picks the look by `?look=a|b|c|d` — a Breakout, b Zine, c Mixtape (default), d Neon Alley; every look carries a switcher. The same page is reachable as a kennel at `/k/slopdogs-landing`.
+`/` is a kennel: the lead output of one of the kennels listed in `LANDING_KENNEL_IDS` (comma-separated), or, behind them, of the seeded `slopdogs-landing` — one content dog, the Mixtape skin and a lead, no look switcher. The same page is reachable as a kennel at `/k/slopdogs-landing`.
 
-- **Source:** `seed-data/kennels/slopdogs-landing/` (content, skins, lead) — seeded at boot when the kennel is missing (public, community-owned). Changes in the repo reach an existing instance only after the kennel is removed (the seed never overwrites).
-- **No run per visit:** `GET /` serves the lead output from an HTML memo per look (`LANDING_HTML_MEMO_MS`, default 300000). When the window is over, the visitor gets the remembered page at once and the kennel runs again in the background. The run counts with source `landing` — in `total`, never in `ranked`/`ranked30d`. `HEAD /` never runs the kennel.
-- **Fallback:** if the kennel is missing or its run fails, `/` serves `public/landing/index.html` — the default look rendered from the same sources at build time (`node scripts/build-landing.cjs`, part of `npm run build`). The page is never empty, not even on a cold start.
+- **Rotation:** each visit picks one listed kennel uniformly at random; `?landing=<id>` forces one **from the list** (other ids are ignored). A listed kennel that is missing, not public, throws or yields no HTML is skipped for the memo window. `slopdogs-landing` takes over when the list is empty or none of the listed kennels runs. The old single `LANDING_KENNEL_ID` is still read as a one-entry alias (with a log line).
+- **Locked while listed:** every kennel in `LANDING_KENNEL_IDS` is read-only for everyone — owner and super-user included — as long as it is listed: `myRights {edit: false, own: false, locked: 'landing'}`; `PUT`, rename, `DELETE`, `/acl`, `/freeze`, `/unfreeze` and the MCP mutations answer `403 {"error":"locked_landing"}`. Runs, stars, reading and copying keep working. `slopdogs-landing` is only locked when it is listed itself.
+- **Source:** `seed-data/kennels/slopdogs-landing/` (content, skin C, lead) — seeded at boot when the kennel is missing (public, community-owned). Changes in the repo reach an existing instance only after the kennel is removed (the seed never overwrites). The former skins a, b and d are archived under `docs/slopdogs/landing/archive/`.
+- **No run per visit:** `GET /` serves the lead output from an HTML memo per kennel (`LANDING_HTML_MEMO_MS`, default 300000). When the window is over, the visitor gets the remembered page at once and the kennel runs again in the background. The run counts with source `landing` — in `total`, never in `ranked`/`ranked30d`. `HEAD /` never runs the kennel.
+- **Fallback:** if the kennel is missing or its run fails, `/` serves `public/landing/index.html` — the Mixtape page rendered from the same sources at build time (`node scripts/build-landing.cjs`, part of `npm run build`). The page is never empty, not even on a cold start.
 - **Host:** the page shows `‹host›` where the address goes; `/` puts in the host of `MCP_BASE_URL` (else the request's host), the page script does the same from `location` on any other address.
-- **Headers:** `Content-Type: text/html; charset=utf-8`, `Cache-Control: public, max-age=300`, `X-Landing-Source: kennel|fallback`, no cookie. `/robots.txt` lives in `public/landing/`.
+- **Headers:** `Content-Type: text/html; charset=utf-8`, `Cache-Control: public, max-age=300` (`no-cache` while more than one kennel rotates), `X-Landing-Source: kennel|fallback`, `X-Landing-Kennel: <id>`, no cookie. Like every text response, the page goes out brotli- or gzip-compressed when the client accepts it (`HTTP_COMPRESSION=0` turns that off). `/robots.txt` lives in `public/landing/`.
 - **Fonts:** self-hosted Latin subsets under `/static/landing/*.woff2` (OFL, `public/landing/OFL.txt`); no font CDN.
 
 "Already out there" loads `GET /api/landing?limit=6` — the only request of the page — and renders `topByCalls30d`, `topByRating` and `provenDogs` (links: kennel `url`, dogs to `/kennels?q=<name>`; numbers en-US, `ranked30d` shown, total in the tooltip, no stars when `avg` is null). States on `#sd-live[data-state]`:
