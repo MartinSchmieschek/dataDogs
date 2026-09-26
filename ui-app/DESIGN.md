@@ -144,7 +144,9 @@ That is the whole list.
 
 ## Do and don't
 
-Do: one chapter card per page; label-maker chips for every state word; tracklist rows; ink on orange, never
+Do: one chapter card per page; label-maker chips for every state word; tracklist rows (in the kennel list the
+name opens `/k/:id` in a new tab, the rest of the row the kennel page; the kennel opened last carries a 4 px ink bar
+on the left, the `last opened` chip and `aria-current`); ink on orange, never
 orange on paper; teal only for live/yours; hard shadows only on floating panels; frozen, run only, private,
 pinned always as a chip, never as colour alone.
 

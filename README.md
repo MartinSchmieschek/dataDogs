@@ -418,7 +418,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/kennels` | Survey all Kennels — every entry carries `stats` {calls, rating}; `?q=`, `?mine=1`, `?sort=name|createdAt|updatedAt|calls|calls30d|rating&dir=desc`, `?minStars=4`, `?minCalls=20`, `?limit=&offset=` |
+| `GET` | `/api/kennels` | Survey all Kennels — every entry carries `stats` {calls, rating}; `?q=`, `?mine=1`, `?sort=name|createdAt|updatedAt|calls|calls30d|rating|failures30d&dir=desc`, `?minStars=4`, `?minCalls=20`, `?usage=top|never_used|never_worked|failing|dormant`, `?limit=&offset=` |
 | `GET` | `/api/kennels/:id` | Load a Kennel's covenant |
 | `POST` | `/api/kennels` | Forge a new Kennel |
 | `PUT` | `/api/kennels/:id` | Rewrite the covenant |
@@ -445,7 +445,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/nodes` | List all dogs (BaseDogs + SerializedDogs) — every entry carries `stats` {calls, reuse, proven}; `?sort=proven|calls30d|reuse|name&dir=desc`, `?proven=1` (badge only), `?q=`, `?limit=&offset=` |
+| `GET` | `/api/nodes` | List all dogs (BaseDogs + SerializedDogs) — every entry carries `stats` {calls, reuse, proven}; `?sort=proven|calls30d|reuse|failures30d|name&dir=desc`, `?proven=1` (badge only), `?usage=` (as for kennels), `?minReliability=0.8`, `?q=`, `?limit=&offset=` |
 | `GET` | `/api/nodes?kennelId=xxx` | List dogs **not yet** in that Kennel (toolbar: what can be added) |
 | `GET` | `/api/nodes/:id` | Load a specific dog or version |
 | `GET` | `/api/nodes/:id/versions` | List all versions of a dog's lineage |
@@ -486,7 +486,7 @@ Login required. Keys are AES-256-GCM encrypted in the auth database and never re
 | `GET` | `/api/readme` | Project README as rendered HTML |
 | `GET` | `/api/landing` | The landing's two rankings `{generatedAt, windowDays, topByCalls30d, topByRating}` plus `provenDogs` (dogs with the proven badge, by score) — only what an anonymous visitor may run; `?limit=` (default 10, max 50); 60 s memo, `ETag` |
 
-Calls: every kennel run is counted once, per day (UTC) and source; `stats.calls.ranked`/`ranked30d` count only real use (`/k/:id`, `/api/kennels/:id/execute`, MCP `execute_kennel`), `leadFailed` the runs whose lead errored. Counts live in memory and are flushed every `KENNEL_CALL_FLUSH_MS` (30 s) in one transaction. Stars: 1-5 per user and kennel; `score` is a Bayes average `(5·m + sum) / (5 + count)` with `m` the mean over all ratings — it ranks; `avg` is the raw mean.
+Calls: every kennel run is counted once, per day (UTC) and source; `stats.calls.ranked`/`ranked30d` count only real use (`/k/:id`, `/api/kennels/:id/execute`, MCP `execute_kennel`), `leadFailed` the runs whose lead errored (`leadFailed30d` in the last 30 days); a dog run fails when it ends in error, timeout or oom (`stats.calls.failures`, `failures30d`). Usage filter (`?usage=`, MCP `list_kennels`/`list_nodes` `usage`), applied after the rights filter and combinable with `q`/`search` and `sort`: `top` = called at least once, most calls first unless `sort` is given; `never_used` = 0 calls; `never_worked` = called, every run failed; `failing` = a failed run in the last 30 days; `dormant` = called before, 0 calls in the last 30 days. Counts live in memory and are flushed every `KENNEL_CALL_FLUSH_MS` (30 s) in one transaction. Stars: 1-5 per user and kennel; `score` is a Bayes average `(5·m + sum) / (5 + count)` with `m` the mean over all ratings — it ranks; `avg` is the raw mean.
 
 ---
 
@@ -544,7 +544,7 @@ If a status-tracking save ever stops behaving as documented, the boot console fl
 
 ## Getting Started
 
-Copy [`.env.example`](.env.example) to `.env` and fill in secrets (API keys, Hue bridge user, and so on) on your machine. Never commit `.env`.
+Copy [`.env.example`](.env.example) to `.env` and fill in secrets (API keys, Hue bridge user, and so on) on your machine. Never commit `.env`. The file is grouped (required / operations and limits / features / integrations / development / internal) and names for every variable its purpose, default, phase and what happens without it; the same list lives in code (`server-app/startupEnvCheck.ts`), and the server prints one `[env] missing …` line per missing required variable at start (stricter for `NODE_ENV=integration|production`).
 
 ```bash
 npm install
