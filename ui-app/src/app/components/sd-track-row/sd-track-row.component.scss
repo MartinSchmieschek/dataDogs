@@ -36,7 +36,10 @@
   font-family: var(--font-display);
   font-size: 20px;
   line-height: 1;
-  color: var(--ink-3);
+  // --ink-3 on --paper is ~2.5:1 (light) / ~3.3:1 (dark), below WCAG 4.5:1 — --ink-2 clears
+  // it in both themes (~6.3:1 / ~7.5:1). Row order is also aria-hidden here since the list
+  // (role="list"/"listitem" in kennel-list) already conveys position to assistive tech.
+  color: var(--ink-2);
 }
 
 .main {

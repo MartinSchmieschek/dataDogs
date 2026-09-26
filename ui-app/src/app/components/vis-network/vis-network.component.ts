@@ -81,13 +81,14 @@ const GRID_PX = 24;
               (keydown.space)="$event.preventDefault(); dogSelected.emit(n.dog)">
               <sd-dog-card [dog]="n.dog" [selected]="isNodeSelected(n.id)" [lead]="isNodeLead(n.id)" />
               @if (commentForNode(n.id); as cmt) {
-                <span class="node-comment" [title]="cmt">¶</span>
+                <span class="node-comment" role="img" [attr.aria-label]="cmt" [title]="cmt">¶</span>
               }
             </div>
           }
           @for (slot of edgeCommentSlots(); track slot.key) {
             @if (readOnly) {
-              <span class="mark" [style.left.px]="slot.left" [style.top.px]="slot.top" [title]="slot.comment">¶</span>
+              <span class="mark" role="img" [attr.aria-label]="slot.comment"
+                [style.left.px]="slot.left" [style.top.px]="slot.top" [title]="slot.comment">¶</span>
             } @else {
               <button
                 type="button"
@@ -175,6 +176,12 @@ const GRID_PX = 24;
       justify-content: center; background: var(--ink); color: var(--paper); font: 700 11px/1 var(--font-mono); }
     .node-comment { right: -6px; bottom: -6px; z-index: 2; }
     .mark { z-index: 2; transform: translate(-50%, -50%); }
+    /* Invisible hit-area extension (WCAG target size): grows the tappable area without moving the
+       visual center or changing the marker's rendered size. */
+    .node-comment::before, .mark::before { content: ''; position: absolute; inset: -4px; }
+    @media (pointer: coarse) {
+      .node-comment::before, .mark::before { inset: -14px; }
+    }
     .tool { width: 22px; height: 22px; padding: 0; margin: 0; display: inline-flex; align-items: center;
       justify-content: center; border: 1px solid var(--ink); border-radius: 0; background: var(--paper-2);
       color: var(--ink); font: 700 12px/1 var(--font-mono); cursor: pointer; }
@@ -184,6 +191,12 @@ const GRID_PX = 24;
     .tool--on:hover:not(:disabled) { background: var(--ink); }
     .tool--pin { position: absolute; z-index: 2; transform: translate(-50%, -50%); width: 18px; height: 18px;
       border-color: var(--line-strong); color: var(--ink-2); }
+    /* Invisible hit-area extension (WCAG target size): 18px visual box reaches 24px (44px on touch)
+       tappable area; left/top keep positioning the same center. */
+    .tool--pin::before { content: ''; position: absolute; inset: -3px; }
+    @media (pointer: coarse) {
+      .tool--pin::before { inset: -13px; }
+    }
     .tool--has { border-color: var(--ink); background: var(--ink); color: var(--paper); }
     .tool--has:hover:not(:disabled) { background: var(--ink-2); }
     .cut { position: absolute; z-index: 3; transform: translate(-50%, -50%); display: flex; flex-direction: column;
