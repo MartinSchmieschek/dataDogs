@@ -368,6 +368,9 @@ export class StartupTest {
             await this.testLandingBudgetAndFonts();
             await this.testLandingOverHttp();
 
+            // Fix-Runde: Kompression (brotli/gzip) fuer Textantworten, nie fuer SSE, HEAD, Schriften
+            await this.testResponseCompression();
+
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
         } finally {
@@ -6250,6 +6253,57 @@ export class StartupTest {
             const font = await fetch(`${base}/static/landing/bebas-neue.woff2`);
             if (font.status !== 200 || font.headers.get('content-type') !== 'font/woff2') throw new Error(`Schrift: ${font.status} ${font.headers.get('content-type')}`);
             await font.arrayBuffer();
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Kompression gegen den laufenden Server: /api/kennels mit br, gzip und ohne Accept-Encoding (Bytes gleich nach dem
+     * Entpacken, Vary: Accept-Encoding), HEAD ohne Kodierung, woff2 nie gepackt, Aushandlung (q=0). Rohes http, weil
+     * fetch still entpackt und Content-Encoding verschluckt.
+     */
+    private async testResponseCompression(): Promise<void> {
+        const testName = 'Fix-Runde: Kompression br/gzip, nie SSE/HEAD/woff2';
+        try {
+            const { ResponseCompression } = await import('./server-app/ResponseCompression');
+            const zlib = await import('zlib');
+            const http = await import('http');
+            if (ResponseCompression.negotiate('gzip, deflate, br') !== 'br' || ResponseCompression.negotiate('gzip') !== 'gzip'
+                || ResponseCompression.negotiate('br;q=0, gzip') !== 'gzip' || ResponseCompression.negotiate('identity') !== null
+                || ResponseCompression.negotiate('*') !== 'br' || ResponseCompression.negotiate(undefined) !== null) {
+                throw new Error('negotiate');
+            }
+            if (!ResponseCompression.isCompressible('application/json; charset=utf-8') || ResponseCompression.isCompressible('text/event-stream')
+                || ResponseCompression.isCompressible('font/woff2') || !ResponseCompression.isCompressible('text/html')) {
+                throw new Error('isCompressible');
+            }
+            const base = new URL(this.selfBaseUrl());
+            const get = (pathName: string, encoding: string | null, method = 'GET') => new Promise<{ status: number; headers: Record<string, any>; body: Buffer }>((resolve, reject) => {
+                const req = http.request({ host: base.hostname, port: base.port, path: pathName, method, headers: encoding ? { 'Accept-Encoding': encoding } : {} }, (res) => {
+                    const chunks: Buffer[] = [];
+                    res.on('data', (c: Buffer) => chunks.push(c));
+                    res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }));
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            const plain = await get('/api/kennels', null);
+            const br = await get('/api/kennels', 'br');
+            const gz = await get('/api/kennels', 'gzip');
+            if (plain.status !== 200 || plain.headers['content-encoding']) throw new Error(`ohne Accept-Encoding: ${plain.status} ${plain.headers['content-encoding']}`);
+            if (plain.body.length < ResponseCompression.THRESHOLD_BYTES) throw new Error(`/api/kennels zu klein fuer den Test (${plain.body.length} B)`);
+            // Zwischen den Abrufen koennen Zaehler weiterlaufen — verglichen wird die Form, nicht jedes Byte.
+            const sameShape = (bytes: Buffer) => JSON.stringify(Object.keys(JSON.parse(bytes.toString('utf8')))) === JSON.stringify(Object.keys(JSON.parse(plain.body.toString('utf8'))));
+            if (br.headers['content-encoding'] !== 'br' || !sameShape(zlib.brotliDecompressSync(br.body))) throw new Error('br: Kodierung oder Inhalt');
+            if (gz.headers['content-encoding'] !== 'gzip' || !sameShape(zlib.gunzipSync(gz.body))) throw new Error('gzip: Kodierung oder Inhalt');
+            if (!/accept-encoding/i.test(String(br.headers.vary)) || br.body.length >= plain.body.length) throw new Error(`br: vary=${br.headers.vary}, ${br.body.length} B`);
+            const head = await get('/api/kennels', 'br', 'HEAD');
+            if (head.headers['content-encoding']) throw new Error('HEAD gepackt');
+            const font = await get('/static/landing/bebas-neue.woff2', 'br');
+            if (font.status !== 200 || font.headers['content-encoding']) throw new Error(`woff2: ${font.status} ${font.headers['content-encoding']}`);
+            console.log(`[StartupTest] Kompression /api/kennels: ${plain.body.length} B -> br ${br.body.length} B, gzip ${gz.body.length} B`);
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

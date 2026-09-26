@@ -42,6 +42,7 @@ import { BaseDogPacks } from '../services/BaseDogPacks';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 import { LandingPage } from './LandingPage';
+import { ResponseCompression } from './ResponseCompression';
 
 export type CreateHttpApplicationInput = {
     nodeEnv: string;
@@ -180,6 +181,11 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
         }
         next();
     });
+
+    // Kompression (brotli/gzip) fuer alles Textartige — vor /static, der Landing, der SPA und jeder Route.
+    // SSE (/mcp) und der WebSocket-Hub bleiben ungepackt; HTTP_COMPRESSION=0 schaltet ab.
+    const compression = ResponseCompression.fromEnv();
+    if (compression) app.use(compression.middleware());
 
     app.use(express.json({ limit: '5mb' }));
 
