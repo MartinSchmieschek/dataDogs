@@ -206,7 +206,18 @@
 
   <div class="scenic-layer scenic-layer--hero" [ngStyle]="layerParallax(0.44, 0.95)">
     <div class="scenic-hero-wrap">
-      <img class="scenic-hero-img" src="/assets/bg1.png" width="800" height="1200" alt="" decoding="async" />
+      <!--
+        Das Motiv wiegt als PNG 3,31 MB und laesst sich als PNG nicht komprimieren --
+        auf dem Handy war es nach dem Monaco-Umbau der schwerste Posten ueberhaupt.
+        Dargestellt wird es ohnehin nur 800x1200; die Quelle war 1024x1536, ein Drittel
+        der Pixel wurde also heruntergerechnet und weggeworfen. Der Alphakanal wird
+        gebraucht (freigestelltes Motiv), AVIF und WebP tragen ihn beide.
+        AVIF 158 KB fuer alle heutigen Browser, WebP 318 KB als Rueckfallebene.
+      -->
+      <picture>
+        <source srcset="/assets/bg1.avif" type="image/avif" />
+        <img class="scenic-hero-img" src="/assets/bg1.webp" width="800" height="1200" alt="" decoding="async" loading="lazy" />
+      </picture>
     </div>
   </div>
 </div>

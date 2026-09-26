@@ -49,5 +49,10 @@
     </div>
   </div>
 
-  <div #container class="monaco-host" [style.min-height.px]="minHeight"></div>
+  <div class="monaco-wrap">
+    <div #container class="monaco-host" [style.min-height.px]="minHeight"></div>
+    @if (monacoLoading()) {
+      <app-loading-indicator />
+    }
+  </div>
 </div>

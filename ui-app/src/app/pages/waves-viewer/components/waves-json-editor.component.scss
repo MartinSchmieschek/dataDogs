@@ -70,6 +70,12 @@
   }
 }
 
+.monaco-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
 .monaco-host {
   flex: 1;
   width: 100%;

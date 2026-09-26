@@ -12,8 +12,7 @@ import { DogDisplayComponent } from '../../components/dog-display/dog-display.co
 import { KennelEmojiPickerComponent } from '../../components/kennel-emoji-picker/kennel-emoji-picker.component';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
 import { AclPanelComponent } from '../../components/acl-panel/acl-panel.component';
-
-declare const monaco: any;
+import { MonacoLoaderService } from '../../services/monaco-loader.service';
 
 const BASE_DOG_TYPES = [
   'RandomRecipesRetriever',
@@ -51,6 +50,10 @@ const BASE_DOG_TYPES = [
 })
 export class KennelConfigComponent implements OnInit, OnDestroy {
   private errorVideoPopup = inject(ErrorVideoPopupService);
+  private monacoLoader = inject(MonacoLoaderService);
+
+  readonly monacoLoading = signal(false);
+  private destroyed = false;
 
   @ViewChild('bodyEditorContainer') bodyEditorContainer!: ElementRef;
 
@@ -113,6 +116,7 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.destroyed = true;
     this.bodyEditor?.dispose();
   }
 
@@ -189,28 +193,39 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
     this.bodyEditor?.dispose();
     this.bodyEditor = null;
 
-    const tryInit = () => {
+    const tryInit = async () => {
+      if (this.destroyed) return;
       const container = this.bodyEditorContainer?.nativeElement;
       if (!container) {
         setTimeout(tryInit, 100);
         return;
       }
-      if (typeof monaco !== 'undefined') {
-        const text =
-          defaultBody !== undefined && defaultBody !== null
-            ? JSON.stringify(defaultBody, null, 2)
-            : '{}';
-        this.bodyEditor = monaco.editor.create(container, {
-          value: text,
-          language: 'json',
-          theme: 'vs-dark',
-          minimap: { enabled: false },
-          automaticLayout: true,
-          scrollBeyondLastLine: false,
-          lineNumbers: 'on',
-          fontSize: 13,
-        });
+
+      this.monacoLoading.set(true);
+      let monaco: any = null;
+      try {
+        monaco = await this.monacoLoader.ensureMonaco();
+      } catch {
+        monaco = null;
+      } finally {
+        this.monacoLoading.set(false);
       }
+      if (!monaco || this.destroyed) return;
+
+      const text =
+        defaultBody !== undefined && defaultBody !== null
+          ? JSON.stringify(defaultBody, null, 2)
+          : '{}';
+      this.bodyEditor = monaco.editor.create(container, {
+        value: text,
+        language: 'json',
+        theme: 'vs-dark',
+        minimap: { enabled: false },
+        automaticLayout: true,
+        scrollBeyondLastLine: false,
+        lineNumbers: 'on',
+        fontSize: 13,
+      });
     };
     setTimeout(tryInit, 200);
   }
