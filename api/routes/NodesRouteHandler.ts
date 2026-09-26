@@ -7,6 +7,7 @@ import type { AuthCtx } from '../../mcp/auth/middleware';
 import { ListQuery } from './ListQuery';
 import { API_ROUTE } from './routeTable';
 import type { DogStatsService } from '../../services/DogStatsService';
+import { BaseDogPacks } from '../../services/BaseDogPacks';
 
 /** A lean description of a base dog — enough for the toolbar to display it. */
 interface IBaseDogInfo {
@@ -17,7 +18,12 @@ interface IBaseDogInfo {
     icon?: string;
     /** The name this dog is bound under in a child's VM context. */
     contextName: string;
+    /** P6 U5: the package it comes from (`dogs-weather`, `core`) — the browser's pack filter. */
+    pack?: string;
 }
+
+/** Fields `lean=1` drops from a list entry: the code — the browser and the palette list, they do not read. */
+const LEAN_DROPPED_FIELDS = ['theRun', 'lineDocs'] as const;
 
 /** Blanke Klassennamen der Abhaengigkeiten eines Base-Dogs (required/optional sind Klassen). */
 function dependencyNames(list: unknown): string[] {
@@ -34,6 +40,7 @@ export class NodesRouteHandler {
     /** @param dogStats P4b: `stats` an jedem Eintrag, `GET /api/nodes/:id/usage`. Ohne ihn: wie vor P4b. */
     constructor(registry: ControllerRegistry, baseDogs: any[], private readonly dogStats?: DogStatsService) {
         this.registry = registry;
+        const packs = BaseDogPacks.fromLoadedModules();
         for (const dog of baseDogs) {
             this.baseDogParents.set(BASE_DOG_PREFIX + dog.name, {
                 parentsRequired: dependencyNames(dog.required),
@@ -49,6 +56,33 @@ export class NodesRouteHandler {
             // A base dog binds under its own IHuntingDog.name (its class name) — the same
             // getter SerializedDog.name implements via toCamelCase. One source, two dog kinds.
             contextName: dog.name,
+            pack: packs.packOf(dog) ?? undefined,
+        }));
+    }
+
+    /** `lean=1` (P6 U5): the list without code — 840 kB -> a few dozen for the /dogs browser. */
+    private static leanOf<T extends Record<string, any>>(items: T[], lean: boolean): T[] {
+        if (!lean) return items;
+        return items.map((item) => {
+            const copy: Record<string, any> = { ...item };
+            for (const field of LEAN_DROPPED_FIELDS) delete copy[field];
+            return copy as T;
+        });
+    }
+
+    /**
+     * P6 U5: a RUN view (run-only for the caller) carries the version of its head (oldest = 1) — the
+     * number `[USE IN KENNEL]` pins to and says (`Pinned to v7.`). One version query per such dog;
+     * readable dogs are not touched (their version list is open to them).
+     */
+    private async withRunViewVersions(items: Array<Record<string, any>>): Promise<void> {
+        const controller = this.registry.get('nodes');
+        if (!controller) return;
+        const runOnly = items.filter((d) => d.type !== 'BaseDog' && d.myRights && !d.myRights.read && (d.lineageId || d.id));
+        await Promise.all(runOnly.map(async (d) => {
+            const history = await controller.getVersions(String(d.lineageId || d.id));
+            const at = history.findIndex((v) => v.id === d.id);
+            if (at >= 0) d.version = history.length - at;
         }));
     }
 
@@ -111,6 +145,7 @@ export class NodesRouteHandler {
 
             const kennelId = req.query.kennelId as string | undefined;
             const listQuery = ListQuery.from(req.query);
+            const lean = req.query.lean === '1' || req.query.lean === 'true';
 
             // Only list SerializedDogs — MimicDogs are pact-bound and never appear in the toolbar.
             // listLatest() queries by entityType 'SerializedDog', so MimicDogs (type 'MimicDog') are excluded.
@@ -127,6 +162,7 @@ export class NodesRouteHandler {
                 ...NodesRouteHandler.viewFor(dog, req.ctx),
                 contextName: NodesRouteHandler.contextNameOf(dog),
             }));
+            await this.withRunViewVersions(serializedDogs as any[]);
 
             // If a kennel is specified, filter to only dogs that are in that kennel's dogIds.
             // The kennel's dogIds are its config — only a reader may filter by them.
@@ -156,7 +192,7 @@ export class NodesRouteHandler {
                     const filteredBase = this.baseDogsList.filter(d => !kennelSet.has(d.id)).map((d) => ({ ...d }));
                     const scoped = [...filteredBase, ...serializedDogs];
                     if (this.dogStats) await this.dogStats.attach(scoped as any[]);
-                    res.status(200).json(listQuery.envelope(listQuery.apply(scoped, req.ctx)));
+                    res.status(200).json(listQuery.envelope(listQuery.apply(NodesRouteHandler.leanOf(scoped, lean), req.ctx)));
                     return;
                 }
             }
@@ -168,7 +204,7 @@ export class NodesRouteHandler {
             // P4b: stats VOR ListQuery.apply — sortiert (proven, calls30d, reuse) und gefiltert (proven=1)
             // wird nach ihnen, und nur an dem, was der Rechtefilter schon durchgelassen hat.
             if (this.dogStats) await this.dogStats.attach(all as any[]);
-            res.status(200).json(listQuery.envelope(listQuery.apply(all, req.ctx)));
+            res.status(200).json(listQuery.envelope(listQuery.apply(NodesRouteHandler.leanOf(all, lean), req.ctx)));
         } catch (e) {
             console.error('[/api/nodes]', e);
             res.status(500).json({ error: String(e) });

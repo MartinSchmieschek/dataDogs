@@ -18,6 +18,7 @@ export const FIXED_TOP_LEVEL: ReadonlySet<string> = new Set([
     'k',
     'kennels',
     'kennel',
+    'dogs',
     'robots.txt',
 ]);
 

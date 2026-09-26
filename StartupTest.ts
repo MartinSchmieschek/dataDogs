@@ -71,6 +71,9 @@ import { dogStatsKeyOf } from './services/dogStatsKey';
 import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { DogStatsService } from './services/DogStatsService';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
+import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
+import { FIXED_TOP_LEVEL } from './api/routes/spaRouteConstants';
+import { BaseDogPacks } from './services/BaseDogPacks';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 import { randomBytes } from 'crypto';
 import { KeyStoreService, MasterKeyring, type KeyStorePrisma } from './services/KeyStoreService';
@@ -329,6 +332,10 @@ export class StartupTest {
             await this.testDogReuseAndUsage();
             await this.testProvenFormula();
             await this.testListQuerySortsDogsByProven();
+
+            // P6 U5: /dogs-Browser — pack an Base-Dogs, lean=1 ohne Code, RUN-Sicht mit Kopf-Version
+            await this.testNodesListPackLeanAndRunVersion(baseDogsMap);
+            await this.testNodesListLeanOverHttp();
 
             // P4c: Key-Store (Selbstangriff T1-T11; T11 im Gateway-Test)
             if (authPrisma) {
@@ -1674,7 +1681,7 @@ export class StartupTest {
             }
             const post = call('POST', 'wetter', '/wetter?lat=1&channelId=AbC');
             if (post.status !== 308 || post.location !== get.location) throw new Error(`POST: ${post.status} ${post.location}`);
-            for (const fixed of ['kennels', 'api', 'robots.txt', 'K', 'kennel']) {
+            for (const fixed of ['kennels', 'api', 'robots.txt', 'K', 'kennel', 'dogs']) {
                 const r = call('GET', fixed, `/${fixed}`);
                 if (!r.next || r.status !== 0) throw new Error(`/${fixed} muss per next() weitergehen`);
             }
@@ -5255,6 +5262,75 @@ export class StartupTest {
             expect('sort=reuse desc', ids({ sort: 'reuse', dir: 'desc' }), 'a,c,b,d');
             expect('proven=1', ids({ proven: '1', sort: 'proven', dir: 'desc' }), 'a,b');
             expect('q=geo + proven', ids({ q: 'geo', sort: 'proven', dir: 'desc' }), 'a,c');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * P6 U5: GET /api/nodes fuer den /dogs-Browser — Base-Dogs tragen ihr Paket (`core`, `dogs-weather`,
+     * aus dem geladenen Modulgraphen der Registry), `lean=1` laesst den Code weg, ein fremder
+     * run-only-Dog (RUN-Sicht, anonym) traegt die Version seines Kopfes (aelteste = 1) und nie theRun.
+     */
+    private async testNodesListPackLeanAndRunVersion(baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P6 U5: /api/nodes pack, lean=1, RUN-Sicht mit Kopf-Version';
+        try {
+            const Query = baseDogsMap.get('QueryRetriever');
+            const Weather = baseDogsMap.get('WeatherRetriever');
+            if (!Query || !Weather) throw new Error('QueryRetriever/WeatherRetriever nicht registriert');
+            const packs = BaseDogPacks.fromLoadedModules();
+            if (packs.packOf(new Query()) !== 'core') throw new Error(`QueryRetriever pack ${packs.packOf(new Query())}`);
+            if (packs.packOf(Weather) !== 'dogs-weather') throw new Error(`WeatherRetriever pack ${packs.packOf(Weather)}`);
+            if (packs.packOf({}) !== null) throw new Error('ein fremdes Objekt hat ein Paket');
+
+            const readable = { id: 'v-read', lineageId: 'L-read', displayName: 'Open Dog', theRun: 'return 1;', visibility: 'public', ownerId: 'u-a' };
+            const runOnly = { id: 'v-head', lineageId: 'L-run', displayName: 'Sealed Dog', theRun: 'return "secret";', visibility: 'run-only', ownerId: 'u-b' };
+            const controller: any = {
+                listLatest: async () => ({ ok: true, data: [{ ...readable }, { ...runOnly }] }),
+                getVersions: async (id: string) => (id === 'L-run'
+                    ? [{ id: 'v-head', version: 3 }, { id: 'v-2', version: 2 }, { id: 'v-1', version: 1 }]
+                    : [{ id: 'v-read', version: 1 }]),
+            };
+            const registry = { get: (sub: string) => (sub === 'nodes' ? controller : null) } as unknown as ControllerRegistry;
+            const handler = new NodesRouteHandler(registry, [new Query(), new Weather()]);
+            const list = async (query: Record<string, string>) => {
+                let body: any = null;
+                const res: any = { status: () => res, json: (b: any) => { body = b; } };
+                await (handler as any).handleList({ query, ctx: { user: null, isSuperUser: false } }, res);
+                return body?.data as any[];
+            };
+            const full = await list({});
+            const lean = await list({ lean: '1' });
+            const byId = (rows: any[], id: string) => rows.find((r) => r.id === id);
+            if (byId(full, 'base:QueryRetriever')?.pack !== 'core' || byId(full, 'base:WeatherRetriever')?.pack !== 'dogs-weather') {
+                throw new Error(`pack: ${byId(full, 'base:QueryRetriever')?.pack} / ${byId(full, 'base:WeatherRetriever')?.pack}`);
+            }
+            if (byId(full, 'v-read')?.theRun !== 'return 1;') throw new Error('ohne lean fehlt der Code des lesbaren Dogs');
+            if (lean.some((r) => 'theRun' in r)) throw new Error('lean=1 liefert theRun');
+            if (lean.length !== full.length) throw new Error(`lean=1 aendert die Menge: ${lean.length} statt ${full.length}`);
+            const sealed = byId(full, 'v-head');
+            if (!sealed || sealed.myRights?.read !== false || sealed.version !== 3) throw new Error(`RUN-Sicht: ${JSON.stringify(sealed)}`);
+            if (JSON.stringify(full).includes('secret')) throw new Error('RUN-Sicht traegt den Code');
+            if (byId(full, 'v-read')?.version !== undefined) throw new Error('lesbarer Dog bekommt eine Listen-Version');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** P6 U5 gegen den laufenden Server: `lean=1` ohne Code, jeder Base-Dog mit Paket, `/dogs` ist ein festes Segment. */
+    private async testNodesListLeanOverHttp(): Promise<void> {
+        const testName = 'P6 U5: GET /api/nodes?lean=1 ueber HTTP';
+        try {
+            const res = await fetch(`${this.selfBaseUrl()}/api/nodes?lean=1&sort=proven&dir=desc`);
+            const body: any = await res.json();
+            if (res.status !== 200 || !Array.isArray(body?.data)) throw new Error(`Status ${res.status}`);
+            if (body.data.some((d: any) => 'theRun' in d)) throw new Error('lean=1 liefert theRun');
+            const base = body.data.filter((d: any) => d.type === 'BaseDog' && !String(d.description ?? '').startsWith('Pact'));
+            const bare = base.filter((d: any) => typeof d.pack !== 'string' || !d.pack);
+            if (base.length === 0 || bare.length > 0) throw new Error(`Base-Dogs ohne pack: ${bare.map((d: any) => d.id).join(',') || '(keine Base-Dogs)'}`);
+            if (!FIXED_TOP_LEVEL.has('dogs')) throw new Error('/dogs fehlt in FIXED_TOP_LEVEL (Alt-Weiche)');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
