@@ -55,6 +55,15 @@ export function buildWerkzeugkasten(baseDogsList: BaseDogInfo[]): string {
         + 'und bei Pacts (`isPact: true`) die geforderte Form. Suche dort nach Stichworten statt zu raten; '
         + 'ein Pact wird nie direkt gerufen, sondern per MimicDog (`dogs[].imitates`) oder einem liefernden Dog erfuellt. '
         + 'Sortiere mit `sort:\'proven\'` — bewaehrte Dogs zuerst; baue keinen Dog neu, den `list_nodes {search}` schon bewaehrt liefert.',
+        '',
+    );
+    lines.push(
+        '### Wiederverwenden vor Schreiben (feste Regel)',
+        'Fuer jeden Teil, den du bauen willst, ZUERST `list_nodes {search:\'<Stichwort>\', sort:\'proven\'}`. '
+        + 'Gibt es einen passenden, zuverlaessigen Dog (Abzeichen `stats.proven.badge` oder `stats.proven.reliability >= 0.8`), '
+        + 'nimm ihn ueber seine lineageId (`parentsRequired`, `extraDogIds`) und schreibe nur, was fehlt. '
+        + '`build_kennel` meldet in `hints[]`, wenn ein neuer Dog einem bewaehrten gleicht, den du ausfuehren darfst — mit dessen lineageId; '
+        + 'es ist ein Rat, nichts wird blockiert.',
     );
 
     return lines.join('\n');

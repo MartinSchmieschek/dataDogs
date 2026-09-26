@@ -35,6 +35,7 @@ import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/
 import { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 import { firstRefusedDogRef, refusedDogRefMessage } from '../../services/dogAccess';
 import { ListQuery, USAGE_FILTERS, USAGE_FILTER_HELP } from '../../api/routes/ListQuery';
+import { DogReuseAdvisor, type BuiltDog, type ReuseCandidate, type ReuseHint } from '../../services/DogReuseAdvisor';
 
 /** Status notebook — see mcp/skill.md § Spuren & Rechtfertigung */
 const KENNEL_TRACE_NODE_SCHEMA = {
@@ -336,7 +337,7 @@ export function getKennelTools(): ToolDef[] {
                         description: 'calls/calls30d = ranked usage (public + execute paths), rating = Bayes score, failures30d = runs whose lead failed in the last 30 days (stats.calls.leadFailed30d). Default name (with usage "top": most calls first).',
                     },
                     usage: { type: 'string', enum: [...USAGE_FILTERS], description: USAGE_FILTER_HELP },
-                    dir: { type: 'string', enum: ['asc', 'desc'] },
+                    dir: { type: 'string', enum: ['asc', 'desc'], description: 'default: desc for the number sorts (calls, calls30d, rating, failures30d), asc for name and dates' },
                     minStars: { type: 'number', minimum: 1, maximum: 5, description: 'keep kennels whose raw average rating is >= minStars' },
                     minCalls: { type: 'number', minimum: 0, description: 'keep kennels with at least this many ranked calls' },
                     limit: {
@@ -359,7 +360,7 @@ export function getKennelTools(): ToolDef[] {
                     q: args.search,
                     mine: args.mine ? '1' : undefined,
                     sort: args.sort,
-                    dir: args.dir,
+                    dir: args.dir ?? ListQuery.defaultDirFor(args.sort),
                     minStars: args.minStars,
                     minCalls: args.minCalls,
                     usage: args.usage,
@@ -539,7 +540,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'build_kennel',
             description:
-                'Composed one-shot kennel build. Creates a fresh set of Breeds (SerializedDogs / Mimics) AND assembles a kennel that uses them — atomic, with rollback on failure. **Keep each dog small** — one dog does one nameable thing. Do not put a whole page into a single dog: HTML fragments, the script block, data preparation and composition each get their own entry in `dogs[]`, and the lead composes them. The response reports any dog that has grown too large. **Lead convention:** by default the **LAST** dog in `dogs[]` becomes the lead (renderers / finalizers typically sit at the end of a pipeline). Pass `lead: "<displayName>"` to override. **Spuren:** `task` + `nodes[]` beim Create (Wunsch, kein Vertrag — mcp/skill.md § Spuren & Rechtfertigung). Sibling dogs reference each other by displayName via "@DisplayName" in parentsRequired/Optional; BaseDogs are referenced as bare class names ("QueryRetriever"), and raw lineageId GUIDs pass through unchanged. If `refresh` is true (default), the kennel is hunted once and the lead\'s spoils are previewed in the response. Rollback semantics: any failure during the build deletes every node already created in this call and the kennel row (if any) — no orphans left in the deep. **firstRun.status values:** `ok` (every dog clean), `lead-ok-with-side-errors` (lead returned cleanly but some upstream/side dog errored — public endpoint still serves), `lead-failed` (the lead itself errored — public endpoint is broken), `failed` (the run could not even be observed: worker crash, kennel vanished). `firstRun.leadOk` is a bool shortcut: true means the public endpoint serves the lead\'s payload. '
+                'Composed one-shot kennel build. Creates a fresh set of Breeds (SerializedDogs / Mimics) AND assembles a kennel that uses them — atomic, with rollback on failure. **Reuse before you write:** first `list_nodes {search: "<keyword>", sort: "proven"}` for every part you need; a fitting, reliable dog (proven badge, reliability >= 0.8) goes in by its lineageId (parentsRequired / extraDogIds) — write only what is missing. If a new dog in `dogs[]` has the same or a very similar name or description as a proven dog you may run, the response carries `hints[]` {dog, lineageId, reason, similarity, suggestion {lineageId, displayName, proven}, message} — advice only, nothing is blocked. **Keep each dog small** — one dog does one nameable thing. Do not put a whole page into a single dog: HTML fragments, the script block, data preparation and composition each get their own entry in `dogs[]`, and the lead composes them. The response reports any dog that has grown too large. **Lead convention:** by default the **LAST** dog in `dogs[]` becomes the lead (renderers / finalizers typically sit at the end of a pipeline). Pass `lead: "<displayName>"` to override. **Spuren:** `task` + `nodes[]` beim Create (Wunsch, kein Vertrag — mcp/skill.md § Spuren & Rechtfertigung). Sibling dogs reference each other by displayName via "@DisplayName" in parentsRequired/Optional; BaseDogs are referenced as bare class names ("QueryRetriever"), and raw lineageId GUIDs pass through unchanged. If `refresh` is true (default), the kennel is hunted once and the lead\'s spoils are previewed in the response. Rollback semantics: any failure during the build deletes every node already created in this call and the kennel row (if any) — no orphans left in the deep. **firstRun.status values:** `ok` (every dog clean), `lead-ok-with-side-errors` (lead returned cleanly but some upstream/side dog errored — public endpoint still serves), `lead-failed` (the lead itself errored — public endpoint is broken), `failed` (the run could not even be observed: worker crash, kennel vanished). `firstRun.leadOk` is a bool shortcut: true means the public endpoint serves the lead\'s payload. '
                 + `The public address is \`${KENNEL_PUBLIC_PREFIX}/<kennelId>\` (returned as publicUrl); docs at \`${KENNEL_PUBLIC_PREFIX}/<kennelId>/docs\` (docsUrl), spec at \`${KENNEL_PUBLIC_PREFIX}/<kennelId>/openapi.json\` (openapiUrl).`,
             inputSchema: {
                 type: 'object',
@@ -902,6 +903,34 @@ function previewLeadResult(value: unknown): unknown {
     }
 }
 
+/**
+ * Bewaehrte Dogs, die der Aufrufer ausfuehren darf (Base-Dogs ohne Pacts und gespeicherte Dogs), gegen die
+ * frisch gebauten gehalten (DogReuseAdvisor). Rein beratend: scheitert das Nachschlagen, baut build_kennel
+ * trotzdem fertig — ohne hints.
+ */
+async function reuseHintsFor(built: BuiltDog[], ctx: AuthCtx, deps: ToolDeps): Promise<ReuseHint[]> {
+    try {
+        const listed = await deps.nodesController.listLatest();
+        const stored: ReuseCandidate[] = filterRunnable(listed.ok ? listed.data ?? [] : [], ctx).map((d: any) => ({
+            id: d.id,
+            lineageId: d.lineageId,
+            displayName: d.displayName ?? null,
+            description: d.description ?? null,
+            ownerId: d.ownerId ?? null,
+            runOnly: !canRead(d, ctx),
+        }));
+        const bases: ReuseCandidate[] = deps.baseDogsList
+            .filter((b) => b.isPact !== true)
+            .map((b) => ({ id: b.id, displayName: b.name, description: b.description ?? null, ownerId: null }));
+        const candidates = [...bases, ...stored];
+        await deps.dogStats.attach(candidates as any[]);
+        return new DogReuseAdvisor().hintsFor(built.filter((b) => b.lineageId), candidates);
+    } catch (err) {
+        console.warn('[build_kennel] reuse hints skipped:', err instanceof Error ? err.message : err);
+        return [];
+    }
+}
+
 async function buildKennel(
     args: Record<string, any>,
     ctx: AuthCtx,
@@ -1235,11 +1264,20 @@ async function buildKennel(
             }
         }
 
+        // Wiederverwenden vor Schreiben (Feature-Runde, 10-0: "wiederverwenden wenn gefunden und toll"):
+        // gleicht ein neuer Dog einem bewaehrten, ausfuehrbaren, steht dessen lineageId als Vorschlag da.
+        const hints = await reuseHintsFor(
+            rawDogs.map((spec) => ({ displayName: spec.displayName, lineageId: siblingMap.get(spec.displayName) ?? '', description: spec.description ?? null })),
+            ctx,
+            deps,
+        );
+
         // Hinweise ZUERST. Sie standen bisher hinter der dogs-Liste und gingen damit in jeder
         // gekuerzten Ansicht unter -- ein Log, das Tool-Antworten beschneidet, zeigte nur noch
         // lineageIds. Was gelesen werden soll, gehoert nach oben.
         return ok({
             ...(hinweise.length ? { hinweise } : {}),
+            ...(hints.length ? { hints } : {}),
             ...(pflicht.ergaenzt.length ? { ergaenzt: pflicht.ergaenzt } : {}),
             kennelId,
             kennelLineageId,

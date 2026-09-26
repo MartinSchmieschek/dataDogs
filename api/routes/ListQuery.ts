@@ -103,6 +103,15 @@ export class ListQuery {
         );
     }
 
+    /**
+     * The direction an MCP tool uses when the caller names a sort but no `dir`: numbers (calls, stars,
+     * proven, reuse, failures) run high to low — "sort: proven" means the proven dogs first — names and
+     * dates keep ascending. REST keeps `asc` as its default (the UI always sends `dir`).
+     */
+    static defaultDirFor(sort: unknown): SortDirection {
+        return ['calls', 'calls30d', 'rating', 'proven', 'reuse', 'failures30d'].includes(ListQuery.first(sort) as string) ? 'desc' : 'asc';
+    }
+
     /** True only when `limit` was given — only then does the response envelope grow. */
     get isPaged(): boolean {
         return this.limit !== null;

@@ -68,10 +68,12 @@ import { KennelStatsService } from './services/KennelStatsService';
 import { KennelRatingHandler } from './api/routes/KennelRatingHandler';
 import { ListQuery, USAGE_FILTERS } from './api/routes/ListQuery';
 import { LandingRouteHandler } from './api/routes/LandingRouteHandler';
-import type { DogCallDelta, IDogStatsStore, IKennelStatsStore, KennelCallAggregate, KennelCallSource } from './store/IKennelStatsStore';
+import type { DogCallDelta, DogReferenceRow, IDogStatsStore, IKennelStatsStore, KennelCallAggregate, KennelCallSource } from './store/IKennelStatsStore';
 import { dogStatsKeyOf } from './services/dogStatsKey';
 import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { DogStatsService } from './services/DogStatsService';
+import { DogReuseAdvisor } from './services/DogReuseAdvisor';
+import { buildWerkzeugkasten } from './mcp/werkzeugkasten';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE, SPA_ROUTES } from './api/routes/routeTable';
 import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
 import { FIXED_TOP_LEVEL } from './api/routes/spaRouteConstants';
@@ -390,6 +392,9 @@ export class StartupTest {
             // ... und fuer Dogs (Fehler-Tracking aus P4b: error/timeout/oom)
             await this.testListQueryUsageFiltersDogs();
             await this.testListNodesUsageRespectsRights(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            // Wiederverwenden vor Schreiben: Hinweis in build_kennel, feste Regel in den MCP-Texten
+            await this.testDogReuseAdvisorMatches();
+            await this.testBuildKennelReuseHint(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -5565,6 +5570,135 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Feature-Runde 4 (10-0: "wiederverwenden wenn gefunden und toll"): DogReuseAdvisor — gleicher Name,
+     * sehr aehnlicher Name, sehr aehnliche Beschreibung; nur bewaehrte Kandidaten; der neue Dog selbst nie;
+     * je neuem Dog hoechstens ein Hinweis (staerkster Grund); run-only-Kandidat mit Versions-id.
+     */
+    private async testDogReuseAdvisorMatches(): Promise<void> {
+        const testName = 'Feature-Runde 4: DogReuseAdvisor (Name, Beschreibung, nur bewaehrt)';
+        try {
+            const proven = (score: number, badge = true) => ({ proven: { score, badge, reliability: badge ? 0.97 : 0.7 } });
+            const candidates: any[] = [
+                { id: 'v-geo', lineageId: 'L-geo', displayName: 'GeocodeLookup', description: 'Resolves a place name to latitude and longitude via Nominatim', stats: proven(14.1) },
+                { id: 'v-weak', lineageId: 'L-weak', displayName: 'WeatherCard', description: 'Renders the weather card', stats: proven(0.3, false) },
+                { id: 'base:QueryRetriever', displayName: 'QueryRetriever', description: 'Reads the query string of the request', stats: proven(900) },
+                { id: 'v-ro', lineageId: 'L-ro', displayName: 'TideTable', description: 'Tide times for a harbour', runOnly: true, stats: proven(5) },
+                { id: 'v-self', lineageId: 'L-new-1', displayName: 'Geocode Lookup', description: 'x', stats: proven(99) },
+            ];
+            const advisor = new DogReuseAdvisor();
+            const hints = advisor.hintsFor([
+                { displayName: 'geocode-lookup', lineageId: 'L-new-1', description: 'something else entirely' },
+                { displayName: 'GeocodeLookupDog', lineageId: 'L-new-2', description: null },
+                { displayName: 'PlaceToCoords', lineageId: 'L-new-3', description: 'Resolves a place name to latitude and longitude with Nominatim' },
+                { displayName: 'WeatherCard', lineageId: 'L-new-4', description: 'Renders the weather card' },
+                { displayName: 'Tide Table', lineageId: 'L-new-5', description: null },
+                { displayName: 'Totally New', lineageId: 'L-new-6', description: 'Counts the stars in the sky tonight' },
+                { displayName: 'query_retriever', lineageId: 'L-new-7' },
+            ], candidates);
+            const by = new Map(hints.map((h) => [h.dog, h]));
+            const expect = (dog: string, reason: string | null, lineageId?: string) => {
+                const h = by.get(dog);
+                if (reason === null) { if (h) throw new Error(`${dog}: unerwarteter Hinweis ${JSON.stringify(h)}`); return; }
+                if (!h || h.reason !== reason || h.suggestion.lineageId !== lineageId) throw new Error(`${dog}: ${JSON.stringify(h)}`);
+            };
+            expect('geocode-lookup', 'same-name', 'L-geo');          // gleicher Name, der eigene neue Dog (L-new-1) zaehlt nie
+            expect('GeocodeLookupDog', 'similar-name', 'L-geo');
+            expect('PlaceToCoords', 'similar-description', 'L-geo');
+            expect('WeatherCard', null);                            // gleicher Name, aber nicht bewaehrt
+            expect('Tide Table', 'same-name', 'L-ro');
+            expect('Totally New', null);
+            expect('query_retriever', 'same-name', 'base:QueryRetriever');
+            if (hints.length !== 5) throw new Error(`${hints.length} Hinweise statt 5`);
+            const tide = by.get('Tide Table')!;
+            if (tide.suggestion.versionId !== 'v-ro' || !tide.message.includes('v-ro') || !tide.message.includes('run-only')) throw new Error(`run-only: ${JSON.stringify(tide)}`);
+            if (!by.get('GeocodeLookupDog')!.message.includes('Nothing was blocked')) throw new Error('Hinweis sagt nicht, dass nichts blockiert wurde');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Feature-Runde 4 ueber das Werkzeug: build_kennel mit einem neuen Dog, der so heisst wie ein bewaehrter
+     * (>= 5 Laeufe in 30 T, oeffentlich gerufen, in einem Kennel, zuverlaessig), antwortet mit hints[] und dessen
+     * lineageId — und baut trotzdem; ein fremder privater Doppelgaenger bleibt unerwaehnt; die feste Regel
+     * steht in build_kennel, list_nodes, skill.md und Werkzeugkasten.
+     */
+    private async testBuildKennelReuseHint(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'Feature-Runde 4: build_kennel hints[] zeigt bewaehrten Doppelgaenger';
+        const stamp = Date.now();
+        const kennelId = `test-reuse-${stamp}`;
+        const name = `ReuseProbe${stamp}`;
+        const secretName = `ReuseSecret${stamp}`;
+        const twin = `Reuse Probe${stamp}`;   // gleiche Woerter wie ReuseProbe<stamp>
+        let built: any = null;
+        try {
+            const provenDog = await this.saveAclTestDog(nodesStore, name, 'return { probe: 1 };', { visibility: 'public', ownerId: 'UR1' });
+            const secretDog = await this.saveAclTestDog(nodesStore, secretName, 'return { secret: 1 };', { visibility: 'private', ownerId: 'UR9' });
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
+            for (const dogKey of [provenDog, secretDog]) {
+                for (let i = 0; i < 6; i++) {
+                    counter.recordDog({ dogKey, kennelLineageId: '__reuse_k', source: 'public', outcome: 'ok', cached: false, cacheHits: 0, cacheMisses: 1, durationMs: 3 });
+                }
+            }
+            const refs: DogReferenceRow[] = [provenDog, secretDog].map((toKey) => ({
+                fromKind: 'kennel', fromKey: '__reuse_k', toKey, kind: 'crew', position: 0, fromOwnerId: null, resolved: 1,
+            }));
+            const refStore: IDogStatsStore = { ...StartupTest.NO_DOG_STATS_STORE, readAllReferences: async () => refs };
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            deps.dogStats = new DogStatsService(refStore, counter, new KennelStatsService(StartupTest.NO_STATS_STORE, counter));
+            const [probeStats] = await deps.dogStats.attach([{ id: provenDog, lineageId: provenDog, ownerId: 'UR1' }]);
+            if (!probeStats.stats.proven.badge) throw new Error(`Probe nicht bewaehrt: ${JSON.stringify(probeStats.stats.proven)}`);
+
+            const result = await this.toolNamed('build_kennel').handler({
+                id: kennelId, refresh: false, visibility: 'private',
+                dogs: [
+                    { displayName: twin, tsCode: 'return { again: 1 };' },
+                    { displayName: secretName, tsCode: 'return { mine: 1 };' },
+                    { displayName: `Unrelated${stamp}Lead`, tsCode: 'return { lead: 1 };', description: 'Composes nothing in particular' },
+                ],
+            }, this.fakeUser('UR2'), deps);
+            if (result.isError) throw new Error(`build_kennel: ${result.content[0]?.text}`);
+            built = JSON.parse(result.content[0].text);
+            const hints: any[] = built.hints ?? [];
+            if (hints.length !== 1) throw new Error(`hints: ${JSON.stringify(hints)}`);
+            const h = hints[0];
+            const newProbe = built.dogs.find((d: any) => d.displayName === twin);
+            if (h.dog !== twin || h.reason !== 'same-name' || h.suggestion.lineageId !== provenDog || h.lineageId !== newProbe?.lineageId) {
+                throw new Error(`Hinweis: ${JSON.stringify(h)}`);
+            }
+            if (JSON.stringify(built).includes(secretDog)) throw new Error('fremder privater Dog im Hinweis');
+            if (Object.keys(built)[0] !== 'hints' && Object.keys(built)[0] !== 'hinweise') throw new Error(`hints nicht oben: ${Object.keys(built).join(',')}`);
+            if (!(await kennelsController.getById(kennelId)).ok) throw new Error('Kennel trotz Hinweis nicht gebaut');
+
+            const rule = /list_nodes \{search: "<keyword>", sort: "proven"\}/;
+            const buildText = String(this.toolNamed('build_kennel').description);
+            const nodesText = String(this.toolNamed('list_nodes').description);
+            const skill = fs.readFileSync(path.join(process.cwd(), 'mcp', 'skill.md'), 'utf8');
+            const kasten = buildWerkzeugkasten([{ id: 'base:X', name: 'X', description: 'x', type: 'BaseDog', guidance: 'g' } as any]);
+            if (!rule.test(buildText) || !buildText.includes('hints[]')) throw new Error('build_kennel ohne feste Regel');
+            if (!rule.test(nodesText)) throw new Error('list_nodes ohne feste Regel');
+            if (!skill.includes('Reuse before you write') || !skill.includes("list_nodes {search:'<keyword>', sort:'proven'}")) throw new Error('skill.md ohne feste Regel');
+            if (!kasten.includes('Wiederverwenden vor Schreiben') || !kasten.includes('hints[]')) throw new Error('Werkzeugkasten ohne feste Regel');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+            for (const d of built?.dogs ?? []) {
+                try { for (const v of await nodesController.getVersions(d.lineageId)) await nodesController.delete(v.id); } catch { /* ignore */ }
+            }
         }
     }
 
