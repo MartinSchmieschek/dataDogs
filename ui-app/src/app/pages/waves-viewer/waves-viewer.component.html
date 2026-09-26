@@ -18,6 +18,7 @@
       [publicUrl]="kennelRunBrowserUrl"
       [docsUrl]="swaggerDocsUrl"
       (run)="loadWaves()"
+      (rate)="openKennelInspector('rating')"
       (backToLatest)="backToLatest()"
       (action)="onHeadAction($event)" />
   }
@@ -134,7 +135,6 @@
       [running]="loading()"
       [dogsHidden]="mode() === 'run-only' || readOnly()"
       [dogsLock]="mutationLock()"
-      [inspectHidden]="mode() === 'run-only'"
       (dogs)="openPalette()"
       (run)="loadWaves()"
       (inspect)="openKennelInspector(kennelInspectorTab())" />
@@ -151,136 +151,182 @@
       (dogAdded)="onPaletteAdd($event); paletteOpen.set(false)" />
   }
 
-  <!-- Kennel inspector: brief / versions -->
-  <app-waves-inspector
-    [open]="drawerMode() === 'kennel'"
-    title="Kennel"
-    [subtitle]="kennelConfig()?.name || null"
-    [tabs]="kennelInspectorTabs()"
-    [activeTab]="kennelInspectorTab()"
-    (closeRequested)="closeDrawer()"
-    (tabSelected)="selectKennelTab($any($event))">
-    @switch (kennelInspectorTab()) {
-          @case ('brief') {
-          <div class="form">
-            @if (frozen()) {
-              <p class="lock-note sd-small">Frozen. Runs, ratings and copies keep working; edits wait for the owner.</p>
-            }
-            <section class="form-section">
-              <label class="sd-label" for="task-area">Brief</label>
-              @if (readOnly()) {
-                <p class="text">{{ taskText() || 'No brief yet.' }}</p>
-              } @else {
-                <textarea id="task-area" class="sd-textarea"
-                  [ngModel]="taskText()"
-                  (ngModelChange)="onTaskTextChange($event)"
-                  [disabled]="!!mutationLock()"
-                  [attr.title]="mutationLock()"
-                  rows="6"
-                  spellcheck="false"
-                  placeholder="What should this kennel do?"></textarea>
-              }
-            </section>
+  <!-- One drawer: kennel inspector, dog inspector (‹ kennel back), edge note -->
+  <sd-drawer
+    [open]="!!drawerMode()"
+    [label]="drawerMode() === 'dog' ? 'Dog' : drawerMode() === 'edge' ? 'Edge note' : 'Kennel'"
+    (closed)="closeDrawer()">
 
-            <section class="form-section">
-              <span class="sd-label">Query</span>
-              @if (readOnly() || mutationLock()) {
-                @if (queryParams().length) {
-                  <dl class="query-text sd-data">
-                    @for (param of queryParams(); track $index) {
-                      <div><dt>{{ param.key }}</dt><dd>{{ param.value }}</dd></div>
-                    }
-                  </dl>
-                } @else {
-                  <p class="text sd-muted">No query defaults.</p>
-                }
-              } @else {
-                <div class="query-list">
-                  @for (param of queryParams(); track $index; let i = $index) {
-                    <div class="query-row">
-                      <input class="sd-field sd-field--code" aria-label="Key"
-                        [ngModel]="param.key" (ngModelChange)="setQueryParamAt(i, 'key', $event)" placeholder="key">
-                      <span class="query-eq" aria-hidden="true">=</span>
-                      <input class="sd-field sd-field--code" aria-label="Value"
-                        [ngModel]="param.value" (ngModelChange)="setQueryParamAt(i, 'value', $event)" placeholder="value">
-                      <button type="button" class="sd-btn sd-btn--icon sd-btn--bare" (click)="removeQueryParam(i)"
-                        aria-label="Remove parameter" title="Remove">×</button>
-                    </div>
-                  }
-                  <div class="query-row query-row--add">
-                    <input class="sd-field sd-field--code" aria-label="New key" [(ngModel)]="newQueryKey"
-                      placeholder="new key" (keyup.enter)="addQueryParam()">
-                    <span class="query-eq" aria-hidden="true">=</span>
-                    <input class="sd-field sd-field--code" aria-label="New value" [(ngModel)]="newQueryValue"
-                      placeholder="value" (keyup.enter)="addQueryParam()">
-                    <button type="button" class="sd-btn sd-btn--icon sd-btn--bare" (click)="addQueryParam()"
-                      aria-label="Add parameter" title="Add">+</button>
-                  </div>
-                </div>
-              }
-            </section>
-
-            <section class="form-section">
-              @if (readOnly() || mutationLock()) {
-                <span class="sd-label">Body</span>
-                <pre class="body-text sd-data">{{ bodyJson() }}</pre>
-              } @else {
-                <app-waves-json-editor
-                  label="Body (JSON)"
-                  [value]="bodyJson()"
-                  [minHeight]="240"
-                  (valueChange)="bodyJson.set($event); onBodyJsonChange()" />
-              }
-            </section>
-
-            @if (!readOnly()) {
-              <div class="form-actions">
-                <button type="button" class="sd-btn sd-btn--primary"
-                  [disabled]="!!mutationLock() || !briefDirty() || layoutSaving() || paramsSaving()"
-                  [attr.title]="mutationLock()"
-                  (click)="saveKennel()">
-                  {{ (layoutSaving() || paramsSaving()) ? 'Saving…' : 'Save & rerun' }}
-                </button>
-                <span class="sd-hint">Brief, query, body and layout are saved together.</span>
-              </div>
-            }
-          </div>
+    <div drawer-head>
+      @switch (drawerMode()) {
+        @case ('kennel') {
+          <p class="sd-kicker dh-kicker">kennel</p>
+          <p class="sd-h1 dh-title">{{ kennelConfig()?.name || kennelId }}</p>
         }
-
-        @case ('versions') {
-          <div class="form">
-            <app-version-timeline
-              [versions]="timelineVersions()"
-              [currentVersionId]="currentKennelVersionId"
-              [selectedVersionId]="selectedKennelVersionId()"
-              [pinnedVersionId]="null"
-              [showPinControls]="false"
-              (versionSelected)="onKennelVersionSelected($event)" />
-            @if (activeKennelVersionId()) {
-              <button type="button" class="sd-btn sd-btn--sm" (click)="backToLatest()">Back to latest</button>
+        @case ('dog') {
+          <button type="button" class="dh-back" (click)="backToKennel()">‹ kennel</button>
+          @if (selectedPin(); as pin) {
+            <p class="sd-small dh-meta">run only · {{ pin.version !== null ? 'pinned to v' + pin.version : 'pinned' }}</p>
+            @if (pin.newer && !readOnly()) {
+              <button type="button" class="sd-btn sd-btn--sm dh-pin" [disabled]="!!mutationLock()"
+                [attr.title]="mutationLock() || 'Pin the newer version'" (click)="updatePin()">
+                Update pin · v{{ pin.latestVersion }} available</button>
             }
-          </div>
+          } @else if (selectedDog()?.redacted) {
+            <p class="sd-small dh-meta">private · owned by someone else</p>
+          } @else {
+            <p class="sd-small dh-meta">dog</p>
+          }
         }
-
-    }
-  </app-waves-inspector>
-
-  <!-- Dog inspector -->
-  <app-waves-inspector
-    [open]="drawerMode() === 'dog'"
-    [title]="selectedDog()?.displayName || selectedDog()?.name || 'Dog'"
-    [subtitle]="selectedPin() ? 'run only · ' + (selectedPin()!.version !== null ? 'pinned to v' + selectedPin()!.version : 'pinned') : null"
-    (closeRequested)="closeDrawer()">
-    @if (selectedDog(); as dog) {
-      @if (selectedPin(); as pin) {
-        @if (pin.newer && !readOnly()) {
-          <div class="form">
-            <button type="button" class="sd-btn sd-btn--sm" [disabled]="!!mutationLock()"
-              [attr.title]="mutationLock() || 'Pin the newer version'" (click)="updatePin()">
-              Update pin · v{{ pin.latestVersion }} available</button>
-          </div>
+        @case ('edge') {
+          <p class="sd-kicker dh-kicker">edge note</p>
+          <p class="sd-h1 dh-title">{{ edgeLabel() }}</p>
         }
       }
+    </div>
+
+    <nav drawer-tabs [class.sd-tabs]="drawerMode() === 'kennel'" class="dh-tabs" role="tablist" aria-label="Kennel inspector"
+      [attr.hidden]="drawerMode() === 'kennel' ? null : ''">
+      @if (drawerMode() === 'kennel') {
+        @for (tab of inspectorTabs(); track tab) {
+          <button type="button" role="tab" class="sd-tab" [attr.aria-selected]="kennelInspectorTab() === tab"
+            (click)="selectKennelTab(tab)">
+            {{ tabLabels[tab] }}
+            @if (tab === 'brief' && briefDirty()) { <span class="dirty" aria-label="unsaved"></span> }
+            @if (tab === 'versions' && timelineVersions().length) { <span class="badge">{{ timelineVersions().length }}</span> }
+          </button>
+        }
+      }
+    </nav>
+
+    @switch (drawerMode()) {
+      @case ('kennel') {
+        @switch (kennelInspectorTab()) {
+          @case ('brief') {
+            <div class="form">
+              @if (frozen()) {
+                <p class="lock-note sd-small">Frozen. Runs, ratings and copies keep working; edits wait for the owner.</p>
+              }
+              <section class="form-section">
+                <label class="sd-label" for="task-area">Brief</label>
+                @if (readOnly()) {
+                  <p class="text">{{ taskText() || 'No brief yet.' }}</p>
+                } @else {
+                  <textarea id="task-area" class="sd-textarea"
+                    [ngModel]="taskText()"
+                    (ngModelChange)="onTaskTextChange($event)"
+                    [disabled]="!!mutationLock()"
+                    [attr.title]="mutationLock()"
+                    rows="6"
+                    spellcheck="false"
+                    placeholder="What should this kennel do?"></textarea>
+                }
+              </section>
+
+              <section class="form-section">
+                <span class="sd-label">Query</span>
+                @if (readOnly() || mutationLock()) {
+                  @if (queryParams().length) {
+                    <dl class="query-text sd-data">
+                      @for (param of queryParams(); track $index) {
+                        <div><dt>{{ param.key }}</dt><dd>{{ param.value }}</dd></div>
+                      }
+                    </dl>
+                  } @else {
+                    <p class="text sd-muted">No query defaults.</p>
+                  }
+                } @else {
+                  <div class="query-list">
+                    @for (param of queryParams(); track $index; let i = $index) {
+                      <div class="query-row">
+                        <input class="sd-field sd-field--code" aria-label="Key"
+                          [ngModel]="param.key" (ngModelChange)="setQueryParamAt(i, 'key', $event)" placeholder="key">
+                        <span class="query-eq" aria-hidden="true">=</span>
+                        <input class="sd-field sd-field--code" aria-label="Value"
+                          [ngModel]="param.value" (ngModelChange)="setQueryParamAt(i, 'value', $event)" placeholder="value">
+                        <button type="button" class="sd-btn sd-btn--icon sd-btn--bare" (click)="removeQueryParam(i)"
+                          aria-label="Remove parameter" title="Remove">×</button>
+                      </div>
+                    }
+                    <div class="query-row query-row--add">
+                      <input class="sd-field sd-field--code" aria-label="New key" [(ngModel)]="newQueryKey"
+                        placeholder="new key" (keyup.enter)="addQueryParam()">
+                      <span class="query-eq" aria-hidden="true">=</span>
+                      <input class="sd-field sd-field--code" aria-label="New value" [(ngModel)]="newQueryValue"
+                        placeholder="value" (keyup.enter)="addQueryParam()">
+                      <button type="button" class="sd-btn sd-btn--icon sd-btn--bare" (click)="addQueryParam()"
+                        aria-label="Add parameter" title="Add">+</button>
+                    </div>
+                  </div>
+                }
+              </section>
+
+              <section class="form-section">
+                @if (readOnly() || mutationLock()) {
+                  <span class="sd-label">Body</span>
+                  <pre class="body-text sd-data">{{ bodyJson() }}</pre>
+                } @else {
+                  <app-waves-json-editor
+                    label="Body (JSON)"
+                    [value]="bodyJson()"
+                    [minHeight]="240"
+                    (valueChange)="bodyJson.set($event); onBodyJsonChange()" />
+                }
+              </section>
+
+              @if (!readOnly()) {
+                <div class="form-actions">
+                  <button type="button" class="sd-btn sd-btn--primary"
+                    [disabled]="!!mutationLock() || !briefDirty() || layoutSaving() || paramsSaving()"
+                    [attr.title]="mutationLock()"
+                    (click)="saveKennel()">
+                    {{ (layoutSaving() || paramsSaving()) ? 'Saving…' : 'Save & rerun' }}
+                  </button>
+                  <span class="sd-hint">Brief, query, body and layout are saved together.</span>
+                </div>
+              }
+            </div>
+          }
+
+          @case ('versions') {
+            <div class="form">
+              <app-version-timeline
+                [versions]="timelineVersions()"
+                [currentVersionId]="currentKennelVersionId"
+                [selectedVersionId]="selectedKennelVersionId()"
+                [pinnedVersionId]="null"
+                [showPinControls]="false"
+                (versionSelected)="onKennelVersionSelected($event)" />
+              @if (activeKennelVersionId()) {
+                <button type="button" class="sd-btn sd-btn--sm" (click)="backToLatest()">Back to latest</button>
+              }
+            </div>
+          }
+
+          @case ('rating') {
+            <sd-rating
+              [kennelId]="kennelConfig()?.lineageId || kennelId"
+              [ownerId]="kennelConfig()?.ownerId"
+              [editors]="kennelConfig()?.editors"
+              [initial]="ratingView()"
+              (changed)="onRatingChanged($event)" />
+          }
+
+          @case ('stats') {
+            <div class="form">
+              <sd-stat-tiles [tiles]="statTiles()" />
+              <p class="sd-small sd-muted">Runs count real use: the public page and execute. Calls include every run, editor runs too.</p>
+              <section class="form-section">
+                <span class="sd-label">Stars</span>
+                <sd-histogram [histogram]="ratingView()?.histogram ?? null" />
+              </section>
+            </div>
+          }
+        }
+      }
+
+      @case ('dog') {
+        @if (selectedDog(); as dog) {
           <app-dog-side-panel
             [dog]="dog"
             [showClose]="false"
@@ -299,15 +345,10 @@
             (renamed)="loadWaves(); loadAvailableDogs()"
             (kennelNodeCommentChanged)="onNodeCommentChanged($event)"
             (closed)="closeDrawer()" />
-    }
-  </app-waves-inspector>
+        }
+      }
 
-  <!-- Edge note -->
-  <app-waves-inspector
-    [open]="drawerMode() === 'edge'"
-    title="Edge note"
-    [subtitle]="edgeLabel()"
-    (closeRequested)="cancelEdgeComment()">
+      @case ('edge') {
         <div class="form">
           @if (readOnly()) {
             <p class="text">{{ edgeCommentDraft || 'No note on this edge.' }}</p>
@@ -322,7 +363,9 @@
             </div>
           }
         </div>
-  </app-waves-inspector>
+      }
+    }
+  </sd-drawer>
 
   <!-- Branch-cut confirmation -->
   <app-waves-confirm-dialog

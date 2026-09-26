@@ -6,6 +6,7 @@ import type { HttpErrorResponse } from '@angular/common/http';
 import {
   KennelService,
   isKennelRunView,
+  type IRatingView,
   type KennelRunView,
 } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
@@ -29,7 +30,6 @@ import { collectDescendantBranchNodeIds } from '../../components/vis-network/gra
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
-import { WavesInspectorComponent, InspectorTab } from './components/waves-inspector.component';
 import { WavesJsonEditorComponent } from './components/waves-json-editor.component';
 import { WavesDogPaletteComponent } from './components/waves-dog-palette.component';
 import { WavesConfirmDialogComponent } from './components/waves-confirm-dialog.component';
@@ -42,13 +42,21 @@ import {
 } from '../../components/sd-kennel-head/sd-kennel-head.component';
 import { SdBottomBarComponent } from '../../components/sd-bottom-bar/sd-bottom-bar.component';
 import { SdWaveCanvasComponent } from '../../components/sd-wave-canvas/sd-wave-canvas.component';
+import { SdDrawerComponent } from '../../components/sd-drawer/sd-drawer.component';
+import { SdRatingComponent } from '../../components/sd-rating/sd-rating.component';
+import { SdHistogramComponent } from '../../components/sd-histogram/sd-histogram.component';
+import { SdStatTilesComponent, type SdStatTile } from '../../components/sd-stat-tiles/sd-stat-tiles.component';
 import { SdBannerComponent } from '../../components/sd-banner/sd-banner.component';
 import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
 import { SdUrlChipComponent } from '../../components/sd-url-chip/sd-url-chip.component';
+import { formatCount } from '../../components/sd-plaque/sd-plaque.component';
 
-/** Inspector tabs of the kennel (6.4 S2; rating and stats arrive with U4, `access` with U6). */
-export type KennelTab = 'brief' | 'versions';
-const KENNEL_TABS: readonly KennelTab[] = ['brief', 'versions'];
+/** Inspector tabs of the kennel (6.4 S2; `access` arrives with U6). `?panel=` opens one directly. */
+export type KennelTab = 'brief' | 'versions' | 'rating' | 'stats';
+const KENNEL_TABS: readonly KennelTab[] = ['brief', 'versions', 'rating', 'stats'];
+/** A run-only kennel has no brief and no versions for the caller (W17): only rating and stats. */
+const RUN_ONLY_TABS: readonly KennelTab[] = ['rating', 'stats'];
+const TAB_LABELS: Record<KennelTab, string> = { brief: 'brief', versions: 'versions', rating: 'rating', stats: 'stats' };
 
 /** loading: nothing known yet · full: READ · run-only: RUN without READ (W17 stage 1) · missing: 404. */
 type ViewMode = 'loading' | 'full' | 'run-only' | 'missing';
@@ -57,9 +65,9 @@ const OLD_VERSION_TITLE = 'An older version. Back to latest to edit.';
 const TOAST_MS = 4000;
 
 /**
- * S2 Kennel page (P6 U3, 6.4): the kennel head as chapter card, the ruled-inlay canvas (vis-network
- * for readable kennels, silhouettes for run-only ones), the bottom bar on mobile, and the inspectors for the
- * kennel (brief, versions), the dog and edge notes. Rights come from
+ * S2 Kennel page (P6 U3/U4, 6.4): the kennel head as chapter card, the ruled-inlay canvas (vis-network
+ * for readable kennels, silhouettes for run-only ones), the bottom bar on mobile, and one drawer/sheet for
+ * the kennel inspector (brief, versions, rating, stats), the dog inspector and edge notes. Rights come from
  * `myRights` (P3.5): readers get text instead of fields, frozen keeps every mutation control visible but
  * disabled with `Frozen. Unfreeze in settings.`; runs, ratings and export keep working (8.25).
  */
@@ -71,9 +79,9 @@ const TOAST_MS = 4000;
     RouterLink,
     GraphCanvasScaleComponent, VisNetworkComponent, DogSidePanelComponent,
     VersionTimelineComponent,
-    WavesInspectorComponent, WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
-    SdKennelHeadComponent, SdBottomBarComponent, SdWaveCanvasComponent, SdBannerComponent, SdVeilComponent,
-    SdUrlChipComponent,
+    WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
+    SdKennelHeadComponent, SdBottomBarComponent, SdWaveCanvasComponent, SdDrawerComponent, SdRatingComponent,
+    SdHistogramComponent, SdStatTilesComponent, SdBannerComponent, SdVeilComponent, SdUrlChipComponent,
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
@@ -98,6 +106,7 @@ export class WavesViewerComponent implements OnInit {
   readonly kennelStats = signal<IKennelStats | undefined>(undefined);
   /** What a run-only caller sees of a run (W17 stage 1). */
   readonly runView = signal<KennelRunView | null>(null);
+  readonly ratingView = signal<IRatingView | null>(null);
   selectedDog = signal<DogEntry | null>(null);
   /** Vom Graph-Fächer: welche Section im Side-Panel aktiv starten soll. */
   panelInitialSection = signal<DogPanelSectionId | null>(null);
@@ -256,12 +265,26 @@ export class WavesViewerComponent implements OnInit {
     if (this.kennelInspectorOpen()) return 'kennel';
     return null;
   });
-  readonly kennelInspectorTabs = computed<InspectorTab[]>(() => [
-    { id: 'brief', label: 'brief', dirty: this.layoutDirty() || this.paramsDirty() },
-    { id: 'versions', label: 'versions', badge: this.timelineVersions().length || undefined },
-  ]);
+  readonly inspectorTabs = computed<KennelTab[]>(() =>
+    [...(this.mode() === 'run-only' ? RUN_ONLY_TABS : KENNEL_TABS)],
+  );
+  readonly tabLabels = TAB_LABELS;
   readonly briefDirty = computed(() => this.layoutDirty() || this.paramsDirty());
 
+  readonly statTiles = computed<SdStatTile[]>(() => {
+    const s = this.kennelStats();
+    const c = s?.calls;
+    const r = s?.rating;
+    const n = (v: number | undefined) => (typeof v === 'number' ? formatCount(v) : null);
+    return [
+      { label: 'runs 30d', value: n(c?.ranked30d), title: 'The public page and execute, last 30 days' },
+      { label: 'runs total', value: n(c?.ranked), title: 'The public page and execute, all time' },
+      { label: 'calls 30d', value: n(c?.last30d), title: 'Every run, editor runs included, last 30 days' },
+      { label: 'calls total', value: n(c?.total), title: 'Every run, editor runs included' },
+      { label: 'lead failed', value: n(c?.leadFailed), title: 'Runs whose lead dog failed' },
+      { label: 'stars', value: r && r.count > 0 && r.avg !== null ? `${r.avg.toFixed(1)} · ${r.count}` : r ? '—' : null },
+    ];
+  });
 
   /** A foreign run-only dog in this kennel is pinned; a newer head lets editors lift the pin (8.15). */
   readonly selectedPin = computed(() => {
@@ -319,6 +342,7 @@ export class WavesViewerComponent implements OnInit {
       this.kennelConfig.set(null);
       this.kennelStats.set(undefined);
       this.runView.set(null);
+      this.ratingView.set(null);
       this.lastRun.set(null);
       this.selectedDog.set(null);
       this.panelInitialSection.set(null);
@@ -335,12 +359,13 @@ export class WavesViewerComponent implements OnInit {
       this.loadKennelVersions();
     });
 
-    // `?panel=brief|versions` opens the inspector on that tab.
+    // `?panel=brief|versions|rating|stats` opens the inspector on that tab (P4 4.9, 8.6).
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((qm) => {
       const panel = qm.get('panel') as KennelTab | null;
       if (panel && (KENNEL_TABS as readonly string[]).includes(panel)) {
         this.kennelInspectorTab.set(panel);
         this.kennelInspectorOpen.set(true);
+        if (panel === 'rating' || panel === 'stats') this.loadRating();
       }
     });
   }
@@ -451,6 +476,17 @@ export class WavesViewerComponent implements OnInit {
     this.syncParamsFromConfig(config);
   }
 
+  private loadRating(): void {
+    if (!this.kennelId || this.ratingView()) return;
+    const id = this.kennelId;
+    this.kennelService.getRating(id).subscribe({
+      next: (v) => {
+        if (id === this.kennelId) this.ratingView.set(v);
+      },
+      error: () => { /* the rating tab shows its own error */ },
+    });
+  }
+
   retry(): void {
     this.loadWaves();
     if (!this.kennelConfig()) this.loadHeader();
@@ -521,6 +557,11 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
+  onRatingChanged(v: IRatingView): void {
+    this.ratingView.set(v);
+    this.kennelStats.update((s) => (s ? { ...s, rating: { avg: v.avg, count: v.count, score: v.score } } : s));
+  }
+
   showToast(text: string): void {
     this.toast.set(text);
     if (this.toastTimer) clearTimeout(this.toastTimer);
@@ -530,20 +571,23 @@ export class WavesViewerComponent implements OnInit {
   // === Drawer ===
 
   openKennelInspector(tab: KennelTab): void {
-    if (this.mode() === 'run-only') return;
+    const allowed = this.inspectorTabs();
+    const next = allowed.includes(tab) ? tab : allowed[0];
     this.selectedDog.set(null);
     this.editingEdgeKey.set(null);
-    this.kennelInspectorTab.set(tab);
+    this.kennelInspectorTab.set(next);
     this.kennelInspectorOpen.set(true);
-    this.writePanelParam(tab);
+    if (next === 'rating' || next === 'stats') this.loadRating();
+    this.writePanelParam(next);
   }
 
   selectKennelTab(tab: KennelTab): void {
     this.kennelInspectorTab.set(tab);
+    if (tab === 'rating' || tab === 'stats') this.loadRating();
     this.writePanelParam(tab);
   }
 
-  /** `‹ kennel`: from the dog inspector back to the kennel inspector. */
+  /** `‹ kennel`: from the dog inspector back to the kennel inspector in the same drawer. */
   backToKennel(): void {
     this.closeSidePanel();
     this.openKennelInspector(this.kennelInspectorTab());
