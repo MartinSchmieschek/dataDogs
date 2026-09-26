@@ -1,239 +1,82 @@
-<div class="kennel-shell">
-  <div class="kennel-shell-inner">
-    <div class="kennel-work-area">
-      <!-- Schwebend: Suchblase + Sortierung (Sort ausgeblendet bei aktivem Suchfilter) -->
-      <div class="kennel-search-chrome">
-        <div class="kennel-search-chrome-inset">
-          <div class="kennel-search-chrome-row">
-            <label class="kennel-sr-only" for="kennel-search-bubble">Kennels durchsuchen</label>
-            <div class="kennel-search-bubble">
-              <span class="kennel-search-bubble-icon" aria-hidden="true">⌕</span>
-              <input
-                id="kennel-search-bubble"
-                class="kennel-search-bubble-input"
-                type="search"
-                autocomplete="off"
-                placeholder="Durchsuchen …"
-                [value]="searchQuery()"
-                (input)="onSearchInput($any($event.target).value)" />
-            </div>
-            <div
-              class="kennel-search-sort-cluster"
-              [class.kennel-search-sort-cluster--hidden]="hideSortBesideSearch()"
-              role="group"
-              aria-label="Sortierung"
-              [attr.aria-hidden]="hideSortBesideSearch() ? 'true' : null"
-              [attr.inert]="hideSortBesideSearch() ? '' : null">
-              @if (authUser()) {
-                <button
-                  type="button"
-                  class="kennel-sort-cycle kennel-sort-cycle--beside"
-                  [class.is-active]="onlyMine()"
-                  (click)="onOnlyMineToggle()"
-                  [attr.aria-pressed]="onlyMine()"
-                  [title]="onlyMine() ? 'Filter aus: alle sichtbaren Kennels zeigen' : 'Nur eigene Kennels zeigen'">
-                  {{ onlyMine() ? 'Nur meine ✓' : 'Nur meine' }}
-                </button>
-              }
-              <button
-                type="button"
-                class="kennel-sort-cycle kennel-sort-cycle--beside"
-                (click)="cycleSortKey()"
-                [attr.aria-label]="'Sortieren nach: ' + sortKeyLabel() + '. Klick für nächstes Kriterium.'"
-                [title]="'Sortierung: ' + sortKeyLabel()">
-                {{ sortKeyLabel() }}
-              </button>
-              <button
-                type="button"
-                class="kennel-float-btn kennel-float-btn--beside"
-                (click)="toggleSortDir()"
-                [attr.aria-label]="sortDir() === 'asc' ? 'Sortierung: aufsteigend, zu absteigend wechseln' : 'Sortierung: absteigend, zu aufsteigend wechseln'"
-                [title]="sortDir() === 'asc' ? 'Filter: A–Z / alt → neu' : 'Filter: Z–A / neu → alt'">
-                ⇅
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+<sd-top-bar>
+  <sd-search bar-search label="Search kennels" placeholder="Search kennels" [value]="searchQuery()"
+    (valueChange)="onSearchInput($event)" />
+  <span bar-actions class="new-top">
+    <button type="button" class="sd-btn sd-btn--primary" (click)="openCreate()">+ New</button>
+  </span>
+</sd-top-bar>
 
-      <!-- Schwebend: Clipboard-Import über dem +-FAB -->
-      <button
-        type="button"
-        class="kennel-float-btn kennel-import-fab"
-        (click)="importFromClipboard()"
-        aria-label="Kennel aus Zwischenablage importieren"
-        title="Import (Clipboard)">
-        <span aria-hidden="true">📋</span>
-      </button>
-      <button
-        type="button"
-        class="kennel-float-btn kennel-float-btn--accent kennel-create-fab"
-        (click)="showCreateForm.set(true)"
-        aria-label="Neuen Kennel hinzufügen"
-        title="Neuer Kennel">
-        +
-      </button>
+<main class="page">
+  <sd-chapter-card [kicker]="kicker()" title="Kennels" [aside]="'sorted by ' + sortLabel()" />
 
-      <!-- Nur dieser Bereich scrollt (Animation bezieht sich darauf) -->
-      <div #kennelScroll class="kennel-scroll">
-        <div class="kennel-page">
-          <main class="kennel-panel">
-            <header class="kennel-panel-head">
-              <h1 class="kennel-panel-title">Kennels</h1>
-              <p class="kennel-panel-lead">Pack auswählen oder neu anlegen — Liste durchsuchen und sortieren.</p>
-              <p class="kennel-panel-count" aria-live="polite">
-                {{ kennels().length }} von {{ total() }}
-                @if (showRefreshing()) {
-                  <span class="kennel-panel-count-note">· lädt …</span>
-                }
-              </p>
-            </header>
-
-            @if (showCreateForm()) {
-              <app-kennel-form
-                (submitted)="onCreateKennel($event)"
-                (cancelled)="showCreateForm.set(false)" />
-            }
-
-            @if (error()) {
-              <div class="kennel-error-row">
-                <div
-                  class="kennel-error comfort-error-trigger"
-                  role="button"
-                  tabindex="0"
-                  title="Klick: Fernes Signal"
-                  (click)="onComfortVideoClick()"
-                  (keydown.enter)="onComfortVideoClick()"
-                  (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
-                  {{ error() }}
-                </div>
-                <button type="button" class="kennel-more-btn kennel-more-btn--retry" (click)="retry()">
-                  Nochmal versuchen
-                </button>
-              </div>
-            }
-
-            <div class="kennel-list-wrap">
-              <div class="kennel-list" role="list">
-                @for (kennel of kennels(); track kennel.id + '@' + listOrderEpoch(); let i = $index) {
-                  <div
-                    class="kennel-card-motion"
-                    role="listitem"
-                    [style.animation-delay]="(i * 42) + 'ms'">
-                    <div class="kennel-card-motion-visual">
-                      <article class="kennel-card kennel-card--elevated">
-                        <div class="kennel-card-body">
-                          <div
-                            class="kennel-card-rail kennel-card-rail--start"
-                            role="toolbar"
-                            [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))">
-                            <button
-                              type="button"
-                              class="kennel-rail-btn kennel-rail-btn--primary"
-                              (click)="onExecute(kennel)"
-                              [attr.aria-label]="'Ausführen: ' + (kennel.name || kennelRef(kennel))"
-                              title="Ausführen — gespeicherte Query-Parameter in der URL; Body wie in der Kennel-Config">
-                              <span aria-hidden="true">▶</span>
-                            </button>
-                          </div>
-
-                          <div class="kennel-card-main">
-                            <div class="kennel-card-top">
-                              <div class="kennel-card-headline">
-                                <span class="kennel-card-emoji" aria-hidden="true">{{ kennelEmojiForList(kennel) }}</span>
-                                <h3 class="kennel-card-name">
-                                  {{ kennel.name || kennelRef(kennel) }}
-                                </h3>
-                                <app-visibility-badge [visibility]="kennel.visibility" />
-                              </div>
-                              @if (kennel.description) {
-                                <div
-                                  class="kennel-card-desc-panel"
-                                  [class.kennel-card-desc-panel--search-hit]="descriptionMatchesSearch(kennel)">
-                                  <p class="kennel-card-desc">
-                                    @for (part of descriptionHighlightParts(kennel); track $index) {
-                                      @if (part.match) {
-                                        <mark class="kennel-search-hit">{{ part.text }}</mark>
-                                      } @else {
-                                        {{ part.text }}
-                                      }
-                                    }
-                                  </p>
-                                </div>
-                              }
-                              @if (showExecutePath()) {
-                                <div class="kennel-card-meta-panel">
-                                  <div class="kennel-card-meta-line">
-                                    <code class="kennel-endpoint-chip">{{ executePathForDisplay(kennel) }}</code>
-                                    @if (mirrorExecutePath()) {
-                                      <code class="kennel-endpoint-chip kennel-endpoint-chip--mirrored" [attr.title]="'Gespiegelte Segmentreihenfolge (nur Anzeige)'">
-                                        {{ executePathMirroredSegments(kennel) }}
-                                      </code>
-                                    }
-                                  </div>
-                                </div>
-                              }
-                            </div>
-                          </div>
-                          <div
-                            class="kennel-card-rail kennel-card-rail--end"
-                            role="toolbar"
-                            [attr.aria-label]="'Bearbeiten und mehr: ' + (kennel.name || kennelRef(kennel))">
-                            <div class="kennel-card-rail-fan">
-                              <app-kennel-action-fan [alignMenuToEnd]="true" (action)="onFanAction(kennel, $event)" />
-                            </div>
-                          </div>
-                          <div class="kennel-card-date-foot">
-                            <span class="kennel-sr-only">Zuletzt geändert</span>
-                            @if (kennel.updatedAt || kennel.createdAt) {
-                              <time [attr.datetime]="kennel.updatedAt || kennel.createdAt">{{ kennel.updatedAt || kennel.createdAt | date: 'short' }}</time>
-                            } @else {
-                              <span class="kennel-card-date-foot--empty">—</span>
-                            }
-                          </div>
-                        </div>
-                      </article>
-                    </div>
-                  </div>
-              } @empty {
-                @if (!loading()) {
-                  @if (isFiltered()) {
-                    <div class="kennel-empty">Keine Treffer für diese Suche.</div>
-                  } @else if (!error()) {
-                    <div class="kennel-empty">Keine Kennels vorhanden.</div>
-                  }
-                }
-              }
-            </div>
-
-            @if (hasMore() && !error()) {
-              <!-- Sentinel: löst das Nachladen beim Scrollen aus. Der Knopf bleibt die Rückfallebene. -->
-              <div #loadMoreSentinel class="kennel-more-sentinel" aria-hidden="true"></div>
-              <div class="kennel-more" aria-live="polite">
-                @if (loadingMore()) {
-                  <span class="kennel-more-hint">Lädt weitere Kennels …</span>
-                } @else {
-                  <button type="button" class="kennel-more-btn" (click)="loadMore()">
-                    Mehr laden ({{ total() - kennels().length }})
-                  </button>
-                }
-              </div>
-            } @else if (kennels().length > 0 && !error()) {
-              <div class="kennel-more">
-                <span class="kennel-more-hint">Alle {{ total() }} Kennels geladen.</span>
-              </div>
-            }
-          </div>
-        </main>
-      </div>
-      </div>
-
-      @if (showInitialLoading()) {
-        <div class="kennel-list-loading-shroud" aria-live="polite">
-          <sd-veil />
-        </div>
-      }
-    </div>
+  <div class="tools">
+    <sd-sort [options]="sortOptions" [active]="sortKey()" [dir]="sortDir()" [showMine]="!!authUser()"
+      [mine]="onlyMine()" (keyChange)="onSortKey($event)" (dirToggle)="toggleSortDir()" (mineToggle)="toggleMine()" />
+    <button type="button" class="sd-btn sd-btn--sm import" title="Import a kennel bundle from the clipboard"
+      (click)="importFromClipboard()">Import</button>
   </div>
 
-</div>
+  @if (error()) {
+    <sd-banner [text]="error()!">
+      <button type="button" class="sd-btn sd-btn--sm" (click)="retry()">Retry</button>
+    </sd-banner>
+  }
+
+  <div class="stage">
+    @if (showSkeleton()) {
+      <sd-track-skeleton [count]="8" />
+      <sd-veil [retryable]="true" (retry)="retry()" />
+    } @else {
+      <div class="list" role="list" aria-label="Kennels" [attr.aria-busy]="loading()">
+        @for (kennel of kennels(); track kennel.id + '@' + listEpoch(); let i = $index) {
+          <sd-track-row [kennel]="kennel" [index]="i" [staggerIndex]="i % 20" [yours]="isYours(kennel)"
+            (action)="onRowAction(kennel, $event)" />
+        }
+      </div>
+
+      @if (!kennels().length && !loading() && !error()) {
+        @if (isFiltered()) {
+          <div class="empty">
+            @if (appliedQuery()) {
+              <p>Nothing matches "{{ appliedQuery() }}".</p>
+              <button type="button" class="sd-btn" (click)="clearFilters()">Clear search</button>
+            } @else {
+              <p>Nothing matches. You own no kennel yet.</p>
+              <button type="button" class="sd-btn" (click)="clearFilters()">Show all</button>
+            }
+          </div>
+        } @else {
+          <div class="empty">
+            <h2>No tracks yet.</h2>
+            <p class="sd-muted">Your AI writes the first one. Or start by hand.</p>
+            <button type="button" class="sd-btn sd-btn--primary" (click)="openCreate()">+ New kennel</button>
+            <sd-url-chip [text]="mcpCommand" />
+          </div>
+        }
+      }
+
+      @if (hasMore() && !error()) {
+        <div #loadMoreSentinel aria-hidden="true"></div>
+        <p class="status sd-small" aria-live="polite">
+          @if (loadingMore()) {
+            loading more …
+          } @else {
+            <button type="button" class="sd-btn sd-btn--sm" (click)="loadMore()">Load more ({{ total() - kennels().length }})</button>
+          }
+        </p>
+      } @else if (kennels().length > 0 && !error()) {
+        <p class="status sd-small">End of side A · {{ total() }} tracks</p>
+      }
+    }
+  </div>
+</main>
+
+<button type="button" class="sd-btn sd-btn--primary sd-btn--icon fab" aria-label="New kennel" (click)="openCreate()">+</button>
+
+@if (sheetOpen()) {
+  <sd-kennel-sheet [busy]="creating()" [error]="createError()" (submitted)="onCreate($event)" (cancelled)="closeCreate()" />
+}
+
+@if (toast()) {
+  <p class="toast" role="status">{{ toast() }}</p>
+}

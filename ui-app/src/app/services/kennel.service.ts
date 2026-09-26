@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { IKennelConfig, KennelVersionEntry } from '../models/kennel-config.model';
+import { IKennelConfig, KennelVersionEntry, type KennelVisibility } from '../models/kennel-config.model';
 import { Waves } from '../models/dog-entry.model';
 import { apiAbsoluteUrl } from '../config/api-base';
 import { publicKennelPath } from '../config/public-paths';
@@ -98,7 +98,7 @@ export class KennelService {
     description?: string;
     emoji?: string;
     dogIds?: string[];
-    visibility?: 'public' | 'private';
+    visibility?: KennelVisibility;
   }): Observable<ApiResponse<IKennelConfig>> {
     return this.http.post<ApiResponse<IKennelConfig>>(this.baseUrl, data);
   }

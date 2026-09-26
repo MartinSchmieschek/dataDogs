@@ -1,19 +1,17 @@
-import { DatePipe } from '@angular/common';
 import {
   Component,
+  DestroyRef,
+  ElementRef,
   computed,
   effect,
-  ElementRef,
   inject,
-  input,
-  OnInit,
   signal,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { Subject, of } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, map, switchMap, tap } from 'rxjs/operators';
+import { catchError, debounceTime, map, switchMap, tap } from 'rxjs/operators';
 import {
   KennelService,
   type KennelSortDir,
@@ -21,207 +19,238 @@ import {
   type PagedApiResponse,
 } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
-import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
-import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
-import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
-import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
-import { apiAbsoluteUrl } from '../../config/api-base';
-import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
-import { VisibilityBadgeComponent } from '../../components/visibility-badge/visibility-badge.component';
 import { AuthService } from '../../services/auth.service';
+import { apiAbsoluteUrl } from '../../config/api-base';
+import { publicKennelDocsPath, publicKennelPath } from '../../config/public-paths';
+import { SdTopBarComponent } from '../../components/sd-top-bar/sd-top-bar.component';
+import { SdSearchComponent } from '../../components/sd-search/sd-search.component';
+import { SdChapterCardComponent } from '../../components/sd-chapter-card/sd-chapter-card.component';
+import { SdSortComponent, type SdSortOption } from '../../components/sd-sort/sd-sort.component';
+import { SdTrackRowComponent, type KennelRowAction } from '../../components/sd-track-row/sd-track-row.component';
+import { SdTrackSkeletonComponent } from '../../components/sd-track-skeleton/sd-track-skeleton.component';
+import { SdBannerComponent } from '../../components/sd-banner/sd-banner.component';
+import { SdUrlChipComponent } from '../../components/sd-url-chip/sd-url-chip.component';
+import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
+import { SdKennelSheetComponent, type KennelCreateData } from '../../components/sd-kennel-sheet/sd-kennel-sheet.component';
 
-/** v2: Sortierschlüssel folgen dem Server-Vertrag (`name` | `createdAt` | `updatedAt`). */
-const KENNEL_LIST_SORT_STORAGE_KEY = 'slopdogs.kennelList.sort.v2';
-
-/** Seitengröße der Nachlade-Liste. */
+/** v3 (P4 4.9): the sort keys include `calls30d` and `rating`. */
+const KENNEL_LIST_SORT_STORAGE_KEY = 'slopdogs.kennelList.sort.v3';
 const KENNEL_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 250;
+const TOAST_MS = 4000;
 
-type KennelListSortKey = KennelSortKey;
-type KennelListSortDir = KennelSortDir;
+const SORT_KEYS: readonly KennelSortKey[] = ['name', 'createdAt', 'updatedAt', 'calls30d', 'rating'];
+const SORT_OPTIONS: readonly SdSortOption<KennelSortKey>[] = [
+  { key: 'name', label: 'name' },
+  { key: 'updatedAt', label: 'updated' },
+  { key: 'calls30d', label: 'runs 30d' },
+  { key: 'rating', label: 'stars' },
+];
+const SORT_LABELS: Record<string, string> = {
+  name: 'name',
+  createdAt: 'created',
+  updatedAt: 'updated',
+  calls30d: 'runs 30d',
+  rating: 'stars',
+};
 
-function readPersistedKennelListSort(): { sortKey: KennelListSortKey; sortDir: KennelListSortDir } {
-  const fallback: { sortKey: KennelListSortKey; sortDir: KennelListSortDir } = {
-    sortKey: 'name',
-    sortDir: 'asc',
-  };
-  if (typeof localStorage === 'undefined') return fallback;
+interface ListSort {
+  sortKey: KennelSortKey;
+  sortDir: KennelSortDir;
+}
+
+function isSortKey(v: unknown): v is KennelSortKey {
+  return typeof v === 'string' && (SORT_KEYS as readonly string[]).includes(v);
+}
+
+function isSortDir(v: unknown): v is KennelSortDir {
+  return v === 'asc' || v === 'desc';
+}
+
+/** Numbers and dates sort descending, the name ascending (P4 4.9). */
+function defaultDir(key: KennelSortKey): KennelSortDir {
+  return key === 'name' ? 'asc' : 'desc';
+}
+
+function readPersistedSort(): ListSort {
+  const fallback: ListSort = { sortKey: 'name', sortDir: 'asc' };
   try {
     const raw = localStorage.getItem(KENNEL_LIST_SORT_STORAGE_KEY);
     if (!raw) return fallback;
     const o = JSON.parse(raw) as { sortKey?: unknown; sortDir?: unknown };
-    const keys: KennelListSortKey[] = ['name', 'createdAt', 'updatedAt'];
-    const dirs: KennelListSortDir[] = ['asc', 'desc'];
-    const sortKey = o.sortKey;
-    const sortDir = o.sortDir;
-    if (typeof sortKey !== 'string' || !keys.includes(sortKey as KennelListSortKey)) return fallback;
-    if (typeof sortDir !== 'string' || !dirs.includes(sortDir as KennelListSortDir)) return fallback;
-    return { sortKey: sortKey as KennelListSortKey, sortDir: sortDir as KennelListSortDir };
+    return isSortKey(o.sortKey) && isSortDir(o.sortDir) ? { sortKey: o.sortKey, sortDir: o.sortDir } : fallback;
   } catch {
     return fallback;
   }
 }
 
-const initialKennelListSort = readPersistedKennelListSort();
-
-/** Grenzen verschieben sich, wenn sich der Bestand zwischen zwei Seiten ändert — erste Fassung gewinnt. */
+/** The page borders shift when the stock changes between two pages — the first copy wins. */
 function dedupeKennelsById(list: IKennelConfig[]): IKennelConfig[] {
   const seen = new Set<string>();
   return list.filter((k) => (seen.has(k.id) ? false : (seen.add(k.id), true)));
 }
 
-type KennelDescHighlightPart = { text: string; match: boolean };
-
-/** Case-insensitive Treffer-Segmente für `<mark>` — kein HTML, nur Fließtext. */
-function splitKennelDescForHighlight(text: string, query: string): KennelDescHighlightPart[] {
-  const q = query.trim();
-  if (!q || !text) return [{ text, match: false }];
-  const lower = text.toLowerCase();
-  const qLower = q.toLowerCase();
-  const parts: KennelDescHighlightPart[] = [];
-  let i = 0;
-  while (i < text.length) {
-    const idx = lower.indexOf(qLower, i);
-    if (idx === -1) {
-      parts.push({ text: text.slice(i), match: false });
-      break;
-    }
-    if (idx > i) parts.push({ text: text.slice(i, idx), match: false });
-    parts.push({ text: text.slice(idx, idx + q.length), match: true });
-    i = idx + q.length;
-  }
-  return parts;
-}
-
+/**
+ * S1 Kennels, side A (P6 U2, 6.4): chapter card, tracklist rows, sort chips, search in `?q=`, plaque,
+ * stars, skeleton, veil after 3 s, the create sheet on `?new=1`. Paging and the server contract are
+ * unchanged: `GET /api/kennels?limit&offset&q&mine&sort&dir`.
+ */
 @Component({
   selector: 'app-kennel-list',
   standalone: true,
   imports: [
-    DatePipe,
-    KennelFormComponent,
+    SdTopBarComponent,
+    SdSearchComponent,
+    SdChapterCardComponent,
+    SdSortComponent,
+    SdTrackRowComponent,
+    SdTrackSkeletonComponent,
+    SdBannerComponent,
+    SdUrlChipComponent,
     SdVeilComponent,
-    KennelActionFanComponent,
-    VisibilityBadgeComponent,
+    SdKennelSheetComponent,
   ],
   templateUrl: './kennel-list.component.html',
-  styleUrls: ['./kennel-list.component.scss']
+  styles: [`
+    :host { display: block; min-height: 100dvh; }
+    .page { max-width: var(--max-list); margin: 0 auto; padding: 0 var(--gutter) var(--s8); }
+    .tools { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3) 0; }
+    .tools sd-sort { min-width: 0; }
+    .new-top { display: inline-flex; }
+    .fab { display: none; }
+    .stage { position: relative; min-height: 240px; }
+    .status { padding: var(--s4) 0; text-align: center; color: var(--ink-2); }
+    .empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); padding: var(--s7) 0 var(--s5); max-width: 84ch; }
+    .empty h2 { font-family: var(--font-display); font-weight: 400; font-size: 28px; line-height: 28px; letter-spacing: .03em; }
+    .empty sd-url-chip { align-self: stretch; }
+    .toast { position: fixed; left: 50%; bottom: var(--s5); z-index: var(--z-toast); transform: translateX(-50%);
+      padding: var(--s2) var(--s4); background: var(--ink); color: var(--paper); border: 2px solid var(--paper); outline: 2px solid var(--ink); }
+    @media (max-width: 767px) {
+      .new-top { display: none; }
+      .fab { display: inline-flex; position: fixed; right: var(--s4); bottom: max(var(--s4), env(safe-area-inset-bottom));
+        z-index: var(--z-sticky); width: 56px; height: 56px; font-size: 24px; }
+      .tools .import { display: none; }
+    }
+  `],
 })
-export class KennelListComponent implements OnInit {
-  private kennelService = inject(KennelService);
-  private router = inject(Router);
-  private route = inject(ActivatedRoute);
-  private errorVideoPopup = inject(ErrorVideoPopupService);
-  private auth = inject(AuthService);
+export class KennelListComponent {
+  private readonly kennelService = inject(KennelService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
 
-  /** Authenticated user — exposed so the template can hide owner-only filters when anonymous. */
   readonly authUser = this.auth.user;
-  /** When true, only show kennels owned by the current user. Hidden when not logged in. */
+  readonly sortOptions = SORT_OPTIONS;
+  readonly origin = typeof window !== 'undefined' ? window.location.origin : '';
+  readonly mcpCommand = `claude mcp add --transport http slopdogs ${this.origin}/mcp`;
+
+  /** The pages loaded so far, in server order. */
+  readonly kennels = signal<IKennelConfig[]>([]);
+  /** Matches in total (after `q`/`mine`, before paging). */
+  readonly total = signal(0);
+  private readonly nextOffset = signal(0);
+  readonly loading = signal(true);
+  readonly loadingMore = signal(false);
+  readonly error = signal<string | null>(null);
+  /** Increments per replacing load — restarts the row stagger. */
+  readonly listEpoch = signal(0);
+
+  /** Raw field value (shown at once) and the debounced query the server was asked with. */
+  readonly searchQuery = signal('');
+  readonly appliedQuery = signal('');
   readonly onlyMine = signal(false);
+  readonly sortKey = signal<KennelSortKey>('name');
+  readonly sortDir = signal<KennelSortDir>('asc');
 
-  /** Skip the first auth-effect trigger so we don't double-load alongside ngOnInit. */
-  private skipFirstAuthEffect = true;
+  readonly sheetOpen = signal(false);
+  readonly creating = signal(false);
+  readonly createError = signal<string | null>(null);
+  readonly toast = signal<string | null>(null);
 
-  /** Skip the first queryParamMap emission — its `q` is already applied before ngOnInit's reload(). */
-  private skipFirstQueryParamsEffect = true;
-  /** `?new=1` seen but auth state not ready yet — resolved by the auth-gated effect below. */
-  private pendingNewFromQuery = signal(false);
+  readonly showSkeleton = computed(() => this.loading() && this.kennels().length === 0);
+  readonly hasMore = computed(() => this.nextOffset() < this.total());
+  readonly isFiltered = computed(() => this.appliedQuery().length > 0 || this.onlyMine());
+  readonly sortLabel = computed(() => SORT_LABELS[this.sortKey()] ?? this.sortKey());
+  /** Owned rows count only once every row is loaded — a partial count would lie. */
+  readonly yoursCount = computed(() =>
+    this.authUser() && !this.hasMore() ? this.kennels().filter((k) => this.isYours(k)).length : null,
+  );
+  readonly kicker = computed(() => {
+    const n = this.total();
+    const parts = ['side A', `${n} track${n === 1 ? '' : 's'}`];
+    const yours = this.yoursCount();
+    if (yours) parts.push(`${yours} yours`);
+    return parts.join(' · ');
+  });
 
-
-  private kennelScrollRef = viewChild<ElementRef<HTMLElement>>('kennelScroll');
-  private loadMoreSentinel = viewChild<ElementRef<HTMLElement>>('loadMoreSentinel');
-
-  /** Rohe Tastatureingaben der Suche — entprellt, bevor daraus eine Abfrage wird. */
+  private readonly loadMoreSentinel = viewChild<ElementRef<HTMLElement>>('loadMoreSentinel');
   private readonly searchInput = new Subject<string>();
-  /** Seitenabrufe; `switchMap` verwirft eine laufende Antwort, sobald eine neue startet. */
   private readonly pageRequests = new Subject<{ offset: number; append: boolean }>();
-  private sentinelObserver: IntersectionObserver | null = null;
-  /** Letzter abgeschickter Seitenabruf — Grundlage für „Nochmal versuchen". */
-  private lastRequest: { offset: number; append: boolean } = { offset: 0, append: false };
+  private lastRequest = { offset: 0, append: false };
+  private pendingNew = signal(false);
+  private firstParams = true;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    const persisted = readPersistedSort();
+    this.sortKey.set(persisted.sortKey);
+    this.sortDir.set(persisted.sortDir);
+
     effect(() => {
-      const sortKey = this.sortKey();
-      const sortDir = this.sortDir();
-      if (typeof localStorage === 'undefined') return;
+      const value: ListSort = { sortKey: this.sortKey(), sortDir: this.sortDir() };
       try {
-        localStorage.setItem(
-          KENNEL_LIST_SORT_STORAGE_KEY,
-          JSON.stringify({ sortKey, sortDir })
-        );
+        localStorage.setItem(KENNEL_LIST_SORT_STORAGE_KEY, JSON.stringify(value));
       } catch {
         /* private mode / quota */
       }
     });
 
-
-    // Auth-reactive reload: when login/logout flips the user signal, refresh the list
-    // so the visibility filters on the backend kick in for the new identity.
+    // Login or logout changes what the server lists — reload (skipping the first, settled state).
+    let authSeen = false;
     effect(() => {
       if (!this.auth.isReady()) return;
-      const _u = this.auth.user(); // tracked
-      if (this.skipFirstAuthEffect) {
-        this.skipFirstAuthEffect = false;
+      const user = this.auth.user();
+      if (!authSeen) {
+        authSeen = true;
         return;
       }
-      // Reset onlyMine when logging out — there's no "mine" without a user.
-      if (!_u) this.onlyMine.set(false);
+      if (!user && this.onlyMine()) {
+        this.onlyMine.set(false);
+        this.writeParams({ mine: null });
+      }
       this.reload();
     }, { allowSignalWrites: true });
 
-    // `?new=1` in der URL öffnet das Anlegen-Formular — angemeldet direkt, sonst erst nach Login.
-    // Auth-gated, weil `auth.isReady()` beim ersten Tick noch false sein kann.
+    // `?new=1` opens the sheet — signed in at once, otherwise after the login round trip.
     effect(() => {
-      if (!this.pendingNewFromQuery()) return;
-      if (!this.auth.isReady()) return;
-      this.pendingNewFromQuery.set(false);
-      if (this.auth.user()) {
-        this.showCreateForm.set(true);
-      } else {
-        this.auth.login('/kennels?new=1');
-      }
+      if (!this.pendingNew() || !this.auth.isReady()) return;
+      this.pendingNew.set(false);
+      if (this.auth.user()) this.sheetOpen.set(true);
+      else this.auth.login('/kennels?new=1');
     }, { allowSignalWrites: true });
 
-    // `?q=` in der URL übernimmt die Suche; ngOnInit's reload() lädt danach die erste Seite,
-    // deshalb ruft nur eine spätere (nicht die erste) Emission reload() selbst auf.
-    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
-      const isFirst = this.skipFirstQueryParamsEffect;
-      this.skipFirstQueryParamsEffect = false;
-      const q = params.get('q');
-      if (q !== null) {
-        this.searchQuery.set(q);
-        this.appliedQuery.set(q);
-        if (!isFirst) this.reload();
-      }
-      if (params.get('new') === '1') {
-        this.pendingNewFromQuery.set(true);
-      }
-    });
-
-    // Sentinel am Listenende beobachten. Läuft neu, sobald das Element erscheint
-    // oder verschwindet (alles geladen / Fehler); die Registrierung endet mit der Komponente.
+    // Sentinel at the end of the list loads the next page.
     effect((onCleanup) => {
       const sentinel = this.loadMoreSentinel()?.nativeElement;
       if (!sentinel || typeof IntersectionObserver === 'undefined') return;
-      const root = this.kennelScrollRef()?.nativeElement ?? null;
       const observer = new IntersectionObserver(
         (entries) => {
           if (entries.some((e) => e.isIntersecting)) this.loadMore();
         },
-        { root, rootMargin: '240px' }
+        { rootMargin: '240px' },
       );
       observer.observe(sentinel);
-      this.sentinelObserver = observer;
-      onCleanup(() => {
-        observer.disconnect();
-        if (this.sentinelObserver === observer) this.sentinelObserver = null;
-      });
+      onCleanup(() => observer.disconnect());
     });
 
-    this.searchInput
-      .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
-      .subscribe((value) => {
-        this.appliedQuery.set(value.trim());
-        this.reload();
-      });
+    this.searchInput.pipe(debounceTime(SEARCH_DEBOUNCE_MS), takeUntilDestroyed()).subscribe((value) => {
+      const q = value.trim();
+      if (q === this.appliedQuery()) return;
+      this.appliedQuery.set(q);
+      this.writeParams({ q: q || null });
+      this.reload();
+    });
 
     this.pageRequests
       .pipe(
@@ -247,74 +276,38 @@ export class KennelListComponent implements OnInit {
                 of({
                   req,
                   res: null as PagedApiResponse<IKennelConfig> | null,
-                  failure: (err?.error?.error ?? err?.message ?? 'Laden fehlgeschlagen') as string,
-                })
-              )
-            )
+                  failure: err?.status ? `Couldn't load kennels (${err.status}).` : "Couldn't load kennels.",
+                }),
+              ),
+            ),
         ),
-        takeUntilDestroyed()
+        takeUntilDestroyed(),
       )
       .subscribe(({ req, res, failure }) => this.applyPage(req, res, failure));
+
+    // The URL is the state: `?q=`, `?sort=`, `?dir=`, `?mine=1`, `?new=1`. Subscribed last — the first
+    // emission is synchronous and its reload needs the page pipeline above.
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => this.applyParams(params));
+
+    this.destroyRef.onDestroy(() => {
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+    });
   }
 
-
-  /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
-  showExecutePath = input(true);
-
-  /**
-   * Zusätzlich eine gespiegelte Pfad-Zeile: URL-Pfadsegmente in umgekehrter Reihenfolge.
-   * Nur Optik / Lesbarkeit; der tatsächliche Endpoint bleibt unverändert.
-   */
-  mirrorExecutePath = input(false);
-
-  /** Die bereits geladenen Seiten, in Serverreihenfolge. */
-  kennels = signal<IKennelConfig[]>([]);
-  /** Treffer insgesamt (nach `q`/`mine`, vor der Seitenbildung) — Quelle für „n von m". */
-  total = signal(0);
-  /** Offset der nächsten Seite; zählt die tatsächlich gelieferten Einträge, nicht die entdoppelten. */
-  private nextOffset = signal(0);
-  loading = signal(false);
-  loadingMore = signal(false);
-  showCreateForm = signal(false);
-  error = signal<string | null>(null);
-
-  /** Rohwert des Eingabefelds (sofortige Anzeige). */
-  searchQuery = signal('');
-  /** Der entprellte Suchtext, mit dem der Server tatsächlich gefragt wurde. */
-  appliedQuery = signal('');
-  sortKey = signal<KennelListSortKey>(initialKennelListSort.sortKey);
-  sortDir = signal<KennelListSortDir>(initialKennelListSort.sortDir);
-
-  /** Sort-Buttons neben der Suche ausblenden, solange gefiltert wird (nichtleerer Suchtext). */
-  hideSortBesideSearch = computed(() => this.searchQuery().trim().length > 0);
-
-  /** Erhöhen bei Sortwechsel → @for-Track ändert sich, Karten-Animationen laufen erneut. */
-  listOrderEpoch = signal(0);
-
-  /** Volllast-Schleier nur beim allerersten Laden — sonst flackert jede Suche. */
-  showInitialLoading = computed(() => this.loading() && this.kennels().length === 0);
-  /** Ersetzender Ladevorgang über einer schon gefüllten Liste. */
-  showRefreshing = computed(() => this.loading() && this.kennels().length > 0);
-  hasMore = computed(() => this.nextOffset() < this.total());
-  /** Suche oder „nur meine" ist aktiv — unterscheidet „keine Treffer" von „gar nichts da". */
-  isFiltered = computed(() => this.appliedQuery().length > 0 || this.onlyMine());
-
-  ngOnInit() {
-    this.reload();
+  isYours(k: IKennelConfig): boolean {
+    const user = this.authUser();
+    return !!user && (k.myRights?.own ?? k.ownerId === user.id);
   }
 
-  /** Erste Seite neu holen und die Liste ersetzen. */
   reload(): void {
     this.pageRequests.next({ offset: 0, append: false });
   }
 
-  /** Nächste Seite anhängen — no-op, solange etwas läuft oder alles geladen ist. */
   loadMore(): void {
-    if (this.loading() || this.loadingMore() || !this.hasMore()) return;
+    if (this.loading() || this.loadingMore() || !this.hasMore() || this.error()) return;
     this.pageRequests.next({ offset: this.nextOffset(), append: true });
   }
 
-  /** Nach einem Fehler genau den gescheiterten Abruf wiederholen. */
   retry(): void {
     this.pageRequests.next(this.lastRequest);
   }
@@ -324,260 +317,259 @@ export class KennelListComponent implements OnInit {
     this.searchInput.next(value);
   }
 
-  onOnlyMineToggle(): void {
-    this.onlyMine.set(!this.onlyMine());
+  clearFilters(): void {
+    this.searchQuery.set('');
+    this.appliedQuery.set('');
+    this.onlyMine.set(false);
+    this.writeParams({ q: null, mine: null });
     this.reload();
+  }
+
+  onSortKey(key: string): void {
+    if (!isSortKey(key)) return;
+    if (key === this.sortKey()) {
+      this.toggleSortDir();
+      return;
+    }
+    this.sortKey.set(key);
+    this.sortDir.set(defaultDir(key));
+    this.writeParams({ sort: key, dir: this.sortDir() });
+    this.reload();
+  }
+
+  toggleSortDir(): void {
+    this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
+    this.writeParams({ sort: this.sortKey(), dir: this.sortDir() });
+    this.reload();
+  }
+
+  toggleMine(): void {
+    this.onlyMine.update((v) => !v);
+    this.writeParams({ mine: this.onlyMine() ? '1' : null });
+    this.reload();
+  }
+
+  openCreate(): void {
+    // Before /auth/me answers nobody is known yet — a click then would send a signed-in user to Google.
+    if (!this.auth.isReady()) return;
+    if (!this.auth.user()) {
+      this.auth.login('/kennels?new=1');
+      return;
+    }
+    this.createError.set(null);
+    this.sheetOpen.set(true);
+    this.writeParams({ new: '1' });
+  }
+
+  closeCreate(): void {
+    this.sheetOpen.set(false);
+    this.createError.set(null);
+    this.writeParams({ new: null });
+  }
+
+  onCreate(data: KennelCreateData): void {
+    this.creating.set(true);
+    this.createError.set(null);
+    this.kennelService
+      .create({
+        id: data.id,
+        name: data.name || undefined,
+        description: data.description || undefined,
+        emoji: data.emoji || undefined,
+        visibility: data.visibility,
+        dogIds: [],
+      })
+      .subscribe({
+        next: (res) => {
+          this.creating.set(false);
+          if (!res.ok) {
+            this.createError.set(res.error ?? "Couldn't create the kennel.");
+            return;
+          }
+          const ref = res.data?.lineageId || res.id || data.id;
+          void this.router.navigate(['/kennels', ref, 'edit']);
+        },
+        error: (err) => {
+          this.creating.set(false);
+          this.createError.set(err?.error?.error_description ?? err?.error?.error ?? `Couldn't create the kennel (${err?.status ?? 'network'}).`);
+        },
+      });
+  }
+
+  onRowAction(kennel: IKennelConfig, action: KennelRowAction): void {
+    const ref = this.kennelRef(kennel);
+    switch (action) {
+      case 'run':
+      case 'open':
+        window.open(apiAbsoluteUrl(this.publicPathWithDefaults(kennel)), '_blank', 'noopener');
+        return;
+      case 'docs':
+        window.open(apiAbsoluteUrl(publicKennelDocsPath(ref)), '_blank', 'noopener');
+        return;
+      case 'copy-link':
+        this.copyText(apiAbsoluteUrl(this.publicPathWithDefaults(kennel)), 'Link copied.');
+        return;
+      case 'edit':
+        void this.router.navigate(['/kennels', ref, 'edit']);
+        return;
+      case 'export':
+        this.exportBundle(ref);
+        return;
+      case 'delete':
+        this.deleteKennel(kennel);
+        return;
+    }
+  }
+
+  importFromClipboard(): void {
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        let bundle: unknown;
+        try {
+          bundle = JSON.parse(text);
+        } catch {
+          this.error.set('The clipboard holds no valid JSON.');
+          return;
+        }
+        this.kennelService.importBundle(bundle).subscribe({
+          next: (res) => (res.ok ? this.reload() : this.error.set(res.error ?? 'Import failed.')),
+          error: (err) => this.error.set(err?.error?.error ?? `Import failed (${err?.status ?? 'network'}).`),
+        });
+      })
+      .catch(() => this.error.set('No access to the clipboard. Allow it and try again.'));
+  }
+
+  private applyParams(params: ParamMap): void {
+    const q = (params.get('q') ?? '').trim();
+    const sort = params.get('sort');
+    const dir = params.get('dir');
+    const mine = params.get('mine') === '1';
+    let changed = this.firstParams;
+    if (q !== this.appliedQuery()) {
+      this.searchQuery.set(q);
+      this.appliedQuery.set(q);
+      changed = true;
+    }
+    if (isSortKey(sort) && sort !== this.sortKey()) {
+      this.sortKey.set(sort);
+      this.sortDir.set(isSortDir(dir) ? dir : defaultDir(sort));
+      changed = true;
+    } else if (isSortDir(dir) && dir !== this.sortDir()) {
+      this.sortDir.set(dir);
+      changed = true;
+    }
+    if (mine !== this.onlyMine()) {
+      this.onlyMine.set(mine);
+      changed = true;
+    }
+    if (params.get('new') === '1' && !this.sheetOpen()) this.pendingNew.set(true);
+    this.firstParams = false;
+    if (changed) this.reload();
+  }
+
+  private writeParams(patch: Record<string, string | null>): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: patch,
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   private applyPage(
     req: { offset: number; append: boolean },
     res: PagedApiResponse<IKennelConfig> | null,
-    failure: string | null
+    failure: string | null,
   ): void {
     this.loading.set(false);
     this.loadingMore.set(false);
     if (failure !== null || !res) {
-      this.error.set(failure ?? 'Laden fehlgeschlagen');
+      this.error.set(failure ?? "Couldn't load kennels.");
       return;
     }
     const page = res.data ?? [];
     if (req.append && page.length === 0) {
-      // Nichts mehr da, obwohl `total` mehr versprach (Bestand hat sich verschoben):
-      // Liste als vollständig markieren, sonst feuert das Sentinel endlos.
+      // `total` promised more than came (the stock moved): mark the list complete, or the sentinel fires forever.
       this.total.set(this.nextOffset());
       return;
     }
-    // Ohne `total` hat der Server die Seitenparameter ignoriert (älterer Stand):
-    // dann ist die Antwort bereits die vollständige Liste.
+    // Without `total` the server ignored the paging parameters (older state): the answer is the whole list.
     const total = res.total ?? (req.append ? this.total() : page.length);
-    this.kennels.update((current) =>
-      req.append ? dedupeKennelsById([...current, ...page]) : dedupeKennelsById(page)
-    );
+    this.kennels.update((current) => dedupeKennelsById(req.append ? [...current, ...page] : page));
     this.total.set(total);
     this.nextOffset.set(req.offset + page.length);
     if (!req.append) {
-      // Nach oben, sonst steht das Sentinel sofort wieder im Bild und zieht ungefragt Seite 2.
-      this.kennelScrollRef()?.nativeElement.scrollTo({ top: 0 });
-      /* Track-Fragment ändern → @for neu aufbauen, Karten-Animation erneut */
-      this.listOrderEpoch.update((n) => n + 1);
+      window.scrollTo({ top: 0 });
+      this.listEpoch.update((n) => n + 1);
     }
   }
 
-  onComfortVideoClick(): void {
-    this.errorVideoPopup.openPopup(this.error());
-  }
-
-  /** Sortierfeld per Klick durchschalten: Name → Erstellt → Geändert (Server-Vertrag). */
-  cycleSortKey(): void {
-    const order: KennelListSortKey[] = ['name', 'createdAt', 'updatedAt'];
-    const i = order.indexOf(this.sortKey());
-    this.sortKey.set(order[(i + 1) % order.length]);
-    this.reload();
-  }
-
-  sortKeyLabel(): string {
-    switch (this.sortKey()) {
-      case 'createdAt':
-        return 'Erstellt';
-      case 'updatedAt':
-        return 'Geändert';
-      default:
-        return 'Name';
-    }
-  }
-
-  toggleSortDir(): void {
-    this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
-    this.reload();
-  }
-
-  /** Anzeige-Emoji; ohne DB-Wert: 🐕 (nur UI, nicht gespeichert). */
-  kennelEmojiForList(k: IKennelConfig): string {
-    const e = k.emoji?.trim();
-    return e || '🐕';
-  }
-
-  /** Suchtext trifft die Beschreibung — Karte klappt Beschreibung auf + Highlight. */
-  descriptionMatchesSearch(k: IKennelConfig): boolean {
-    const q = this.appliedQuery().toLowerCase();
-    if (!q) return false;
-    return (k.description || '').toLowerCase().includes(q);
-  }
-
-  descriptionHighlightParts(k: IKennelConfig): KennelDescHighlightPart[] {
-    return splitKennelDescForHighlight(k.description || '', this.appliedQuery());
-  }
-
-  /** The stable kennel identifier — lineageId for versioned kennels, fallback to id. */
   kennelRef(kennel: IKennelConfig): string {
     return kennel.lineageId || kennel.id;
   }
 
-  /** `/k/:kennelId` plus gespeicherte `defaultQuery` (für Anzeige und `window.open`). */
-  private listPublicExecutePath(kennel: IKennelConfig): string {
+  /** `/k/:id` plus the stored `defaultQuery` — what `⏵` opens and `Copy link` copies. */
+  private publicPathWithDefaults(kennel: IKennelConfig): string {
     const path = publicKennelPath(this.kennelRef(kennel));
     const dq = kennel.defaultQuery;
     if (!dq || typeof dq !== 'object') return path;
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(dq)) {
-      if (!k.trim()) continue;
-      params.set(k, v);
+      if (k.trim()) params.set(k, v);
     }
     const qs = params.toString();
     return qs ? `${path}?${qs}` : path;
   }
 
-  /**
-   * Angezeigter Aufruf-Pfad — gleiche Logik wie der Play-Tab (`defaultQuery` in der URL, `defaultBody` nur serverseitig).
-   */
-  executePathForDisplay(kennel: IKennelConfig): string {
-    return this.listPublicExecutePath(kennel);
-  }
-
-  /**
-   * Derselbe Pfad mit umgekehrter Segmentreihenfolge (Pfad „gespiegelt“).
-   * Query-String bleibt angehängt.
-   */
-  executePathMirroredSegments(kennel: IKennelConfig): string {
-    const full = this.executePathForDisplay(kennel);
-    const q = full.includes('?') ? full.slice(full.indexOf('?')) : '';
-    const pathOnly = q ? full.slice(0, full.indexOf('?')) : full;
-    const segments = pathOnly.split('/').filter((s) => s.length > 0);
-    const reversed = '/' + segments.slice().reverse().join('/');
-    return reversed + q;
-  }
-
-  /** Neuer Tab: öffentlicher GET — URL enthält gespeicherte `defaultQuery`; `defaultBody` kommt aus der Config (Server). */
-  onExecute(kennel: IKennelConfig): void {
-    window.open(this.getExecuteUrl(kennel), '_blank', 'noopener');
-  }
-
-  onFanAction(kennel: IKennelConfig, action: KennelFanAction): void {
-    const ref = this.kennelRef(kennel);
-    if (action === 'edit') {
-      void this.router.navigate(['/kennels', ref, 'edit']);
-      return;
-    }
-    if (action === 'share') {
-      const url = apiAbsoluteUrl(this.listPublicExecutePath(kennel));
-      const title = kennel.name || ref;
-      const payload = { title, text: `${title} – SlopDogs`, url };
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        void navigator.share(payload).catch(() => {
-          void navigator.clipboard?.writeText(url);
-        });
-      } else {
-        void navigator.clipboard?.writeText(url).catch(() => {});
-      }
-      return;
-    }
-    if (action === 'copy') {
-      this.copyKennelBundle(kennel);
-      return;
-    }
-    if (action === 'swagger') {
-      window.open(apiAbsoluteUrl(publicKennelDocsPath(ref)), '_blank', 'noopener');
-      return;
-    }
-    if (action === 'swaggerJson') {
-      window.open(apiAbsoluteUrl(publicKennelOpenApiPath(ref)), '_blank', 'noopener');
-      return;
-    }
-    if (action === 'waves') {
-      void this.router.navigate(['/kennels', ref]);
-      return;
-    }
-    if (action === 'delete') {
-      if (!confirm(`Kennel "${kennel.name || ref}" wirklich löschen? Alle Versionen werden entfernt.`)) return;
-      this.kennelService.delete(ref).subscribe({
-        next: (res) => {
-          if (res.ok) {
-            this.reload();
-          } else {
-            this.error.set(res.error ?? 'Löschen fehlgeschlagen');
-          }
-        },
-        error: (err) => this.error.set(err.error?.error ?? err.message),
-      });
-    }
-  }
-
-  /** Kennel-Bundle (Config + Dogs) als JSON in die Zwischenablage kopieren. */
-  copyKennelBundle(kennel: IKennelConfig) {
-    const ref = this.kennelRef(kennel);
+  private exportBundle(ref: string): void {
     this.kennelService.exportBundle(ref).subscribe({
-      next: (bundle: any) => {
+      next: (bundle: unknown) => {
         const json = JSON.stringify(bundle, null, 2);
         if (navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(json).catch(() => {
-            this.downloadJsonFallback(json, ref);
-          });
+          navigator.clipboard.writeText(json).then(
+            () => this.showToast('Kennel copied as JSON.'),
+            () => this.downloadJson(json, ref),
+          );
         } else {
-          this.downloadJsonFallback(json, ref);
+          this.downloadJson(json, ref);
         }
       },
-      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Export fehlgeschlagen'),
+      error: (err) => this.error.set(err?.error?.error ?? `Export failed (${err?.status ?? 'network'}).`),
     });
   }
 
-  private downloadJsonFallback(json: string, ref: string) {
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+  private deleteKennel(kennel: IKennelConfig): void {
+    const ref = this.kennelRef(kennel);
+    if (!confirm(`Delete "${kennel.name || ref}"? Every version goes with it.`)) return;
+    this.kennelService.delete(ref).subscribe({
+      next: (res) => (res.ok ? this.reload() : this.error.set(res.error ?? 'Delete failed.')),
+      error: (err) => this.error.set(err?.error?.error ?? `Delete failed (${err?.status ?? 'network'}).`),
+    });
+  }
+
+  private downloadJson(json: string, ref: string): void {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = `${ref}.kennel.json`;
     a.click();
     URL.revokeObjectURL(url);
+    this.showToast('Kennel downloaded as JSON.');
   }
 
-  importFromClipboard() {
-    navigator.clipboard.readText().then(text => {
-      try {
-        const bundle = JSON.parse(text);
-        this.kennelService.importBundle(bundle).subscribe({
-          next: (res) => {
-            if (res.ok) {
-              this.reload();
-            } else {
-              this.error.set(res.error ?? 'Import fehlgeschlagen');
-            }
-          },
-          error: (err) => this.error.set(err.error?.error ?? err.message),
-        });
-      } catch {
-        this.error.set('Clipboard enthält kein gültiges JSON');
-      }
-    }).catch(() => {
-      this.error.set('Kein Zugriff auf Clipboard — bitte Berechtigung erteilen');
-    });
+  private copyText(text: string, done: string): void {
+    const clip = navigator.clipboard;
+    if (!clip?.writeText) {
+      window.prompt('Copy this link', text);
+      return;
+    }
+    clip.writeText(text).then(() => this.showToast(done), () => window.prompt('Copy this link', text));
   }
 
-  onCreateKennel(data: KennelFormData) {
-    this.kennelService
-      .create({
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        emoji: data.emoji.trim() || undefined,
-        visibility: data.visibility,
-        dogIds: [],
-      })
-      .subscribe({
-      next: (res) => {
-        if (res.ok) {
-          // After create, the returned id is the lineageId (user-chosen kennel ID).
-          const ref = res.data?.lineageId || res.id || data.id;
-          this.router.navigate(['/kennels', ref, 'edit']);
-        }
-      },
-      error: (err) => {
-        this.error.set(err.message);
-      }
-    });
-  }
-
-  /** Absoluter Tab-URL zum öffentlichen Kennel-GET (inkl. `defaultQuery` aus der Liste). */
-  getExecuteUrl(kennel: IKennelConfig): string {
-    return apiAbsoluteUrl(this.listPublicExecutePath(kennel));
+  private showToast(text: string): void {
+    this.toast.set(text);
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
   }
 }

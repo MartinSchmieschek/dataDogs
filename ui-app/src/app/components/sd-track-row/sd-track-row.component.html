@@ -1,0 +1,65 @@
+<div class="row" [class.yours]="yours()" [class.menu-on]="menuOpen()" role="listitem">
+  <span class="no" aria-hidden="true">{{ number() }}</span>
+
+  <a class="main" [routerLink]="['/kennels', ref()]">
+    <span class="line1">
+      <span class="emoji" aria-hidden="true">{{ emoji() }}</span>
+      <span class="name">{{ title() }}</span>
+      @if (runOnly()) {
+        <span class="sd-chip">run only</span>
+      } @else if (isPrivate()) {
+        <span class="sd-chip">private</span>
+      }
+      @if (frozen()) {
+        <span class="sd-chip sd-chip--frozen">frozen</span>
+      }
+      @if (yours()) {
+        <span class="sd-chip sd-chip--live">yours</span>
+      }
+    </span>
+    <span class="meta sd-small">{{ meta() }}</span>
+  </a>
+
+  <span class="data">
+    <sd-plaque [stats]="kennel().stats" />
+    <sd-stars class="stars-full" [stats]="kennel().stats" />
+    <sd-stars class="stars-compact" [stats]="kennel().stats" [compact]="true" />
+    <time class="when sd-data" [attr.datetime]="when()" [title]="whenTitle()">{{ whenLabel() }}</time>
+  </span>
+
+  <span class="act">
+    <button
+      type="button"
+      class="sd-btn sd-btn--icon sd-btn--bare"
+      [attr.aria-label]="'Run ' + title() + ' in a new tab'"
+      title="Run the public kennel in a new tab"
+      (click)="action.emit('run')">⏵</button>
+    <span class="more">
+      <button
+        type="button"
+        class="sd-btn sd-btn--icon sd-btn--bare dots"
+        [attr.aria-expanded]="menuOpen()"
+        [attr.aria-label]="'More for ' + title()"
+        (click)="toggleMenu($event)">⋯</button>
+      @if (menuOpen()) {
+        <span class="scrim" (click)="closeMenu()" aria-hidden="true"></span>
+        <span class="menu sd-lift" role="group" [attr.aria-label]="'Actions for ' + title()">
+          <button type="button" (click)="pick('open')">Open page</button>
+          <button type="button" (click)="pick('docs')">Docs</button>
+          <button type="button" (click)="pick('copy-link')">Copy link</button>
+          @if (!runOnly()) {
+            @if (frozen()) {
+              <button type="button" disabled title="Frozen. Unfreeze in settings.">Frozen</button>
+            } @else if (canEdit()) {
+              <button type="button" (click)="pick('edit')">Edit</button>
+            }
+            <button type="button" (click)="pick('export')">Export</button>
+            @if (canDelete()) {
+              <button type="button" class="danger" (click)="pick('delete')">Delete</button>
+            }
+          }
+        </span>
+      }
+    </span>
+  </span>
+</div>

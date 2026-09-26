@@ -17,8 +17,12 @@ export interface IKennelConfig {
   nodes?: IKennelNodeAnnotation[];
   /** Per-edge comment, keyed by (fromId, toId) */
   edges?: IKennelEdgeAnnotation[];
-  /** ACL — public lets anyone read+run, private restricts to owner/editors/viewers. */
-  visibility?: 'public' | 'private' | null;
+  /** ACL (P3.5) — public: anyone runs and reads; run-only: anyone runs, code stays private; private: named people only. */
+  visibility?: KennelVisibility | null;
+  /** P3.5 (8.16/8.25): frozen blocks every edit until the owner unfreezes; runs, ratings and copies keep working. */
+  frozen?: boolean;
+  /** P3.5: what the caller may do with this kennel — missing on a server before P3.5. */
+  myRights?: IMyRights;
   /** User.id of the creator. null = community-owned (legacy / system). */
   ownerId?: string | null;
   /** Comma-separated User.id list — additional users who may mutate. */
@@ -29,6 +33,17 @@ export interface IKennelConfig {
   updatedAt?: string;
   /** Aufrufe und Sterne (P4) — fehlt bei einem Server vor P4. */
   stats?: IKennelStats;
+}
+
+export type KennelVisibility = 'public' | 'run-only' | 'private';
+
+/** Rights of the caller on one entity (`myRights`, P3.5 — mcp/auth/visibility.ts `MyRights`). */
+export interface IMyRights {
+  run: boolean;
+  read: boolean;
+  edit: boolean;
+  own: boolean;
+  frozen: boolean;
 }
 
 /**
