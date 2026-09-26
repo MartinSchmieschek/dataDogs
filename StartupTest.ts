@@ -70,9 +70,11 @@ import type { DogCallDelta, IDogStatsStore, IKennelStatsStore, KennelCallAggrega
 import { dogStatsKeyOf } from './services/dogStatsKey';
 import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { DogStatsService } from './services/DogStatsService';
-import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE } from './api/routes/routeTable';
+import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE, SPA_ROUTES } from './api/routes/routeTable';
 import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
 import { FIXED_TOP_LEVEL } from './api/routes/spaRouteConstants';
+import express from 'express';
+import { createPersonalTokensRouter } from './mcp/auth/personal-tokens';
 import { BaseDogPacks } from './services/BaseDogPacks';
 import { BloodhoundIsochronePact, type BloodhoundIsochroneInput, NearbyLandmarksPact } from '@slopdogs/dogs-geo';
 import { randomBytes } from 'crypto';
@@ -297,6 +299,7 @@ export class StartupTest {
             await this.testRunOnlyForeignDogPinnedAndScoped(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testFreezeBlocksEveryMutation(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
             await this.testAclRestRoutes(kennelsController as KennelController, nodesController);
+            await this.testAclRestPeopleAndEmail(kennelsController as KennelController, nodesController);
             await this.testBootGuardRefusesSuperUserOutsideDev();
 
             // Fixes vor P4
@@ -336,6 +339,9 @@ export class StartupTest {
             // P6 U5: /dogs-Browser — pack an Base-Dogs, lean=1 ohne Code, RUN-Sicht mit Kopf-Version
             await this.testNodesListPackLeanAndRunVersion(baseDogsMap);
             await this.testNodesListLeanOverHttp();
+
+            // P6 U6/U7: Access-Panel, Account
+            await this.testPersonalTokensJson();
 
             // P4c: Key-Store (Selbstangriff T1-T11; T11 im Gateway-Test)
             if (authPrisma) {
@@ -1681,7 +1687,7 @@ export class StartupTest {
             }
             const post = call('POST', 'wetter', '/wetter?lat=1&channelId=AbC');
             if (post.status !== 308 || post.location !== get.location) throw new Error(`POST: ${post.status} ${post.location}`);
-            for (const fixed of ['kennels', 'api', 'robots.txt', 'K', 'kennel', 'dogs']) {
+            for (const fixed of ['kennels', 'api', 'robots.txt', 'K', 'kennel', 'dogs', 'account', 'login']) {
                 const r = call('GET', fixed, `/${fixed}`);
                 if (!r.next || r.status !== 0) throw new Error(`/${fixed} muss per next() weitergehen`);
             }
@@ -4070,6 +4076,51 @@ export class StartupTest {
     }
 
     /**
+     * Test (P6 U6): GET /acl liefert people[] mit E-Mail/Name aufgeloest (Owner/Editor/Super-User —
+     * dasselbe Gate wie view()); PUT nimmt fuer editors/viewers/runners auch E-Mails an und
+     * speichert immer die User.id, nie die E-Mail; eine unbekannte E-Mail bleibt invalid_user.
+     */
+    private async testAclRestPeopleAndEmail(kennelsController: KennelController, nodesController: Controller<ISerializedDogConfig>): Promise<void> {
+        const testName = 'P6 U6: REST /acl mit Personen, E-Mail statt id';
+        const kennelId = `test-acl-people-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'ACL People', dogIds: [], visibility: 'private', ownerId: 'UO' });
+            if (!created.ok) throw new Error(`Kennel nicht angelegt: ${created.error}`);
+            const routes = new Map<string, (req: any, res: any) => Promise<void> | void>();
+            const fakeApp: any = {};
+            for (const verb of ['get', 'put', 'post']) fakeApp[verb] = (path: string, h: any) => routes.set(`${verb.toUpperCase()} ${path}`, h);
+            new AclRouteHandler(kennelsController, nodesController, this.fakeAuthPrisma(['UO', 'UR'])).registerRoutes(fakeApp);
+            const hit = async (route: string, ctx: AuthCtx, body: any = {}) => {
+                const { res, out } = this.fakeResponse();
+                await routes.get(route)!({ params: { subpath: 'kennels', id: kennelId }, body, ctx }, res);
+                return out;
+            };
+            const owner = this.fakeUser('UO');
+            const acl = '/api/:subpath/:id/acl';
+
+            const view = await hit(`GET ${acl}`, owner);
+            if (view.statusCode !== 200) throw new Error(`GET: ${view.statusCode}`);
+            const ownerPerson = view.body.people?.find((p: any) => p.id === 'UO');
+            if (!ownerPerson || ownerPerson.email !== 'uo@test.invalid') throw new Error(`people fehlt/falsch: ${JSON.stringify(view.body.people)}`);
+
+            const put = await hit(`PUT ${acl}`, owner, { viewers: ['ur@test.invalid'] });
+            if (put.statusCode !== 200 || JSON.stringify(put.body.viewers) !== '["UR"]') throw new Error(`PUT E-Mail: ${put.statusCode} ${JSON.stringify(put.body)}`);
+            const stored: any = (await kennelsController.getById(kennelId)).data;
+            const viewersCsv = String(stored.viewers ?? '');
+            if (!viewersCsv.split(',').includes('UR') || viewersCsv.includes('@')) throw new Error(`viewers-CSV: ${viewersCsv}`);
+
+            const badEmail = await hit(`PUT ${acl}`, owner, { viewers: ['nobody@test.invalid'] });
+            if (badEmail.statusCode !== 400 || badEmail.body?.error !== 'invalid_user') throw new Error(`unbekannte E-Mail: ${badEmail.statusCode} ${JSON.stringify(badEmail.body)}`);
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
+        }
+    }
+
+    /**
      * Startet main.ts als Kindprozess — ohne load-env und mit leerer DATABASE_URL: kommt der Guard
      * nicht zum Zug, scheitert der Start an assertRequiredDbEnv (Exit 1) und beruehrt keine DB.
      * Die Variablen stehen ausdruecklich (leer) in der Umgebung, weil der Prisma-Client beim Import
@@ -5334,6 +5385,101 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * P6 U7: /auth/tokens als JSON — eigene express-App auf Port 0, In-Memory-Prisma, kein Bezug
+     * zum Hauptserver. Prueft Content-Negotiation (401/200/201 JSON, HTML bleibt HTML), dass der
+     * jwt nur einmal (in der POST-Antwort) auftaucht, Eigentuemer-Widerruf und die 404-Fremdsperre.
+     */
+    private async testPersonalTokensJson(): Promise<void> {
+        const testName = 'P6 U7: /auth/tokens als JSON (einmaliger Wert, Widerruf, HTML bleibt)';
+        if (!process.env.MCP_TOKEN_SIGNING_KEY) {
+            this.addResult(testName, false, 'MCP_TOKEN_SIGNING_KEY fehlt in der Umgebung — issueAccessToken kann nicht signieren');
+            return;
+        }
+        type FakeRow = { jti: string; userId: string; clientId: string; scope: string; expiresAt: Date; revokedAt: Date | null; createdAt: Date };
+        let server: import('http').Server | undefined;
+        try {
+            const rows: FakeRow[] = [];
+            const fakePrisma: any = {
+                accessToken: {
+                    findMany: async ({ where, orderBy }: any) => {
+                        let result = rows.filter((r) => r.userId === where.userId && r.clientId === where.clientId);
+                        if (orderBy?.createdAt === 'desc') result = [...result].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+                        return result;
+                    },
+                    create: async ({ data }: any) => {
+                        const row: FakeRow = { jti: data.jti, userId: data.userId, clientId: data.clientId, scope: data.scope, expiresAt: data.expiresAt, revokedAt: null, createdAt: new Date() };
+                        rows.push(row);
+                        return row;
+                    },
+                    updateMany: async ({ where, data }: any) => {
+                        const matched = rows.filter((r) => r.jti === where.jti && r.userId === where.userId && r.clientId === where.clientId);
+                        for (const r of matched) r.revokedAt = data.revokedAt;
+                        return { count: matched.length };
+                    },
+                    findFirst: async ({ where }: any) => rows.find((r) => r.jti === where.jti && r.userId === where.userId && r.clientId === where.clientId) ?? null,
+                },
+            };
+
+            const app = express();
+            app.use((req: any, _res: any, next: any) => { req.session = { userId: req.get('x-test-user') || undefined }; next(); });
+            app.use('/auth/tokens', createPersonalTokensRouter(fakePrisma));
+            server = await new Promise<import('http').Server>((resolve) => {
+                const s = app.listen(0, '127.0.0.1', () => resolve(s));
+            });
+            const port = (server.address() as any).port;
+            const base = `http://127.0.0.1:${port}`;
+            const asJson = (userId?: string) => ({ accept: 'application/json', ...(userId ? { 'x-test-user': userId } : {}) });
+
+            const noAuth = await fetch(`${base}/auth/tokens`, { headers: asJson() });
+            const noAuthBody: any = await noAuth.json();
+            if (noAuth.status !== 401 || noAuthBody.error !== 'unauthorized') throw new Error(`ohne Session: ${noAuth.status} ${JSON.stringify(noAuthBody)}`);
+
+            const empty = await fetch(`${base}/auth/tokens`, { headers: asJson('U1') });
+            const emptyBody: any = await empty.json();
+            if (empty.status !== 200 || emptyBody.tokens?.length !== 0) throw new Error(`leer: ${empty.status} ${JSON.stringify(emptyBody)}`);
+
+            const created = await fetch(`${base}/auth/tokens`, { method: 'POST', headers: asJson('U1') });
+            const createdBody: any = await created.json();
+            if (created.status !== 201 || typeof createdBody.token?.jwt !== 'string' || createdBody.token.jwt.split('.').length !== 3) {
+                throw new Error(`POST: ${created.status} ${JSON.stringify(createdBody)}`);
+            }
+            const jti = createdBody.token.jti as string;
+
+            const afterCreate = await fetch(`${base}/auth/tokens`, { headers: asJson('U1') });
+            const afterCreateText = await afterCreate.text();
+            if (afterCreateText.includes(createdBody.token.jwt)) throw new Error('GET traegt den jwt weiter');
+            const afterCreateBody = JSON.parse(afterCreateText);
+            if (!afterCreateBody.tokens?.some((t: any) => t.jti === jti)) throw new Error('GET listet den neuen jti nicht');
+
+            const revoke = await fetch(`${base}/auth/tokens/${jti}/revoke`, { method: 'POST', headers: asJson('U1') });
+            const revokeBody: any = await revoke.json();
+            if (revoke.status !== 200 || revokeBody.status !== 'revoked') throw new Error(`revoke: ${revoke.status} ${JSON.stringify(revokeBody)}`);
+
+            const afterRevoke = await fetch(`${base}/auth/tokens`, { headers: asJson('U1') });
+            const afterRevokeBody: any = await afterRevoke.json();
+            if (afterRevokeBody.tokens?.find((t: any) => t.jti === jti)?.status !== 'revoked') throw new Error('GET zeigt nicht revoked');
+
+            const foreignRevoke = await fetch(`${base}/auth/tokens/${jti}/revoke`, { method: 'POST', headers: asJson('U2') });
+            if (foreignRevoke.status !== 404) throw new Error(`fremder Widerruf: ${foreignRevoke.status}`);
+
+            const html = await fetch(`${base}/auth/tokens`, { headers: { accept: 'text/html', 'x-test-user': 'U1' } });
+            const htmlText = await html.text();
+            if (!(html.headers.get('content-type') ?? '').includes('text/html') || !htmlText.includes('<!DOCTYPE html>')) {
+                throw new Error(`HTML: ${html.headers.get('content-type')}`);
+            }
+
+            if (!FIXED_TOP_LEVEL.has('account') || !FIXED_TOP_LEVEL.has('login')) throw new Error('account/login fehlen in FIXED_TOP_LEVEL');
+            if (!SPA_ROUTES.includes('/account') || !SPA_ROUTES.includes('/login')) throw new Error('account/login fehlen in SPA_ROUTES');
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
         }
     }
 

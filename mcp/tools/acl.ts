@@ -35,6 +35,13 @@ interface ResolvedUser {
     name: string | null;
 }
 
+/** Eine Person in `view()`s `people[]` — unbekannte ids kommen mit `email`/`name` = null zurueck. */
+interface PersonRef {
+    id: string;
+    email: string | null;
+    name: string | null;
+}
+
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Die Spalte einer Rolle; `reader` ist ein Alias von `viewer`. */
@@ -106,6 +113,18 @@ export class AclManager {
             throw new AclError('frozen', `${entityType} ${id} is frozen — unfreeze it first`);
         }
         return entity;
+    }
+
+    /** Loest ids zu Personen auf (view()); unbekannte kommen mit email/name = null zurueck. */
+    private async resolvePeople(ids: string[]): Promise<PersonRef[]> {
+        const uniqueIds = Array.from(new Set(ids));
+        if (uniqueIds.length === 0) return [];
+        const users = await this.deps.prisma.user.findMany({
+            where: { id: { in: uniqueIds } },
+            select: { id: true, email: true, name: true },
+        });
+        const byId = new Map(users.map((u) => [u.id, u]));
+        return uniqueIds.map((id) => byId.get(id) ?? { id, email: null, name: null });
     }
 
     private async save(entityType: EntityType, id: string, patch: Record<string, unknown>): Promise<any> {
@@ -190,12 +209,17 @@ export class AclManager {
             const raw = input[column];
             if (raw === undefined) continue;
             if (!Array.isArray(raw) || raw.some((u) => typeof u !== 'string')) {
-                throw new AclError('invalid_user', `${column} must be an array of user ids`);
+                throw new AclError('invalid_user', `${column} must be an array of user ids or emails`);
             }
-            const ids = Array.from(new Set(raw as string[])).filter((u) => u !== entity.ownerId);
-            for (const uid of ids) {
-                if (!(await this.resolveUser(uid))) throw new AclError('invalid_user', `User not found: ${uid}`);
+            // Jeder Eintrag darf User.id oder E-Mail sein — aufgeloest wird immer zur id gespeichert.
+            // Owner-Filter und Dedupe laufen NACH der Aufloesung (mehrere Referenzen auf denselben Nutzer).
+            const resolvedIds: string[] = [];
+            for (const ref of raw as string[]) {
+                const user = await this.resolveUser(ref);
+                if (!user) throw new AclError('invalid_user', `User not found: ${ref}`);
+                resolvedIds.push(user.id);
             }
+            const ids = Array.from(new Set(resolvedIds)).filter((u) => u !== entity.ownerId);
             patch[column] = serializeList(ids);
         }
         if (Object.keys(patch).length > 0) await this.save(entityType, id, patch);
@@ -229,15 +253,25 @@ export class AclManager {
     async view(entityType: EntityType, id: string, ctx: AuthCtx | undefined) {
         const entity = await this.load(entityType, id);
         if (!entity || !seesCollaborators(entity, ctx)) throw new AclError('not_found', `${entityType} ${id} not found`);
+        const editors = parseList(entity.editors);
+        const viewers = parseList(entity.viewers);
+        const runners = parseList(entity.runners);
+        const allIds = [
+            ...(entity.ownerId ? [entity.ownerId as string] : []),
+            ...editors,
+            ...viewers,
+            ...runners,
+        ];
         return {
             ok: true,
             visibility: entity.visibility ?? 'public',
             ownerId: entity.ownerId ?? null,
-            editors: parseList(entity.editors),
-            viewers: parseList(entity.viewers),
-            runners: parseList(entity.runners),
+            editors,
+            viewers,
+            runners,
             frozen: isFrozen(entity),
             myRights: rightsOf(entity, ctx),
+            people: await this.resolvePeople(allIds),
         };
     }
 }

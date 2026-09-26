@@ -6,6 +6,11 @@
 //   POST   /auth/tokens          create new PAT (form post; renders the token once)
 //   POST   /auth/tokens/:jti/revoke   revoke
 //
+// Same three routes also answer JSON (P6 U7): `Accept: application/json` gets
+// `{ ok, tokens/token }` instead of the rendered page — the `/account?tab=tokens`
+// SPA screen uses this. Content negotiation via wantsJson(req); the HTML fallback
+// for browsers (Accept: text/html) is unchanged, byte-for-byte.
+//
 // PATs are AccessToken rows with clientId = 'pat'. No refresh token; lifetime 1 year.
 
 import { Router, type Request, type Response } from 'express';
@@ -16,13 +21,40 @@ import { paramString } from '../../api/utils/routeParams';
 const PAT_CLIENT_ID = 'pat';
 const PAT_TTL_SEC = 60 * 60 * 24 * 365; // 1 year
 
+type PatStatus = 'active' | 'revoked' | 'expired';
+
+/** True wenn der Client JSON will (Accept-Header) statt der HTML-Seite. */
+function wantsJson(req: Request): boolean {
+    return req.accepts(['html', 'json']) === 'json';
+}
+
+/** Ein Status, HTML wie JSON nutzen ihn. */
+function patStatus(t: { revokedAt: Date | null; expiresAt: Date }, now: Date): PatStatus {
+    if (t.revokedAt) return 'revoked';
+    if (t.expiresAt.getTime() < now.getTime()) return 'expired';
+    return 'active';
+}
+
+function tokenJson(t: { jti: string; createdAt: Date; expiresAt: Date; revokedAt: Date | null }) {
+    return {
+        jti: t.jti,
+        createdAt: t.createdAt.toISOString(),
+        expiresAt: t.expiresAt.toISOString(),
+        revokedAt: t.revokedAt ? t.revokedAt.toISOString() : null,
+        status: patStatus(t, new Date()),
+    };
+}
+
 function requireSession(req: Request, res: Response): string | null {
     const uid = req.session?.userId;
-    if (!uid) {
+    if (uid) return uid;
+    if (wantsJson(req)) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(401).json({ error: 'unauthorized', error_description: 'Sign in to manage personal access tokens.' });
+    } else {
         res.status(401).send(notLoggedInPage());
-        return null;
     }
-    return uid;
+    return null;
 }
 
 export function createPersonalTokensRouter(prisma: PrismaClient): Router {
@@ -36,6 +68,11 @@ export function createPersonalTokensRouter(prisma: PrismaClient): Router {
             where: { userId, clientId: PAT_CLIENT_ID },
             orderBy: { createdAt: 'desc' },
         });
+        if (wantsJson(req)) {
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(200).json({ ok: true, tokens: tokens.map(tokenJson) });
+            return;
+        }
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(renderListPage(tokens, null));
     });
@@ -50,7 +87,7 @@ export function createPersonalTokensRouter(prisma: PrismaClient): Router {
             scope: 'default',
             ttlSeconds: PAT_TTL_SEC,
         });
-        await prisma.accessToken.create({
+        const created = await prisma.accessToken.create({
             data: {
                 jti: access.jti,
                 userId,
@@ -59,6 +96,21 @@ export function createPersonalTokensRouter(prisma: PrismaClient): Router {
                 expiresAt: access.expiresAt,
             },
         });
+
+        if (wantsJson(req)) {
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(201).json({
+                ok: true,
+                token: {
+                    jti: created.jti,
+                    jwt: access.jwt,
+                    createdAt: created.createdAt.toISOString(),
+                    expiresAt: created.expiresAt.toISOString(),
+                    status: 'active',
+                },
+            });
+            return;
+        }
 
         const tokens = await prisma.accessToken.findMany({
             where: { userId, clientId: PAT_CLIENT_ID },
@@ -72,11 +124,29 @@ export function createPersonalTokensRouter(prisma: PrismaClient): Router {
         const userId = requireSession(req, res);
         if (!userId) return;
 
-        await prisma.accessToken.updateMany({
-            where: { jti: paramString(req.params.jti), userId, clientId: PAT_CLIENT_ID },
+        const jti = paramString(req.params.jti);
+        const updated = await prisma.accessToken.updateMany({
+            where: { jti, userId, clientId: PAT_CLIENT_ID },
             data: { revokedAt: new Date() },
         });
-        res.redirect('/auth/tokens');
+
+        if (!wantsJson(req)) {
+            res.redirect('/auth/tokens');
+            return;
+        }
+
+        res.setHeader('Cache-Control', 'no-store');
+        if (updated.count > 0) {
+            res.status(200).json({ ok: true, jti, status: 'revoked' });
+            return;
+        }
+        // count 0: fremd, unbekannt, oder (eigen und schon widerrufen) — pruefen statt raten.
+        const existing = await prisma.accessToken.findFirst({ where: { jti, userId, clientId: PAT_CLIENT_ID } });
+        if (!existing) {
+            res.status(404).json({ error: 'not_found' });
+            return;
+        }
+        res.status(200).json({ ok: true, jti, status: 'revoked' });
     });
 
     return router;
@@ -128,14 +198,14 @@ function renderListPage(
     tokens: Array<{ jti: string; expiresAt: Date; revokedAt: Date | null; createdAt: Date }>,
     fresh: string | null,
 ): string {
+    const now = new Date();
     const rows = tokens.length === 0
         ? '<tr><td colspan="4" class="empty">No tokens yet — create one below.</td></tr>'
         : tokens.map((t) => {
-            const status = t.revokedAt
-                ? '<span class="pill pill-rev">revoked</span>'
-                : t.expiresAt.getTime() < Date.now()
-                ? '<span class="pill pill-rev">expired</span>'
-                : '<span class="pill pill-ok">active</span>';
+            const st = patStatus(t, now);
+            const status = st === 'active'
+                ? '<span class="pill pill-ok">active</span>'
+                : `<span class="pill pill-rev">${st}</span>`;
             return [
                 '<tr>',
                 `<td class="id">${escapeHtml(t.jti.slice(0, 8))}…</td>`,

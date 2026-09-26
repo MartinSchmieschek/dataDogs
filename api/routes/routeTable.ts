@@ -20,8 +20,8 @@ export const PUBLIC_ROUTE = {
 } as const;
 export const PUBLIC_ROUTES = [PUBLIC_ROUTE.kennel, PUBLIC_ROUTE.docs, PUBLIC_ROUTE.openapi] as const;
 
-/** Buehne: Angular-Routen (`/dogs` seit P6 U5; `/account`, `/login` folgen in U7; kein `/dogs/:id`, 8.21). */
-export const SPA_ROUTES = ['/kennels', '/kennels/:id', '/kennels/:id/edit', '/dogs'] as const;
+/** Buehne: Angular-Routen (`/dogs` seit P6 U5; `/account`, `/login` seit U7; kein `/dogs/:id`, 8.21). */
+export const SPA_ROUTES = ['/kennels', '/kennels/:id', '/kennels/:id/edit', '/dogs', '/account', '/login'] as const;
 
 /**
  * Werkstatt, generisch: ConfigRouteHandler bedient kennels und nodes ueber `:subpath`.

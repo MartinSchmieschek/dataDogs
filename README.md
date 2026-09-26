@@ -318,7 +318,7 @@ Super-user mode exists only in development. In `production`/`integration` (`NODE
 ### Identity
 
 - **Google SSO** via `GET /auth/google/login` → cookie session for the browser UI.
-- **Personal Access Tokens** at `GET /auth/tokens` (HTML page). Long-lived JWTs for MCP clients, Custom GPT API-keys, scripts.
+- **Personal Access Tokens** at `GET /auth/tokens` (HTML page). Long-lived JWTs for MCP clients, Custom GPT API-keys, scripts. The same three routes also answer JSON to `Accept: application/json` (`{ ok, tokens }` / `{ ok, token }`) — the `/account?tab=tokens` screen uses this.
 - **Full OAuth 2.1 Authorization Server** at `/auth/authorize`, `/auth/token`, `/auth/register`. Discovery via `GET /.well-known/oauth-authorization-server` — for clients that auto-configure (Cursor, Claude.ai Connectors, Custom GPTs with OAuth).
 
 ### Visibility & Ownership
@@ -375,9 +375,9 @@ GET  /auth/google/login                Start Google flow (?returnTo=…)
 GET  /auth/google/callback             Google OAuth callback
 POST /auth/logout                      Clear session
 
-GET  /auth/tokens                      HTML — manage Personal Access Tokens
-POST /auth/tokens                      Create new PAT (returned once)
-POST /auth/tokens/:jti/revoke          Revoke a PAT
+GET  /auth/tokens                      HTML — manage Personal Access Tokens; JSON with Accept: application/json
+POST /auth/tokens                      Create new PAT (returned once); JSON with Accept: application/json
+POST /auth/tokens/:jti/revoke          Revoke a PAT; JSON with Accept: application/json
 
 GET  /auth/authorize                   OAuth 2.1 authorization endpoint
 POST /auth/authorize                   Consent submit
