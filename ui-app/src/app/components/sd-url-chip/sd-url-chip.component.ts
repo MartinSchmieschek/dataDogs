@@ -18,7 +18,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, signal }
   styles: [`
     .cmd { display: flex; align-items: center; gap: var(--s3); max-width: 100%; padding: var(--s2) var(--s2) var(--s2) var(--s3);
       background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
-    code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 13px/19px var(--font-mono); user-select: all; }
+    code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 13px/19px var(--font-mono); user-select: all; }
     .cp { flex: none; min-width: 36px; min-height: 36px; border: 1px solid var(--ink-soft); background: none;
       color: var(--paper); cursor: pointer; font-size: 12px; }
   `],

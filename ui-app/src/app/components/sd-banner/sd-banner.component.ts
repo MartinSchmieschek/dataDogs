@@ -25,7 +25,7 @@ import { ErrorVideoPopupService } from '../../services/error-video-popup.service
     .b { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap;
       padding: var(--s2) var(--s3); border-left: 2px solid var(--ink-2); background: var(--paper-2); }
     .danger { border-left-color: var(--danger-ink); background: var(--danger-soft); }
-    .t { min-width: 0; }
+    .t { min-width: 0; overflow-wrap: anywhere; }
     .a { display: flex; gap: var(--s2); }
   `],
 })

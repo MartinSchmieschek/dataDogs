@@ -34,7 +34,8 @@ const PY = 12;
         <span class="vl">versions</span>
       </div>
       <div class="vs">
-        <svg [attr.width]="sw" [attr.height]="sh">
+        <svg [attr.width]="sw" [attr.height]="sh" [attr.viewBox]="'0 0 ' + sw + ' ' + sh"
+          preserveAspectRatio="xMinYMid meet">
           @if (trunk) {
             <line [attr.x1]="trunk.x1" [attr.y1]="trunk.y1"
                   [attr.x2]="trunk.x2" [attr.y2]="trunk.y2" class="tl"/>
@@ -84,8 +85,8 @@ const PY = 12;
     .vc{padding:var(--s2) var(--s3) var(--s1);background:var(--paper-2);border-top:1px solid var(--line)}
     .vh{display:flex;align-items:center;gap:6px;margin-bottom:3px}
     .vl{font-size:11px;line-height:14px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}
-    .vs{overflow-x:auto;overflow-y:hidden}
-    svg{display:block}
+    .vs{overflow:hidden}
+    svg{display:block;max-width:100%;height:auto}
 
     .tl{stroke:var(--line-strong);stroke-width:1.5}
     .el{fill:none;stroke:var(--line-strong);stroke-width:1.5}

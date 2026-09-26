@@ -7,7 +7,7 @@ export interface SdSortOption<K extends string = string> {
 
 /**
  * Sort chips (6.5 `sd-sort`, variant kennels): outline chips, the active one is ink (never orange),
- * `⇅` flips the direction, an optional `mine only` filter. On narrow screens the row scrolls sideways.
+ * `⇅` flips the direction, an optional `mine only` filter. On narrow screens the row wraps.
  */
 @Component({
   selector: 'sd-sort',
@@ -29,9 +29,8 @@ export interface SdSortOption<K extends string = string> {
     </div>
   `,
   styles: [`
-    .row { display: flex; gap: var(--s2); align-items: center; overflow-x: auto; scrollbar-width: none;
+    .row { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center;
       padding: 2px 3px 4px 0; }
-    .row::-webkit-scrollbar { display: none; }
     .row > * { flex: none; }
     .dir { letter-spacing: .06em; }
   `],

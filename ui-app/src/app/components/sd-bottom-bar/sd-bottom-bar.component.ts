@@ -38,12 +38,13 @@ import { SdTapeDeckComponent } from '../sd-tape-deck/sd-tape-deck.component';
     :host { display: none; }
     @media (max-width: 767px) {
       :host { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-sticky); }
-      .bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s2);
-        height: 60px; padding: 0 var(--s3) env(safe-area-inset-bottom); background: var(--paper);
+      .bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center;
+        gap: var(--s2); height: 60px; padding: 0 var(--s3) env(safe-area-inset-bottom); background: var(--paper);
         border-top: 2px solid var(--ink); }
-      .tab { min-height: 44px; border: 0; background: none; color: var(--ink); text-decoration: none;
+      .tab { min-width: 0; min-height: 44px; border: 0; background: none; color: var(--ink); text-decoration: none;
         font: 700 11px/14px var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
-        display: grid; place-items: center; cursor: pointer; }
+        display: grid; place-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+        cursor: pointer; }
       .tab:disabled { color: var(--ink-3); cursor: not-allowed; }
       .tab.on { box-shadow: inset 0 -3px 0 var(--ink); }
       .run { min-width: 120px; min-height: 44px; }

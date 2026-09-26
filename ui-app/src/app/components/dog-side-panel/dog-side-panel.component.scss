@@ -83,6 +83,7 @@
   font-size: 12px;
   line-height: 17px;
   flex-shrink: 0;
+  overflow-wrap: anywhere;
 }
 
 .save-bar-sticky {
@@ -98,7 +99,7 @@
   z-index: 10;
 }
 
-.save-error { color: var(--danger-ink); font-size: 12px; }
+.save-error { color: var(--danger-ink); font-size: 12px; overflow-wrap: anywhere; }
 .save-success { color: var(--live-ink); font-size: 12px; }
 
 .spacer { flex: 1; }

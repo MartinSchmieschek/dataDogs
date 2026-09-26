@@ -176,7 +176,7 @@
   flex: none;
   padding: 0 var(--s4);
   background: var(--paper-2);
-  overflow-x: auto;
+  flex-wrap: wrap;
 
   &[hidden] {
     display: none;
