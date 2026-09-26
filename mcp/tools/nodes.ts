@@ -108,6 +108,9 @@ export function getNodeTools(): ToolDef[] {
                         // Verdrahtungs-Anweisung fuer Infrastruktur-Dogs (z.B. die Lobby) --
                         // damit niemand sie nachbaut, weil er sie nicht gefunden hat.
                         guidance: b.guidance ?? null,
+                        // P6: dasselbe `pack` wie GET /api/nodes — beim Boot an der echten Instanz
+                        // abgeleitet (createHttpApplication, BaseDogPacks), hier nur durchgereicht.
+                        pack: b.pack ?? null,
                         visibility: 'public',
                         ownerId: null as string | null,
                         tsCodePreview: null as string | null,

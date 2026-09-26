@@ -38,6 +38,7 @@ import { KennelStatsService } from '../services/KennelStatsService';
 import type { IDogStatsStore, IKennelStatsStore } from '../store/IKennelStatsStore';
 import type { DogReferenceIndex } from '../services/DogReferenceIndex';
 import { DogStatsService } from '../services/DogStatsService';
+import { BaseDogPacks } from '../services/BaseDogPacks';
 import type { BaseDogInfo } from '../mcp/tools/types';
 import type { HttpFrontEndBinder, HttpFrontEndContext } from './httpFrontEndTypes';
 import { LandingPage } from './LandingPage';
@@ -312,11 +313,15 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
 
     // Der Vertrag muss mit: ohne parentsRequired/-Optional sieht ein Agent zwar die Namen der
     // Hunde, kann sie aber nicht verdrahten (frueher standen hier hartcodiert leere Arrays).
+    // Das Paket (`pack`, P6) haengt an der Klasse — hier, solange die echte Instanz noch da ist;
+    // list_nodes sieht danach nur noch das flache Objekt (dieselbe Ableitung wie GET /api/nodes).
+    const packs = BaseDogPacks.fromLoadedModules();
     const baseDogsList: BaseDogInfo[] = allBaseDogs.map((dog) => {
         // Infrastruktur-Dogs tragen ihre Verdrahtungs-Anweisung als statisches Feld an der
         // Klasse (siehe WebSocketChannelRetriever.mcpGuidance). Von dort reist sie bis in
         // list_nodes und in den initialize-Brief -- eine Quelle, kein zweiter Ort zum Verrotten.
         const guidance = (dog as any)?.constructor?.mcpGuidance;
+        const pack = packs.packOf(dog);
         return {
             id: 'base:' + dog.name,
             name: dog.name,
@@ -326,6 +331,7 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
             parentsRequired: dependencyNames((dog as any).required),
             parentsOptional: dependencyNames((dog as any).optional),
             ...(typeof guidance === 'string' && guidance ? { guidance } : {}),
+            ...(pack ? { pack } : {}),
         };
     });
 

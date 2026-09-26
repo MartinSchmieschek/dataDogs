@@ -37,6 +37,11 @@ export interface BaseDogInfo {
      * drift out of sync with a separate document.
      */
     guidance?: string;
+    /**
+     * The package the dog comes from (`dogs-weather`, `core`) — read once at boot from the loaded
+     * module graph (`BaseDogPacks`), the same value GET /api/nodes carries as `pack`.
+     */
+    pack?: string;
 }
 
 export interface ToolDeps {

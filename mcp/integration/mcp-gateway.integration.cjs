@@ -415,6 +415,16 @@ async function run() {
     fail('list_nodes', e.message);
   }
 
+  // P6 4.0: list_nodes carries `pack` like GET /api/nodes -- at least one BaseDog proves it.
+  try {
+    const nodes = await mcpCall('list_nodes', { type: 'BaseDog', limit: 200 });
+    const packed = (nodes?.nodes ?? []).find((n) => typeof n.pack === 'string' && n.pack);
+    if (!packed) fail('list_nodes pack', 'no BaseDog carries a pack field');
+    else pass('list_nodes pack', `${packed.id} -> ${packed.pack}`);
+  } catch (e) {
+    fail('list_nodes pack', e.message);
+  }
+
   // build_kennel: die Antwort nennt die Adressen unter /k/ (P3)
   const probeId = `gateway-probe-${Date.now()}`;
   try {
