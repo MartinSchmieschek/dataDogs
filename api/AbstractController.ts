@@ -44,6 +44,14 @@ export interface IControllerResponse<T = any> {
 }
 
 /**
+ * Was ein Loeschen per Referenz getroffen hat: eine lineageId nimmt die ganze Lineage, eine Versions-GUID genau
+ * diese Version. Fehler tragen einen Code, nie den rohen Store-Text (Prisma nennt Dateipfade und Tabellen).
+ */
+export type IDeleteOutcome =
+    | { ok: true; scope: 'lineage' | 'version'; lineageId: string; deleted: number }
+    | { ok: false; code: 'not_found' | 'delete_failed' };
+
+/**
  * The AbstractController — a skeletal captain that all concrete controllers must flesh out.
  * It enforces the pact: create and save must be implemented by every crew member.
  * To cosmic madness laws submit, though stalwart minds entreat — here the stalwart law holds firm.
@@ -263,6 +271,63 @@ export abstract class AbstractController<T extends IEntity = IEntity> {
         } catch (error) {
             return { ok: false, error: String(error) };
         }
+    }
+
+    /**
+     * Loeschen per Referenz (DELETE /api/:subpath/:id, delete_node): eine lineageId loescht alle Versionen der
+     * Lineage, eine Versions-GUID genau eine. Eine id, die weder das eine noch das andere ist, aber sich aufloesen
+     * laesst (Kennel-ID in anderer Schreibweise), meint die Lineage ihres Treffers. Rechte prueft der Aufrufer.
+     */
+    async deleteRef(id: string): Promise<IDeleteOutcome> {
+        try {
+            if (!id) return { ok: false, code: 'not_found' };
+            const lineage = await this.store.findAllVersions(this.entityType, id);
+            if (lineage.length > 0) return await this.deleteLineageRows(id, lineage.map((v) => v.id));
+
+            const row = await this.store.load(id);
+            if (!row) {
+                const resolved = await this.getById(id);
+                const lineageId = (resolved.data as any)?.lineageId;
+                if (!resolved.ok || !lineageId || lineageId === id) return { ok: false, code: 'not_found' };
+                const versions = await this.store.findAllVersions(this.entityType, lineageId);
+                if (versions.length === 0) return { ok: false, code: 'not_found' };
+                return await this.deleteLineageRows(lineageId, versions.map((v) => v.id));
+            }
+
+            const lineageId = AbstractController.lineageOfRow(row) || id;
+            await this.store.delete(id);
+            const left = await this.store.findAllVersions(this.entityType, lineageId);
+            await this.afterDelete(lineageId, left.length === 0);
+            return { ok: true, scope: 'version', lineageId, deleted: 1 };
+        } catch (error) {
+            console.error(`[${this.entityType}.deleteRef] ${id}:`, error);
+            return { ok: false, code: 'delete_failed' };
+        }
+    }
+
+    private async deleteLineageRows(lineageId: string, versionIds: string[]): Promise<IDeleteOutcome> {
+        for (const versionId of versionIds) await this.store.delete(versionId);
+        await this.afterDelete(lineageId, true);
+        return { ok: true, scope: 'lineage', lineageId, deleted: versionIds.length };
+    }
+
+    /** Die Lineage einer Store-Zeile — an der Zeile oder im serializedDogConfig. */
+    private static lineageOfRow(row: any): string | null {
+        try {
+            const cfg = typeof row === 'string' ? JSON.parse(row) : row;
+            const inner = typeof cfg?.serializedDogConfig === 'string' ? JSON.parse(cfg.serializedDogConfig) : null;
+            return cfg?.lineageId || inner?.lineageId || null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Aufraeumen nach deleteRef: `lineageGone` = keine Version mehr uebrig (Statistik, Referenzen fallen), sonst
+     * ist eine aeltere Version jetzt der Kopf. Scheitert es, bleibt das Loeschen gueltig — nur loggen.
+     */
+    protected async afterDelete(_lineageId: string, _lineageGone: boolean): Promise<void> {
+        /* Basis: nichts nachzuziehen */
     }
 
     /**

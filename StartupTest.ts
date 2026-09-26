@@ -370,6 +370,8 @@ export class StartupTest {
 
             // Fix-Runde: Kompression (brotli/gzip) fuer Textantworten, nie fuer SSE, HEAD, Schriften
             await this.testResponseCompression();
+            // Fix-Runde: DELETE nach Version oder Lineage, Codes statt Store-Text
+            await this.testDeleteRefScopes(nodesController, kennelsController as KennelController);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -6256,6 +6258,84 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Fix-Runde: DELETE /api/:subpath/:id — eine Versions-GUID loescht genau diese Version, die lineageId die ganze
+     * Lineage (Kennel und Dog); Fremde 403 forbidden, frozen 409, Unbekanntes und doppeltes Loeschen 404 not_found —
+     * nie der rohe Store-Text (Prisma nannte Dateipfad und Tabelle).
+     */
+    private async testDeleteRefScopes(nodesController: Controller<ISerializedDogConfig>, kennelsController: KennelController): Promise<void> {
+        const testName = 'Fix-Runde: DELETE Version vs. Lineage, Codes statt Store-Text';
+        const kennelId = `test-delete-ref-${Date.now()}`;
+        const frozenId = `${kennelId}-frozen`;
+        let dogLineage: string | undefined;
+        try {
+            const registry = new ControllerRegistry();
+            registry.register('nodes', nodesController);
+            registry.register('kennels', kennelsController);
+            const handler = new ConfigRouteHandler(registry);
+            const del = (subpath: string, id: string, ctx: AuthCtx) =>
+                this.callHandler(handler, 'handleDelete', { params: { subpath, id }, ctx, method: 'DELETE' });
+            const owner = this.fakeUser('UD1');
+            const clean = (label: string, out: { statusCode: number; body: any }, status: number, code: string) => {
+                if (out.statusCode !== status || out.body?.error !== code) throw new Error(`${label}: ${out.statusCode} ${JSON.stringify(out.body)}`);
+                if (/prisma|invocation|[A-Z]:\\|\.ts:\d/i.test(JSON.stringify(out.body))) throw new Error(`${label}: Store-Text in der Antwort`);
+            };
+
+            // Kennel: drei Versionen
+            const created = await kennelsController.create({ id: kennelId, name: 'Delete v1', dogIds: [], visibility: 'public', ownerId: 'UD1' });
+            if (!created.ok) throw new Error(`Kennel: ${created.error}`);
+            await kennelsController.save({ id: kennelId, name: 'Delete v2' } as any);
+            await kennelsController.save({ id: kennelId, name: 'Delete v3' } as any);
+            const kennelVersions = await kennelsController.getVersions(kennelId);
+            if (kennelVersions.length !== 3) throw new Error(`Kennel-Versionen: ${kennelVersions.length}`);
+            const oldestKennel = kennelVersions[kennelVersions.length - 1].id;
+            clean('Kennel fremd', await del('kennels', kennelId, this.fakeUser('UD2')), 403, 'forbidden');
+            const oneKennel = await del('kennels', oldestKennel, owner);
+            if (oneKennel.statusCode !== 200 || oneKennel.body?.scope !== 'version' || oneKennel.body?.deleted !== 1) throw new Error(`Kennel-Version: ${JSON.stringify(oneKennel.body)}`);
+            if ((await kennelsController.getVersions(kennelId)).length !== 2) throw new Error('Kennel: Versions-GUID nahm mehr als eine Version');
+            const allKennel = await del('kennels', kennelId, owner);
+            if (allKennel.statusCode !== 200 || allKennel.body?.scope !== 'lineage' || allKennel.body?.deleted !== 2) throw new Error(`Kennel-Lineage: ${JSON.stringify(allKennel.body)}`);
+            if ((await kennelsController.getById(kennelId)).ok) throw new Error('Kennel lebt nach Lineage-Delete');
+            clean('Kennel doppelt', await del('kennels', kennelId, owner), 404, 'not_found');
+
+            const frozen = await kennelsController.create({ id: frozenId, name: 'Delete frozen', dogIds: [], visibility: 'public', ownerId: 'UD1' });
+            if (!frozen.ok) throw new Error(`Kennel frozen: ${frozen.error}`);
+            await kennelsController.setFrozen(frozenId, true);
+            clean('Kennel frozen', await del('kennels', frozenId, owner), 409, 'frozen');
+
+            // Dog: zwei Versionen
+            const dog = await nodesController.create({ displayName: 'DeleteRefDog', theRun: 'return 1;', parentsRequired: [], parentsOptional: [], ownerId: 'UD1', visibility: 'public' });
+            if (!dog.ok || !dog.data?.lineageId) throw new Error(`Dog: ${dog.error}`);
+            dogLineage = dog.data.lineageId;
+            this.createdTestIds.push(dog.id!);
+            const second = await nodesController.save({ id: dogLineage, theRun: 'return 2;', parentsRequired: [], parentsOptional: [] });
+            if (!second.ok) throw new Error(`Dog v2: ${second.error}`);
+            if (second.id) this.createdTestIds.push(second.id);
+            const firstDogVersion = dog.id!;
+            clean('Dog fremd', await del('nodes', dogLineage, this.fakeUser('UD2')), 403, 'forbidden');
+            const oneDog = await del('nodes', firstDogVersion, owner);
+            if (oneDog.statusCode !== 200 || oneDog.body?.scope !== 'version' || oneDog.body?.lineageId !== dogLineage) throw new Error(`Dog-Version: ${JSON.stringify(oneDog.body)}`);
+            if ((await nodesController.getVersions(dogLineage)).length !== 1) throw new Error('Dog: Versions-GUID nahm mehr als eine Version');
+            clean('Dog-Version doppelt', await del('nodes', firstDogVersion, owner), 404, 'not_found');
+            const allDog = await del('nodes', dogLineage, owner);
+            if (allDog.statusCode !== 200 || allDog.body?.scope !== 'lineage' || allDog.body?.deleted !== 1) throw new Error(`Dog-Lineage: ${JSON.stringify(allDog.body)}`);
+            // Frueher: 400 mit dem rohen Prisma-Text ("Record to delete does not exist", Dateipfad).
+            clean('Dog doppelt', await del('nodes', dogLineage, owner), 404, 'not_found');
+            clean('unbekannt', await del('nodes', `gibt-es-nicht-${Date.now()}`, owner), 404, 'not_found');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.setFrozen(frozenId, false); } catch { /* ignore */ }
+            for (const id of [kennelId, frozenId]) {
+                try { await kennelsController.delete(id); } catch { /* ignore */ }
+            }
+            if (dogLineage) {
+                try { await nodesController.deleteRef(dogLineage); } catch { /* ignore */ }
+            }
         }
     }
 

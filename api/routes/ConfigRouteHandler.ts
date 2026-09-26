@@ -503,7 +503,8 @@ export class ConfigRouteHandler {
 
     /**
      * Handles DELETE /api/:subpath/:id — casts the entity overboard.
-     * Once consigned to the void, it shall not return.
+     * Eine lineageId nimmt die ganze Lineage, eine Versions-GUID genau diese Version (deleteRef). Die Antwort
+     * nennt, was fiel ({ ok, scope, lineageId, deleted }); Fehler kommen als Code, nie als roher Store-Text.
      */
     private async handleDelete(req: Request, res: Response): Promise<void> {
         try {
@@ -512,36 +513,47 @@ export class ConfigRouteHandler {
             const controller = this.registry.get(subpath);
 
             if (!controller) {
-                res.status(404).json({ error: `Controller for subpath '${subpath}' not found` });
+                res.status(404).json({ error: 'not_found', error_description: `No entities at /api/${subpath}.` });
                 return;
             }
 
             // Both kennels and nodes: must own (or have edit rights) the entity to delete.
             const existing = await controller.getById(id);
             if (!existing.ok || !existing.data) {
-                res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
+                res.status(404).json({ error: 'not_found' });
                 return;
             }
             const allowed = await this.canMutateForSubpath(subpath, existing.data, req);
             if (!allowed) {
-                res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
-                    error: canRead(existing.data, req.ctx)
-                        ? `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} zu löschen`
-                        : `Entity mit ID ${id} nicht gefunden`,
-                });
+                ConfigRouteHandler.sendDeleteRefused(res, existing.data, req, subpath);
                 return;
             }
 
-            const result = await controller.delete(id);
-            if (result.ok) {
-                res.status(200).json({ ok: true });
+            const outcome = await controller.deleteRef(id);
+            if (outcome.ok) {
+                res.status(200).json({ ok: true, scope: outcome.scope, lineageId: outcome.lineageId, deleted: outcome.deleted });
+            } else if (outcome.code === 'not_found') {
+                res.status(404).json({ error: 'not_found' });
             } else {
-                res.status(400).json({ error: result.error });
+                res.status(400).json({ error: outcome.code, error_description: 'Delete failed. Nothing or only part of it may be gone — reload and try again.' });
             }
         } catch (e) {
             console.error(`[ConfigRouteHandler.handleDelete] Fehler:`, e);
-            res.status(500).json({ error: String(e) });
+            res.status(500).json({ error: 'delete_failed' });
         }
+    }
+
+    /** Die Antwort auf ein verweigertes Loeschen, als Code: 404 fuer Nicht-Leser, 409 frozen, sonst 403. */
+    private static sendDeleteRefused(res: Response, entity: any, req: Request, subpath: string): void {
+        if (!canRead(entity, req.ctx)) {
+            res.status(404).json({ error: 'not_found' });
+            return;
+        }
+        if (isFrozen(entity)) {
+            res.status(409).json({ error: 'frozen', error_description: 'Frozen. Unfreeze it first.' });
+            return;
+        }
+        res.status(403).json({ error: 'forbidden', error_description: `Not allowed to delete this ${subpath === 'kennels' ? 'kennel' : 'dog'}.` });
     }
 
     /**

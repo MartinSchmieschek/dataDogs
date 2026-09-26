@@ -546,7 +546,7 @@ export class KennelListComponent {
     if (!ok) return;
     this.kennelService.delete(ref).subscribe({
       next: (res) => (res.ok ? this.reload() : this.error.set(res.error ?? 'Delete failed.')),
-      error: (err) => this.error.set(err?.error?.error ?? `Delete failed (${err?.status ?? 'network'}).`),
+      error: (err) => this.error.set(err?.error?.error_description ?? err?.error?.error ?? `Delete failed (${err?.status ?? 'network'}).`),
     });
   }
 

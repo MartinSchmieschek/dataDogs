@@ -66,6 +66,24 @@ export class Controller<T extends { id?: string; lineageId?: string; parentId?: 
         return result;
     }
 
+    /**
+     * Nach deleteRef (P4b wie delete): Lineage weg -> der Referenzindex vergisst den Dog; eine Version weg -> die
+     * parents der neuen Kopfversion gelten.
+     */
+    protected async afterDelete(lineageId: string, lineageGone: boolean): Promise<void> {
+        if (!this.refIndex) return;
+        try {
+            if (lineageGone) {
+                await this.refIndex.forgetDog(lineageId);
+                return;
+            }
+            const head = await this.getById(lineageId);
+            if (head.ok && head.data) await this.syncParentRefs(lineageId, (head.data as any).ownerId, head.data);
+        } catch (err) {
+            console.warn(`[Controller.deleteRef] dog ${lineageId} not cleaned up:`, err);
+        }
+    }
+
     /** Die Lineage einer Version (PK-Lookup); ohne Zeile ist die id selbst gemeint. */
     private async lineageOfVersion(id: string): Promise<string | null> {
         try {

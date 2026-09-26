@@ -529,6 +529,24 @@ export class KennelController extends AbstractController<IKennelConfig> {
     }
 
     /**
+     * Nach deleteRef: Lineage weg -> Zaehler, Sterne und Crew-Referenzen fallen (wie delete); eine Version weg ->
+     * die Crew der neuen Kopfversion gilt.
+     */
+    protected async afterDelete(lineageId: string, lineageGone: boolean): Promise<void> {
+        try {
+            if (lineageGone) {
+                if (this.statsJanitor) await this.statsJanitor.forgetKennel(lineageId);
+                if (this.refIndex) await this.refIndex.removeFrom('kennel', lineageId);
+                return;
+            }
+            const head = await this.getById(lineageId);
+            if (head.ok && head.data) await this.syncCrewRefs(lineageId, (head.data as any).ownerId, head.data.dogIds);
+        } catch (err) {
+            console.warn(`[KennelController.deleteRef] ${lineageId} not cleaned up:`, err);
+        }
+    }
+
+    /**
      * Effective timestamp for ordering Kennel rows — createdAt plus heal bumps on updatedAt.
      * SQLite may round DateTime to whole seconds; two saves in the same second used to make
      * sort-by-createdAt alone pick the wrong "latest" row (defaults vanished after reload).
