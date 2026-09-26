@@ -28,6 +28,8 @@
           <strong>{{ user()!.name || 'Signed in' }}</strong>
           <small>{{ user()!.email }}</small>
         </div>
+        <a class="menu-row menu-action" role="menuitem" routerLink="/account" (click)="closeMenu()">Account</a>
+        <a class="menu-row menu-action" role="menuitem" routerLink="/account" [queryParams]="{ tab: 'keys' }" (click)="closeMenu()">Keys</a>
         <button class="menu-row menu-action" type="button" role="menuitem" (click)="onLogout()">
           Sign out
         </button>

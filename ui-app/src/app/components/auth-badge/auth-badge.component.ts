@@ -1,20 +1,21 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, computed, HostListener, inject, OnInit, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 
 /**
- * Top-right floating pill: shows current user (or a login button) plus a logout/menu.
- * Polls /auth/me once on init via the AuthService signals.
+ * Top-right badge (6.5 `sd-auth-badge`): signed out a quiet `Sign in` that goes to `/login` with the
+ * way back; signed in the avatar and a menu — Account, Keys, Sign out (P6 U7).
  */
 @Component({
     selector: 'app-auth-badge',
     standalone: true,
-    imports: [CommonModule],
+    imports: [RouterLink],
     templateUrl: './auth-badge.component.html',
     styleUrls: ['./auth-badge.component.scss'],
 })
 export class AuthBadgeComponent implements OnInit {
     private auth = inject(AuthService);
+    private router = inject(Router);
 
     readonly user = this.auth.user;
     readonly isReady = this.auth.isReady;
@@ -40,11 +41,19 @@ export class AuthBadgeComponent implements OnInit {
     }
 
     onLogin(): void {
-        this.auth.login();
+        const here = this.router.url;
+        const returnTo = here.startsWith('/login') ? '/kennels' : here;
+        void this.router.navigate(['/login'], { queryParams: { returnTo } });
     }
 
     async onLogout(): Promise<void> {
         await this.auth.logout();
+        this.menuOpen.set(false);
+        if (this.router.url.startsWith('/account')) void this.router.navigate(['/kennels']);
+    }
+
+    @HostListener('document:keydown.escape')
+    onEscape(): void {
         this.menuOpen.set(false);
     }
 }

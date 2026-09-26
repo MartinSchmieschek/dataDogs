@@ -36,6 +36,18 @@ export const routes: Routes = [
       .then(m => m.DogsBrowserComponent),
   },
   {
+    // S9 (P6 U7): profile, personal tokens, keys — `?tab=profile|tokens|keys`; signed out -> /login.
+    path: 'account',
+    loadComponent: () => import('./pages/account/account.component')
+      .then(m => m.AccountComponent),
+  },
+  {
+    // S10 (P6 U7): one button, one verse; `?returnTo=` a path on this site.
+    path: 'login',
+    loadComponent: () => import('./pages/login/login.component')
+      .then(m => m.LoginComponent),
+  },
+  {
     path: 'kennel',
     redirectTo: 'kennels',
     pathMatch: 'full',
