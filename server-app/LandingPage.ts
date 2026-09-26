@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { KennelRunAttribution } from '../api/routes/KennelRunHandler';
 import { isHtmlResultString } from '../services/leadResultStringFormat';
 import { LandingKennels } from '../mcp/auth/landingKennels';
+import { BetaKeys } from '../mcp/auth/betaKeys';
 
 /** Wer die Lead-Ausgabe eines Kennels liefert — der KennelRunHandler (P5: `runLeadAsAnonymous`). */
 export interface LandingRunner {
@@ -65,6 +66,8 @@ export class LandingPage {
     static readonly FORCE_PARAM = 'landing';
     /** So zeigen die Skins den Platzhalter `<host>` an. */
     static readonly HOST_MARK = '‹host›';
+    /** Der Stage-Platzhalter in `<html data-stage="…">` (Skin C, "STAGE FLAG"): SLOPDOGS_STAGE, sonst leer. */
+    static readonly STAGE_MARK = '‹stage›';
 
     readonly kennelIds: readonly string[];
     readonly defaultKennelId: string;
@@ -171,7 +174,7 @@ export class LandingPage {
             return;
         }
         this.setHeaders(res, page, !!forced);
-        res.status(200).send(LandingPage.withHost(page.html, LandingPage.baseOf(req)));
+        res.status(200).send(LandingPage.withHost(page.html, LandingPage.baseOf(req), BetaKeys.stage()));
     }
 
     /** HEAD / (Keepalive, ki-fruechte): nie ein Lauf — nur, was Memo oder Fallback schon haben. */
@@ -187,10 +190,15 @@ export class LandingPage {
         res.status(200).end();
     }
 
-    /** `https://‹host›` wird die Basis-URL, jedes weitere `‹host›` ihr Host; ohne gueltige Basis bleibt der Platzhalter. */
-    static withHost(html: string, base: URL | null): string {
-        if (!base) return html;
-        return html.split(`https://${LandingPage.HOST_MARK}`).join(base.origin).split(LandingPage.HOST_MARK).join(base.host);
+    /**
+     * `https://‹host›` wird die Basis-URL, jedes weitere `‹host›` ihr Host; ohne gueltige Basis bleibt der Platzhalter.
+     * `‹stage›` wird die Stage (SLOPDOGS_STAGE, normalisiert auf [a-z0-9-]): `beta` zeigt den Beta-Sticker, leer nichts.
+     * Gilt fuer die Kennel-Ausgabe und den statischen Fallback gleich.
+     */
+    static withHost(html: string, base: URL | null, stage = ''): string {
+        const staged = html.split(LandingPage.STAGE_MARK).join(stage);
+        if (!base) return staged;
+        return staged.split(`https://${LandingPage.HOST_MARK}`).join(base.origin).split(LandingPage.HOST_MARK).join(base.host);
     }
 
     /** Die oeffentliche Basis: MCP_BASE_URL, sonst Protokoll + Host der Anfrage — nur, was als Host taugt. */

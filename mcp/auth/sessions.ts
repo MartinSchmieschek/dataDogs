@@ -8,6 +8,8 @@ import type { RequestHandler } from 'express';
 declare module 'express-session' {
     interface SessionData {
         userId?: string;
+        /** Beta-Key aus /auth/google/login?betaKey= — gilt nur fuer das Anlegen eines neuen Kontos (BETA_MODE). */
+        betaKey?: string;
         pkce?: {
             codeVerifier: string;
             state: string;

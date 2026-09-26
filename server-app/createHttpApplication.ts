@@ -17,6 +17,8 @@ import { KennelBundleHandler } from '../api/routes/KennelBundleHandler';
 import { KennelRatingHandler } from '../api/routes/KennelRatingHandler';
 import { LandingRouteHandler } from '../api/routes/LandingRouteHandler';
 import { KeysRouteHandler } from '../api/routes/KeysRouteHandler';
+import { BetaRouteHandler } from '../api/routes/BetaRouteHandler';
+import { BetaKeys, type BetaKeyPrisma } from '../mcp/auth/betaKeys';
 import { KeyStoreService } from '../services/KeyStoreService';
 import { NodesRouteHandler } from '../api/routes/NodesRouteHandler';
 import { ReadmeRouteHandler } from '../api/routes/ReadmeRouteHandler';
@@ -287,6 +289,12 @@ export async function createHttpApplication(input: CreateHttpApplicationInput): 
     }).registerRoutes(app);
     // Key-Store (P4c): /api/keys und /api/keys/:alias — ebenfalls VOR /api/:subpath.
     new KeysRouteHandler(keyStore).registerRoutes(app);
+    // Beta (SLOPDOGS_STAGE=beta, Beta-Keys): /api/beta, /api/beta/keys, /api/beta/keys/:id — ebenfalls VOR /api/:subpath.
+    new BetaRouteHandler(new BetaKeys(authPrisma as unknown as BetaKeyPrisma)).registerRoutes(app);
+    const stage = BetaKeys.stage();
+    console.log(BetaKeys.required()
+        ? '[beta] SLOPDOGS_STAGE=beta, Auth an: jedes Google-Konto braucht einmal einen Beta-Key'
+        : `[beta] Stage ${stage || '(keine)'}: Anmeldung ohne Beta-Key${stage === BetaKeys.BETA_STAGE ? ' (Auth aus, lokal)' : ''}`);
 
     const routeHandler = new ConfigRouteHandler(registry, kennelsStore, kennelStats, dogStats);
     routeHandler.registerRoutes(app, '/api');

@@ -60,6 +60,12 @@ export const API_ROUTE = {
     keys: '/api/keys',
     /** Key-Store (P4c): DELETE; kein GET mit Wert. */
     keyByAlias: '/api/keys/:alias',
+    /** Beta (2026-09-26): Status fuer alle — vor ConfigRouteHandler registriert. */
+    beta: '/api/beta',
+    /** Beta-Keys: GET (maskiert) und POST (Klartext einmal) — nur Admins. */
+    betaKeys: '/api/beta/keys',
+    /** Beta-Key widerrufen. */
+    betaKeyById: '/api/beta/keys/:id',
     /** WebSocket-Upgrade am http.Server (ChannelHub), keine Express-Route. */
     channels: '/api/channels',
 } as const;
@@ -92,6 +98,9 @@ export const API_ROUTES = [
     '/api/landing',
     '/api/keys',
     '/api/keys/:alias',
+    '/api/beta',
+    '/api/beta/keys',
+    '/api/beta/keys/:id',
     '/api/channels',
 ] as const;
 
@@ -154,6 +163,9 @@ export const EXPRESS_APP_ROUTES = [
     API_ROUTE.landing,
     API_ROUTE.keys,
     API_ROUTE.keyByAlias,
+    API_ROUTE.beta,
+    API_ROUTE.betaKeys,
+    API_ROUTE.betaKeyById,
     ...LEGACY_308,
     ROOT_ROUTE.legacySave,
 ] as const;

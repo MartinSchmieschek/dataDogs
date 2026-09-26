@@ -96,6 +96,8 @@ import path from 'path';
 import { gzipSync } from 'zlib';
 import { LandingPage, type LandingRunner } from './server-app/LandingPage';
 import { LandingKennels } from './mcp/auth/landingKennels';
+import { BetaKeyError, BetaKeys, type BetaKeyPrisma, type BetaKeyRow, type BetaUserRow } from './mcp/auth/betaKeys';
+import { BetaRouteHandler } from './api/routes/BetaRouteHandler';
 import { resolvePublicDir } from './server-app/expressPaths';
 import { SLOPDOGS_LANDING_KENNEL_ID, seedSlopdogsLandingKennel } from './seed-data/kennels/slopdogs-landing';
 
@@ -378,6 +380,9 @@ export class StartupTest {
             // Landing-Rotation (LANDING_KENNEL_IDS) und Schreibschutz der gelisteten Kennels
             await this.testLandingRotation();
             await this.testLandingLock(kennelsController as KennelController, nodesController);
+            // Beta-Modus: ein Key, ein Google-Konto
+            await this.testBetaKeys();
+            await this.testLandingStageSticker();
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -6211,7 +6216,10 @@ export class StartupTest {
             const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { render: () => Promise<string> };
             const built = await builder.render();
             const file = fs.readFileSync(path.join(this.landingPublicDir(), 'landing', 'index.html'), 'utf8');
-            if (built !== file) throw new Error('veraltet — node scripts/build-landing.cjs ausfuehren');
+            // Zeilenenden zaehlen nicht: ein Windows-Checkout (autocrlf) bringt Quellen und Seite mit CRLF, und der
+            // Lead reicht das Seitenskript als Quelltext durch — sonst meldete der Test dort "veraltet" ohne Grund.
+            const lf = (s: string) => s.replace(/\r\n/g, '\n');
+            if (lf(built) !== lf(file)) throw new Error('veraltet — node scripts/build-landing.cjs ausfuehren');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
@@ -6270,6 +6278,193 @@ export class StartupTest {
             const font = await fetch(`${base}/static/landing/bebas-neue.woff2`);
             if (font.status !== 200 || font.headers.get('content-type') !== 'font/woff2') throw new Error(`Schrift: ${font.status} ${font.headers.get('content-type')}`);
             await font.arrayBuffer();
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Ein Auth-Client im Speicher fuer die Beta-Keys: betaKey/user wie Prisma (nur, was BetaKeys braucht), und eine
+     * Transaktion, die bei einem Wurf beide Tabellen auf den Stand davor zuruecksetzt.
+     */
+    private static fakeBetaPrisma(): { prisma: BetaKeyPrisma; keys: BetaKeyRow[]; users: Array<BetaUserRow & { googleSub: string }> } {
+        const keys: BetaKeyRow[] = [];
+        const users: Array<BetaUserRow & { googleSub: string }> = [];
+        const matches = (row: any, where: Record<string, any>): boolean => Object.entries(where).every(([field, want]) => row[field] === want);
+        let seq = 0;
+        const prisma: BetaKeyPrisma = {
+            betaKey: {
+                create: async ({ data }) => {
+                    if (keys.some((k) => k.codeHash === data.codeHash)) throw new Error('unique codeHash');
+                    const row: BetaKeyRow = {
+                        id: `bk${++seq}`, note: null, createdBy: null, createdAt: new Date(),
+                        revokedAt: null, usedByUserId: null, usedAt: null, ...data,
+                    } as BetaKeyRow;
+                    keys.push(row);
+                    return { ...row };
+                },
+                findMany: async () => keys.map((k) => ({ ...k })).reverse(),
+                findUnique: async ({ where }) => {
+                    const row = keys.find((k) => (where.id ? k.id === where.id : where.codeHash ? k.codeHash === where.codeHash : k.usedByUserId === where.usedByUserId));
+                    return row ? { ...row } : null;
+                },
+                update: async ({ where, data }) => {
+                    const row = keys.find((k) => k.id === where.id);
+                    if (!row) throw new Error('not found');
+                    Object.assign(row, data);
+                    return { ...row };
+                },
+                updateMany: async ({ where, data }) => {
+                    const hit = keys.filter((k) => matches(k, where));
+                    if (data.usedByUserId && keys.some((k) => k.usedByUserId === data.usedByUserId)) throw new Error('unique usedByUserId');
+                    hit.forEach((k) => Object.assign(k, data));
+                    return { count: hit.length };
+                },
+            },
+            user: {
+                create: async ({ data }) => {
+                    if (users.some((u) => u.googleSub === data.googleSub || u.email === data.email)) throw new Error('unique user');
+                    const row = { id: `u${++seq}`, ...data };
+                    users.push(row);
+                    return { ...row };
+                },
+                update: async ({ where, data }) => {
+                    const row = users.find((u) => u.id === where.id);
+                    if (!row) throw new Error('user not found');
+                    Object.assign(row, data);
+                    return { ...row };
+                },
+                findMany: async ({ where }) => users.filter((u) => where.id.in.includes(u.id)).map((u) => ({ id: u.id, email: u.email })),
+            },
+            $transaction: async (fn) => {
+                const keysBefore = keys.map((k) => ({ ...k }));
+                const usersBefore = users.map((u) => ({ ...u }));
+                try {
+                    return await fn(prisma);
+                } catch (err) {
+                    keys.splice(0, keys.length, ...keysBefore);
+                    users.splice(0, users.length, ...usersBefore);
+                    throw err;
+                }
+            },
+        };
+        return { prisma, keys, users };
+    }
+
+    /**
+     * Beta-Keys: ein Key, ein Google-Konto, einmal. Anlegen (Klartext einmal, gespeichert nur der Hash), Liste ohne Hash
+     * und Klartext; Einloesen legt das Konto an, ein zweites Einloesen (anderes Konto) wird abgewiesen, das
+     * freigeschaltete Konto kommt danach ohne Key herein; ein Bestandskonto ohne Freischaltung braucht einmal einen
+     * Key; Widerruf; zwei gleichzeitige Anmeldungen mit einem Key ergeben ein Konto. Schalter: SLOPDOGS_STAGE=beta
+     * verlangt Keys nur mit Auth (lokal ohne Auth nie). Admins: BETA_ADMIN_EMAILS, lokal der Super-User. REST: Status
+     * fuer alle, Keys nur fuer Admins.
+     */
+    private async testBetaKeys(): Promise<void> {
+        const testName = 'Beta-Keys: ein Key ein Google-Konto einmal, Bestandskonto, Widerruf, Wettlauf, Schalter, REST';
+        try {
+            const { prisma, keys, users } = StartupTest.fakeBetaPrisma();
+            const beta = new BetaKeys(prisma);
+            const profile = (n: number) => ({ googleSub: `g-${n}`, email: `beta${n}@test.invalid`, name: null, picture: null });
+            const refused = async (label: string, code: string | undefined, n: number, reason: string, existing: { id: string } | null = null) => {
+                try {
+                    await beta.admit(code, profile(n), existing);
+                } catch (err) {
+                    if (err instanceof BetaKeyError && err.reason === reason) return;
+                    throw new Error(`${label}: ${String(err)}`);
+                }
+                throw new Error(`${label}: trotzdem hereingelassen`);
+            };
+
+            const { code, key } = await beta.create({ note: 'for 10-0' }, 'admin@test.invalid');
+            if (!code.startsWith(BetaKeys.PREFIX) || code.length < 30 || key.last4 !== code.slice(-4) || key.state !== 'open') throw new Error(`create: ${JSON.stringify(key)}`);
+            if (keys[0].codeHash !== BetaKeys.hash(code) || JSON.stringify(keys).includes(code)) throw new Error('Klartext gespeichert');
+            const listed = JSON.stringify(await beta.list());
+            if (listed.includes(code) || listed.includes(keys[0].codeHash)) throw new Error('Liste traegt Klartext oder Hash');
+
+            await refused('ohne Key', undefined, 1, 'missing');
+            await refused('falscher Key', `${BetaKeys.PREFIX}nope`, 1, 'invalid');
+            const first = await beta.admit(code, profile(1), null);
+            await refused('zweites Einloesen, anderes Google-Konto', code, 2, 'used');
+            const after = (await beta.list())[0];
+            if (after.state !== 'used' || after.usedBy !== 'beta1@test.invalid' || !after.usedAt || users.length !== 1) throw new Error(`nach Einloesen: ${JSON.stringify(after)}`);
+            const again = await beta.admit(undefined, { ...profile(1), name: 'Neu' }, { id: first.id });
+            if (again.id !== first.id || again.name !== 'Neu' || users.length !== 1) throw new Error('freigeschaltetes Konto braucht erneut einen Key');
+
+            // Bestandskonto (vor der Beta angelegt): beim naechsten Login einmal einen Key, danach nie wieder.
+            const legacy = await prisma.user.create({ data: profile(7) });
+            await refused('Bestandskonto ohne Key', undefined, 7, 'missing', { id: legacy.id });
+            const legacyKey = await beta.create({ note: 'legacy' }, null);
+            const unlocked = await beta.admit(legacyKey.code, profile(7), { id: legacy.id });
+            if (unlocked.id !== legacy.id || !(await beta.isUnlocked(legacy.id)) || (users.length as number) !== 2) throw new Error('Bestandskonto nicht freigeschaltet');
+            if ((await beta.admit(undefined, profile(7), { id: legacy.id })).id !== legacy.id) throw new Error('Bestandskonto nach Freischaltung abgewiesen');
+
+            const race = await beta.create({}, null);
+            const results = await Promise.allSettled([beta.admit(race.code, profile(3), null), beta.admit(race.code, profile(4), null)]);
+            const won = results.filter((r) => r.status === 'fulfilled').length;
+            const lost = results.filter((r) => r.status === 'rejected' && r.reason instanceof BetaKeyError && r.reason.reason === 'used').length;
+            const userCount: number = users.length;
+            if (won !== 1 || lost !== 1 || userCount !== 3) throw new Error(`Wettlauf: ${won} Konten, ${lost} abgewiesen, ${userCount} Nutzer`);
+
+            const revoked = await beta.create({}, null);
+            if ((await beta.revoke(revoked.key.id))?.state !== 'revoked') throw new Error('revoke');
+            await refused('widerrufen', revoked.code, 5, 'revoked');
+            if ((await beta.revoke('gibt-es-nicht')) !== null) throw new Error('revoke unbekannt');
+
+            // Ein Schalter: SLOPDOGS_STAGE=beta verlangt Keys nur mit Auth; lokal ohne Auth nie.
+            if (BetaKeys.required({}) || BetaKeys.required({ SLOPDOGS_STAGE: 'beta' }) || !BetaKeys.required({ SLOPDOGS_STAGE: ' Beta ', MCP_AUTH_REQUIRED: 'true' })
+                || BetaKeys.required({ SLOPDOGS_STAGE: 'live', MCP_AUTH_REQUIRED: 'true' })) throw new Error('required()');
+            if (BetaKeys.stage({ SLOPDOGS_STAGE: 'be"ta<x>' }) !== 'betax') throw new Error('stage() nicht attributsicher');
+            const env = { BETA_ADMIN_EMAILS: ' Boss@Test.invalid , other@test.invalid' };
+            if (!BetaKeys.isAdmin({ user: null, isSuperUser: true }, env) || !BetaKeys.isAdmin(this.fakeUser('boss'), { BETA_ADMIN_EMAILS: 'boss@test.invalid' })
+                || BetaKeys.isAdmin(this.fakeUser('nobody'), env) || BetaKeys.isAdmin({ user: null, isSuperUser: false }, env)
+                || !BetaKeys.isAdminEmail('BOSS@test.invalid', env)) throw new Error('isAdmin');
+
+            const routes = new Map<string, (req: any, res: any) => Promise<void> | void>();
+            const fakeApp: any = {};
+            for (const verb of ['get', 'post', 'delete']) fakeApp[verb] = (p: string, h: any) => routes.set(`${verb.toUpperCase()} ${p}`, h);
+            new BetaRouteHandler(beta).registerRoutes(fakeApp);
+            const hit = async (route: string, ctx: AuthCtx, body: any = {}, params: any = {}) => {
+                const { res, out } = this.fakeResponse();
+                await routes.get(route)!({ params, body, ctx, get: () => undefined, protocol: 'http' }, res);
+                return out;
+            };
+            const status = await hit('GET /api/beta', { user: null, isSuperUser: false });
+            if (status.statusCode !== 200 || typeof status.body?.keysRequired !== 'boolean' || status.body.admin !== false) throw new Error(`status: ${JSON.stringify(status.body)}`);
+            if ((await hit('GET /api/beta/keys', { user: null, isSuperUser: false })).statusCode !== 401) throw new Error('Keys anonym nicht 401');
+            if ((await hit('GET /api/beta/keys', this.fakeUser('nobody'))).statusCode !== 403) throw new Error('Keys Nutzer nicht 403');
+            const made = await hit('POST /api/beta/keys', { user: null, isSuperUser: true }, { note: 'rest' });
+            if (made.statusCode !== 201 || !String(made.body?.code).startsWith(BetaKeys.PREFIX)) throw new Error(`POST: ${made.statusCode} ${JSON.stringify(made.body)}`);
+            const list = await hit('GET /api/beta/keys', { user: null, isSuperUser: true });
+            if (list.statusCode !== 200 || JSON.stringify(list.body).includes(made.body.code)) throw new Error('GET Liste traegt Klartext');
+            const gone = await hit('DELETE /api/beta/keys/:id', { user: null, isSuperUser: true }, {}, { id: made.body.key.id });
+            if (gone.statusCode !== 200 || gone.body?.key?.state !== 'revoked') throw new Error(`DELETE: ${JSON.stringify(gone.body)}`);
+            if ((await hit('DELETE /api/beta/keys/:id', { user: null, isSuperUser: true }, {}, { id: 'gibt-es-nicht' })).statusCode !== 404) throw new Error('DELETE unbekannt nicht 404');
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Beta-Sticker der Landing: `‹stage›` in `<html data-stage="…">` wird SLOPDOGS_STAGE — `beta` zeigt den Sticker,
+     * ohne Stage bleibt das Attribut leer; gilt fuer die Kennel-Ausgabe und den gebauten Fallback (scripts/build-landing).
+     */
+    private async testLandingStageSticker(): Promise<void> {
+        const testName = 'Beta-Sticker: data-stage aus SLOPDOGS_STAGE, nur bei beta';
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { render: () => Promise<string> };
+            const html = await builder.render();
+            if (!html.includes(`data-stage="${LandingPage.STAGE_MARK}"`)) throw new Error('Platzhalter ‹stage› fehlt in der Seite');
+            const base = new URL('https://slop.example');
+            const beta = LandingPage.withHost(html, base, BetaKeys.stage({ SLOPDOGS_STAGE: 'beta' }));
+            const none = LandingPage.withHost(html, base, BetaKeys.stage({}));
+            const noBase = LandingPage.withHost(html, null, 'beta');
+            if (!beta.includes('data-stage="beta"') || beta.includes(LandingPage.STAGE_MARK)) throw new Error('beta: data-stage nicht gesetzt');
+            if (!none.includes('data-stage=""') || none.includes(LandingPage.STAGE_MARK)) throw new Error('ohne Stage: Platzhalter nicht geleert');
+            if (!noBase.includes('data-stage="beta"')) throw new Error('ohne Basis-URL: Stage nicht gesetzt');
+            if (!/html\[data-stage="beta"\]/.test(html)) throw new Error('Sticker-CSS haengt nicht an data-stage="beta"');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));

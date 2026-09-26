@@ -1,8 +1,10 @@
 // /auth/* routes — Google login flow + session inspection.
 //
 // Endpoints:
-//   GET  /auth/google/login     -> redirects to Google consent screen
-//   GET  /auth/google/callback  -> handles Google's redirect, upserts User, sets session
+//   GET  /auth/google/login     -> redirects to Google consent screen (?betaKey= rides along in the session)
+//   GET  /auth/google/callback  -> handles Google's redirect, upserts the User, sets session. With
+//                                  SLOPDOGS_STAGE=beta and auth on, every Google account must be unlocked once
+//                                  with a beta key (one key, one account) — else the key page (beta-page.ts)
 //   GET  /auth/me               -> returns current user from session, or 401
 //   POST /auth/logout           -> clears session
 //
@@ -13,9 +15,12 @@ import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import { getGoogleClient, generatePkce, getRedirectUri } from './google';
 import { createOAuthRouter } from './oauth-as';
 import { createPersonalTokensRouter } from './personal-tokens';
+import { BetaKeyError, BetaKeys, type BetaKeyPrisma } from './betaKeys';
+import { renderBetaKeyPage } from './beta-page';
 
 export function createAuthRouter(prisma: PrismaClient): Router {
     const router = Router();
+    const betaKeys = new BetaKeys(prisma as unknown as BetaKeyPrisma);
 
     // OAuth 2.1 AS endpoints — /authorize, /token, /revoke, /register
     router.use('/', createOAuthRouter(prisma));
@@ -41,6 +46,9 @@ export function createAuthRouter(prisma: PrismaClient): Router {
                 state,
                 returnTo: safeReturnTo(req.query.returnTo),
             };
+            // Beta: der Key reist in der Session bis zum Callback; ohne Key bleibt ein frueherer stehen.
+            const betaKey = typeof req.query.betaKey === 'string' ? req.query.betaKey.trim().slice(0, 100) : '';
+            if (betaKey) req.session.betaKey = betaKey;
 
             const url = client.authorizationUrl({
                 scope: 'openid email profile',
@@ -83,11 +91,28 @@ export function createAuthRouter(prisma: PrismaClient): Router {
                 return;
             }
 
-            const user = await prisma.user.upsert({
-                where: { googleSub },
-                create: { googleSub, email, name, picture },
-                update: { email, name, picture },
-            });
+            // Beta (SLOPDOGS_STAGE=beta, Auth an): jedes Google-Konto muss einmal mit einem Key freigeschaltet sein —
+            // ein neues beim Anlegen, ein bestehendes beim naechsten Login. BETA_ADMIN_EMAILS kommen ohne Key herein.
+            let user: { id: string };
+            if (!BetaKeys.required() || BetaKeys.isAdminEmail(email)) {
+                user = await prisma.user.upsert({
+                    where: { googleSub },
+                    create: { googleSub, email, name, picture },
+                    update: { email, name, picture },
+                });
+            } else {
+                const existing = await prisma.user.findUnique({ where: { googleSub }, select: { id: true } });
+                try {
+                    user = await betaKeys.admit(req.session.betaKey, { googleSub, email, name, picture }, existing);
+                } catch (err) {
+                    if (!(err instanceof BetaKeyError)) throw err;
+                    delete req.session.betaKey;
+                    delete req.session.pkce;
+                    res.status(403).type('html').send(renderBetaKeyPage({ reason: err.reason, returnTo: pkce.returnTo }));
+                    return;
+                }
+            }
+            delete req.session.betaKey;
 
             req.session.userId = user.id;
             const returnTo = pkce.returnTo ?? '/auth/me';

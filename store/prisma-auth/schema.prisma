@@ -87,3 +87,18 @@ model UserKey {
   @@unique([ownerId, alias])
   @@index([ownerId])
 }
+
+// Beta-Keys (2026-09-26, "ein key ein google user"): mit SLOPDOGS_STAGE=beta (und Auth an) braucht jedes Google-Konto
+// einmal einen Key; ein Key schaltet genau ein Konto frei (usedByUserId unique), laeuft nicht ab, endet durch
+// Einloesen oder Widerruf. Klartext nie gespeichert, nur SHA-256.
+model BetaKey {
+  id           String    @id @default(uuid())
+  codeHash     String    @unique              // SHA-256 des Keys, nie der Klartext
+  last4        String                         // maskierte Anzeige
+  note         String?                        // fuer wen, wozu
+  createdBy    String?                        // E-Mail des Anlegenden; null = lokaler Super-User
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  usedByUserId String?   @unique              // das eine Google-Konto, das dieser Key freigeschaltet hat
+  usedAt       DateTime?
+}
