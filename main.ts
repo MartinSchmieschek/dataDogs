@@ -32,6 +32,7 @@ import { TypeDefBuilder } from './services/TypeDefBuilder';
 import { CompilerCache } from './services/CompilerCache';
 import { createHttpApplication } from './server-app/createHttpApplication';
 import { EX_CONFIG, authModeBootError } from './mcp/auth/middleware';
+import { warnMissingEnv } from './server-app/startupEnvCheck';
 import { KennelCallCounter } from './services/KennelCallCounter';
 import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { KeysCapability, scrubbingConsoleSink } from './services/keysCapability';
@@ -62,6 +63,8 @@ async function start() {
         console.error(bootError);
         process.exit(EX_CONFIG);
     }
+    // Eine Zeile je fehlender Pflicht-Env (Katalog: server-app/startupEnvCheck.ts) — warnt nur, beendet nie.
+    warnMissingEnv(process.env);
 
     dbEnv.assertRequiredDbEnv();
     const dbUrl = dbEnv.resolveStoreDatabaseUrl();

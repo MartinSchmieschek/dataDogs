@@ -74,6 +74,7 @@ import { DogReferenceIndex } from './services/DogReferenceIndex';
 import { DogStatsService } from './services/DogStatsService';
 import { DogReuseAdvisor } from './services/DogReuseAdvisor';
 import { buildWerkzeugkasten } from './mcp/werkzeugkasten';
+import { ENV_CATALOG, ENV_CATALOG_NAMES, ENV_SECTIONS, missingEnvWarnings, recommendedEnvHints } from './server-app/startupEnvCheck';
 import { EXPRESS_APP_ROUTES, FRONTEND_ROUTES, LEGACY_ROUTE, PUBLIC_ROUTE, SPA_ROUTES } from './api/routes/routeTable';
 import { NodesRouteHandler } from './api/routes/NodesRouteHandler';
 import { FIXED_TOP_LEVEL } from './api/routes/spaRouteConstants';
@@ -308,6 +309,7 @@ export class StartupTest {
             await this.testAclRestRoutes(kennelsController as KennelController, nodesController);
             await this.testAclRestPeopleAndEmail(kennelsController as KennelController, nodesController);
             await this.testBootGuardRefusesSuperUserOutsideDev();
+            await this.testEnvCatalogWarnings();
 
             // Fixes vor P4
             await this.testKennelRenameViaRest(kennelsController as KennelController);
@@ -5699,6 +5701,105 @@ export class StartupTest {
             for (const d of built?.dogs ?? []) {
                 try { for (const v of await nodesController.getVersions(d.lineageId)) await nodesController.delete(v.id); } catch { /* ignore */ }
             }
+        }
+    }
+
+    /**
+     * Env-Katalog (server-app/startupEnvCheck.ts): je fehlender Pflicht-Variable genau eine Warnzeile, abhaengig
+     * von NODE_ENV (development braucht nur DB + SESSION_SECRET; integration/production dazu Login); vollstaendige
+     * Umgebungen -> keine Zeile. Jede Katalog-Variable steht in .env.example und .env.integration.example, in ihrem
+     * Abschnitt und in Katalog-Reihenfolge; die Abschnitte stehen in Katalog-Reihenfolge.
+     */
+    private async testEnvCatalogWarnings(): Promise<void> {
+        const testName = 'Env-Katalog: Pflicht-Warnungen je NODE_ENV, .env-Beispiele vollstaendig und gegliedert';
+        try {
+            const pg = 'postgresql://u:p@db.example:5432/app?sslmode=require';
+            const secret = 's'.repeat(32);
+            const lineFor = (lines: string[], name: string) => lines.filter((l) => new RegExp(`^\\[env\\] missing ${name}[ =|(]`).test(l));
+
+            // (1) development mit vollstaendigen DB-Variablen -> 0 Zeilen (auch mit *_DB_PATH statt URL).
+            const devFull = {
+                NODE_ENV: 'development', DATABASE_URL: 'file:./dev.db', CACHE_DATABASE_URL: 'file:./cache.db',
+                JSON_STORAGE_DATABASE_URL: 'file:./json-storage.db', AUTH_DATABASE_URL: 'file:./auth.db', SESSION_SECRET: secret,
+            };
+            const dev = missingEnvWarnings(devFull);
+            if (dev.length !== 0) throw new Error(`development vollstaendig: ${JSON.stringify(dev)}`);
+            const devPaths = missingEnvWarnings({
+                NODE_ENV: 'development', DATABASE_URL: 'file:./dev.db', CACHE_DB_PATH: 'c.db', JSON_STORAGE_DB_PATH: 'j.db',
+                AUTH_DB_PATH: 'a.db', SESSION_SECRET: secret,
+            });
+            if (devPaths.length !== 0) throw new Error(`development mit *_DB_PATH: ${JSON.stringify(devPaths)}`);
+            if (recommendedEnvHints(devFull).length !== 0) throw new Error('development: Empfehlung ohne Regel');
+            const devNoCache = missingEnvWarnings({ ...devFull, CACHE_DATABASE_URL: '' });
+            if (devNoCache.length !== 1 || lineFor(devNoCache, 'CACHE_DATABASE_URL').length !== 1 || !devNoCache[0].includes('CACHE_DB_PATH')) {
+                throw new Error(`development ohne Cache: ${JSON.stringify(devNoCache)}`);
+            }
+            // Login lokal an -> Token-Key und Google-Client werden Pflicht, die Redirect-Basis nicht (Default localhost passt).
+            const devAuth = missingEnvWarnings({ ...devFull, MCP_AUTH_REQUIRED: 'true' });
+            const devAuthNames = ['MCP_TOKEN_SIGNING_KEY', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET'];
+            if (devAuth.length !== devAuthNames.length || devAuthNames.some((n) => lineFor(devAuth, n).length !== 1)) {
+                throw new Error(`development mit Login: ${JSON.stringify(devAuth)}`);
+            }
+
+            // (2) integration ohne Login-Variablen und ohne MCP_AUTH_REQUIRED -> je fehlender Pflicht-Variable genau eine Zeile.
+            //     Postgres-DATABASE_URL: Cache/JSON spiegelt dbEnv.cjs, sie fehlen also nicht.
+            const integ = missingEnvWarnings({ NODE_ENV: 'integration', DATABASE_URL: pg, AUTH_DATABASE_URL: pg });
+            const integNames = ['SESSION_SECRET', 'MCP_AUTH_REQUIRED', 'MCP_TOKEN_SIGNING_KEY', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_REDIRECT_BASE'];
+            if (integ.length !== integNames.length) throw new Error(`integration: ${integ.length} Zeilen statt ${integNames.length}: ${JSON.stringify(integ)}`);
+            for (const name of integNames) {
+                const hits = lineFor(integ, name);
+                if (hits.length !== 1) throw new Error(`integration: ${hits.length} Zeilen fuer ${name}`);
+                if (!hits[0].includes('required in integration')) throw new Error(`integration: Zeile ohne Umgebung: ${hits[0]}`);
+            }
+            if (!lineFor(integ, 'MCP_AUTH_REQUIRED')[0].includes('Exit 78')) throw new Error('MCP_AUTH_REQUIRED nennt Exit 78 nicht');
+            // MCP_AUTH_REQUIRED=false zaehlt wie fehlend (der Guard verlangt genau "true").
+            if (lineFor(missingEnvWarnings({ NODE_ENV: 'integration', DATABASE_URL: pg, AUTH_DATABASE_URL: pg, MCP_AUTH_REQUIRED: 'false' }), 'MCP_AUTH_REQUIRED').length !== 1) {
+                throw new Error('MCP_AUTH_REQUIRED=false nicht gemeldet');
+            }
+
+            // (3) production vollstaendig -> 0 Zeilen, auch keine Empfehlung; ohne Key-Store-Key genau ein Hinweis, kein Fehler.
+            const prodFull = {
+                NODE_ENV: 'production', DATABASE_URL: pg, AUTH_DATABASE_URL: pg, SESSION_SECRET: secret, MCP_AUTH_REQUIRED: 'true',
+                MCP_TOKEN_SIGNING_KEY: 'ab'.repeat(32), GOOGLE_OAUTH_CLIENT_ID: 'client-id', GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
+                GOOGLE_OAUTH_REDIRECT_BASE: 'https://app.example', MCP_BASE_URL: 'https://app.example', KEYSTORE_MASTER_KEY_V1: '00'.repeat(32),
+            };
+            const prod = missingEnvWarnings(prodFull);
+            if (prod.length !== 0) throw new Error(`production vollstaendig: ${JSON.stringify(prod)}`);
+            if (recommendedEnvHints(prodFull).length !== 0) throw new Error(`production vollstaendig, Empfehlung: ${JSON.stringify(recommendedEnvHints(prodFull))}`);
+            const prodNoKey = { ...prodFull, KEYSTORE_MASTER_KEY_V1: '' };
+            const hints = recommendedEnvHints(prodNoKey);
+            if (missingEnvWarnings(prodNoKey).length !== 0 || hints.length !== 1 || !hints[0].includes('KEYSTORE_MASTER_KEY_V1')) {
+                throw new Error(`production ohne Key-Store-Key: ${JSON.stringify(hints)}`);
+            }
+
+            // (4) jede Katalog-Variable steht in beiden Beispielen; (5) Abschnitte und Variablen in Katalog-Reihenfolge.
+            for (const file of ['.env.example', '.env.integration.example']) {
+                const text = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+                const lines = text.split(/\r?\n/);
+                const absent = ENV_CATALOG_NAMES.filter((name) => !new RegExp(`\\b${name}\\b`).test(text));
+                if (absent.length) throw new Error(`${file}: fehlt ${absent.join(', ')}`);
+
+                const headingAt = ENV_SECTIONS.map((s) => lines.findIndex((l) => l.replace(/^#\s*/, '').trim() === s.heading));
+                const noHeading = ENV_SECTIONS.filter((_, i) => headingAt[i] < 0).map((s) => s.heading);
+                if (noHeading.length) throw new Error(`${file}: Abschnitt fehlt: ${noHeading.join(' / ')}`);
+                for (let i = 1; i < headingAt.length; i++) {
+                    if (headingAt[i] <= headingAt[i - 1]) throw new Error(`${file}: "${ENV_SECTIONS[i].heading}" steht vor "${ENV_SECTIONS[i - 1].heading}"`);
+                }
+
+                let previous = -1;
+                for (const spec of ENV_CATALOG) {
+                    // Die eigene Zeile der Variable beginnt mit ihrem Namen ("# NAME — …", "# NAME=…" oder aktiv "NAME=…").
+                    const at = lines.findIndex((l) => new RegExp(`^#? ?${spec.name}\\b`).test(l));
+                    const s = ENV_SECTIONS.findIndex((x) => x.id === spec.section);
+                    const end = s + 1 < headingAt.length ? headingAt[s + 1] : lines.length;
+                    if (at < headingAt[s] || at >= end) throw new Error(`${file}: ${spec.name} steht nicht im Abschnitt "${ENV_SECTIONS[s].heading}" (Zeile ${at + 1})`);
+                    if (at < previous) throw new Error(`${file}: ${spec.name} (Zeile ${at + 1}) steht vor seinem Vorgaenger im Katalog`);
+                    previous = at;
+                }
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 
