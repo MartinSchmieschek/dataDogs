@@ -282,7 +282,7 @@ In `dogIds`, BaseDogs are prefixed (`base:QueryRetriever`), SerializedDogs are r
 
 **Kennel versioning** -- Every Kennel carries a stable **lineageId** (the name you chose) and a chain of **versionIds** (GUIDs). Each save creates a new version with a `parentId` pointing back. The full history is navigable -- branch off, revert, compare. The Kennel remembers its past lives.
 
-**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@slopdogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400. **In the browser UI** (Kennel list on `:4300`), the same workflow is copy-and-paste: **Kopieren** in a card action fan copies that bundle JSON to the clipboard; the **clipboard (📋)** button pastes bundle JSON from the clipboard and imports it. See [Kennel list copy and paste](#kennel-list-copy-and-paste). Copy and paste across instances or between UI, terminal, and other tools.
+**Kennel export & import** -- `GET /api/kennels/:id/export` returns a **bundle** (format `bundleVersion: 2`): current Kennel config plus transitively collected SerializedDogs and MimicDogs; `base:` dog IDs stay as references. `POST /api/kennels/import` mints **new** GUIDs for serialized dogs and creates a **single** fresh Kennel version (no version history from the source). **Optional body field** `importTarget: { "kennelId": string, "name": string }` — when both strings are set, the imported Kennel uses that id and display name. If you omit it, the server **suggests** an id and name (collision-safe; see `suggestKennelImportTarget` in `@slopdogs/core`). All `base:` refs in the bundle must exist on the target server or import fails with 400. **In the browser UI** (Kennel list on `:4300`), the same workflow is copy-and-paste: **Export** in a row's `⋯` menu copies that bundle JSON to the clipboard; the **Import** button pastes bundle JSON from the clipboard and imports it. See [Kennel list copy and paste](#kennel-list-copy-and-paste). Copy and paste across instances or between UI, terminal, and other tools.
 
 **Caching** -- Two-tier memory so dogs don't repeat themselves:
 - **KV cache** (`CacheHandler`) -- TTL-based key-value store with in-flight request deduplication plus negative-caching for 429/504 to break provider retry storms.
@@ -454,7 +454,7 @@ The MCP server returns **Spuren rules + a pointer to the full guide** as the `in
 | `POST` | `/api/keys` | Create or replace `{alias, secret, allowedDomains[], kennelGrants?, quotaPerDay?}`; `400 invalid_alias\|invalid_secret\|invalid_domains\|quota_required`, `403 no_identity` (super-user without user), `503 keystore_disabled` (no `KEYSTORE_MASTER_KEY_V1`) |
 | `DELETE` | `/api/keys/:alias` | Delete one of yours; foreign and unknown both answer `404` |
 
-Login required. Keys are AES-256-GCM encrypted in the auth database and never returned; dogs use them through `keys.fetch(url, opts)` with `{{key:<alias>}}` — substituted on the server, only to the key's `allowedDomains` (https, no private networks, no redirects), with the keys of whoever runs the kennel. `kennelGrants` (opt-in, needs `quotaPerDay`) lets runs of your own listed kennels use the key for any runner. A database reset deletes the key store. MCP: `set_key`, `list_keys`, `delete_key` — no `get_key`.
+Login required. Keys are AES-256-GCM encrypted in the auth database and never returned; dogs use them through `keys.fetch(url, opts)` with `{{key:<alias>}}` — substituted on the server, only to the key's `allowedDomains` (https, no private networks, no redirects), with the keys of whoever runs the kennel. `kennelGrants` (opt-in, needs `quotaPerDay`) lets runs of your own listed kennels use the key for any runner. A database reset deletes the key store. MCP: `set_key`, `list_keys`, `delete_key` — no `get_key`. The `/account?tab=keys` screen manages these.
 
 ### Public
 
@@ -534,20 +534,35 @@ npm run dev
 
 Backend wakes on `:3000`, UI (dev) on `:4300`. Open the UI. The lodge is warm.
 
+### App routes
+
+The Angular app (`SPA_ROUTES` in `api/routes/routeTable.ts`; Express serves `index.html` for each):
+
+| Route | Screen |
+|---|---|
+| `/kennels` | Kennel list (side A): `?q=`, `?sort=`, `?dir=`, `?mine=1`, `?new=1` |
+| `/kennels/:id` | Kennel page: canvas, inspector (`?panel=brief\|versions\|rating\|stats`), run |
+| `/kennels/:id/edit` | The same page with the settings drawer open — name, access, freeze, dog order, defaults (there is no separate edit page) |
+| `/dogs` | Dog browser (side B): `?q=&sort=&group=&pack=&owner=`; `?dog=<lineageId>` opens the preview — a dog is never a page of its own |
+| `/account` | Profile, personal tokens, keys: `?tab=profile\|tokens\|keys` |
+| `/login` | One button, one verse: `?returnTo=` (a path on this site) |
+
+Keys in the app: `?` shows them all; `/` search; `Esc` closes the top panel; on the kennel page `Ctrl/⌘+Enter` runs and `Ctrl/⌘+S` saves the open editor. Leaving with unsaved changes asks first.
+
 ### Default Kennel seed: server run and UI
 
 **Server-side:** On every startup, `main.ts` calls **`runSeeds()`** ([`seed.ts`](seed.ts)) against the Prisma store. If the database is still empty of those rows, the seed creates **`seed-serialized-1-v1`** (the LayoutInput Mimic) and a **`KennelConfig`** with id **`default-kennel`** — see `dogIds` there (serialized dog first as **lead**, then all registered BaseDogs). Nothing special-cases that Kennel at runtime: **`GET /api/kennels/default-kennel/run`** (waves + config), **`GET /k/default-kennel`** (public **lead** yield only), and **`POST /k/default-kennel`** with a body all go through the same **`KennelRunHandler` → `KennelRun`** path as any other Kennel (load config from DB → fill kennel → run waves).
 
-**UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4300`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4300/kennels/default-kennel`**. The Waves viewer loads that Kennel run (graph + results); **⟳ Neu laden** re-runs it. The **Antwort (Server)** button opens the raw public response (**`http://localhost:3000/k/default-kennel`**, plus any query params from the panel) in a new tab so you can compare browser vs UI.
+**UI:** With **`npm run dev`**, the Angular app is proxied to the API. Open **`http://localhost:4300`**, choose **Default Kennel** from the list, or go straight to **`http://localhost:4300/kennels/default-kennel`**. The kennel page loads that Kennel run (canvas + inspector); **⏵ Run** re-runs it. **Open /k/default-kennel** opens the raw public response in a new tab so you can compare browser vs UI.
 
 ### Kennel list copy and paste
 
-On the **Kennel list** (`http://localhost:4300`):
+On the **Kennel list** (`http://localhost:4300/kennels`):
 
 | Action | Where | What it does |
 |--------|--------|----------------|
-| **Paste / import** | **Clipboard (📋)** button (stacked above **+**) | Reads the system clipboard. If the text is valid Kennel bundle JSON (same shape as `GET /api/kennels/:id/export`), calls **`POST /api/kennels/import`** and reloads the list. |
-| **Copy / export** | **Kopieren** in a Kennel card’s radial menu | Fetches the bundle via **`GET /api/kennels/:id/export`** and writes pretty-printed JSON to the clipboard. |
+| **Paste / import** | **Import** button in the toolbar | Reads the system clipboard. If the text is valid Kennel bundle JSON (same shape as `GET /api/kennels/:id/export`), calls **`POST /api/kennels/import`** and reloads the list. |
+| **Copy / export** | **Export** in a Kennel row's `⋯` menu | Fetches the bundle via **`GET /api/kennels/:id/export`** and copies pretty-printed JSON to the clipboard (falls back to a file download if the clipboard is unavailable). |
 
 Use this to move Kennels between environments, share bundles in chat or tickets, or round-trip with `curl` / file saves without retyping IDs.
 

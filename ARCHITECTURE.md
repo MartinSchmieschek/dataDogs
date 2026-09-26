@@ -81,6 +81,8 @@ flowchart LR
 
 The single source of truth for every path is [`api/routes/routeTable.ts`](api/routes/routeTable.ts) — Express registers from it, and `scripts/check-doc-paths.cjs` (`npm run lint:docs`, part of `npm test`) checks every path mentioned in README.md, AISkill.md, this file, `mcp/skill.md` and the `.cursor/skills/*/SKILL.md` mirrors against it. A route without a table entry is a bug.
 
+The Angular SPA answers `SPA_ROUTES` from that table: `/kennels` (list), `/kennels/:id` (kennel page), `/kennels/:id/edit` (renders the settings drawer over the kennel page — there is no separate `kennel-config` page), `/dogs` (the dog browser — `?q=&sort=&group=&pack=&owner=&dog=`, preview only, never a per-dog route), `/account` (`?tab=profile|tokens|keys`), `/login` (`?returnTo=`).
+
 A kennel name is only ever the second segment behind `/k/`. The old triple-maintained blocklist (`kennelReservedNames.ts` / `spaRouteConstants.ts` / `kennel-reserved-names.ts`) is gone; it is replaced by a **segment rule** — `FIXED_TOP_LEVEL` (`api auth .well-known static mcp actions save k kennels kennel robots.txt`) reserves only the fixed top-level segments Express mounts, nothing else. A kennel is free to be named `api` and live at `/k/api`.
 
 **Alt-Weiche (legacy):** behind env `LEGACY_KENNEL_REDIRECT` (default `1`), an unrecognized single-segment path `/:name` answers **308** to `/k/:name` (method, body and query preserved, no DB lookup) unless `:name` is one of the `FIXED_TOP_LEVEL` segments. The old `/api/kennels/:id/docs` and `/api/kennels/:id/swagger.json` are permanent 308s to `/k/:id/docs` and `/k/:id/openapi.json`.

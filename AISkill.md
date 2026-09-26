@@ -255,7 +255,7 @@ First fetch what exists:
 ```
 GET /api/nodes
 ```
-Hunters have `type: "BaseDog"` and `id: "base:Name"`. Breeds have `type: "SerializedDog"` with a `lineageId` and a `displayName`. Show the user which hunters are available and what they bring. Together assemble the pack.
+Hunters have `type: "BaseDog"`, `id: "base:Name"` and a `pack` field naming the package they come from (e.g. `dogs-weather`; `core` for built-ins). Breeds have `type: "SerializedDog"` with a `lineageId` and a `displayName`. Show the user which hunters are available and what they bring. Together assemble the pack.
 
 **Reuse before creating.** Before summoning a new breed, scan the existing SerializedDogs for one that already normalizes the entity you need. Entity dogs like `WeatherData` or `SpeciesData` are meant to be reused across multiple pens — if one fits, reference it by `lineageId` and save the breeding. A lean ecosystem of reusable entity dogs beats a sprawl of one-off fat dogs.
 
