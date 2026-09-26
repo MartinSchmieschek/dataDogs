@@ -34,7 +34,16 @@ var CSS = ''
 + '.top{position:sticky;top:0;z-index:20;background:var(--cream);border-bottom:3px solid var(--ink)}.top .wrap{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:64px}'
 + '.mark{display:inline-flex;align-items:center;gap:10px;font-family:var(--display);font-size:1.5rem;text-transform:uppercase;letter-spacing:.03em}.emb{width:42px;height:42px}'
 + '.nav{display:flex;align-items:center;gap:14px;font-size:.76rem;letter-spacing:.1em;text-transform:uppercase}.nav a.lbl:hover{color:var(--org)}'
+/* the rack: an ink button in the top bar, on every width (the anchor labels leave on a phone, this stays) */
++ '.nav a.go{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:3px solid var(--ink);background:var(--ink);color:var(--cream);font:1.15rem var(--display);letter-spacing:.06em;box-shadow:3px 3px 0 var(--org)}.nav a.go:hover{background:var(--cream2);color:var(--ink)}'
 + '@media(max-width:700px){.nav .lbl{display:none}}'
+/* stage: hidden until <html data-stage="beta"> (see the assembly below). Chip in the top bar, promo sticker in the hero. */
++ '.lm.stg,.stamp{display:none}html[data-stage="beta"] .lm.stg{display:inline-block}html[data-stage="beta"] .stamp{display:block}'
++ '.stg{margin-left:4px;transform:rotate(-2deg);align-self:center}.stg .s{display:none}@media(max-width:700px){.stg .f{display:none}.stg .s{display:inline}}'
++ '.stamp{margin:0 0 30px;max-width:300px}.stamp .st{display:inline-block;transform:rotate(-4deg);border:3px solid var(--ink);background:var(--org);color:var(--ink);padding:5px}.stamp .st .in{display:block;border:1px dashed var(--ink);padding:8px 16px 10px;text-align:center}'
++ '.stamp .k{display:block;font:.62rem var(--mono);letter-spacing:.24em;text-transform:uppercase}.stamp b{display:block;margin-top:2px;font:1.7rem/1 var(--display);font-weight:400;letter-spacing:.05em;text-transform:uppercase}.stamp i{display:block;margin-top:3px;font:italic .72rem var(--mono);letter-spacing:.06em}'
++ '.stamp p{margin-top:14px;font-size:.78rem;line-height:1.5;color:var(--muted);max-width:280px}'
++ '@media(min-width:1000px){.stamp{position:absolute;right:var(--gutter);top:92px;width:290px;margin:0;z-index:2}}'
 + '.btn{display:inline-flex;align-items:center;min-height:50px;padding:0 22px;border:3px solid var(--ink);background:var(--cream2);font:1.3rem var(--display);text-transform:uppercase;letter-spacing:.05em;box-shadow:5px 5px 0 var(--ink);transition:transform .1s,box-shadow .1s}.btn:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--ink)}.btn--org{background:var(--org)}.btn--ink{background:var(--ink);color:var(--cream)}'
 + '.lm{display:inline-block;background:var(--ink);color:var(--cream);padding:3px 8px;font:.66rem var(--mono);letter-spacing:.16em;text-transform:uppercase}'
 + '.ct{background:var(--ink);color:var(--cream);padding:18px var(--gutter);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 22px}.ct .kap{font:.72rem var(--mono);letter-spacing:.22em;text-transform:uppercase;color:#bfb595}.ct h2{font-size:clamp(1.6rem,5vw,3rem);letter-spacing:.03em}.ct .sub{margin-left:auto;font:.72rem var(--mono);letter-spacing:.06em;color:#bfb595}'
@@ -50,8 +59,9 @@ var CSS = ''
 /* what: chain as track credits */
 + '.chain{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.76rem;letter-spacing:.08em;text-transform:uppercase}.chain .k{padding:10px 14px;border:3px solid var(--ink);background:var(--cream2)}.chain .k.kennel{background:var(--ink);color:var(--cream)}.chain .k.url{background:var(--org)}.chain .a{font:1.6rem var(--display);color:var(--faint)}'
 /* packs: tracklist side A */
-+ '.tracks{list-style:none;margin:0;padding:0}.tracks li{display:grid;grid-template-columns:44px 1fr auto;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);align-items:center;transition:background .3s}.tracks li:last-child{border-bottom:0}.tracks li.on{background:rgba(255,106,0,.18)}.tracks li.yours{background:rgba(17,127,127,.12)}'
-+ '.tracks .n{font:1.7rem var(--display)}.tracks .t{font:1.15rem var(--display);text-transform:uppercase;letter-spacing:.03em}.tracks .t small{display:block;font:.66rem var(--mono);letter-spacing:.06em;text-transform:none;color:var(--muted)}.tracks .len{font:.7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}'
+/* one track: number | title ........ running time, and under it the credit line (the work the AI skips), full width */
++ '.tracks{list-style:none;margin:0;padding:0}.tracks li{display:grid;grid-template-columns:36px 1fr auto;grid-template-areas:"n t len" "n s s";gap:2px 10px;padding:12px 14px;border-bottom:1px solid var(--line);align-items:center;transition:background .3s}.tracks li:last-child{border-bottom:0}.tracks li.on{background:rgba(255,106,0,.18)}.tracks li.yours{background:rgba(17,127,127,.12)}'
++ '.tracks .n{grid-area:n;font:1.7rem var(--display)}.tracks .t{grid-area:t;font:1.15rem var(--display);text-transform:uppercase;letter-spacing:.03em}.tracks .s{grid-area:s;font:.68rem var(--mono);letter-spacing:0;color:var(--muted);line-height:1.4}.tracks .len{grid-area:len;font:.7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap}'
 + '.bars{display:grid;gap:10px;padding:14px 16px;border-top:3px solid var(--ink);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}.bars div{display:grid;grid-template-columns:72px 1fr;gap:12px;align-items:center}.bars i{display:block;height:10px;background:var(--ink);opacity:.3;width:100%;transform-origin:0 50%;animation:grow 1.4s cubic-bezier(.16,1,.3,1) both}.bars .short{background:var(--org);opacity:1;width:18%}@keyframes grow{from{transform:scaleX(0)}}@media(prefers-reduced-motion:reduce){.bars i{animation:none}}'
 + '.tags{display:flex;flex-wrap:wrap;gap:8px;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase}.tags span{padding:6px 10px;border:2px solid var(--ink);background:var(--cream2)}'
 /* faces */
@@ -78,13 +88,19 @@ var CSS = ''
 + '.foot{padding:30px 0 56px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px 28px;font-size:.74rem;color:var(--muted);border-top:3px solid var(--ink)}.foot .vers{margin:0}';
 
 /* ---------- sections ---------- */
+/* the promo sticker: only shown under <html data-stage="beta"> (CSS), markup always there */
+function stamp() {
+  var B = C.stage && C.stage.beta, s = B && B.stamp;
+  if (!s) return '';
+  return '<aside class="stamp" aria-label="' + esc(B.chip) + '"><span class="st"><span class="in"><span class="k">' + esc(s.kicker) + '</span><b>' + esc(s.title) + '</b><i>' + esc(s.line) + '</i></span></span><p>' + esc(B.text) + '</p></aside>';
+}
 function hero() {
-  var H = C.hero, loc = H.local || {};
-  return '<section class="screen hero" aria-labelledby="h1"><div class="wrap"><p class="no">' + esc(H.kicker) + ' · ' + esc(H.sign) + ' · ' + label('side a') + '</p>'
+  var H = C.hero, loc = H.local || {}, rack = H.rack;
+  return '<section class="screen hero" aria-labelledby="h1"><div class="wrap">' + stamp() + '<p class="no">' + esc(H.kicker) + ' · ' + esc(H.sign) + ' · ' + label('side a') + '</p>'
     + '<h1 id="h1" class="big">' + lines(String(H.headline).split(' ').length > 2 ? [String(H.headline).split(' ').slice(0, -1).join(' '), String(H.headline).split(' ').slice(-1)[0]] : H.headline) + '</h1>'
     + '<p class="one">' + hst(H.lede) + '</p>'
     + '<div class="el tags">' + (H.tagline || []).map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '<span style="background:var(--ink);color:var(--cream)">' + esc(loc.chip) + '</span></div>'
-    + '<div class="el" style="display:flex;flex-wrap:wrap;gap:16px"><a class="btn btn--org" href="#' + esc(C.nav[0] && C.nav[0].anchor) + '">' + esc(C.nav[0] && C.nav[0].label) + '</a>' + (C.nav[1] ? '<a class="btn" href="#' + esc(C.nav[1].anchor) + '">' + esc(C.nav[1].label) + '</a>' : '') + '</div>'
+    + '<div class="el" style="display:flex;flex-wrap:wrap;gap:16px"><a class="btn btn--org" href="#' + esc(C.nav[0] && C.nav[0].anchor) + '">' + esc(C.nav[0] && C.nav[0].label) + '</a>' + (rack ? '<a class="btn" href="' + esc(rack.href) + '">' + esc(rack.label) + '</a>' : '') + '</div>'
     + verse(H.verse) + '</div></section>'
     + '<div class="band" aria-hidden="true"><div>' + (function () { var t = (H.tagline || []).concat([H.headline]); var s = ''; for (var i = 0; i < 4; i++) s += t.map(function (x) { return '<span>' + esc(x) + '</span><span>★</span>'; }).join(''); return s; })() + '</div></div>';
 }
@@ -97,12 +113,15 @@ R.what = function () {
       return '<span class="k ' + esc(c.kind) + '">' + hst(c.label) + '</span>' + arrow;
     }).join('') + '</div></div></section>';
 };
+function track(m, i, cls) {
+  return '<li' + (cls ? ' class="' + cls + '"' : '') + '><span class="n">' + (i < 9 ? '0' : '') + (i + 1) + '</span><span class="t">' + esc(m.name) + '</span><span class="len">' + esc(m.len) + '</span><span class="s">' + esc(m.note) + '</span></li>';
+}
 R.packs = function () {
   var P = C.packs, mods = P.modules || [];
   return chapter({ id: 'packs', n: P.n, label: P.label }, 'tracklist') + '<section class="screen"><div class="wrap"><h2 class="big">' + lines(String(P.headline).split(/(?<=\.)\s+/)) + '</h2><p class="one">' + hst(P.lede) + '</p>'
     + '<div class="el inlay"><div class="head"><span><b>A</b>&nbsp;&nbsp;side a · ' + esc(P.label) + '</span><span>' + esc(P.footnote) + '</span></div>'
-    + '<ol class="tracks" id="rack">' + mods.map(function (m, i) { return '<li' + (i === 0 ? ' class="on"' : '') + '><span class="n">' + (i < 9 ? '0' : '') + (i + 1) + '</span><span class="t">' + esc(m.name) + '<small>' + esc(m.pack) + '</small></span><span class="len">' + esc((P.attrs || [])[i % ((P.attrs || []).length || 1)] || '') + '</span></li>'; }).join('')
-    + (P.yours ? '<li class="yours"><span class="n">' + (mods.length < 9 ? '0' : '') + (mods.length + 1) + '</span><span class="t">' + esc(P.yours.name) + '<small>' + esc(P.yours.note) + '</small></span><span class="len">bonus</span></li>' : '') + '</ol>'
+    + '<ol class="tracks" id="rack">' + mods.map(function (m, i) { return track(m, i, i === 0 ? 'on' : ''); }).join('')
+    + (P.yours ? track(P.yours, mods.length, 'yours') : '') + '</ol>'
     + '<div class="bars" aria-hidden="true">' + (P.bars || []).map(function (b, i) { return '<div><span>' + esc(b.label) + '</span><i class="' + esc(b.size) + '" style="animation-delay:' + (i * .3) + 's"></i></div>'; }).join('') + '</div></div>'
     + '</div></section>';
 };
@@ -162,7 +181,7 @@ R.out = function () {
 };
 function footer() {
   var F = C.footer;
-  return '<footer class="wrap foot"><span>' + esc(F.line) + ' · <a href="#' + esc(F.commandAnchor) + '">' + esc(F.command) + '</a> · ' + esc(F.tag) + '</span>' + verse(F.verse) + '</footer>';
+  return '<footer class="wrap foot"><span>' + esc(F.line) + ' · <a href="#' + esc(F.commandAnchor) + '">' + esc(F.command) + '</a>' + (F.rack ? ' · <a href="' + esc(F.rack.href) + '" style="text-decoration:underline;text-decoration-thickness:2px;text-decoration-color:var(--org)">' + esc(F.rack.label) + '</a>' : '') + ' · ' + esc(F.tag) + '</span>' + verse(F.verse) + '</footer>';
 }
 
 /* ---------- page script (vanilla, quiet) ---------- */
@@ -181,13 +200,19 @@ var JS = ''
 + '["fc","rack","log","sd-live"].forEach(function(id){var el=document.getElementById(id);if(el)io.observe(el);});})();';
 
 /* ---------- assemble ---------- */
-var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+/* STAGE FLAG (Void): the page carries the placeholder ‹stage› in <html data-stage="…">, exactly like ‹host›.
+   The server (LandingPage.withHost, GET /) swaps it for process.env.SLOPDOGS_STAGE (or '' when unset) before sending;
+   kennel output and the static fallback both pass through there, so one string swap serves both. The CSS shows
+   .stg (top-bar chip) and .stamp (hero sticker) only under html[data-stage="beta"]; nothing else reads the value. */
+var STAGE_MARK = '‹stage›';
+var html = '<!DOCTYPE html><html lang="en" data-stage="' + STAGE_MARK + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
   + '<title>' + esc(C.meta.title) + '</title><meta name="description" content="' + esc(C.meta.description) + '">'
   + '<meta property="og:type" content="website"><meta property="og:title" content="' + esc(C.meta.title) + '"><meta property="og:description" content="' + esc(C.meta.description) + '"><meta property="og:url" content="https://‹host›/">'
   + '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2730%27 fill=%27%231b1712%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2722%27 fill=%27none%27 stroke=%27%23f0e6c8%27 stroke-width=%272%27/%3E%3Ctext x=%2732%27 y=%2741%27 font-family=%27serif%27 font-weight=%27700%27 font-size=%2724%27 text-anchor=%27middle%27 fill=%27%23ff6a00%27%3ESD%3C/text%3E%3C/svg%3E">'
   + '<style>' + CSS + '</style></head><body>'
-  + '<header class="top"><div class="wrap"><a class="mark" href="/" aria-label="' + esc(C.brand.name) + '">' + emblem() + esc(C.brand.wordmark) + '</a>'
-  + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + '</nav></div></header>'
+  + '<header class="top"><div class="wrap"><span style="display:inline-flex;align-items:center;gap:10px"><a class="mark" href="/" aria-label="' + esc(C.brand.name) + '">' + emblem() + esc(C.brand.wordmark) + '</a>'
+  + (C.stage && C.stage.beta ? '<span class="lm stg"><span class="f">' + esc(C.stage.beta.chip) + '</span><span class="s">' + esc(C.stage.beta.chipShort) + '</span></span>' : '') + '</span>'
+  + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return n.href ? '<a class="go" href="' + esc(n.href) + '">' + esc(n.label) + '</a>' : '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + '</nav></div></header>'
   + hero()
   + C.order.map(function (k) { return R[k] ? R[k]() : ''; }).join('')
   + footer()

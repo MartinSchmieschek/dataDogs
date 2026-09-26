@@ -9,10 +9,22 @@ return {
   },
   brand: { name: 'SlopDogs', formerly: 'dataDogs', wordmark: 'SlopDogs' },
   host: '<host>',
+  // nav: `anchor` scrolls on this page, `href` leaves it. The rack (/kennels) is a real link everywhere it appears:
+  // top bar (always, also on a phone), hero, under the charts, footer. Whoever sees the page finds the shelf.
   nav: [
     { label: 'Connect', anchor: 'how' },
-    { label: 'Kennels', anchor: 'out' }
+    { label: 'Kennels', href: '/kennels' }
   ],
+  // stage: shown only while the page carries data-stage="beta" (the server sets it from SLOPDOGS_STAGE, see skin_c.js).
+  // The 90s promo sticker on a tape: "promo copy, not for resale". Here: integration beta, the tape may skip.
+  stage: {
+    beta: {
+      chip: 'integration beta',
+      chipShort: 'beta',
+      stamp: { kicker: 'promo copy', title: 'Integration beta', line: 'the tape may skip' },
+      text: 'The wiring is live and still being tuned. Accounts open with a beta key at sign-up: one key, one person.'
+    }
+  },
   verses: {
     lohk: { name: 'Lohk', lines: ['From brooding gulfs are we beheld', 'By that which bears no name.'] },
     oull: { name: 'Oull', lines: ['Through endless faces, countless forms,', 'a multitude unfolds.'] },
@@ -26,6 +38,7 @@ return {
     lede: 'An MCP runtime for any AI. Your AI writes the code, SlopDogs runs it live at a public URL.',
     tagline: ['No deploy', 'no servers', 'just start'],
     local: { label: 'local net · 127.0.0.1', chip: 'your AI · writes' },
+    rack: { label: 'Browse kennels', href: '/kennels' },
     verse: 'lohk'
   },
   what: {
@@ -41,21 +54,25 @@ return {
   packs: {
     n: '02', label: 'base dogs',
     headline: "Don't write it. Plug it.",
-    lede: 'Weather, transit, geocoding, maps: tested base dogs your AI plugs in instead of writing. Reusable, cached, fast.',
+    lede: 'Tested base dogs your AI plugs in. Every track is work it skips.',
+    // Side A. name = track title, note = the work the AI does not write (at most 37 characters: one line at 375 px),
+    // len = the running time column: how long a cached answer is kept (weather 15 min, geocoding 24 h, OSM tiles
+    // 5 days) or where the track lives.
     modules: [
-      { name: 'weather', pack: 'dogs-weather' },
-      { name: 'transit', pack: 'dogs-public-transport' },
-      { name: 'geocoding', pack: 'dogs-geocoding' },
-      { name: 'maps', pack: 'dogs-geo' },
-      { name: 'sun', pack: 'dogs-sun' },
-      { name: 'currency', pack: 'dogs-currency' }
+      { name: 'lobby', note: 'phones join by link. no socket server', len: 'core' },
+      { name: 'url in', note: '?lat=&lng= land parsed. no form code', len: 'core' },
+      { name: 'cache', note: 'heavy call once. runs again and again', len: 'built in' },
+      { name: 'map', note: 'roads, stops, buildings, tile by tile', len: '5 days' },
+      { name: 'weather', note: 'forecast at any point. units done', len: '15 min' },
+      { name: 'geocode', note: 'address to point and back', len: '24 h' },
+      { name: 'store', note: 'state per user. no schema, no db', len: 'global' },
+      { name: 'keys', note: 'key lives on the host. never in code', len: 'global' }
     ],
-    yours: { name: 'your dog', note: 'the one part your AI writes' },
+    yours: { name: 'your dog', note: 'the one part your AI writes', len: 'bonus' },
     bars: [
       { label: 'write it', size: 'long' },
       { label: 'plug it', size: 'short' }
     ],
-    attrs: ['reusable', 'cached', 'fast'],
     footnote: '52 packs · 87 dogs in the repo'
   },
   faces: {
@@ -146,6 +163,7 @@ return {
     line: 'SlopDogs · formerly dataDogs',
     command: 'claude mcp add … slopdogs',
     commandAnchor: 'how',
+    rack: { label: 'all kennels', href: '/kennels' },
     tag: 'Open all night',
     verse: 'lohk'
   }
