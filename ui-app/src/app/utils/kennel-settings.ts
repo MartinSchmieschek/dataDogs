@@ -73,6 +73,18 @@ export function settingsFormOf(cfg: IKennelConfig | null): SettingsForm {
   };
 }
 
+/** True when the drawer's form differs from the stored config — the "Unsaved changes" question (U8). */
+export function settingsDirty(cfg: IKennelConfig | null, form: SettingsForm): boolean {
+  const stored = settingsFormOf(cfg);
+  const rows = (q: QueryRow[]) => JSON.stringify(q.filter((r) => r.key.trim() || r.value.trim()));
+  return stored.name !== form.name
+    || stored.description !== form.description
+    || stored.emoji !== form.emoji
+    || stored.dogIds.join('\n') !== form.dogIds.join('\n')
+    || rows(stored.query) !== rows(form.query)
+    || stored.body.trim() !== form.body.trim();
+}
+
 /** Why the body is not JSON, or null. An empty body means "no default body". */
 export function bodyProblem(body: string): string | null {
   if (!body.trim()) return null;

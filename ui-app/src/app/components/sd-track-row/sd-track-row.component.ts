@@ -1,13 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  HostListener,
   computed,
   input,
   output,
   signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 import type { IKennelConfig } from '../../models/kennel-config.model';
 import { SdPlaqueComponent } from '../sd-plaque/sd-plaque.component';
 import { SdStarsComponent } from '../sd-stars/sd-stars.component';
@@ -95,8 +95,7 @@ export class SdTrackRowComponent {
     this.menuOpen.set(false);
   }
 
-  @HostListener('keydown.escape')
-  onEscape(): void {
-    this.menuOpen.set(false);
+  constructor() {
+    escapeLayerWhile(() => this.menuOpen(), () => this.closeMenu());
   }
 }

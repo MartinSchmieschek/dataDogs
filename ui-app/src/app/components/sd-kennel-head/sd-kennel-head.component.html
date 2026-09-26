@@ -68,11 +68,16 @@
 
 @if (menuOpen()) {
   <span class="scrim" (click)="menuOpen.set(false)" aria-hidden="true"></span>
-  <span class="menu sd-lift" role="group" aria-label="Kennel actions">
+  <span class="menu sd-lift sd-rise" role="group" aria-label="Kennel actions">
     @if (!runOnly()) {
       <!-- Settings (S3): editors edit; readers read; frozen shows the unfreeze banner there. -->
       <button type="button" [title]="frozen() ? frozenTitle : rights().edit ? 'Name, access, dogs, defaults' : 'Read only'"
         (click)="pick('edit')">Settings</button>
+      @if (rights().edit) {
+        <!-- The name changes; the ID (lineageId) stays — links, versions, stars and pins hang on it. -->
+        <button type="button" [disabled]="frozen()" [title]="frozen() ? frozenTitle : 'A new name; the ID and every link stay'"
+          (click)="pick('rename')">Rename</button>
+      }
     }
     <button type="button" (click)="pick('open')">Open page</button>
     <button type="button" (click)="pick('docs')">Docs</button>

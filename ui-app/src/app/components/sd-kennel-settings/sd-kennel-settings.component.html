@@ -1,6 +1,6 @@
-<sd-drawer [open]="open()" [width]="560" label="Kennel settings" initialSnap="full" (closed)="closed.emit()">
+<sd-drawer [open]="open()" [width]="560" label="Kennel settings" initialSnap="full" (closed)="requestClose()">
   <div drawer-head class="hd">
-    <button type="button" class="back" (click)="closed.emit()">‹ kennel</button>
+    <button type="button" class="back" (click)="requestClose()">‹ kennel</button>
     <p class="sd-kicker kick">settings</p>
     <p class="sd-h1 ttl">{{ kennel()?.emoji || '🐕' }} {{ kennel()?.name || lineage() }}</p>
   </div>
@@ -165,7 +165,7 @@
     <footer class="foot">
       <button type="button" class="sd-btn sd-btn--primary" [disabled]="saving() || !!bodyError()"
         [attr.aria-busy]="saving()" (click)="save()">{{ saving() ? 'Saving…' : 'Save' }}</button>
-      <button type="button" class="sd-btn" [disabled]="saving()" (click)="closed.emit()">Cancel</button>
+      <button type="button" class="sd-btn" [disabled]="saving()" (click)="requestClose()">Cancel</button>
       <span class="sp"></span>
       @if (own()) {
         <button type="button" class="sd-btn sd-btn--danger" [disabled]="saving()" (click)="deleteRequested.emit()">Delete kennel</button>

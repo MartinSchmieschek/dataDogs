@@ -133,7 +133,7 @@
 @if (transferOpen()) {
   <div class="scrim" (click)="transferOpen.set(false)" aria-hidden="true"></div>
   <form class="dialog sd-lift" role="dialog" aria-modal="true" aria-labelledby="sd-ap-transfer"
-    (submit)="$event.preventDefault(); confirmTransfer()" (keydown.escape)="transferOpen.set(false)">
+    (submit)="$event.preventDefault(); confirmTransfer()">
     <h2 id="sd-ap-transfer" class="sd-h1">Transfer ownership</h2>
     <p class="sd-small">The new owner manages access and can freeze or delete this {{ noun() }}. You lose every right
       you have as owner; they can add you back.</p>

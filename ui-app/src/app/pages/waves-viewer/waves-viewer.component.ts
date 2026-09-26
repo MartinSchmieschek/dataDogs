@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, computed, DestroyRef, effect, untracked } from '@angular/core';
+import { Component, HostListener, inject, signal, OnInit, computed, DestroyRef, effect, untracked, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -33,7 +33,14 @@ import { apiAbsoluteUrl } from '../../config/api-base';
 import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
 import { WavesJsonEditorComponent } from './components/waves-json-editor.component';
 import { WavesDogPaletteComponent } from './components/waves-dog-palette.component';
-import { WavesConfirmDialogComponent } from './components/waves-confirm-dialog.component';
+import { SdConfirmComponent } from '../../components/sd-confirm/sd-confirm.component';
+import { SdDogFactsComponent } from '../../components/sd-dog-facts/sd-dog-facts.component';
+import { ToastService, pinnedToast } from '../../services/toast.service';
+import { ConfirmService, LEAVE_UNSAVED } from '../../services/confirm.service';
+import type { LeavesSafely } from '../../guards/unsaved-changes.guard';
+import { hasModifier } from '../../utils/keyboard';
+import { hasEscapeLayer } from '../../utils/escape-layers';
+import { KENNEL_NAME_MAX, renameErrorText, renameProblem } from '../../utils/kennel-rename';
 import {
   FROZEN_TITLE,
   SdKennelHeadComponent,
@@ -66,7 +73,6 @@ const TAB_LABELS: Record<KennelTab, string> = { brief: 'brief', versions: 'versi
 type ViewMode = 'loading' | 'full' | 'run-only' | 'missing';
 
 const OLD_VERSION_TITLE = 'An older version. Back to latest to edit.';
-const TOAST_MS = 4000;
 
 /**
  * S2 Kennel page (P6 U3/U4, 6.4): the kennel head as chapter card, the ruled-inlay canvas (vis-network
@@ -75,6 +81,8 @@ const TOAST_MS = 4000;
  * `myRights` (P3.5): readers get text instead of fields, frozen keeps every mutation control visible but
  * disabled with `Frozen. Unfreeze in settings.`; runs, ratings and export keep working (8.25).
  * `/kennels/:id/edit` is the same page with the settings drawer (S3, U6) open over it.
+ * Keys (U8): `Ctrl/⌘+Enter` runs, `Ctrl/⌘+S` saves what is open (settings, dog code, brief); leaving with
+ * unsaved work asks "Unsaved changes. Leave anyway?" (route guard, drawer close, tab close).
  */
 @Component({
   selector: 'app-waves-viewer',
@@ -84,7 +92,7 @@ const TOAST_MS = 4000;
     RouterLink,
     GraphCanvasScaleComponent, VisNetworkComponent, DogSidePanelComponent,
     VersionTimelineComponent,
-    WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
+    WavesJsonEditorComponent, WavesDogPaletteComponent, SdConfirmComponent, SdDogFactsComponent,
     SdKennelHeadComponent, SdBottomBarComponent, SdWaveCanvasComponent, SdDrawerComponent, SdRatingComponent,
     SdHistogramComponent, SdStatTilesComponent, SdBannerComponent, SdVeilComponent, SdUrlChipComponent,
     SdKennelSettingsComponent,
@@ -92,7 +100,7 @@ const TOAST_MS = 4000;
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
 })
-export class WavesViewerComponent implements OnInit {
+export class WavesViewerComponent implements OnInit, LeavesSafely {
   /** The ruled inlay shows cards at their real size (U3); the wrapper stays for pointer maths. */
   readonly graphCanvasScale = 1;
   readonly frozenTitle = FROZEN_TITLE;
@@ -102,7 +110,13 @@ export class WavesViewerComponent implements OnInit {
   private destroyRef = inject(DestroyRef);
   private kennelService = inject(KennelService);
   private dogService = inject(DogService);
+  private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
   readonly auth = inject(AuthService);
+
+  /** The open editors — asked for unsaved work and for `Ctrl/⌘+S`. */
+  private readonly dogPanel = viewChild(DogSidePanelComponent);
+  private readonly settingsDrawer = viewChild(SdKennelSettingsComponent);
 
   kennelId = '';
   readonly mode = signal<ViewMode>('loading');
@@ -121,12 +135,21 @@ export class WavesViewerComponent implements OnInit {
   /** Outcome of the last run for the status chip: `● live · 1.8 s` or `● failed`. */
   readonly lastRun = signal<{ ok: boolean; durationMs: number } | null>(null);
   availableDogs = signal<DogInfo[]>([]);
-  readonly toast = signal<string | null>(null);
   isDragOver = false;
   isDragging = false;
   private dragEndTimer: any = null;
-  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private runStartedAt = 0;
+
+  // --- Rename (kennel menu, U8): the name changes, the ID stays ---
+  readonly renameOpen = signal(false);
+  readonly renameDraft = signal('');
+  readonly renameBusy = signal(false);
+  readonly renameError = signal<string | null>(null);
+  readonly renameMax = KENNEL_NAME_MAX;
+  readonly renameProblem = computed(() => renameProblem(this.renameDraft(), this.kennelConfig()?.name ?? ''));
+  /** The rule under the field once the name was touched (the untouched name needs no hint). */
+  readonly renameHint = computed(() =>
+    this.renameDraft() !== (this.kennelConfig()?.name ?? '') ? this.renameProblem() : null);
 
   // --- Kennel version timeline ---
   kennelVersions = signal<KennelVersionEntry[]>([]);
@@ -553,6 +576,7 @@ export class WavesViewerComponent implements OnInit {
   onHeadAction(action: KennelHeadAction): void {
     switch (action) {
       case 'edit': this.openSettings(); return;
+      case 'rename': this.openRename(); return;
       case 'open': window.open(this.kennelRunBrowserUrl, '_blank', 'noopener'); return;
       case 'docs': window.open(this.swaggerDocsUrl, '_blank', 'noopener'); return;
       case 'copy-link': this.copyLink(); return;
@@ -660,7 +684,9 @@ export class WavesViewerComponent implements OnInit {
   }
 
   /** One navigation: off `/edit`, onto `?panel=versions` (the query subscription opens the tab). */
-  settingsToVersions(): void {
+  async settingsToVersions(): Promise<void> {
+    if (this.settingsDrawer()?.dirty() && !(await this.confirm.ask(LEAVE_UNSAVED))) return;
+    this.settingsDrawer()?.discard();
     this.settingsOpen.set(false);
     void this.router.navigate(['/kennels', this.kennelId], {
       queryParams: { panel: 'versions' },
@@ -683,9 +709,112 @@ export class WavesViewerComponent implements OnInit {
   }
 
   showToast(text: string): void {
-    this.toast.set(text);
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
+    this.toast.show(text);
+  }
+
+  // === Rename (kennel menu) ===
+
+  openRename(): void {
+    if (!this.rights().edit || this.frozen() || this.mode() !== 'full') return;
+    this.renameDraft.set(this.kennelConfig()?.name ?? '');
+    this.renameError.set(null);
+    this.renameOpen.set(true);
+  }
+
+  commitRename(): void {
+    const name = this.renameDraft().trim();
+    if (this.renameProblem() || this.renameBusy()) return;
+    const id = this.kennelId;
+    this.renameBusy.set(true);
+    this.renameError.set(null);
+    this.kennelService.rename(id, name).subscribe({
+      next: () => {
+        this.renameBusy.set(false);
+        this.renameOpen.set(false);
+        if (id !== this.kennelId) return;
+        this.kennelConfig.update((c) => (c ? { ...c, name } : c));
+        this.showToast(`Renamed to ${name}. The ID and every link stay.`);
+        this.loadKennelVersions();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.renameBusy.set(false);
+        this.renameError.set(renameErrorText(err.status));
+      },
+    });
+  }
+
+  // === Keys and unsaved work (U8) ===
+
+  /** Unsaved brief/layout, dog code or settings — what a navigation away would drop. */
+  hasUnsavedWork(): boolean {
+    return this.briefDirty() || !!this.dogPanel()?.isDirty() || !!this.settingsDrawer()?.dirty();
+  }
+
+  /**
+   * Route guard: another kennel or page takes over — ask first when something is unsaved. This kennel's
+   * own URLs (`/kennels/:id`, `/edit`, `?panel=`) keep the page and its editors, so they pass.
+   */
+  canLeave(nextUrl: string): boolean | Promise<boolean> {
+    const next = /^\/kennels\/([^/?#]+)(\/edit)?(?:[?#]|$)/.exec(nextUrl);
+    if (next && (next[1] === this.kennelId || next[1] === encodeURIComponent(this.kennelId))) return true;
+    return this.hasUnsavedWork() ? this.confirm.ask(LEAVE_UNSAVED) : true;
+  }
+
+  /** Closing the tab or reloading: the browser asks with its own words. */
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!this.hasUnsavedWork()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+
+  /** `Ctrl/⌘+Enter` runs, `Ctrl/⌘+S` saves the open editor — never under a dialog. */
+  @HostListener('document:keydown', ['$event'])
+  onKey(event: KeyboardEvent): void {
+    if (!hasModifier(event) || event.shiftKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'enter' && key !== 's') return;
+    if (key === 's') event.preventDefault();
+    if (this.dialogOpen()) return;
+    if (key === 'enter') {
+      if (this.mode() === 'missing' || this.loading()) return;
+      event.preventDefault();
+      this.loadWaves();
+      return;
+    }
+    this.saveOpenEditor();
+  }
+
+  /** Settings drawer first, then the dog in the inspector, then brief/query/body/layout. */
+  private saveOpenEditor(): void {
+    const settings = this.settingsDrawer();
+    if (this.settingsOpen() && settings) {
+      if (settings.editable()) settings.save();
+      else this.showToast(this.frozen() ? FROZEN_TITLE : 'Read only. Nothing to save.');
+      return;
+    }
+    const panel = this.dogPanel();
+    if (this.drawerMode() === 'dog' && panel?.canEditDog) {
+      panel.saveCode();
+      return;
+    }
+    if (this.briefDirty() && this.canMutate()) {
+      this.saveKennel();
+      return;
+    }
+    this.showToast(this.mutationLock() ?? 'Nothing to save.');
+  }
+
+  /** A dialog on top (confirm, rename, cut, delete, shortcut help): the page keys wait. */
+  private dialogOpen(): boolean {
+    return !!this.confirm.request() || this.renameOpen() || !!this.pendingCut() || this.pendingDelete()
+      || (hasEscapeLayer() && !this.drawerMode() && !this.settingsOpen() && !this.paletteOpen());
+  }
+
+  /** Before the dog inspector lets go of a dog with unsaved code: ask. */
+  private async dogPanelMayClose(): Promise<boolean> {
+    if (this.drawerMode() !== 'dog' || !this.dogPanel()?.isDirty()) return true;
+    return this.confirm.ask(LEAVE_UNSAVED);
   }
 
   // === Drawer ===
@@ -708,12 +837,14 @@ export class WavesViewerComponent implements OnInit {
   }
 
   /** `‹ kennel`: from the dog inspector back to the kennel inspector in the same drawer. */
-  backToKennel(): void {
+  async backToKennel(): Promise<void> {
+    if (!(await this.dogPanelMayClose())) return;
     this.closeSidePanel();
     this.openKennelInspector(this.kennelInspectorTab());
   }
 
-  closeDrawer(): void {
+  async closeDrawer(): Promise<void> {
+    if (!(await this.dogPanelMayClose())) return;
     this.cancelEdgeComment();
     this.closeSidePanel();
     this.kennelInspectorOpen.set(false);
@@ -1115,7 +1246,8 @@ export class WavesViewerComponent implements OnInit {
     }
   }
 
-  onDogSelected(dog: DogEntry) {
+  async onDogSelected(dog: DogEntry): Promise<void> {
+    if (this.selectedDog()?.id !== dog.id && !(await this.dogPanelMayClose())) return;
     this.panelInitialSection.set(null);
     this.editingEdgeKey.set(null);
     this.selectedDog.set(dog);
@@ -1255,8 +1387,22 @@ export class WavesViewerComponent implements OnInit {
     // Replace: null versionId → use lineageId (latest); otherwise → use versionId (pinned)
     ids[idx] = ev.versionId ?? ev.lineageId;
     this.kennelService.update(this.kennelId, { dogIds: ids }).subscribe({
-      next: () => this.loadWaves(),
+      next: (res) => {
+        if (res && res.ok === false) {
+          this.error.set(res.error ?? 'Changing the pin failed.');
+          return;
+        }
+        this.showToast(ev.versionId ? this.pinLabel(ev.versionId) : 'Follows the latest version.');
+        this.loadWaves();
+      },
+      error: (err) => this.error.set(err.error?.error ?? err.message),
     });
+  }
+
+  /** `Pinned to v3.` — the number from the dog's timeline when the panel knows it. */
+  private pinLabel(versionId: string): string {
+    const n = this.dogPanel()?.versions().find((v) => v.id === versionId)?.version;
+    return n != null ? `Pinned to v${n}.` : 'Pinned.';
   }
 
   /**
@@ -1277,7 +1423,7 @@ export class WavesViewerComponent implements OnInit {
           this.error.set(res.error ?? 'Updating the pin failed.');
           return;
         }
-        this.showToast(`Pinned to v${dog.latestVersion}.`);
+        this.showToast(pinnedToast(dog.latestVersion));
         this.loadWaves();
       },
       error: (err) => this.error.set(err.error?.error ?? err.message),
@@ -1287,7 +1433,7 @@ export class WavesViewerComponent implements OnInit {
   /** The first failing dog in the dog inspector (`[Show dog]`). */
   showFailedDog(): void {
     const dog = this.firstFailure()?.dog;
-    if (dog) this.onDogSelected(dog);
+    if (dog) void this.onDogSelected(dog);
   }
 
   closeSidePanel() {

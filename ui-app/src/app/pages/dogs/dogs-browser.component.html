@@ -83,9 +83,4 @@
   }
 </sd-drawer>
 
-<sd-dog-preview [dog]="selected()" [width]="previewWidth()" [returnTo]="returnTo()" (closed)="closePreview()"
-  (toast)="showToast($event)" />
-
-@if (toast()) {
-  <p class="toast" role="status">{{ toast() }}</p>
-}
+<sd-dog-preview [dog]="selected()" [width]="previewWidth()" [returnTo]="returnTo()" (closed)="closePreview()" />

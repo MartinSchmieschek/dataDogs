@@ -1,24 +1,19 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
-  HostListener,
   computed,
   effect,
-  inject,
   input,
   output,
   signal,
   untracked,
 } from '@angular/core';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 
 export type SdSheetSnap = 'peek' | 'half' | 'full';
 
 const SNAPS: readonly SdSheetSnap[] = ['peek', 'half', 'full'];
 const PEEK_PX = 96;
-
-/** Open drawers, newest last — Escape closes only the top one (6.3). */
-const openStack: SdDrawerComponent[] = [];
 
 /**
  * Drawer and sheet shell (6.5 `sd-drawer`): on desktop a drawer on the right (inspector, 420) or the left
@@ -55,11 +50,13 @@ const openStack: SdDrawerComponent[] = [];
   `,
   styles: [`
     :host { display: contents; }
-    .scrim { position: fixed; inset: 0; z-index: var(--z-drawer); background: var(--scrim); }
+    .scrim { position: fixed; inset: 0; z-index: var(--z-drawer); background: var(--scrim); animation: sd-fade var(--dur-base) var(--ease-out); }
     .panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: calc(var(--z-drawer) + 1); max-width: 100vw;
       display: flex; flex-direction: column; background: var(--paper-2); border-left: 2px solid var(--ink);
-      box-shadow: -4px 4px 0 var(--ink); }
-    :host(.left) .panel { right: auto; left: 0; border-left: 0; border-right: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+      box-shadow: -4px 4px 0 var(--ink); animation: dr-in var(--dur-base) var(--ease-out); --dr-from: translateX(24px); }
+    :host(.left) .panel { right: auto; left: 0; border-left: 0; border-right: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
+      --dr-from: translateX(-24px); }
+    @keyframes dr-in { from { opacity: 0; transform: var(--dr-from); } }
     .grip { display: none; }
     .head { display: flex; align-items: flex-start; gap: var(--s2); padding: var(--s3) var(--s3) var(--s3) var(--s4);
       background: var(--ink); color: var(--paper); }
@@ -71,14 +68,14 @@ const openStack: SdDrawerComponent[] = [];
     @media (max-width: 767px) {
       .panel, :host(.left) .panel { top: auto; left: 0; right: 0; width: auto !important; height: var(--sheet-h);
         border: 0; border-top: 2px solid var(--ink); box-shadow: 0 -4px 0 var(--ink);
-        transition: height var(--dur-base) var(--ease-out); }
+        transition: height var(--dur-base) var(--ease-out); --dr-from: translateY(48px); }
       .panel.dragging { transition: none; }
       .grip { display: flex; justify-content: center; align-items: center; flex: none; height: 24px; border: 0;
         background: var(--paper-2); cursor: grab; touch-action: none; }
       .grip span { width: 40px; height: 4px; background: var(--ink); }
       :host([data-snap='peek']) .body { overflow: hidden; }
     }
-    @media (prefers-reduced-motion: reduce) { .panel { transition-duration: .01ms; } }
+    @media (prefers-reduced-motion: reduce) { .panel, .scrim { transition-duration: .01ms; animation-duration: .01ms; } }
   `],
 })
 export class SdDrawerComponent {
@@ -105,16 +102,15 @@ export class SdDrawerComponent {
 
   constructor() {
     effect(() => {
-      if (this.open()) {
-        untracked(() => {
-          this.snap.set(this.initialSnap());
-          if (!openStack.includes(this)) openStack.push(this);
-        });
-      } else {
-        this.leaveStack();
-      }
+      if (this.open()) untracked(() => this.snap.set(this.initialSnap()));
     }, { allowSignalWrites: true });
-    inject(DestroyRef).onDestroy(() => this.leaveStack());
+    // Open drawers are escape layers: Esc closes only the topmost one (6.3).
+    escapeLayerWhile(() => this.open(), () => this.closed.emit());
+  }
+
+  /** A tab that needs room (access, code) asks for the full sheet on a phone; the desktop drawer ignores it. */
+  expandOnPhone(): void {
+    if (typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches) this.snap.set('full');
   }
 
   requestClose(): void {
@@ -165,13 +161,4 @@ export class SdDrawerComponent {
     document.addEventListener('pointercancel', up);
   }
 
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    if (this.open() && openStack[openStack.length - 1] === this) this.closed.emit();
-  }
-
-  private leaveStack(): void {
-    const i = openStack.indexOf(this);
-    if (i >= 0) openStack.splice(i, 1);
-  }
 }

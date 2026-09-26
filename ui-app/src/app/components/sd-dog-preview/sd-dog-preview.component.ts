@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import type { DogCatalogEntry } from '../../models/dog-catalog';
 import type { DogEntry } from '../../models/dog-entry.model';
 import type { IDogUsage } from '../../models/dog.model';
@@ -37,7 +37,7 @@ export class SdDogPreviewComponent {
   readonly width = input(440);
   readonly returnTo = input('/dogs');
   readonly closed = output<void>();
-  readonly toast = output<string>();
+  private readonly drawer = viewChild(SdDrawerComponent);
 
   readonly tab = signal<DogPreviewTab>('overview');
   readonly usage = signal<IDogUsage | null>(null);
@@ -83,6 +83,8 @@ export class SdDogPreviewComponent {
 
   select(t: DogPreviewTab): void {
     this.tab.set(t);
+    // Access (people below the visibility) and code need the whole sheet on a phone, else they sit under the edge.
+    if (t === 'access' || t === 'code') this.drawer()?.expandOnPhone();
     if (t === 'code' && this.codeState() === 'idle') this.loadCode();
   }
 

@@ -54,6 +54,11 @@
   color: var(--head-bg);
 }
 
+/* On the ink band paper-2 turns dark (tape-shell tokens): the live chip keeps light text (U8, Lighthouse). */
+.state.sd-chip--live {
+  color: var(--ink);
+}
+
 .slam {
   animation: sd-slam var(--dur-slow) var(--ease-slam);
 }

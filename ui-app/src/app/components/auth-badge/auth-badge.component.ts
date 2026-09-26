@@ -1,6 +1,7 @@
-import { Component, computed, HostListener, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 
 /**
  * Top-right badge (6.5 `sd-auth-badge`): signed out a quiet `Sign in` that goes to `/login` with the
@@ -52,8 +53,7 @@ export class AuthBadgeComponent implements OnInit {
         if (this.router.url.startsWith('/account')) void this.router.navigate(['/kennels']);
     }
 
-    @HostListener('document:keydown.escape')
-    onEscape(): void {
-        this.menuOpen.set(false);
+    constructor() {
+        escapeLayerWhile(() => this.menuOpen(), () => this.closeMenu());
     }
 }

@@ -1,6 +1,5 @@
 import {
   Component,
-  HostListener,
   Injector,
   afterNextRender,
   computed,
@@ -8,6 +7,7 @@ import {
   inject,
 } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { bindYoutubePlayerEnded } from '../../utils/youtube-embed';
 
@@ -72,6 +72,7 @@ export class SdVoidCinemaComponent {
   );
 
   constructor() {
+    escapeLayerWhile(() => this.popup.open(), () => this.close());
     effect(() => {
       const open = this.popup.open();
       void this.popup.embedUrl();
@@ -85,11 +86,6 @@ export class SdVoidCinemaComponent {
 
   close(): void {
     this.popup.closePopup();
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    if (this.popup.open()) this.close();
   }
 
   private teardown(): void {

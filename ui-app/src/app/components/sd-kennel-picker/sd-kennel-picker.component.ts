@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { KennelService } from '../../services/kennel.service';
 import { AuthService } from '../../services/auth.service';
+import { ToastService, pinnedToast } from '../../services/toast.service';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 import type { IKennelConfig } from '../../models/kennel-config.model';
 import type { DogCatalogEntry } from '../../models/dog-catalog';
 
@@ -23,7 +25,7 @@ type PickerState = 'idle' | 'loading' | 'ready' | 'error';
       (click)="toggle()">Use in kennel ▾</button>
     @if (open()) {
       <span class="scrim" (click)="open.set(false)" aria-hidden="true"></span>
-      <div class="menu sd-lift" role="menu" aria-label="Your kennels">
+      <div class="menu sd-lift sd-rise" role="menu" aria-label="Your kennels">
         <p class="sd-label cap">{{ dog().runOnly ? 'pin to a kennel you edit' : 'add to a kennel you edit' }}</p>
         @switch (state()) {
           @case ('loading') { <p class="sd-small note">loading …</p> }
@@ -72,12 +74,11 @@ type PickerState = 'idle' | 'loading' | 'ready' | 'error';
 export class SdKennelPickerComponent {
   private readonly kennelService = inject(KennelService);
   private readonly auth = inject(AuthService);
+  private readonly toast = inject(ToastService);
 
   readonly dog = input.required<DogCatalogEntry>();
   /** Where the login comes back to — the browser with this dog's preview open. */
   readonly returnTo = input('/dogs');
-  /** A toast line: what happened. */
-  readonly done = output<string>();
 
   readonly open = signal(false);
   readonly state = signal<PickerState>('idle');
@@ -144,7 +145,7 @@ export class SdKennelPickerComponent {
             }
             this.all.update((list) => list.map((x) => (x.id === k.id ? { ...x, dogIds: [...ids, dog.ref] } : x)));
             this.finish(dog.runOnly
-              ? `Pinned to v${dog.version ?? '?'}. Output flows, code never.`
+              ? pinnedToast(dog.version)
               : `Added ${dog.name} to ${name}.`);
           },
           error: (err) => this.finish(`Couldn't add ${dog.name}: ${err?.error?.error ?? err?.status ?? 'network'}.`),
@@ -157,11 +158,11 @@ export class SdKennelPickerComponent {
   private finish(text: string): void {
     this.busy.set(null);
     this.open.set(false);
-    this.done.emit(text);
+    this.toast.show(text);
   }
 
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.open.set(false);
+  constructor() {
+    // Esc closes the picker, not the preview under it (the picker is the top layer while open).
+    escapeLayerWhile(() => this.open(), () => this.open.set(false));
   }
 }

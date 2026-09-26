@@ -17,6 +17,8 @@ import {
   type AccessRow,
 } from '../../utils/access-roles';
 
+import { escapeLayerWhile } from '../../utils/escape-layers';
+
 type PanelState = 'loading' | 'ready' | 'hidden' | 'error';
 
 /**
@@ -84,6 +86,8 @@ export class SdAccessPanelComponent {
   });
 
   constructor() {
+    // The transfer dialog sits over the drawer: Esc closes the dialog, the drawer stays.
+    escapeLayerWhile(() => this.transferOpen(), () => this.transferOpen.set(false));
     effect(() => {
       const entity = this.entity();
       const id = this.entityId();

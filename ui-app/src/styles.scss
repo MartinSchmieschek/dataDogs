@@ -564,6 +564,28 @@
     height: 12px;
     background: var(--paper-3);
   }
+
+  /* Motion (U8): floating things arrive — menus, dialogs, toasts rise 4 px, scrims fade. */
+  .sd-rise {
+    animation: sd-rise var(--dur-base) var(--ease-out) both;
+  }
+
+  .sd-fade {
+    animation: sd-fade var(--dur-base) var(--ease-out) both;
+  }
+}
+
+@keyframes sd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes sd-fade {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Reduced motion: per class, never `*` (6.2). */
@@ -571,5 +593,10 @@
   .sd-btn,
   .sd-switch::after {
     transition-duration: .01ms;
+  }
+
+  .sd-rise,
+  .sd-fade {
+    animation-duration: .01ms;
   }
 }

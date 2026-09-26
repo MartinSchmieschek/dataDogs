@@ -164,6 +164,10 @@
         }
         @case ('dog') {
           <button type="button" class="dh-back" (click)="backToKennel()">‹ kennel</button>
+          @if (selectedDog(); as sd) {
+            <p class="sd-h1 dh-title">{{ sd.icon || '◇' }} {{ sd.displayName || sd.name }}</p>
+            <sd-dog-facts [dog]="sd" />
+          }
           @if (selectedPin(); as pin) {
             <p class="sd-small dh-meta">run only · {{ pin.version !== null ? 'pinned to v' + pin.version : 'pinned' }}</p>
             @if (pin.newer && !readOnly()) {
@@ -173,8 +177,6 @@
             }
           } @else if (selectedDog()?.redacted) {
             <p class="sd-small dh-meta">private · owned by someone else</p>
-          } @else {
-            <p class="sd-small dh-meta">dog</p>
           }
         }
         @case ('edge') {
@@ -387,30 +389,50 @@
   }
 
   <!-- Branch-cut confirmation -->
-  <app-waves-confirm-dialog
+  <sd-confirm
     [open]="!!pendingCut()"
     title="Cut this branch?"
     [message]="'The edge ' + (cutLabel() ?? '') + ' and every dog below it leave this kennel. The dogs stay saved; they are just not part of this kennel any more.'"
     confirmLabel="Cut"
-    cancelLabel="Cancel"
     variant="danger"
-    icon="danger"
     (confirmed)="confirmBranchCut()"
     (dismissed)="cancelBranchCut()" />
 
   <!-- Delete confirmation -->
-  <app-waves-confirm-dialog
+  <sd-confirm
     [open]="pendingDelete()"
     title="Delete this kennel?"
     [message]="'/k/' + kennelId + ' stops answering. The dogs stay saved.'"
     confirmLabel="Delete kennel"
-    cancelLabel="Cancel"
     variant="danger"
-    icon="danger"
     (confirmed)="confirmDelete()"
     (dismissed)="pendingDelete.set(false)" />
 
-  @if (toast()) {
-    <p class="toast" role="status">{{ toast() }}</p>
-  }
+  <!-- Rename (kennel menu): the name changes, the ID stays -->
+  <sd-confirm
+    [open]="renameOpen()"
+    title="Rename kennel"
+    confirmLabel="Rename"
+    busyLabel="Renaming…"
+    variant="primary"
+    [busy]="renameBusy()"
+    [confirmDisabled]="!!renameProblem()"
+    (confirmed)="commitRename()"
+    (dismissed)="renameOpen.set(false)">
+    <div class="rename">
+      <label class="sd-label" for="sd-rename-name">Name</label>
+      <input id="sd-rename-name" class="sd-field" autocomplete="off" autofocus [attr.maxlength]="renameMax"
+        [value]="renameDraft()" [attr.aria-invalid]="!!renameError()" [attr.aria-describedby]="'sd-rename-id'"
+        (input)="renameDraft.set($any($event.target).value)" (keydown.enter)="commitRename()" />
+      @if (renameError(); as err) {
+        <p class="sd-hint sd-hint--error" role="alert">{{ err }}</p>
+      } @else if (renameHint()) {
+        <p class="sd-hint">{{ renameHint() }}</p>
+      }
+      <p class="sd-small sd-muted rename-id" id="sd-rename-id">
+        ID <span class="sd-data">{{ kennelConfig()?.lineageId || kennelId }}</span> stays — /k/{{ kennelConfig()?.lineageId || kennelId }},
+        versions, stars and pins hang on it.
+      </p>
+    </div>
+  </sd-confirm>
 </div>

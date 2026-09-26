@@ -1,12 +1,13 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 import type { IKennelConfig, IKennelStats } from '../../models/kennel-config.model';
 import { SdPlaqueComponent } from '../sd-plaque/sd-plaque.component';
 import { SdStarsComponent } from '../sd-stars/sd-stars.component';
 import { SdTapeDeckComponent } from '../sd-tape-deck/sd-tape-deck.component';
 
 export type KennelHeadAction =
-  | 'edit' | 'open' | 'docs' | 'copy-link' | 'export' | 'versions' | 'palette' | 'freeze' | 'unfreeze' | 'delete';
+  | 'edit' | 'rename' | 'open' | 'docs' | 'copy-link' | 'export' | 'versions' | 'palette' | 'freeze' | 'unfreeze' | 'delete';
 
 export type KennelRunState = 'idle' | 'running' | 'live' | 'failed';
 
@@ -101,8 +102,7 @@ export class SdKennelHeadComponent {
     this.action.emit(a);
   }
 
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.menuOpen.set(false);
+  constructor() {
+    escapeLayerWhile(() => this.menuOpen(), () => this.menuOpen.set(false));
   }
 }

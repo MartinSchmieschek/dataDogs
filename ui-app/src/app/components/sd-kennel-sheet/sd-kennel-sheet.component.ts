@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  HostListener,
   afterNextRender,
   computed,
   input,
@@ -14,6 +13,7 @@ import { KENNEL_ID_PATTERN, publicKennelPath } from '../../config/public-paths';
 import { KENNEL_EMOJI_PRESETS } from '../../data/kennel-emoji-presets';
 import type { KennelVisibility } from '../../models/kennel-config.model';
 import { SdBannerComponent } from '../sd-banner/sd-banner.component';
+import { escapeLayerWhile } from '../../utils/escape-layers';
 
 export interface KennelCreateData {
   id: string;
@@ -79,6 +79,7 @@ export class SdKennelSheetComponent {
 
   constructor() {
     afterNextRender(() => this.idBox()?.nativeElement.focus());
+    escapeLayerWhile(() => true, () => this.onEscape());
   }
 
   pickEmoji(e: string): void {
@@ -98,8 +99,8 @@ export class SdKennelSheetComponent {
     });
   }
 
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
+  /** Esc: the emoji popover first, then the sheet — while nothing else sits on top (escape layers). */
+  private onEscape(): void {
     if (this.emojiOpen()) this.emojiOpen.set(false);
     else if (!this.busy()) this.cancelled.emit();
   }

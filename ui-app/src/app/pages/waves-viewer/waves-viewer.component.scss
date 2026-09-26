@@ -292,27 +292,14 @@
   color: var(--ink-3);
 }
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: var(--s5);
-  z-index: var(--z-toast);
-  transform: translateX(-50%);
-  max-width: calc(100vw - 32px);
-  padding: var(--s2) var(--s4);
-  background: var(--ink);
-  color: var(--paper);
-  border: 2px solid var(--paper);
-  outline: 2px solid var(--ink);
+/* Rename dialog body (projected into sd-confirm). */
+.rename-id {
+  margin-top: var(--s3);
 }
 
 @media (max-width: 767px) {
   .stage {
     padding-bottom: 60px;
-  }
-
-  .toast {
-    bottom: 76px;
   }
 
   .form {

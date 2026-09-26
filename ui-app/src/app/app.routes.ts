@@ -1,4 +1,5 @@
 import { Routes, UrlSegment, UrlMatchResult } from '@angular/router';
+import { unsavedChangesGuard } from './guards/unsaved-changes.guard';
 
 /**
  * `/kennels/:id` and `/kennels/:id/edit` are one route (P6 U6): the edit segment opens the settings
@@ -28,6 +29,8 @@ export const routes: Routes = [
     matcher: kennelPageMatcher,
     loadComponent: () => import('./pages/waves-viewer/waves-viewer.component')
       .then(m => m.WavesViewerComponent),
+    // U8: brief, layout, dog code or settings unsaved -> "Unsaved changes. Leave anyway?"
+    canDeactivate: [unsavedChangesGuard],
   },
   {
     // side B (P6 U5): the dog browser; a dog opens as a preview (`?dog=`), never as a page (8.21).

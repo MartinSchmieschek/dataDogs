@@ -51,7 +51,7 @@
     </div>
 
     <footer class="foot">
-      <sd-kennel-picker [dog]="d" [returnTo]="returnTo()" (done)="toast.emit($event)" />
+      <sd-kennel-picker [dog]="d" [returnTo]="returnTo()" />
       <span class="sd-small hint">{{ d.runOnly ? 'Pins this version. Output flows, code never.' : d.isBase ? 'Base dogs come with the server.' : 'Adds the latest version.' }}</span>
     </footer>
   }

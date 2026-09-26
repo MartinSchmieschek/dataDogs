@@ -317,6 +317,25 @@ export class DogSidePanelComponent implements OnChanges {
     return this.parentsOptional().includes(parentId);
   }
 
+  /**
+   * Unsaved work in this panel (U8, "Unsaved changes. Leave anyway?"): code in the open editor that differs
+   * from the version it was loaded from, or parents toggled away from it. A save clears it via the new dog.
+   */
+  isDirty(): boolean {
+    if (!this.dog || !this.canEditDog || this.saving()) return false;
+    const base = this.editorDog() ?? this.dog;
+    const code = this.codeArtifact?.getCurrentCode();
+    const norm = (s: string | null | undefined) => (s ?? '').replace(/\r\n/g, '\n');
+    if (code != null && norm(code) !== norm(base.codeTs)) return true;
+    const same = (a: string[], b: string[] | undefined) =>
+      a.length === (b ?? []).length && a.every((x) => (b ?? []).includes(x));
+    const selected = this.selectedVersionId();
+    const version = selected ? this.versions().find((v) => v.id === selected)?.config : null;
+    const req = version ? version.parentsRequired : base.parentsRequired;
+    const opt = version ? version.parentsOptional : base.parentsOptional;
+    return !same(this.parentsRequired(), req) || !same(this.parentsOptional(), opt);
+  }
+
   saveCode() {
     if (!this.dog || !this.canEditDog) return;
 

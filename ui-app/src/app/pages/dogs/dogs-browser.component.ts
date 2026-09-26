@@ -1,10 +1,11 @@
-import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { Subject, of } from 'rxjs';
 import { catchError, debounceTime, map, switchMap, tap } from 'rxjs/operators';
 import { DogService } from '../../services/dog.service';
 import { AuthService } from '../../services/auth.service';
+import { ToastService } from '../../services/toast.service';
 import type { DogInfo } from '../../models/dog.model';
 import {
   DogCatalogEntry,
@@ -27,7 +28,6 @@ import { SdFilterRailComponent, type SdRailCount } from '../../components/sd-fil
 import { SdDogPreviewComponent } from '../../components/sd-dog-preview/sd-dog-preview.component';
 
 const SEARCH_DEBOUNCE_MS = 250;
-const TOAST_MS = 4000;
 const PAGE_ROWS = 60;
 const SORT_KEYS: readonly DogSortKey[] = ['proven', 'calls30d', 'reuse', 'name'];
 const SORT_OPTIONS: readonly SdSortOption<DogSortKey>[] = [
@@ -86,14 +86,11 @@ const defaultDir = (k: DogSortKey): 'asc' | 'desc' => (k === 'name' ? 'asc' : 'd
     .empty h2 { font: 400 28px/28px var(--font-display); letter-spacing: .03em; }
     .sheet-body { padding: var(--s4); }
     .fk { color: var(--ink-soft); }
-    .toast { position: fixed; left: 50%; bottom: var(--s5); z-index: var(--z-toast); transform: translateX(-50%); max-width: calc(100vw - 32px);
-      padding: var(--s2) var(--s4); background: var(--ink); color: var(--paper); border: 2px solid var(--paper); outline: 2px solid var(--ink); }
     @media (max-width: 767px) {
       .page { padding-bottom: calc(var(--s8) + 60px); }
       .body { grid-template-columns: minmax(0, 1fr); }
       .rail { display: none; }
       .filter-btn { display: inline-flex; flex: none; }
-      .toast { bottom: calc(60px + var(--s3)); }
     }
   `],
 })
@@ -118,7 +115,7 @@ export class DogsBrowserComponent {
   readonly sortDir = signal<'asc' | 'desc'>('desc');
   readonly selectedKey = signal<string | null>(null);
   readonly sheetOpen = signal(false);
-  readonly toast = signal<string | null>(null);
+  private readonly toast = inject(ToastService);
 
   /** A server without stats (before P4b): no proven chip, no proven sort — name instead (8.26). */
   readonly hasStats = computed(() => this.all().some((d) => !!d.stats));
@@ -169,7 +166,6 @@ export class DogsBrowserComponent {
 
   private readonly searchInput = new Subject<string>();
   private readonly loads = new Subject<void>();
-  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private first = true;
 
   constructor() {
@@ -206,8 +202,6 @@ export class DogsBrowserComponent {
     }, { allowSignalWrites: true });
 
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((p) => this.applyParams(p));
-
-    inject(DestroyRef).onDestroy(() => this.toastTimer && clearTimeout(this.toastTimer));
   }
 
   onSearchInput(value: string): void {
@@ -276,12 +270,6 @@ export class DogsBrowserComponent {
     this.rows.update((n) => n + PAGE_ROWS);
   }
 
-  showToast(text: string): void {
-    this.toast.set(text);
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
-  }
-
   private apply(f: Filters): DogCatalogEntry[] {
     const q = f.q.toLowerCase();
     return this.all().filter((d) =>
@@ -323,7 +311,7 @@ export class DogsBrowserComponent {
     if (this.all().some((d) => d.key === key)) return;
     this.selectedKey.set(null);
     this.writeParams({ dog: null });
-    this.showToast("That dog isn't here. It may be private, or it was renamed.");
+    this.toast.show("That dog isn't here. It may be private, or it was renamed.");
   }
 
   private writeParams(patch: Record<string, string | null>): void {

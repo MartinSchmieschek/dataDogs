@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  HostListener,
   Injector,
   afterNextRender,
   inject,
@@ -10,6 +11,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { hasEscapeLayer } from '../../utils/escape-layers';
+import { isTypingTarget } from '../../utils/keyboard';
 
 /**
  * Search (6.5 `sd-search`): a typewriter field on desktop, an icon on mobile that opens the field over the
@@ -28,7 +31,7 @@ import {
       <input #box class="sd-field" type="search" [id]="id" autocomplete="off" spellcheck="false"
         [placeholder]="placeholder()" [value]="value()"
         (input)="valueChange.emit($any($event.target).value)"
-        (keydown.escape)="clear()" (blur)="onBlur()" />
+        (keydown.escape)="$event.preventDefault(); clear()" (blur)="onBlur()" />
     </div>
   `,
   styles: [`
@@ -70,5 +73,14 @@ export class SdSearchComponent {
 
   onBlur(): void {
     if (!this.value()) this.open.set(false);
+  }
+
+  /** `/` outside a field jumps into the search (U8) — unless a panel or dialog is on top. */
+  @HostListener('document:keydown', ['$event'])
+  onSlash(event: KeyboardEvent): void {
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (isTypingTarget(event.target) || hasEscapeLayer()) return;
+    event.preventDefault();
+    this.expand();
   }
 }

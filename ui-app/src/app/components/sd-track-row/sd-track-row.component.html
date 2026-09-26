@@ -43,7 +43,7 @@
         (click)="toggleMenu($event)">⋯</button>
       @if (menuOpen()) {
         <span class="scrim" (click)="closeMenu()" aria-hidden="true"></span>
-        <span class="menu sd-lift" role="group" [attr.aria-label]="'Actions for ' + title()">
+        <span class="menu sd-lift sd-rise" role="group" [attr.aria-label]="'Actions for ' + title()">
           <button type="button" (click)="pick('open')">Open page</button>
           <button type="button" (click)="pick('docs')">Docs</button>
           <button type="button" (click)="pick('copy-link')">Copy link</button>

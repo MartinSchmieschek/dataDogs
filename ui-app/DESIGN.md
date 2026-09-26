@@ -109,6 +109,25 @@ Spacing on a 4 pt grid (`--s1` 4 … `--s8` 64); **no radius tokens** — corner
 `prefers-reduced-motion`: reels static, stagger and slam .01 ms — per class, never `*`. Breakpoints
 `sm 640, md 768, lg 1024, xl 1440`; touch targets 44 px mobile / 36 px desktop; nothing hover-only.
 
+## Toast, dialog, keys (U8)
+
+- **Toast** (`sd-toast`, `ToastService`): one line of ink with paper text, bottom centre (above the bottom bar on
+  a phone), 4 s, a new line replaces the old; optional link. Once in the app shell; pages call
+  `ToastService.show()`. Say what happened: `Link copied.`, `Pinned to v7. Output flows, code never.`
+- **Dialog** (`sd-confirm`, `ConfirmService.ask()`): paper, `.sd-lift`, H1 title, one message line, optional
+  projected field, `[Cancel]` and the confirm button (quiet, primary for a form, danger for loss). Focus goes to
+  the field or Cancel and comes back on close; Tab stays inside. No `window.confirm` anywhere.
+- **Unsaved changes. Leave anyway?** — one wording (`LEAVE_UNSAVED`) for the settings drawer, the dog code in
+  the inspector and the brief: asked on close, on `‹ kennel`, on another dog, on route change (guard) and by the
+  browser on tab close.
+- **Escape layers** (`utils/escape-layers.ts`): drawers, sheets, menus, pickers, dialogs, the key help and the
+  cinema register while open; `Esc` closes only the top one. A field that uses `Esc` itself calls
+  `preventDefault()`.
+- **Keys**: `?` key help (outside fields) · `/` search on kennels and dogs · `Esc` top layer ·
+  `Ctrl/⌘+Enter` run · `Ctrl/⌘+S` save the open editor (settings, dog code, brief) on the kennel page.
+- **Motion**: `.sd-rise` (fade, 4 px rise, 200 ms ease-out) for menus, dialogs, toasts; `.sd-fade` for scrims;
+  drawers slide 24 px from their side, sheets 48 px up. Reduced motion: .01 ms, per class.
+
 ## Underground, dosed
 
 Chapter card on top of every page; label-maker chips; reels that turn while a kennel runs; one requiem verse

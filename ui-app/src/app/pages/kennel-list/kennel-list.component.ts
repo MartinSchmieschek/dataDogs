@@ -1,6 +1,5 @@
 import {
   Component,
-  DestroyRef,
   ElementRef,
   computed,
   effect,
@@ -20,6 +19,8 @@ import {
 } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { AuthService } from '../../services/auth.service';
+import { ToastService } from '../../services/toast.service';
+import { ConfirmService } from '../../services/confirm.service';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { publicKennelDocsPath, publicKennelPath } from '../../config/public-paths';
 import { SdTopBarComponent } from '../../components/sd-top-bar/sd-top-bar.component';
@@ -38,7 +39,6 @@ import { SdBottomBarComponent } from '../../components/sd-bottom-bar/sd-bottom-b
 const KENNEL_LIST_SORT_STORAGE_KEY = 'slopdogs.kennelList.sort.v3';
 const KENNEL_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 250;
-const TOAST_MS = 4000;
 
 const SORT_KEYS: readonly KennelSortKey[] = ['name', 'createdAt', 'updatedAt', 'calls30d', 'rating'];
 const SORT_OPTIONS: readonly SdSortOption<KennelSortKey>[] = [
@@ -125,11 +125,8 @@ function dedupeKennelsById(list: IKennelConfig[]): IKennelConfig[] {
     .empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); padding: var(--s7) 0 var(--s5); max-width: 84ch; }
     .empty h2 { font-family: var(--font-display); font-weight: 400; font-size: 28px; line-height: 28px; letter-spacing: .03em; }
     .empty sd-url-chip { align-self: stretch; }
-    .toast { position: fixed; left: 50%; bottom: var(--s5); z-index: var(--z-toast); transform: translateX(-50%);
-      padding: var(--s2) var(--s4); background: var(--ink); color: var(--paper); border: 2px solid var(--paper); outline: 2px solid var(--ink); }
     @media (max-width: 767px) {
       .page { padding-bottom: calc(var(--s8) + 60px); }
-      .toast { bottom: calc(60px + var(--s3)); }
       .new-top { display: none; }
       .fab { display: inline-flex; position: fixed; right: var(--s4); bottom: calc(60px + var(--s4) + env(safe-area-inset-bottom));
         z-index: var(--z-sticky); width: 56px; height: 56px; font-size: 24px; }
@@ -142,7 +139,8 @@ export class KennelListComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
-  private readonly destroyRef = inject(DestroyRef);
+  private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
 
   readonly authUser = this.auth.user;
   readonly sortOptions = SORT_OPTIONS;
@@ -170,7 +168,6 @@ export class KennelListComponent {
   readonly sheetOpen = signal(false);
   readonly creating = signal(false);
   readonly createError = signal<string | null>(null);
-  readonly toast = signal<string | null>(null);
 
   readonly showSkeleton = computed(() => this.loading() && this.kennels().length === 0);
   readonly hasMore = computed(() => this.nextOffset() < this.total());
@@ -194,7 +191,6 @@ export class KennelListComponent {
   private lastRequest = { offset: 0, append: false };
   private pendingNew = signal(false);
   private firstParams = true;
-  private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const persisted = readPersistedSort();
@@ -292,10 +288,6 @@ export class KennelListComponent {
     // The URL is the state: `?q=`, `?sort=`, `?dir=`, `?mine=1`, `?new=1`. Subscribed last — the first
     // emission is synchronous and its reload needs the page pipeline above.
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => this.applyParams(params));
-
-    this.destroyRef.onDestroy(() => {
-      if (this.toastTimer) clearTimeout(this.toastTimer);
-    });
   }
 
   isYours(k: IKennelConfig): boolean {
@@ -420,7 +412,7 @@ export class KennelListComponent {
         this.exportBundle(ref);
         return;
       case 'delete':
-        this.deleteKennel(kennel);
+        void this.deleteKennel(kennel);
         return;
     }
   }
@@ -532,7 +524,7 @@ export class KennelListComponent {
         const json = JSON.stringify(bundle, null, 2);
         if (navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(json).then(
-            () => this.showToast('Kennel copied as JSON.'),
+            () => this.toast.show('Kennel copied as JSON.'),
             () => this.downloadJson(json, ref),
           );
         } else {
@@ -543,9 +535,15 @@ export class KennelListComponent {
     });
   }
 
-  private deleteKennel(kennel: IKennelConfig): void {
+  private async deleteKennel(kennel: IKennelConfig): Promise<void> {
     const ref = this.kennelRef(kennel);
-    if (!confirm(`Delete "${kennel.name || ref}"? Every version goes with it.`)) return;
+    const ok = await this.confirm.ask({
+      title: `Delete ${kennel.name || ref}?`,
+      message: `Every version goes with it, and /k/${ref} stops answering. The dogs stay saved.`,
+      confirmLabel: 'Delete kennel',
+      variant: 'danger',
+    });
+    if (!ok) return;
     this.kennelService.delete(ref).subscribe({
       next: (res) => (res.ok ? this.reload() : this.error.set(res.error ?? 'Delete failed.')),
       error: (err) => this.error.set(err?.error?.error ?? `Delete failed (${err?.status ?? 'network'}).`),
@@ -559,21 +557,16 @@ export class KennelListComponent {
     a.download = `${ref}.kennel.json`;
     a.click();
     URL.revokeObjectURL(url);
-    this.showToast('Kennel downloaded as JSON.');
+    this.toast.show('Kennel downloaded as JSON.');
   }
 
+  /** Clipboard first; without one the toast carries the text itself (no native prompt). */
   private copyText(text: string, done: string): void {
     const clip = navigator.clipboard;
     if (!clip?.writeText) {
-      window.prompt('Copy this link', text);
+      this.toast.show(text);
       return;
     }
-    clip.writeText(text).then(() => this.showToast(done), () => window.prompt('Copy this link', text));
-  }
-
-  private showToast(text: string): void {
-    this.toast.set(text);
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
+    clip.writeText(text).then(() => this.toast.show(done), () => this.toast.show(text));
   }
 }

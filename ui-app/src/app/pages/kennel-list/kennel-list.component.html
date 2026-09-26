@@ -78,7 +78,3 @@
 @if (sheetOpen()) {
   <sd-kennel-sheet [busy]="creating()" [error]="createError()" (submitted)="onCreate($event)" (cancelled)="closeCreate()" />
 }
-
-@if (toast()) {
-  <p class="toast" role="status">{{ toast() }}</p>
-}

@@ -147,6 +147,14 @@ export class KennelService {
     return this.http.delete<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);
   }
 
+  /**
+   * A new name across every version, in place (`PATCH /api/kennels/:id/rename`). The ID (lineageId) stays:
+   * the server renames no lineage — `/k/<id>`, versions, calls, stars and pins are keyed on it.
+   */
+  rename(id: string, name: string): Observable<{ ok: boolean }> {
+    return this.http.patch<{ ok: boolean }>(`${this.baseUrl}/${encodeURIComponent(id)}/rename`, { displayName: name });
+  }
+
   /** Sterne (P4): Aggregat, Verteilung, eigene Bewertung. Relativ — laeuft ueber den Dev-Proxy. */
   getRating(id: string): Observable<IRatingView> {
     return this.http.get<IRatingView>(`${this.baseUrl}/${encodeURIComponent(id)}/rating`);

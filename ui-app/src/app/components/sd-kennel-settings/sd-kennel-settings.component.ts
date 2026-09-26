@@ -11,11 +11,14 @@ import {
   bodyProblem,
   reorderDogIds,
   settingsFormOf,
+  settingsDirty,
   settingsPayload,
   settingsView,
   type QueryRow,
+  type SettingsForm,
   type SettingsRights,
 } from '../../utils/kennel-settings';
+import { ConfirmService, LEAVE_UNSAVED } from '../../services/confirm.service';
 import { SdDrawerComponent } from '../sd-drawer/sd-drawer.component';
 import { SdBannerComponent } from '../sd-banner/sd-banner.component';
 import { SdAccessPanelComponent } from '../sd-access-panel/sd-access-panel.component';
@@ -46,6 +49,7 @@ interface DogOrderRow {
 export class SdKennelSettingsComponent {
   private readonly kennels = inject(KennelService);
   private readonly acl = inject(AclService);
+  private readonly confirm = inject(ConfirmService);
 
   readonly open = input(false);
   readonly kennel = input<IKennelConfig | null>(null);
@@ -86,6 +90,8 @@ export class SdKennelSettingsComponent {
   readonly publicPath = computed(() => publicKennelPath(this.lineage()));
   readonly bodyError = computed(() => bodyProblem(this.body()));
   readonly dogRows = computed<DogOrderRow[]>(() => this.dogIds().map((ref) => this.dogRow(ref)));
+  /** Typed but not saved (U8): closing asks first. */
+  readonly dirty = computed(() => this.open() && this.editable() && settingsDirty(this.kennel(), this.form()));
 
   constructor() {
     // A fresh open (or a new config while closed) resets the form; typing never gets overwritten.
@@ -94,6 +100,17 @@ export class SdKennelSettingsComponent {
       const cfg = this.kennel();
       untracked(() => this.reset(cfg));
     }, { allowSignalWrites: true });
+  }
+
+  private form(): SettingsForm {
+    return {
+      name: this.name(),
+      description: this.description(),
+      emoji: this.emoji(),
+      dogIds: this.dogIds(),
+      query: this.query(),
+      body: this.body(),
+    };
   }
 
   private reset(cfg: IKennelConfig | null): void {
@@ -141,16 +158,22 @@ export class SdKennelSettingsComponent {
     this.query.update((rows) => rows.filter((_, i) => i !== index));
   }
 
+  /** Back, Cancel, the scrim, `×` and Esc: with unsaved changes the dialog asks "Leave anyway?" first. */
+  async requestClose(): Promise<void> {
+    if (this.saving()) return;
+    if (this.dirty() && !(await this.confirm.ask(LEAVE_UNSAVED))) return;
+    this.discard();
+    this.closed.emit();
+  }
+
+  /** "Leave" answered: the typed changes go; the form shows the stored config again. */
+  discard(): void {
+    this.reset(this.kennel());
+  }
+
   save(): void {
     if (!this.editable() || this.saving()) return;
-    const payload = settingsPayload(this.kennel(), {
-      name: this.name(),
-      description: this.description(),
-      emoji: this.emoji(),
-      dogIds: this.dogIds(),
-      query: this.query(),
-      body: this.body(),
-    });
+    const payload = settingsPayload(this.kennel(), this.form());
     if (!payload.ok) return;
     this.saving.set(true);
     this.error.set(null);
