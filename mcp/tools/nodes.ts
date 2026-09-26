@@ -466,6 +466,34 @@ export function getNodeTools(): ToolDef[] {
             },
         },
         {
+            name: 'delete_node',
+            description:
+                'Deletes a Breed (SerializedDog / MimicDog). A lineageId deletes the whole dog — every version; a version GUID deletes exactly that one version (an older one becomes the head). The owner or an editor can delete; not while frozen. Irreversible. Kennels that still reference the dog keep the reference and fail to run it — check get_node `usage` first and confirm with the user. When the last version goes, the dog\'s references and run stats go with it. Hunters (base:*) are code, not stored — they cannot be deleted.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                additionalProperties: false,
+                properties: {
+                    id: { type: 'string', description: 'lineageId (whole dog) or version GUID (one version)' },
+                },
+            },
+            argHints: { nodeId: 'id', dogId: 'id', lineageId: 'id' },
+            handler: async (args, ctx, deps) => {
+                const id = String(args.id ?? '');
+                if (id.startsWith('base:')) return fail(`${id} is a Hunter (code, not stored) — it cannot be deleted`);
+                const existing = await deps.nodesController.getById(id);
+                if (!existing.ok || !existing.data) return fail(`Node ${id} not found`);
+                const allowed = await canMutateNode(existing.data as any, ctx, deps.kennelsStore);
+                if (!allowed) {
+                    if (!canRead(existing.data as any, ctx)) return fail(`Node ${id} not found`);
+                    return fail(isFrozen(existing.data as any) ? `Node ${id} is frozen — unfreeze it first` : 'Not authorized');
+                }
+                const outcome = await deps.nodesController.deleteRef(id);
+                if (!outcome.ok) return fail(outcome.code === 'not_found' ? `Node ${id} not found` : 'delete_failed: nothing or only part of it may be gone — check get_node_versions');
+                return ok({ deleted: id, scope: outcome.scope, lineageId: outcome.lineageId, versions: outcome.deleted });
+            },
+        },
+        {
             name: 'get_node_versions',
             description:
                 'Returns the full version history of a node\'s lineage — every incarnation, newest first. Requires the read right — "not found" otherwise (also for run-only dogs).',

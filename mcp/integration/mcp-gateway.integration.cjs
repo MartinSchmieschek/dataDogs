@@ -39,6 +39,8 @@ const REQUIRED_TOOLS = [
   'grant_access',
   'freeze_entity',
   'unfreeze_entity',
+  // Fix-Runde: Dogs loeschen (Lineage oder Version)
+  'delete_node',
   // P4c Key-Store (kein Lese-Werkzeug, niemals)
   'set_key',
   'list_keys',
@@ -520,6 +522,35 @@ async function run() {
     fail('unknown args', e.message);
   } finally {
     try { await mcpCallRaw('delete_kennel', { id: strayId }); } catch { /* best effort */ }
+  }
+
+  // delete_node: eine Versions-GUID nimmt genau eine Version, die lineageId den ganzen Dog; ein zweites Loeschen
+  // ist "not found" — kein roher Store-Text. /actions kennt das Werkzeug auch.
+  let deleteProbe = null;
+  try {
+    const created = await mcpCall('create_node', { displayName: `GatewayDeleteProbe${Date.now()}`, tsCode: 'return 1;' });
+    deleteProbe = created?.lineageId;
+    const v1 = created?.id;
+    await mcpCall('save_node', { id: deleteProbe, tsCode: 'return 2;' });
+    const one = await mcpCall('delete_node', { id: v1 });
+    const left = await mcpCall('get_node_versions', { id: deleteProbe });
+    if (one?.scope !== 'version' || one?.versions !== 1 || !Array.isArray(left) || left.length !== 1) {
+      fail('delete_node version', `${JSON.stringify(one)} -> ${Array.isArray(left) ? left.length : typeof left} left`);
+    } else pass('delete_node version', `${v1} -> 1 version left`);
+    const all = await httpPostJson('/actions/delete_node', { id: deleteProbe });
+    if (all.status !== 200 || all.json?.result?.scope !== 'lineage') fail('delete_node lineage (/actions)', `HTTP ${all.status} ${all.raw.slice(0, 160)}`);
+    else pass('delete_node lineage (/actions)', `scope lineage, ${all.json.result.versions} version(s)`);
+    const again = await mcpCallRaw('delete_node', { id: deleteProbe });
+    const text = String(again.value);
+    if (!again.isError || !/not found/i.test(text) || /prisma|invocation/i.test(text)) fail('delete_node twice', text.slice(0, 160));
+    else pass('delete_node twice', text.slice(0, 60));
+    deleteProbe = null;
+  } catch (e) {
+    fail('delete_node', e.message);
+  } finally {
+    if (deleteProbe) {
+      try { await mcpCallRaw('delete_node', { id: deleteProbe }); } catch { /* best effort */ }
+    }
   }
 
   const query = { lat: '50.1109', lng: '8.6821' };
