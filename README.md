@@ -321,6 +321,23 @@ Super-user mode exists only in development. In `production`/`integration` (`NODE
 - **Personal Access Tokens** at `GET /auth/tokens` (HTML page). Long-lived JWTs for MCP clients, Custom GPT API-keys, scripts. The same three routes also answer JSON to `Accept: application/json` (`{ ok, tokens }` / `{ ok, token }`) — the `/account?tab=tokens` screen uses this.
 - **Full OAuth 2.1 Authorization Server** at `/auth/authorize`, `/auth/token`, `/auth/register`. Discovery via `GET /.well-known/oauth-authorization-server` — for clients that auto-configure (Cursor, Claude.ai Connectors, Custom GPTs with OAuth).
 
+### Stage and closed beta
+
+One switch, `SLOPDOGS_STAGE`. With `SLOPDOGS_STAGE=beta`:
+
+- **The landing shows the beta sticker.** The server fills the placeholder `‹stage›` in `<html data-stage="…">` with the stage — for the kennel output and for the static fallback alike; the sticker only shows under `data-stage="beta"`.
+- **Beta keys become mandatory — only with login on** (`MCP_AUTH_REQUIRED=true`). Every Google account has to be unlocked once: a new one when it signs up, an existing one at its next sign-in, never again after that. One key unlocks exactly one account; keys don't expire, they end by being redeemed or revoked. Only the SHA-256 hash is stored (table `BetaKey` in the auth DB). A key comes in through the field on `/login` or the key page the Google callback shows (`403`, "closed beta") — it rides along as `/auth/google/login?betaKey=…` and is redeemed together with the account, in one transaction: two sign-ins with one key make one account.
+- **Locally without login** the sticker shows and nobody needs a key.
+
+`BETA_ADMIN_EMAILS` (comma-separated) manage keys and sign in without one — in production too; locally the super-user does it. In the app: `/account?tab=beta` (create — the key is shown once —, list masked with open / redeemed by whom and when / revoked, revoke). Over REST:
+
+| Method | Path | |
+|---|---|---|
+| `GET` | `/api/beta` | `{stage, keysRequired, admin}` — for everyone |
+| `GET` | `/api/beta/keys` | Masked list (last four characters, state, `usedBy`, `usedAt`) — admins |
+| `POST` | `/api/beta/keys` | `{note?}` -> `201 {code, key}`; `code` is the key in plain text, shown this once — admins |
+| `DELETE` | `/api/beta/keys/:id` | Revoke an open key; a redeemed one stays redeemed — admins |
+
 ### Visibility & Ownership
 
 Rights are a strict ladder: **NONE < RUN < READ < EDIT < OWN**. COPY is not a right of its own — it equals READ; the only real copy protection is keeping something run-only.
