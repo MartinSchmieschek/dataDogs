@@ -22,7 +22,12 @@ import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { apiAbsoluteUrl } from '../../config/api-base';
-import { publicKennelDocsPath, publicKennelPath } from '../../config/public-paths';
+import { publicKennelDocsPath } from '../../config/public-paths';
+import {
+  publicKennelPathWithDefaults,
+  readLastOpenedKennel,
+  rememberLastOpenedKennel,
+} from '../../utils/last-opened-kennel';
 import { SdTopBarComponent } from '../../components/sd-top-bar/sd-top-bar.component';
 import { SdSearchComponent } from '../../components/sd-search/sd-search.component';
 import { SdChapterCardComponent } from '../../components/sd-chapter-card/sd-chapter-card.component';
@@ -164,6 +169,9 @@ export class KennelListComponent {
   readonly onlyMine = signal(false);
   readonly sortKey = signal<KennelSortKey>('name');
   readonly sortDir = signal<KennelSortDir>('asc');
+
+  /** The kennel opened last in this browser (by name or row) — marked in the list, kept in localStorage. */
+  readonly lastOpened = signal<string | null>(readLastOpenedKennel());
 
   readonly sheetOpen = signal(false);
   readonly creating = signal(false);
@@ -392,11 +400,24 @@ export class KennelListComponent {
       });
   }
 
+  /** Absolute `/k/:id?<defaultQuery>` — the href behind the kennel name (new tab). */
+  publicHref(kennel: IKennelConfig): string {
+    return apiAbsoluteUrl(this.publicPathWithDefaults(kennel));
+  }
+
+  /** Name (public page) or row (kennel page) was opened: this kennel is now the marked one. */
+  markOpened(kennel: IKennelConfig): void {
+    const ref = this.kennelRef(kennel);
+    this.lastOpened.set(ref);
+    rememberLastOpenedKennel(ref);
+  }
+
   onRowAction(kennel: IKennelConfig, action: KennelRowAction): void {
     const ref = this.kennelRef(kennel);
     switch (action) {
       case 'run':
       case 'open':
+        this.markOpened(kennel);
         window.open(apiAbsoluteUrl(this.publicPathWithDefaults(kennel)), '_blank', 'noopener');
         return;
       case 'docs':
@@ -505,17 +526,9 @@ export class KennelListComponent {
     return kennel.lineageId || kennel.id;
   }
 
-  /** `/k/:id` plus the stored `defaultQuery` — what `⏵` opens and `Copy link` copies. */
+  /** `/k/:id` plus the stored `defaultQuery` — what the name and `⏵` open and `Copy link` copies. */
   private publicPathWithDefaults(kennel: IKennelConfig): string {
-    const path = publicKennelPath(this.kennelRef(kennel));
-    const dq = kennel.defaultQuery;
-    if (!dq || typeof dq !== 'object') return path;
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(dq)) {
-      if (k.trim()) params.set(k, v);
-    }
-    const qs = params.toString();
-    return qs ? `${path}?${qs}` : path;
+    return publicKennelPathWithDefaults(this.kennelRef(kennel), kennel.defaultQuery);
   }
 
   private exportBundle(ref: string): void {

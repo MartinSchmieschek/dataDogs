@@ -13,6 +13,8 @@ import { SdPlaqueComponent } from '../sd-plaque/sd-plaque.component';
 import { SdStarsComponent } from '../sd-stars/sd-stars.component';
 
 export type KennelRowAction = 'run' | 'open' | 'docs' | 'copy-link' | 'edit' | 'export' | 'delete';
+/** Which way a kennel left the list: its name (public page, new tab) or the rest of the row (kennel page). */
+export type KennelRowOpen = 'public' | 'page';
 
 /** "3 h ago" — short, English, falls back to the date after a week. */
 export function relativeTime(iso: string | undefined, now = Date.now()): string {
@@ -32,8 +34,10 @@ export function relativeTime(iso: string | undefined, now = Date.now()): string 
 /**
  * Tracklist row, kennel variant (6.4 S1, 6.5 `sd-track-row`): number, emoji, title in Bebas, chips only
  * for non-defaults (`run only`, `private`, `frozen`, `yours`), then plaque, stars, time, `⏵` and `⋯`.
- * The row is a link to the kennel page; `⏵` and `⋯` are their own targets. Rights come from `myRights`
- * (P3.5); a server without them gets the full menu, as before.
+ * The name is a link to the public page `/k/:id` in a new tab; the rest of the row links to the kennel page
+ * (a stretched link under the name, `⏵` and `⋯`, which are their own targets). The kennel opened last is
+ * marked (`current`: ink bar, `last opened` chip, `aria-current`). Rights come from `myRights` (P3.5); a
+ * server without them gets the full menu, as before.
  */
 @Component({
   selector: 'sd-track-row',
@@ -50,7 +54,12 @@ export class SdTrackRowComponent {
   /** Position inside the current page for the 24 ms stagger (capped at 12 rows). */
   readonly staggerIndex = input(0);
   readonly yours = input(false);
+  /** Absolute `/k/:id?<defaultQuery>` — the name opens it in a new tab. */
+  readonly publicHref = input('');
+  /** The kennel opened last in this browser. */
+  readonly current = input(false);
   readonly action = output<KennelRowAction>();
+  readonly opened = output<KennelRowOpen>();
 
   readonly menuOpen = signal(false);
 

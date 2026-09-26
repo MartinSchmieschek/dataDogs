@@ -30,7 +30,8 @@
       <div class="list" role="list" aria-label="Kennels" [attr.aria-busy]="loading()">
         @for (kennel of kennels(); track kennel.id + '@' + listEpoch(); let i = $index) {
           <sd-track-row [kennel]="kennel" [index]="i" [staggerIndex]="i % 20" [yours]="isYours(kennel)"
-            (action)="onRowAction(kennel, $event)" />
+            [publicHref]="publicHref(kennel)" [current]="kennelRef(kennel) === lastOpened()"
+            (opened)="markOpened(kennel)" (action)="onRowAction(kennel, $event)" />
         }
       </div>
 

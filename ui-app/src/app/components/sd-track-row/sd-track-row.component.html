@@ -1,10 +1,17 @@
-<div class="row" [class.yours]="yours()" [class.menu-on]="menuOpen()" role="listitem">
+<div class="row" [class.yours]="yours()" [class.current]="current()" [class.menu-on]="menuOpen()" role="listitem">
   <span class="no" aria-hidden="true">{{ number() }}</span>
 
-  <a class="main" [routerLink]="['/kennels', ref()]">
+  <div class="main">
     <span class="line1">
       <span class="emoji" aria-hidden="true">{{ emoji() }}</span>
-      <span class="name">{{ title() }}</span>
+      <a
+        class="name"
+        [href]="publicHref() || null"
+        target="_blank"
+        rel="noopener"
+        [attr.aria-label]="title() + ', public page, opens in a new tab'"
+        title="Open the public page in a new tab"
+        (click)="opened.emit('public')">{{ title() }}</a>
       @if (runOnly()) {
         <span class="sd-chip">run only</span>
       } @else if (isPrivate()) {
@@ -16,9 +23,16 @@
       @if (yours()) {
         <span class="sd-chip sd-chip--live">yours</span>
       }
+      @if (current()) {
+        <span class="sd-chip last">last opened</span>
+      }
     </span>
-    <span class="meta sd-small">{{ meta() }}</span>
-  </a>
+    <a
+      class="open"
+      [routerLink]="['/kennels', ref()]"
+      [attr.aria-current]="current() ? 'true' : null"
+      (click)="opened.emit('page')"><span class="sd-sr-only">Open {{ title() }}{{ current() ? ', opened last' : '' }}: </span><span class="meta sd-small">{{ meta() }}</span></a>
+  </div>
 
   <span class="data">
     <sd-plaque [stats]="kennel().stats" />
