@@ -362,7 +362,7 @@ export class StartupTest {
 
             // P5: Landing — / ist der Kennel slopdogs-landing (Memo je Look, Quelle landing, statischer Fallback)
             await this.testLandingSeedIdempotent(nodesStore, kennelsStore);
-            await this.testLandingMemoLooksAndSource(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testLandingMemoAndSource(nodesStore, kennelsStore, kennelsController as KennelController, baseDogsMap);
             await this.testLandingFallback();
             await this.testLandingFallbackIsBuilt();
             await this.testLandingBudgetAndFonts();
@@ -6047,17 +6047,15 @@ export class StartupTest {
         return dir;
     }
 
-    /** Die vier Looks enthalten je vier Umschalter-Links, und der eigene traegt aria-current. */
-    private static assertLookSwitch(html: string, look: string): void {
-        for (const key of LandingPage.LOOKS) {
-            if (!html.includes(`href="?look=${key}"`)) throw new Error(`look ${look}: Umschalter ?look=${key} fehlt`);
-        }
-        if (!new RegExp(`href="\\?look=${look}"[^>]*aria-current="page"`).test(html)) throw new Error(`look ${look}: aria-current nicht am eigenen Look`);
+    /** Nur Mixtape (Aenderung 10-0): die Seite traegt #sd-live, ihre eigene Schrift und keinen Look-Umschalter. */
+    private static assertMixtapeOnly(html: string): void {
+        if (!html.includes('id="sd-live"') || !html.includes('/static/landing/bebas-neue.woff2')) throw new Error('Mixtape ohne #sd-live oder ohne eigene Schrift');
+        if (/\?look=|class="looks"/.test(html)) throw new Error('Look-Umschalter in der Seite');
     }
 
     /**
      * P5: der Landing-Seed ist idempotent (kennelExists-Guard) und legt einen oeffentlichen Community-Kennel an:
-     * Lead, Inhalt, vier Skins, base:QueryRetriever.
+     * Lead, Inhalt, Skin C (Mixtape) — sonst nichts.
      */
     private async testLandingSeedIdempotent(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
         const testName = 'P5: Landing-Seed idempotent, public, Community';
@@ -6076,7 +6074,8 @@ export class StartupTest {
             const first = rows.sort((a: any, b: any) => String(a.createdAt).localeCompare(String(b.createdAt)))[0];
             const dogIds: string[] = typeof first.dogIds === 'string' ? JSON.parse(first.dogIds) : first.dogIds;
             if (first.visibility !== 'public' || first.ownerId) throw new Error(`Sichtbarkeit ${first.visibility}, Owner ${first.ownerId}`);
-            if (dogIds.length !== 7 || dogIds[6] !== 'base:QueryRetriever') throw new Error(`dogIds: ${dogIds.join(',')}`);
+            // Der Seed ist idempotent: ein Kennel aus dem alten Vier-Look-Seed (7 dogIds) bleibt, bis die Instanz geleert ist.
+            if (dogIds.length !== 3 && dogIds.length !== 7) throw new Error(`dogIds: ${dogIds.join(',')}`);
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
@@ -6084,44 +6083,36 @@ export class StartupTest {
     }
 
     /**
-     * P5: `/` aus dem Memo — ein Lauf je Look und Fenster, Quelle `landing` (rankt nicht), vier Looks mit
-     * Umschalter, Default c Mixtape, abgelaufenes Memo liefert sofort und erneuert im Hintergrund, Host je Anfrage.
+     * P5 (nur Mixtape): `/` aus dem Memo — ein Lauf je Fenster, Quelle `landing` (rankt nicht), die Seite ohne
+     * Look-Umschalter, abgelaufenes Memo liefert sofort und erneuert im Hintergrund, Host je Anfrage. Laeuft gegen
+     * einen frisch aus den Repo-Quellen geseedeten Test-Kennel (der gespeicherte kann aelter sein).
      */
-    private async testLandingMemoLooksAndSource(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
-        const testName = 'P5: Landing aus dem Kennel — Memo je Look, Quelle landing, vier Looks';
+    private async testLandingMemoAndSource(nodesStore: IStore, kennelsStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'P5: Landing aus dem Kennel — Memo, Quelle landing, nur Mixtape';
+        const kennelId = `st-landing-${Date.now()}`;
         try {
+            await seedSlopdogsLandingKennel(nodesStore, kennelsStore, kennelId);
             const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
             const handler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
             let clock = 1_000_000;
-            const landing = new LandingPage({ publicDir: this.landingPublicDir(), kennelId: SLOPDOGS_LANDING_KENNEL_ID, memoMs: 60_000, now: () => clock });
+            const landing = new LandingPage({ publicDir: this.landingPublicDir(), kennelId, memoMs: 60_000, now: () => clock });
             landing.useRunner(handler);
             const runs = (): number => landing.runs;
 
-            const first = await landing.page('c');
-            const second = await landing.page('c');
+            const first = await landing.page();
+            const second = await landing.page();
             if (!first || first.source !== 'kennel') throw new Error(`erste Seite: ${first?.source}`);
             if (runs() !== 1 || second?.html !== first.html) throw new Error(`zweiter Aufruf im Fenster: ${runs()} Laeufe`);
-            if (!first.html.includes('id="sd-live"') || !first.html.includes('/static/landing/bebas-neue.woff2')) throw new Error('Mixtape ohne #sd-live oder ohne eigene Schrift');
-            StartupTest.assertLookSwitch(first.html, 'c');
+            StartupTest.assertMixtapeOnly(first.html);
 
-            const calls = counter.pendingAggregates('1970-01-01').get(SLOPDOGS_LANDING_KENNEL_ID);
+            const calls = counter.pendingAggregates('1970-01-01').get(kennelId);
             if (!calls || calls.total !== 1 || calls.ranked30d !== 0 || calls.rankedTotal !== 0) throw new Error(`Zaehler: ${JSON.stringify(calls)}`);
 
-            const pages = new Set<string>([first.html]);
-            for (const look of ['a', 'b', 'd']) {
-                const page = await landing.page(look);
-                if (!page || page.source !== 'kennel') throw new Error(`look ${look}: ${page?.source}`);
-                StartupTest.assertLookSwitch(page.html, look);
-                pages.add(page.html);
-            }
-            if (pages.size !== 4 || runs() !== 4) throw new Error(`Looks: ${pages.size} Seiten, ${runs()} Laeufe`);
-            if (LandingPage.lookOf('zz') !== 'c' || LandingPage.lookOf(['B']) !== 'b') throw new Error('lookOf');
-
             clock += 60_001;
-            const stale = await landing.page('c');
+            const stale = await landing.page();
             if (stale?.html !== first.html) throw new Error('abgelaufenes Memo liefert nicht sofort die gemerkte Seite');
-            await (landing as any).inFlight.get('c');
-            if (runs() !== 5) throw new Error(`Hintergrund-Refresh: ${runs()} Laeufe`);
+            await (landing as any).inFlight.get(kennelId);
+            if (runs() !== 2) throw new Error(`Hintergrund-Refresh: ${runs()} Laeufe`);
 
             const hosted = LandingPage.withHost(first.html, new URL('https://slop.example'));
             if (hosted.includes(LandingPage.HOST_MARK) || !hosted.includes('https://slop.example/mcp')) throw new Error('Host nicht eingesetzt');
@@ -6137,6 +6128,26 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        } finally {
+            await StartupTest.removeSeededLanding(nodesStore, kennelsStore, kennelId);
+        }
+    }
+
+    /** Ein per seedSlopdogsLandingKennel angelegter Test-Kennel samt seiner Dogs (alle Versionen) wieder weg. */
+    private static async removeSeededLanding(nodesStore: IStore, kennelsStore: IStore, kennelId: string): Promise<void> {
+        try {
+            const rows = await kennelsStore.findByLineage('KennelConfig', kennelId);
+            const dogIds = new Set<string>();
+            for (const row of rows) {
+                const ids: unknown = typeof row.dogIds === 'string' ? JSON.parse(row.dogIds) : row.dogIds;
+                if (Array.isArray(ids)) ids.filter((d) => typeof d === 'string' && !d.startsWith('base:')).forEach((d) => dogIds.add(d));
+                await kennelsStore.delete(row.id);
+            }
+            for (const lineageId of dogIds) {
+                for (const version of await nodesStore.findAllVersions(SerializedDog.name, lineageId)) await nodesStore.delete(version.id);
+            }
+        } catch (err) {
+            console.warn(`[StartupTest] Test-Landing ${kennelId} nicht vollstaendig entfernt:`, err);
         }
     }
 
@@ -6156,43 +6167,43 @@ export class StartupTest {
             const asked = (): number => seen.asked;
             const landing = new LandingPage({ publicDir, kennelId: '__st_no_landing', memoMs: 1_000, now: () => clock });
 
-            const cold = await landing.page('c');
+            const cold = await landing.page();
             if (cold?.source !== 'fallback' || cold.html !== file || asked() !== 0) throw new Error('ohne Runner kein Fallback');
             landing.useRunner(runner);
-            const missing = await landing.page('c');
-            await landing.page('c');
+            const missing = await landing.page();
+            await landing.page();
             if (missing?.source !== 'fallback' || missing.html !== file || asked() !== 1) throw new Error(`fehlender Kennel: ${missing?.source}, ${asked()} Laeufe`);
 
             clock += 1_001;
             answer = async () => '<!DOCTYPE html><html><body>kennel</body></html>';
-            await landing.page('c');
-            await (landing as any).inFlight.get('c');
-            if ((await landing.page('c'))?.source !== 'kennel') throw new Error('Kennel wieder da, Seite nicht');
+            await landing.page();
+            await (landing as any).inFlight.get('__st_no_landing');
+            if ((await landing.page())?.source !== 'kennel') throw new Error('Kennel wieder da, Seite nicht');
 
             clock += 1_001;
             answer = async () => { throw new Error('boom'); };
-            await landing.page('c');
-            await (landing as any).inFlight.get('c');
-            if ((await landing.page('c'))?.source !== 'kennel') throw new Error('geworfener Lauf verdraengt die gute Seite');
+            await landing.page();
+            await (landing as any).inFlight.get('__st_no_landing');
+            if ((await landing.page())?.source !== 'kennel') throw new Error('geworfener Lauf verdraengt die gute Seite');
 
             clock += 1_001;
             answer = async () => ({ not: 'html' });
-            await landing.page('c');
-            await (landing as any).inFlight.get('c');
-            if ((await landing.page('c'))?.source !== 'fallback') throw new Error('Lead ohne HTML liefert nicht den Fallback');
+            await landing.page();
+            await (landing as any).inFlight.get('__st_no_landing');
+            if ((await landing.page())?.source !== 'fallback') throw new Error('Lead ohne HTML liefert nicht den Fallback');
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
         }
     }
 
-    /** P5: der Fallback ist der gebaute Default-Look der Repo-Quellen (scripts/build-landing.cjs), nicht veraltet. */
+    /** P5: der Fallback ist die gebaute Mixtape-Seite der Repo-Quellen (scripts/build-landing.cjs), nicht veraltet. */
     private async testLandingFallbackIsBuilt(): Promise<void> {
-        const testName = 'P5: public/landing/index.html == gebauter Default-Look';
+        const testName = 'P5: public/landing/index.html == gebaute Mixtape-Seite';
         try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { renderLook: (look: string) => Promise<string> };
-            const built = await builder.renderLook(LandingPage.DEFAULT_LOOK);
+            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { render: () => Promise<string> };
+            const built = await builder.render();
             const file = fs.readFileSync(path.join(this.landingPublicDir(), 'landing', 'index.html'), 'utf8');
             if (built !== file) throw new Error('veraltet — node scripts/build-landing.cjs ausfuehren');
             this.addResult(testName, true);
@@ -6201,25 +6212,24 @@ export class StartupTest {
         }
     }
 
-    /** P5: Budget je Look (<= 40 KB, <= 15 KB gzip), kein Font-CDN, jede Schrift liegt self-hosted und <= 30 KB. */
+    /** P5: Budget (<= 40 KB, <= 15 KB gzip), kein Font-CDN, jede Schrift liegt self-hosted und <= 30 KB, nur Mixtape. */
     private async testLandingBudgetAndFonts(): Promise<void> {
         const testName = 'P5: Landing-Budget, self-hosted Fonts, kein Font-CDN';
         try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { renderLook: (look: string) => Promise<string> };
+            const builder = require(path.join(process.cwd(), 'scripts', 'build-landing.cjs')) as { render: () => Promise<string> };
             const landingDir = path.join(this.landingPublicDir(), 'landing');
-            for (const look of LandingPage.LOOKS) {
-                const html = await builder.renderLook(look);
-                const bytes = Buffer.byteLength(html, 'utf8');
-                const gzip = gzipSync(html).length;
-                if (bytes > 40_960 || gzip > 15_360) throw new Error(`look ${look}: ${bytes} B / ${gzip} B gzip`);
-                if (/fonts\.googleapis|fonts\.gstatic/.test(html)) throw new Error(`look ${look}: Google-Fonts-Link`);
-                const fonts = [...html.matchAll(/url\(\/static\/landing\/([a-z0-9-]+\.woff2)\)/g)].map((m) => m[1]);
-                if (!fonts.length) throw new Error(`look ${look}: keine eigene Schrift`);
-                for (const font of fonts) {
-                    const file = path.join(landingDir, font);
-                    if (!fs.existsSync(file) || fs.statSync(file).size > 30_720) throw new Error(`${font}: fehlt oder > 30 KB`);
-                }
+            const html = await builder.render();
+            StartupTest.assertMixtapeOnly(html);
+            const bytes = Buffer.byteLength(html, 'utf8');
+            const gzip = gzipSync(html).length;
+            if (bytes > 40_960 || gzip > 15_360) throw new Error(`${bytes} B / ${gzip} B gzip`);
+            if (/fonts\.googleapis|fonts\.gstatic/.test(html)) throw new Error('Google-Fonts-Link');
+            const fonts = [...html.matchAll(/url\(\/static\/landing\/([a-z0-9-]+\.woff2)\)/g)].map((m) => m[1]);
+            if (!fonts.length) throw new Error('keine eigene Schrift');
+            for (const font of fonts) {
+                const file = path.join(landingDir, font);
+                if (!fs.existsSync(file) || fs.statSync(file).size > 30_720) throw new Error(`${font}: fehlt oder > 30 KB`);
             }
             if (!fs.existsSync(path.join(landingDir, 'OFL.txt'))) throw new Error('OFL.txt fehlt');
             this.addResult(testName, true);
@@ -6230,7 +6240,8 @@ export class StartupTest {
 
     /**
      * P5 gegen den laufenden Server: GET / 200 text/html mit Cache-Control und ohne Set-Cookie, Host eingesetzt,
-     * ?look=a der Breakout-Look, HEAD / ohne Body, robots.txt und die Schrift unter /static/landing/.
+     * #sd-live in der Seite, HEAD / ohne Body, robots.txt und die Schrift unter /static/landing/. (Ob der gespeicherte
+     * Kennel schon Mixtape-only ist, haengt am Seed-Stand der Instanz — das prueft der Memo-Test am frischen Seed.)
      */
     private async testLandingOverHttp(): Promise<void> {
         const testName = 'P5: GET|HEAD / ueber HTTP, robots.txt, /static/landing';
@@ -6243,9 +6254,7 @@ export class StartupTest {
             if (root.headers.get('set-cookie')) throw new Error('GET / setzt ein Cookie');
             if (root.headers.get('x-landing-source') !== 'kennel') throw new Error(`Quelle: ${root.headers.get('x-landing-source')}`);
             if (html.includes(LandingPage.HOST_MARK)) throw new Error('Host-Platzhalter in der Antwort');
-            StartupTest.assertLookSwitch(html, 'c');
-            const breakout = await fetch(`${base}/?look=a`);
-            StartupTest.assertLookSwitch(await breakout.text(), 'a');
+            if (!html.includes('id="sd-live"')) throw new Error('GET /: ohne #sd-live');
             const head = await fetch(`${base}/`, { method: 'HEAD' });
             if (head.status !== 200 || (await head.text()) !== '') throw new Error(`HEAD /: ${head.status}`);
             const robots = await fetch(`${base}/robots.txt`);

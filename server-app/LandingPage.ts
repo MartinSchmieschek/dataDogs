@@ -14,12 +14,12 @@ export interface LandingPageOptions {
     publicDir: string | null;
     /** Env LANDING_KENNEL_ID, Default `slopdogs-landing`. */
     kennelId: string;
-    /** Env LANDING_HTML_MEMO_MS, Default 300000 (je Look). */
+    /** Env LANDING_HTML_MEMO_MS, Default 300000. */
     memoMs: number;
     now?: () => number;
 }
 
-/** Eine gemerkte Seite je Look. `html: null` = Kennel fehlt oder lieferte nichts — bis `at + memoMs` gilt der Fallback. */
+/** Die gemerkte Seite eines Kennels. `html: null` = Kennel fehlt oder lieferte nichts — bis `at + memoMs` gilt der Fallback. */
 interface LandingMemoEntry {
     html: string | null;
     at: number;
@@ -36,16 +36,14 @@ function positiveIntFromEnv(name: string, fallback: number): number {
 }
 
 /**
- * `/` ist ein Kennel (PLAN P5, Dogfooding): die Lead-Ausgabe von `slopdogs-landing`, je Look (`?look=a|b|c|d`)
- * aus einem HTML-Memo. Kein Lauf je Besuch — ein Lauf je Look und Memo-Fenster; ist das Fenster um, bekommt
+ * `/` ist ein Kennel (PLAN P5, Dogfooding): die Lead-Ausgabe von `slopdogs-landing` (nur Mixtape, kein Look-Parameter)
+ * aus einem HTML-Memo. Kein Lauf je Besuch — ein Lauf je Memo-Fenster; ist das Fenster um, bekommt
  * der Besucher die gemerkte Seite sofort und der Lauf erneuert sie im Hintergrund. Der Lauf zaehlt mit der
  * Quelle `landing` (rankt nicht). Scheitert er oder fehlt der Kennel, liefert `/` den statischen Fallback
- * `public/landing/index.html` (gerenderter Default-Look aus dem Build) — die Seite ist nie leer.
+ * `public/landing/index.html` (die gebaute Mixtape-Seite) — die Seite ist nie leer.
  * Der Host (`‹host›` in der Ausgabe) kommt je Anfrage aus MCP_BASE_URL bzw. dem Request, nie ins Memo.
  */
 export class LandingPage {
-    static readonly LOOKS: readonly string[] = ['a', 'b', 'c', 'd'];
-    static readonly DEFAULT_LOOK = 'c';
     static readonly DEFAULT_KENNEL_ID = 'slopdogs-landing';
     static readonly DEFAULT_MEMO_MS = 300_000;
     static readonly CACHE_CONTROL = 'public, max-age=300';
@@ -77,12 +75,6 @@ export class LandingPage {
         });
     }
 
-    /** Ein unbekannter Look ist der Default — sonst waere jedes `?look=<x>` ein eigener Memo-Eintrag. */
-    static lookOf(raw: unknown): string {
-        const look = String(Array.isArray(raw) ? raw[0] : raw ?? '').trim().toLowerCase();
-        return LandingPage.LOOKS.includes(look) ? look : LandingPage.DEFAULT_LOOK;
-    }
-
     /** Der Lauf-Lieferant kommt nach dem Montieren der Routen (createHttpApplication); bis dahin gilt der Fallback. */
     useRunner(runner: LandingRunner): void {
         this.runner = runner;
@@ -94,23 +86,23 @@ export class LandingPage {
     }
 
     /**
-     * Die Seite fuer einen Look: frisch aus dem Memo; abgelaufen aus dem Memo mit Refresh im Hintergrund;
-     * ohne Memo ein Lauf (je Look hoechstens einer gleichzeitig). `null` nur, wenn weder Kennel noch Fallback da sind.
+     * Die Seite: frisch aus dem Memo; abgelaufen aus dem Memo mit Refresh im Hintergrund; ohne Memo ein Lauf
+     * (hoechstens einer gleichzeitig). `null` nur, wenn weder Kennel noch Fallback da sind.
      */
-    async page(look: string): Promise<LandingPageResult | null> {
-        const entry = this.memo.get(look);
+    async page(): Promise<LandingPageResult | null> {
+        const entry = this.memo.get(this.kennelId);
         if (entry) {
-            if (this.now() - entry.at >= this.memoMs) void this.refresh(look);
+            if (this.now() - entry.at >= this.memoMs) void this.refresh(this.kennelId);
             return this.resultOf(entry);
         }
         if (!this.runner) return this.resultOf({ html: null, at: 0 });
-        return this.resultOf(await this.refresh(look));
+        return this.resultOf(await this.refresh(this.kennelId));
     }
 
     async handleGet(req: Request, res: Response, next: NextFunction): Promise<void> {
         let page: LandingPageResult | null;
         try {
-            page = await this.page(LandingPage.lookOf(req.query?.look));
+            page = await this.page();
         } catch (err) {
             console.error('[LandingPage]', err);
             page = this.resultOf({ html: null, at: 0 });
@@ -124,8 +116,8 @@ export class LandingPage {
     }
 
     /** HEAD / (Keepalive, ki-fruechte): nie ein Lauf — nur, was Memo oder Fallback schon haben. */
-    handleHead(req: Request, res: Response, next: NextFunction): void {
-        const entry = this.memo.get(LandingPage.lookOf(req.query?.look));
+    handleHead(_req: Request, res: Response, next: NextFunction): void {
+        const entry = this.memo.get(this.kennelId);
         const page = this.resultOf(entry ?? { html: null, at: 0 });
         if (!page) {
             next();
@@ -165,7 +157,7 @@ export class LandingPage {
         return fallback ? { html: fallback, source: 'fallback' } : null;
     }
 
-    /** Der gebaute Default-Look; einmal gelesen, danach aus dem Speicher. */
+    /** Die gebaute Seite; einmal gelesen, danach aus dem Speicher. */
     private fallback(): string | null {
         if (this.fallbackHtml !== null) return this.fallbackHtml;
         if (!this.fallbackFile || !fs.existsSync(this.fallbackFile)) return null;
@@ -174,39 +166,39 @@ export class LandingPage {
     }
 
     /**
-     * Ein Lauf je Look zur Zeit. Wirft er, bleibt eine vorhandene Seite fuer ein weiteres Fenster stehen, sonst gilt
+     * Ein Lauf je Kennel zur Zeit. Wirft er, bleibt eine vorhandene Seite fuer ein weiteres Fenster stehen, sonst gilt
      * der Fallback; liefert er nichts (Kennel weg, Lead ohne HTML), gilt der Fallback — auch nach einer guten Seite.
      */
-    private refresh(look: string): Promise<LandingMemoEntry> {
-        const running = this.inFlight.get(look);
+    private refresh(kennelId: string): Promise<LandingMemoEntry> {
+        const running = this.inFlight.get(kennelId);
         if (running) return running;
-        const previous = this.memo.get(look);
-        const run = this.render(look)
+        const previous = this.memo.get(kennelId);
+        const run = this.render(kennelId)
             .catch((err) => {
-                console.warn(`[LandingPage] ${this.kennelId} look=${look}: Lauf gescheitert —`, (err as Error)?.message ?? err);
+                console.warn(`[LandingPage] ${kennelId}: Lauf gescheitert —`, (err as Error)?.message ?? err);
                 return previous?.html ?? null;
             })
             .then((html) => {
                 const entry: LandingMemoEntry = { html, at: this.now() };
-                this.memo.set(look, entry);
+                this.memo.set(kennelId, entry);
                 return entry;
             })
             .finally(() => {
-                if (this.inFlight.get(look) === run) this.inFlight.delete(look);
+                if (this.inFlight.get(kennelId) === run) this.inFlight.delete(kennelId);
             });
-        this.inFlight.set(look, run);
+        this.inFlight.set(kennelId, run);
         return run;
     }
 
-    private async render(look: string): Promise<string | null> {
+    private async render(kennelId: string): Promise<string | null> {
         if (!this.runner) return null;
         this.runCount += 1;
         const startedAt = Date.now();
         const rssBefore = process.memoryUsage().rss;
-        const result = await this.runner.runLeadAsAnonymous(this.kennelId, { look }, { source: 'landing' });
+        const result = await this.runner.runLeadAsAnonymous(kennelId, {}, { source: 'landing' });
         const html = typeof result === 'string' && isHtmlResultString(result) ? result : null;
         const mb = (bytes: number) => Math.round(bytes / 1048576);
-        console.log(`[LandingPage] ${this.kennelId} look=${look}: ${html ? `${Buffer.byteLength(html)} B` : 'keine HTML-Ausgabe (Fallback)'} in ${Date.now() - startedAt} ms, RSS ${mb(rssBefore)} -> ${mb(process.memoryUsage().rss)} MB`);
+        console.log(`[LandingPage] ${kennelId}: ${html ? `${Buffer.byteLength(html)} B` : 'keine HTML-Ausgabe (Fallback)'} in ${Date.now() - startedAt} ms, RSS ${mb(rssBefore)} -> ${mb(process.memoryUsage().rss)} MB`);
         return html;
     }
 }

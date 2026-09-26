@@ -2,23 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { IStore } from '../../store/IStore';
-import { SerializedDog, BASE_DOG_PREFIX } from '@slopdogs/core';
+import { SerializedDog } from '@slopdogs/core';
 import { kennelExists } from '../seed-helpers';
 
-/** Default der Env LANDING_KENNEL_ID: der Kennel, dessen Lead-Ausgabe `/` liefert (PLAN P5). */
+/** Der absolute Standard fuer `/`: greift, wenn LANDING_KENNEL_IDS leer ist oder keiner der gelisteten Kennels laeuft (PLAN P5). */
 export const SLOPDOGS_LANDING_KENNEL_ID = 'slopdogs-landing';
 
-/** Die vier Looks der Landing (?look=), Default c Mixtape (PLAN 8.19). */
-const SKINS = [
-    { key: 'a', name: 'Breakout', icon: '🧱' },
-    { key: 'b', name: 'Zine', icon: '🗞️' },
-    { key: 'c', name: 'Mixtape', icon: '📼' },
-    { key: 'd', name: 'Neon Alley', icon: '🌃' },
-] as const;
-
 /**
- * Die Quellen des Landing-Kennels: Content-Dog, vier Skins, Lead — Dog-Code als Dateien unter
- * `seed-data/kennels/slopdogs-landing/`. Dieselben Dateien baut scripts/build-landing.cjs zum
+ * Die Quellen des Landing-Kennels: Content-Dog, Skin C "Mixtape" (der einzige Look, PLAN 8.19), Lead — Dog-Code
+ * als Dateien unter `seed-data/kennels/slopdogs-landing/`. Dieselben Dateien baut scripts/build-landing.cjs zum
  * statischen Fallback (`public/landing/index.html`); Kennel und Fallback koennen so nicht auseinanderlaufen.
  */
 export class SlopdogsLandingSource {
@@ -66,9 +58,9 @@ async function saveLandingDog(store: IStore, dog: {
 /**
  * Der Landing-Kennel (PLAN P5): `/` liefert seine Lead-Ausgabe. Idempotent wie jeder Seed — steht der
  * Kennel schon, bleibt er unberuehrt (die Instanz wird regelmaessig geleert; danach legt der Boot ihn neu an).
+ * `kennelId` nur fuer Tests (ein frischer Kennel aus den Repo-Quellen neben dem gespeicherten).
  */
-export async function seedSlopdogsLandingKennel(nodesStore: IStore, kennelsStore: IStore): Promise<void> {
-    const kennelId = SLOPDOGS_LANDING_KENNEL_ID;
+export async function seedSlopdogsLandingKennel(nodesStore: IStore, kennelsStore: IStore, kennelId: string = SLOPDOGS_LANDING_KENNEL_ID): Promise<void> {
     const existing = await kennelExists(kennelsStore, kennelId);
     if (existing) return;
 
@@ -78,26 +70,22 @@ export async function seedSlopdogsLandingKennel(nodesStore: IStore, kennelsStore
         return;
     }
 
-    // Wave 1: der Inhalt — reine Daten, eine Quelle fuer alle Looks.
+    // Wave 1: der Inhalt — reine Daten, eine Quelle fuer Skin C.
     const contentId = await saveLandingDog(nodesStore, {
         displayName: 'SlopdogsLandingContent', theRun: source.read('content.js'), parentsRequired: [],
-        icon: '🧾', description: 'SlopDogs landing copy as pure data; the four skins render it.',
+        icon: '🧾', description: 'SlopDogs landing copy as pure data; skin C renders it.',
     });
 
-    // Wave 2: vier Skins, jeder rendert den Inhalt als ganze Seite.
-    const skinIds: string[] = [];
-    for (const skin of SKINS) {
-        skinIds.push(await saveLandingDog(nodesStore, {
-            displayName: `SlopdogsLandingSkin${skin.key.toUpperCase()}`, theRun: source.read(`skin_${skin.key}.js`),
-            parentsRequired: [contentId], icon: skin.icon,
-            description: `Landing skin ${skin.key.toUpperCase()} "${skin.name}" rendering SlopdogsLandingContent.`,
-        }));
-    }
+    // Wave 2: Skin C "Mixtape" rendert den Inhalt als ganze Seite — der einzige Look.
+    const skinCId = await saveLandingDog(nodesStore, {
+        displayName: 'SlopdogsLandingSkinC', theRun: source.read('skin_c.js'), parentsRequired: [contentId],
+        icon: '📼', description: 'Landing skin C "Mixtape" rendering SlopdogsLandingContent.',
+    });
 
-    // Wave 3: der Lead waehlt per ?look= und verdrahtet /api/landing und den Host.
+    // Wave 3: der Lead nimmt Skin C als Seite und verdrahtet /api/landing und den Host.
     const leadId = await saveLandingDog(nodesStore, {
-        displayName: 'SlopdogsLandingLead', theRun: source.read('lead.js'), parentsRequired: [...skinIds, 'QueryRetriever'],
-        icon: '🐕', description: 'Picks the landing skin by ?look=a|b|c|d (default c) and wires the live rankings from /api/landing.',
+        displayName: 'SlopdogsLandingLead', theRun: source.read('lead.js'), parentsRequired: [skinCId],
+        icon: '🐕', description: 'Takes SlopdogsLandingSkinC as the page and wires the live rankings from /api/landing.',
     });
 
     const now = new Date().toISOString();
@@ -107,19 +95,18 @@ export async function seedSlopdogsLandingKennel(nodesStore: IStore, kennelsStore
         lineageId: kennelId,
         parentId: null,
         name: 'SlopDogs',
-        description: 'The SlopDogs landing page, served by SlopDogs itself at /. Switch looks with ?look=a|b|c|d.',
+        description: 'The SlopDogs landing page, served by SlopDogs itself at /. Mixtape only.',
         emoji: '🐕',
         visibility: 'public',
-        dogIds: [leadId, contentId, ...skinIds, BASE_DOG_PREFIX + 'QueryRetriever'],
+        dogIds: [leadId, contentId, skinCId],
         nodes: JSON.stringify([
-            { id: leadId, comment: 'Lead: waehlt den Skin per ?look=, haengt /api/landing und den Host an.' },
-            { id: contentId, comment: 'Gemeinsamer Inhalt, eine Quelle fuer alle Looks.' },
-            ...SKINS.map((skin, i) => ({ id: skinIds[i], comment: `Skin ${skin.key.toUpperCase()} ${skin.name}.` })),
-            { id: BASE_DOG_PREFIX + 'QueryRetriever', comment: 'Traegt ?look= herein.' },
+            { id: leadId, comment: 'Lead: nimmt Skin C als Seite, haengt /api/landing und den Host an.' },
+            { id: contentId, comment: 'Inhalt, die eine Quelle fuer Skin C.' },
+            { id: skinCId, comment: 'Skin C Mixtape, der einzige Look.' },
         ]),
-        task: '## Wunsch\nDie SlopDogs-Landing ist selbst ein Kennel: ein Inhalt, vier Looks, Umschalter per ?look=, Default c (Mixtape).\n\n'
+        task: '## Wunsch\nDie SlopDogs-Landing ist selbst ein Kennel: ein Inhalt, ein Look (Mixtape), ohne Umschalter.\n\n'
             + '## Quelle\nseed-data/kennels/slopdogs-landing/ (Seed); der statische Fallback public/landing/index.html wird daraus gebaut (scripts/build-landing.cjs).\n\n'
-            + '## Betrieb\nGET / bedient die Lead-Ausgabe aus einem HTML-Memo je Look (LANDING_HTML_MEMO_MS), Quelle landing (rankt nicht). PLAN P5.',
+            + '## Betrieb\nGET / bedient die Lead-Ausgabe aus einem HTML-Memo (LANDING_HTML_MEMO_MS), Quelle landing (rankt nicht). PLAN P5.',
         createdAt: now,
         updatedAt: now,
     });

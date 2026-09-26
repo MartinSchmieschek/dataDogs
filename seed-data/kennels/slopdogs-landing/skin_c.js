@@ -1,24 +1,18 @@
 // SlopDogs landing · skin C "Mixtape" (Follie, 2026-09-25). Dog body: renders SlopdogsLandingContent as HTML.
+// The only landing look now (no more ?look= switcher, no skins a/b/d — see docs/slopdogs/landing/archive/).
 // Tape covers and street posters of the 90s: yellowed cassette inlay, label-maker mono, chapter title cards, a
 // tracklist "Side A" for the base dogs, a tape deck with turning reels for the breakout log, covers that flip in.
-// Two accents (tape orange, inlay teal) on cream and black; deliberately not the xerox black-and-white of Zine.
+// Two accents (tape orange, inlay teal) on cream and black.
 // v4 rules: English, one thought per screen, room. Every text and list comes from C. <host> is shown as ‹host›.
 // Fonts are self-hosted under /static/landing/ (Latin subset, OFL: public/landing/OFL.txt), no font CDN.
 // "Already out there" is #sd-live: the lead dog fills its covers from /api/landing (states in PLAN P5).
 var C = SlopdogsLandingContent;
-var LOOK = 'c';
 if (!C || typeof C !== 'object' || !Array.isArray(C.order)) {
   throw new Error('skin_c (Mixtape): SlopdogsLandingContent is missing or not the content master. Wire the content dog as a required parent of this skin.');
 }
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function hst(s) { return esc(s).replace(/&lt;host&gt;/g, '‹host›'); }
 function verse(key) { var v = C.verses && C.verses[key]; if (!v) return ''; return '<p class="vers">' + esc(v.lines.join(' ')) + ' <span>' + esc(v.name) + '</span></p>'; }
-function looks() {
-  return '<nav class="looks" aria-label="Look">' + C.looks.map(function (l) {
-    var on = l.key === LOOK;
-    return '<a href="?' + esc(C.lookParam) + '=' + esc(l.key) + '"' + (on ? ' class="on" aria-current="page"' : '') + '>' + esc(l.name) + '</a>';
-  }).join('') + '</nav>';
-}
 function chapter(sec, sub) { return '<div class="ct" id="' + esc(sec.id) + '"><span class="kap">chapter ' + esc(sec.n) + '</span><h2>' + esc(sec.label) + '</h2>' + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + '</div>'; }
 function lines(x) { var a = Array.isArray(x) ? x : [x]; return a.map(function (l, i) { return '<span class="l"><span' + (i === a.length - 1 && a.length > 1 ? ' class="hi"' : '') + '>' + esc(l) + '</span></span>'; }).join(''); }
 function label(t) { return '<span class="lm">' + esc(t) + '</span>'; }
@@ -40,8 +34,7 @@ var CSS = ''
 + '.top{position:sticky;top:0;z-index:20;background:var(--cream);border-bottom:3px solid var(--ink)}.top .wrap{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:64px}'
 + '.mark{display:inline-flex;align-items:center;gap:10px;font-family:var(--display);font-size:1.5rem;text-transform:uppercase;letter-spacing:.03em}.emb{width:42px;height:42px}'
 + '.nav{display:flex;align-items:center;gap:14px;font-size:.76rem;letter-spacing:.1em;text-transform:uppercase}.nav a.lbl:hover{color:var(--org)}'
-+ '.looks{display:flex;gap:4px}.looks a{padding:6px 10px;background:var(--ink);color:var(--cream);font:1rem var(--display);letter-spacing:.06em;text-transform:uppercase;opacity:.45}.looks a:hover{opacity:.8}.looks a.on{opacity:1;background:var(--org);color:var(--ink)}'
-+ '@media(max-width:700px){.nav .lbl{display:none}.looks a{padding:6px 7px;font-size:.9rem}}'
++ '@media(max-width:700px){.nav .lbl{display:none}}'
 + '.btn{display:inline-flex;align-items:center;min-height:50px;padding:0 22px;border:3px solid var(--ink);background:var(--cream2);font:1.3rem var(--display);text-transform:uppercase;letter-spacing:.05em;box-shadow:5px 5px 0 var(--ink);transition:transform .1s,box-shadow .1s}.btn:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--ink)}.btn--org{background:var(--org)}.btn--ink{background:var(--ink);color:var(--cream)}'
 + '.lm{display:inline-block;background:var(--ink);color:var(--cream);padding:3px 8px;font:.66rem var(--mono);letter-spacing:.16em;text-transform:uppercase}'
 + '.ct{background:var(--ink);color:var(--cream);padding:18px var(--gutter);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 22px}.ct .kap{font:.72rem var(--mono);letter-spacing:.22em;text-transform:uppercase;color:#bfb595}.ct h2{font-size:clamp(1.6rem,5vw,3rem);letter-spacing:.03em}.ct .sub{margin-left:auto;font:.72rem var(--mono);letter-spacing:.06em;color:#bfb595}'
@@ -194,7 +187,7 @@ var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta nam
   + '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2730%27 fill=%27%231b1712%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2722%27 fill=%27none%27 stroke=%27%23f0e6c8%27 stroke-width=%272%27/%3E%3Ctext x=%2732%27 y=%2741%27 font-family=%27serif%27 font-weight=%27700%27 font-size=%2724%27 text-anchor=%27middle%27 fill=%27%23ff6a00%27%3ESD%3C/text%3E%3C/svg%3E">'
   + '<style>' + CSS + '</style></head><body>'
   + '<header class="top"><div class="wrap"><a class="mark" href="/" aria-label="' + esc(C.brand.name) + '">' + emblem() + esc(C.brand.wordmark) + '</a>'
-  + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + looks() + '</nav></div></header>'
+  + '<nav class="nav" aria-label="Navigation">' + (C.nav || []).map(function (n) { return '<a class="lbl" href="#' + esc(n.anchor) + '">' + esc(n.label) + '</a>'; }).join('') + '</nav></div></header>'
   + hero()
   + C.order.map(function (k) { return R[k] ? R[k]() : ''; }).join('')
   + footer()

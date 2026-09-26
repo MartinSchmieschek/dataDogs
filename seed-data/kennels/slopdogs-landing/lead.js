@@ -1,17 +1,9 @@
-// SlopDogs landing · lead. Picks the skin by ?look=a|b|c|d (default c Mixtape, PLAN 8.19) and wires the live part
-// once for all four looks: the host of the page and the rankings from /api/landing with the states
-// loading/waking/data/empty/error (PLAN P5). Each skin only brings its markup: #sd-live with a card <template>.
+// SlopDogs landing · lead. Takes SlopdogsLandingSkinC (Mixtape, the only look, PLAN 8.19) as the page and
+// wires the live part: the host of the page and the rankings from /api/landing with the states
+// loading/waking/data/empty/error (PLAN P5). The skin only brings its markup: #sd-live with a card <template>.
 // The page script is live() below, shipped as its own source text (ES5, no framework, one request).
-var Q = typeof QueryRetriever !== 'undefined' && QueryRetriever ? QueryRetriever : {};
-var S = {
-  a: typeof SlopdogsLandingSkinA !== 'undefined' ? SlopdogsLandingSkinA : null,
-  b: typeof SlopdogsLandingSkinB !== 'undefined' ? SlopdogsLandingSkinB : null,
-  c: typeof SlopdogsLandingSkinC !== 'undefined' ? SlopdogsLandingSkinC : null,
-  d: typeof SlopdogsLandingSkinD !== 'undefined' ? SlopdogsLandingSkinD : null
-};
-var look = String(Q.look || 'c').toLowerCase();
-var html = S[look] || S.c || S.d || S.a || S.b;
-if (!html || typeof html !== 'string') { throw new Error('SlopdogsLanding: kein Skin geliefert (look=' + look + ').'); }
+var html = typeof SlopdogsLandingSkinC !== 'undefined' ? SlopdogsLandingSkinC : null;
+if (!html || typeof html !== 'string') { throw new Error('SlopdogsLanding: kein Skin C geliefert.'); }
 
 /* States: only the block of the current state shows; the rankings show while loading (placeholders) and with data. */
 var CSS = ''

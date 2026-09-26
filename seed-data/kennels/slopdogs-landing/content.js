@@ -1,5 +1,5 @@
-// SlopDogs landing: content master. Pure data, no HTML. Skins (a/b/c/d) render this.
-// Strings keep the literal placeholder <host>; skins escape and display it as ‹host›, the server (GET /)
+// SlopDogs landing: content master. Pure data, no HTML. Skin C "Mixtape" renders this, the only look.
+// Strings keep the literal placeholder <host>; the skin escapes and displays it as ‹host›, the server (GET /)
 // and the page script put the real host in its place. The kennels under "already out there" are not
 // written here: the page loads them from /api/landing (out.live), rankings and proven dogs, counted live.
 return {
@@ -9,13 +9,6 @@ return {
   },
   brand: { name: 'SlopDogs', formerly: 'dataDogs', wordmark: 'SlopDogs' },
   host: '<host>',
-  looks: [
-    { key: 'a', name: 'Breakout' },
-    { key: 'b', name: 'Zine' },
-    { key: 'c', name: 'Mixtape' },
-    { key: 'd', name: 'Neon Alley' }
-  ],
-  lookParam: 'look',
   nav: [
     { label: 'Connect', anchor: 'how' },
     { label: 'Kennels', anchor: 'out' }
