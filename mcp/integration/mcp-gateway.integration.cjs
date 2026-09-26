@@ -165,6 +165,41 @@ function httpGet(pathAndQuery) {
   });
 }
 
+/** Ein POST mit JSON-Rumpf (mit Bearer) — fuer /actions/<tool>. */
+function httpPostJson(pathAndQuery, payload) {
+  const u = new URL(pathAndQuery, MCP_BASE + '/');
+  const lib = u.protocol === 'https:' ? https : http;
+  const body = JSON.stringify(payload);
+  return new Promise((resolve, reject) => {
+    const req = lib.request(
+      {
+        hostname: u.hostname,
+        port: u.port || (u.protocol === 'https:' ? 443 : 80),
+        path: u.pathname + u.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}),
+        },
+      },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => {
+          let json = null;
+          try { json = JSON.parse(raw); } catch { /* kein JSON */ }
+          resolve({ status: res.statusCode, raw, json });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 async function mcpCall(toolName, args = {}) {
   const { status, raw, envelope } = await mcpRequest('tools/call', {
     name: toolName,
@@ -454,6 +489,37 @@ async function run() {
     } catch {
       /* Aufraeumen ist best effort */
     }
+  }
+
+  // Unbekannte Argumente werden abgewiesen, bevor das Werkzeug laeuft: build_kennel mit `dogIds` (gemeint:
+  // extraDogIds) baute frueher still einen Kennel ohne das Gemeinte. MCP und /actions, derselbe Vorschlag.
+  const strayId = `gateway-stray-${Date.now()}`;
+  try {
+    const stray = await mcpCallRaw('build_kennel', {
+      id: strayId,
+      refresh: false,
+      dogIds: ['base:QueryRetriever'],
+      dogs: [{ displayName: 'GatewayStray', tsCode: 'return 1;' }],
+    });
+    const text = String(stray.value);
+    const after = await mcpCallRaw('get_kennel', { id: strayId });
+    if (!stray.isError || !/"dogIds"/.test(text) || !/did you mean "extraDogIds"/.test(text)) fail('unknown args (mcp)', text.slice(0, 200));
+    else if (!after.isError) fail('unknown args (mcp)', 'kennel was built anyway');
+    else pass('unknown args (mcp)', text.slice(0, 90));
+
+    const nested = await mcpCallRaw('list_kennels', { serch: 'x' });
+    if (!nested.isError || !/did you mean "search"/.test(String(nested.value))) fail('unknown args typo', String(nested.value).slice(0, 160));
+    else pass('unknown args typo', 'serch -> search');
+
+    const action = await httpPostJson('/actions/build_kennel', { id: strayId, refresh: false, dogIds: ['base:QueryRetriever'], dogs: [] });
+    const unknown = action.json?.unknown?.[0];
+    if (action.status !== 400 || action.json?.error !== 'unknown_argument' || unknown?.field !== 'dogIds' || unknown?.suggestion !== 'extraDogIds') {
+      fail('unknown args (/actions)', `HTTP ${action.status} ${action.raw.slice(0, 160)}`);
+    } else pass('unknown args (/actions)', `400 unknown_argument, ${unknown.field} -> ${unknown.suggestion}`);
+  } catch (e) {
+    fail('unknown args', e.message);
+  } finally {
+    try { await mcpCallRaw('delete_kennel', { id: strayId }); } catch { /* best effort */ }
   }
 
   const query = { lat: '50.1109', lng: '8.6821' };

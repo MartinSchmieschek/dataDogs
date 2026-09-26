@@ -16,7 +16,7 @@ import { getAclTools } from '../tools/acl';
 import { getKeyTools } from '../tools/keys';
 import { paramString } from '../../api/utils/routeParams';
 import { getSnapshotTools } from '../tools/snapshots';
-import { type ToolDeps, type ToolDef } from '../tools/types';
+import { type ToolDeps, type ToolDef, unknownArgsRefusal } from '../tools/types';
 
 function baseUrl(req: Request): string {
     if (process.env.MCP_BASE_URL) return process.env.MCP_BASE_URL.replace(/\/$/, '');
@@ -200,6 +200,12 @@ export function createActionsRouter(deps: ToolDeps): Router {
                 `Bearer realm="SlopDogs Actions", resource_metadata="${base}/.well-known/oauth-protected-resource"`,
             );
             res.status(401).json({ error: 'unauthorized' });
+            return;
+        }
+
+        const refused = unknownArgsRefusal(tool, req.body);
+        if (refused) {
+            res.status(400).json({ error: 'unknown_argument', error_description: refused.message, unknown: refused.unknown });
             return;
         }
 

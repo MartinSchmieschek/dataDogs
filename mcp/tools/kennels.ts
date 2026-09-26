@@ -612,6 +612,8 @@ export function getKennelTools(): ToolDef[] {
                     },
                 },
             },
+            // `dogIds` heisst hier `extraDogIds` — die neuen Dogs stehen in `dogs[]`, nicht als ids.
+            argHints: { dogIds: 'extraDogIds' },
             handler: async (args, ctx, deps) => {
                 if (!canMutate(null, ctx)) return fail('Login required to build kennels');
                 return await buildKennel(args, ctx, deps);

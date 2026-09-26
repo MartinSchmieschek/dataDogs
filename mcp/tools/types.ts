@@ -76,7 +76,113 @@ export interface ToolDef {
     name: string;
     description: string;
     inputSchema: Record<string, any>; // JSON Schema (object)
+    /**
+     * Bekannte Fehlnamen auf oberster Ebene -> der richtige Name (`dogIds` -> `extraDogIds` bei build_kennel).
+     * Nur fuer den Vorschlag in der Ablehnung; die Ablehnung selbst folgt dem Schema.
+     */
+    argHints?: Record<string, string>;
     handler: (args: Record<string, any>, ctx: AuthCtx, deps: ToolDeps) => Promise<ToolResult>;
+}
+
+/** Ein Feld, das das Eingabeschema nicht kennt — mit Pfad (`dogs[0].code`) und, wo naheliegend, dem gemeinten Namen. */
+export interface UnknownArg {
+    path: string;
+    field: string;
+    suggestion?: string;
+    allowed: string[];
+}
+
+/** Editierdistanz, gedeckelt: mehr als `max` interessiert nicht. */
+function editDistance(a: string, b: string, max: number): number {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+        const row = [i];
+        for (let j = 1; j <= b.length; j++) {
+            row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        }
+        prev = row;
+    }
+    return prev[b.length];
+}
+
+/**
+ * Der naheliegende Name fuer ein unbekanntes Feld: gleich bis auf Gross-/Kleinschreibung, ein bekannter Name,
+ * der den falschen enthaelt (`dogIds` in `extraDogIds`) oder umgekehrt, sonst wenige Tippfehler entfernt.
+ */
+function nearestField(field: string, allowed: string[]): string | undefined {
+    const lower = field.toLowerCase();
+    const exact = allowed.find((a) => a.toLowerCase() === lower);
+    if (exact) return exact;
+    if (lower.length >= 3) {
+        const contained = allowed.find((a) => a.toLowerCase().includes(lower) || (a.length >= 3 && lower.includes(a.toLowerCase())));
+        if (contained) return contained;
+    }
+    // Kurze Namen vertragen weniger: `foo` ist nicht `von`.
+    const max = Math.min(2, Math.max(1, Math.floor(lower.length / 3)));
+    let best: string | undefined;
+    let bestDistance = max + 1;
+    for (const a of allowed) {
+        const d = editDistance(lower, a.toLowerCase(), max);
+        if (d < bestDistance) {
+            best = a;
+            bestDistance = d;
+        }
+    }
+    return best;
+}
+
+/**
+ * Alle Felder in `value`, die `schema` mit `additionalProperties: false` nicht kennt — rekursiv durch
+ * `properties`, Array-`items` und Objekt-Schemas in `additionalProperties`. Typfehler sind nicht Sache
+ * dieser Pruefung; sie sucht nur Namen, die stillschweigend verloren gingen.
+ */
+export function findUnknownArgs(
+    schema: Record<string, any> | undefined,
+    value: unknown,
+    hints: Record<string, string> = {},
+    path = '',
+): UnknownArg[] {
+    if (!schema || typeof schema !== 'object' || value === null || value === undefined) return [];
+    if (Array.isArray(value)) {
+        const items = schema.items;
+        if (!items || typeof items !== 'object') return [];
+        return value.flatMap((item, i) => findUnknownArgs(items, item, {}, `${path}[${i}]`));
+    }
+    if (typeof value !== 'object') return [];
+    const properties: Record<string, any> = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+    const allowed = Object.keys(properties);
+    const out: UnknownArg[] = [];
+    for (const [field, inner] of Object.entries(value as Record<string, unknown>)) {
+        const at = path ? `${path}.${field}` : field;
+        if (field in properties) {
+            out.push(...findUnknownArgs(properties[field], inner, {}, at));
+        } else if (schema.additionalProperties === false) {
+            const hinted = hints[field];
+            const suggestion = hinted && allowed.includes(hinted) ? hinted : nearestField(field, allowed);
+            out.push({ path: at, field, allowed, ...(suggestion ? { suggestion } : {}) });
+        } else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+            out.push(...findUnknownArgs(schema.additionalProperties, inner, {}, at));
+        }
+    }
+    return out;
+}
+
+/**
+ * Die Ablehnung eines Aufrufs mit unbekannten Feldern, oder null. Frueher ging ein falscher Name (`dogIds` statt
+ * `extraDogIds` bei build_kennel) stillschweigend verloren — der Kennel entstand ohne das Gemeinte, und niemand
+ * sagte es. MCP und /actions pruefen jeden Aufruf hiermit, bevor das Werkzeug laeuft.
+ */
+export function unknownArgsRefusal(tool: ToolDef, args: unknown): { message: string; unknown: UnknownArg[] } | null {
+    const unknown = findUnknownArgs(tool.inputSchema, args ?? {}, tool.argHints ?? {});
+    if (unknown.length === 0) return null;
+    const parts = unknown.map((u) => `"${u.path}"${u.suggestion ? ` (did you mean "${u.suggestion}"?)` : ''}`);
+    const first = unknown[0];
+    const parent = first.path.slice(0, first.path.length - first.field.length).replace(/\.$/, '');
+    const message = `Unknown argument${unknown.length > 1 ? 's' : ''} for ${tool.name}: ${parts.join(', ')}. `
+        + `Allowed${parent ? ` in ${parent}` : ''}: ${first.allowed.join(', ')}. `
+        + 'Nothing was run — fix the call and send it again.';
+    return { message, unknown };
 }
 
 export function ok(payload: unknown): ToolResult {

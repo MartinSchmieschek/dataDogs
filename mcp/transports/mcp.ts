@@ -23,7 +23,7 @@ import { getMetaTools, setMetaToolRegistry } from '../tools/meta';
 import { getAclTools } from '../tools/acl';
 import { getKeyTools } from '../tools/keys';
 import { getSnapshotTools } from '../tools/snapshots';
-import { type ToolDeps, type ToolDef } from '../tools/types';
+import { type ToolDeps, type ToolDef, unknownArgsRefusal } from '../tools/types';
 import type { AuthCtx } from '../auth/middleware';
 import { buildMcpInitializeInstructions } from '../spuren-brief';
 import { buildWerkzeugkasten } from '../werkzeugkasten';
@@ -127,6 +127,10 @@ function buildServer(
                 content: [{ type: 'text', text: `Unknown tool: ${req.params.name}` }],
                 isError: true,
             };
+        }
+        const refused = unknownArgsRefusal(tool, req.params.arguments);
+        if (refused) {
+            return { content: [{ type: 'text', text: refused.message }], isError: true };
         }
         try {
             return await tool.handler(req.params.arguments ?? {}, ctx, deps);
