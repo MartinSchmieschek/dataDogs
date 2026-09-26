@@ -7,7 +7,7 @@
 //
 // Order of operations is fixed and must not be reordered:
 //   ACL visibility (the caller applies it BEFORE handing the list in)
-//     -> mine -> q -> minStars -> minCalls -> proven -> sort -> offset/limit
+//     -> mine -> q -> minStars -> minCalls -> proven -> usage -> sort -> offset/limit
 // `total` counts after the filters, before the page is cut. Slicing earlier yields
 // wrong pages; counting before the ACL filter would leak how many private entries of
 // other users exist.
@@ -16,12 +16,36 @@ import type { AuthCtx } from '../../mcp/auth/middleware';
 
 /**
  * calls/calls30d = ranked usage (`stats.calls.ranked` / `.ranked30d`), rating = Bayes score
- * (`stats.rating.score`). The numeric keys need `stats` on the items (KennelStatsService.attach);
+ * (`stats.rating.score`), failures30d = failed runs in the last 30 days (kennels `stats.calls.leadFailed30d`,
+ * dogs `stats.calls.failures30d`). The numeric keys need `stats` on the items (KennelStatsService.attach);
  * an item without stats counts as 0. Dogs (P4b, DogStatsService.attach): calls30d reads the same
  * `stats.calls.ranked30d`, proven = `stats.proven.score`, reuse = `stats.reuse.kennelsTransitive`.
  */
-export type SortField = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating' | 'proven' | 'reuse';
+export type SortField = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating' | 'proven' | 'reuse' | 'failures30d';
 export type SortDirection = 'asc' | 'desc';
+
+/**
+ * Aufruf-Filter (Feature-Runde nach dem lokalen Test, 10-0: "durchsuchbar mit filtern … top alle mit
+ * stichworten oder nie benutzt oder nie funktioniert"). Gilt fuer Kennels (`stats.calls` aus P4) und
+ * Dogs (`stats.calls` aus P4b) gleich; die Definitionen stehen woertlich in USAGE_FILTER_HELP.
+ */
+export type UsageFilter = 'top' | 'never_used' | 'never_worked' | 'failing' | 'dormant';
+
+export const USAGE_FILTERS: readonly UsageFilter[] = ['top', 'never_used', 'never_worked', 'failing', 'dormant'];
+
+/**
+ * Die eine Beschreibung der Filter — MCP-Schemas (list_kennels, list_nodes) lesen sie von hier.
+ * "calls" = jeder gezaehlte Lauf aus jeder Quelle (stats.calls.total); ein Kennel-Lauf ist gescheitert,
+ * wenn sein Lead-Dog scheiterte (leadFailed), ein Dog-Lauf, wenn er mit error/timeout/oom endete (failures).
+ */
+export const USAGE_FILTER_HELP =
+    'Usage filter, applied after the rights filter (only what you may run) and combinable with search, sort and the other filters: '
+    + '"top" = at least one call, ordered by calls (stats.calls.total desc, then last30d desc) unless you pass sort; '
+    + '"never_used" = 0 calls in total; '
+    + '"never_worked" = calls > 0 and every one failed (kennel: leadFailed == total; dog: failures == total, failures = error + timeout + oom); '
+    + '"failing" = at least one failed run in the last 30 days (kennel: leadFailed30d > 0; dog: failures30d > 0); '
+    + '"dormant" = calls > 0 in total, but 0 in the last 30 days. '
+    + 'Calls count every source (public page, execute, run, snapshot, build); the window is 30 UTC days including today.';
 
 export interface IListPage<T> {
     data: T[];
@@ -32,7 +56,7 @@ export class ListQuery {
     /** Hard ceiling — a caller may ask for more, but never receives more. */
     static readonly MAX_LIMIT = 200;
 
-    private static readonly SORT_FIELDS: readonly string[] = ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating', 'proven', 'reuse'];
+    private static readonly SORT_FIELDS: readonly string[] = ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating', 'proven', 'reuse', 'failures30d'];
     /** lineageId too: the kennel id is what people and agents know a kennel by. */
     private static readonly SEARCHABLE_FIELDS: readonly string[] = ['name', 'displayName', 'description', 'lineageId'];
 
@@ -49,6 +73,10 @@ export class ListQuery {
         readonly minCalls: number | null = null,
         /** Keep only dogs carrying the proven badge (`proven=1`, P4b). */
         readonly provenOnly: boolean = false,
+        /** Aufruf-Filter (`usage=`), or no filter. */
+        readonly usage: UsageFilter | null = null,
+        /** Whether the caller named a valid `sort` — only then does `usage=top` give up its own order. */
+        readonly sortGiven: boolean = false,
     ) { }
 
     /**
@@ -67,6 +95,8 @@ export class ListQuery {
             ListQuery.parseMinStars(q.minStars),
             ListQuery.parseMinCalls(q.minCalls),
             ListQuery.parseFlag(q.proven),
+            ListQuery.parseUsage(q.usage),
+            ListQuery.SORT_FIELDS.includes(ListQuery.first(q.sort) as string),
         );
     }
 
@@ -75,14 +105,15 @@ export class ListQuery {
         return this.limit !== null;
     }
 
-    /** Apply mine -> q -> minStars -> minCalls -> proven -> sort -> page. The caller has already applied the ACL filter. */
+    /** Apply mine -> q -> minStars -> minCalls -> proven -> usage -> sort -> page. The caller has already applied the ACL filter. */
     apply<T>(items: T[], ctx: AuthCtx | undefined): IListPage<T> {
         const owned = this.mineOnly ? items.filter(item => ListQuery.isOwnedBy(item, ctx)) : items;
         const found = this.search ? owned.filter(item => this.matches(item)) : owned;
         const starred = this.minStars === null ? found : found.filter(item => (ListQuery.statsOf(item)?.rating?.avg ?? -1) >= this.minStars!);
         const called = this.minCalls === null ? starred : starred.filter(item => (ListQuery.statsOf(item)?.calls?.ranked ?? 0) >= this.minCalls!);
         const proven = this.provenOnly ? called.filter(item => ListQuery.statsOf(item)?.proven?.badge === true) : called;
-        const ordered = this.ordered(proven);
+        const used = this.usage === null ? proven : proven.filter(item => ListQuery.matchesUsage(item, this.usage!));
+        const ordered = this.usage === 'top' && !this.sortGiven ? ListQuery.byCalls(used) : this.ordered(used);
 
         if (this.limit === null) {
             return { data: ordered, total: ordered.length };
@@ -130,6 +161,41 @@ export class ListQuery {
         });
     }
 
+    /**
+     * Die Zahlen, auf denen die Aufruf-Filter stehen — Kennels und Dogs tragen sie unter verschiedenen
+     * Namen: Fehlschlaege heissen am Kennel leadFailed(30d), am Dog failures(30d). Fehlend -> 0.
+     */
+    private static callsOf(item: unknown): { total: number; last30d: number; failures: number; failures30d: number } {
+        const c = ListQuery.statsOf(item)?.calls ?? {};
+        return {
+            total: c.total ?? 0,
+            last30d: c.last30d ?? 0,
+            failures: c.failures ?? c.leadFailed ?? 0,
+            failures30d: c.failures30d ?? c.leadFailed30d ?? 0,
+        };
+    }
+
+    /** Die Definitionen aus USAGE_FILTER_HELP — hier und nur hier in Code. */
+    private static matchesUsage(item: unknown, usage: UsageFilter): boolean {
+        const c = ListQuery.callsOf(item);
+        switch (usage) {
+            case 'top': return c.total > 0;
+            case 'never_used': return c.total === 0;
+            case 'never_worked': return c.total > 0 && c.failures >= c.total;
+            case 'failing': return c.failures30d > 0;
+            case 'dormant': return c.total > 0 && c.last30d === 0;
+        }
+    }
+
+    /** `usage=top` ohne sort: meiste Aufrufe zuerst (gesamt, dann 30 Tage), Gleichstand nach id. */
+    private static byCalls<T>(items: T[]): T[] {
+        return [...items].sort((a, b) => {
+            const ca = ListQuery.callsOf(a);
+            const cb = ListQuery.callsOf(b);
+            return (cb.total - ca.total) || (cb.last30d - ca.last30d) || ListQuery.compare(ListQuery.idOf(a), ListQuery.idOf(b));
+        });
+    }
+
     private static compare(a: string | number, b: string | number): number {
         if (typeof a === 'number' && typeof b === 'number') return a - b;
         return String(a).localeCompare(String(b));
@@ -141,7 +207,10 @@ export class ListQuery {
 
     /** The `stats` a list item carries (P4 kennels, P4b dogs) — undefined for callers that did not attach. */
     private static statsOf(item: unknown): {
-        calls?: { ranked?: number; ranked30d?: number };
+        calls?: {
+            total?: number; last30d?: number; ranked?: number; ranked30d?: number;
+            leadFailed?: number; leadFailed30d?: number; failures?: number; failures30d?: number;
+        };
         rating?: { avg?: number | null; score?: number };
         proven?: { score?: number; badge?: boolean };
         reuse?: { kennelsTransitive?: number };
@@ -156,6 +225,7 @@ export class ListQuery {
         if (field === 'rating') return ListQuery.statsOf(item)?.rating?.score ?? 0;
         if (field === 'proven') return ListQuery.statsOf(item)?.proven?.score ?? 0;
         if (field === 'reuse') return ListQuery.statsOf(item)?.reuse?.kennelsTransitive ?? 0;
+        if (field === 'failures30d') return ListQuery.callsOf(item).failures30d;
         if (field === 'name') {
             // Kennels carry `name`, dogs carry `displayName` — one route serves both.
             const label = record?.name ?? record?.displayName ?? '';
@@ -210,6 +280,12 @@ export class ListQuery {
         if (value === undefined || value === null || value === '') return null;
         const n = Number(value);
         return Number.isFinite(n) ? n : null;
+    }
+
+    /** Unknown or empty -> no filter (a mangled URL must not 500). */
+    private static parseUsage(raw: unknown): UsageFilter | null {
+        const value = ListQuery.first(raw);
+        return USAGE_FILTERS.includes(value as UsageFilter) ? (value as UsageFilter) : null;
     }
 
     private static parseDirection(raw: unknown): SortDirection {

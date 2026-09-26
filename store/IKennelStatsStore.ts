@@ -12,7 +12,8 @@ export type KennelCallSource = typeof KENNEL_CALL_SOURCES[number];
 export const RANKED_CALL_SOURCES: readonly KennelCallSource[] = ['public', 'api-execute', 'mcp-execute'];
 
 export interface KennelCallDelta { lineageId: string; day: string; source: KennelCallSource; count: number; leadFailed: number; }
-export interface KennelCallAggregate { lineageId: string; total: number; last30d: number; leadFailed: number; rankedTotal: number; ranked30d: number; }
+/** leadFailed zaehlt ueber alle Tage, leadFailed30d im selben Fenster wie last30d (Filter usage=failing). */
+export interface KennelCallAggregate { lineageId: string; total: number; last30d: number; leadFailed: number; leadFailed30d: number; rankedTotal: number; ranked30d: number; }
 export interface KennelRatingAggregate { lineageId: string; count: number; sum: number; }
 export type KennelRatingHistogram = { 1: number; 2: number; 3: number; 4: number; 5: number };
 

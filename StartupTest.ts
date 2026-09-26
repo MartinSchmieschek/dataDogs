@@ -66,7 +66,7 @@ import { toSwaggridCast } from './services/swaggridAdapter';
 import { KennelCallCounter, utcDay } from './services/KennelCallCounter';
 import { KennelStatsService } from './services/KennelStatsService';
 import { KennelRatingHandler } from './api/routes/KennelRatingHandler';
-import { ListQuery } from './api/routes/ListQuery';
+import { ListQuery, USAGE_FILTERS } from './api/routes/ListQuery';
 import { LandingRouteHandler } from './api/routes/LandingRouteHandler';
 import type { DogCallDelta, IDogStatsStore, IKennelStatsStore, KennelCallAggregate, KennelCallSource } from './store/IKennelStatsStore';
 import { dogStatsKeyOf } from './services/dogStatsKey';
@@ -383,6 +383,10 @@ export class StartupTest {
             // Beta-Modus: ein Key, ein Google-Konto
             await this.testBetaKeys();
             await this.testLandingStageSticker();
+
+            // Feature-Runde nach dem lokalen Test: Aufruf-Filter (usage) fuer Kennels
+            await this.testListQueryUsageFiltersKennels();
+            await this.testListKennelsUsageRespectsRights(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -4377,19 +4381,19 @@ export class StartupTest {
             if (counter.status().pending !== 2) throw new Error(`status.pending: ${counter.status().pending}`);
             await counter.flush();
             const expect = (agg: KennelCallAggregate | undefined, want: Omit<KennelCallAggregate, 'lineageId'>, label: string) => {
-                const got = agg ? { total: agg.total, last30d: agg.last30d, leadFailed: agg.leadFailed, rankedTotal: agg.rankedTotal, ranked30d: agg.ranked30d } : null;
+                const got = agg ? { total: agg.total, last30d: agg.last30d, leadFailed: agg.leadFailed, leadFailed30d: agg.leadFailed30d, rankedTotal: agg.rankedTotal, ranked30d: agg.ranked30d } : null;
                 if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${label}: ${JSON.stringify(got)}`);
             };
-            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 5, last30d: 5, leadFailed: 1, rankedTotal: 4, ranked30d: 4 }, 'nach Flush');
+            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 5, last30d: 5, leadFailed: 1, leadFailed30d: 1, rankedTotal: 4, ranked30d: 4 }, 'nach Flush');
             await counter.flush();
-            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 5, last30d: 5, leadFailed: 1, rankedTotal: 4, ranked30d: 4 }, 'zweiter Flush');
+            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 5, last30d: 5, leadFailed: 1, leadFailed30d: 1, rankedTotal: 4, ranked30d: 4 }, 'zweiter Flush');
             if (counter.pendingAggregates(sinceDay).size !== 0 || counter.status().pending !== 0) throw new Error('pending nach Flush nicht leer');
             if (flushes() !== 1) throw new Error(`Transaktionen: ${flushes()} statt 1`);
 
             counter.record(lineage, 'mcp-execute', false);
             counter.record(lineage, 'mcp-execute', false);
             await counter.flush();
-            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 7, last30d: 7, leadFailed: 1, rankedTotal: 6, ranked30d: 6 }, 'Increment');
+            expect((await statsStore.readKennelCallAggregates(sinceDay, [lineage]))[0], { total: 7, last30d: 7, leadFailed: 1, leadFailed30d: 1, rankedTotal: 6, ranked30d: 6 }, 'Increment');
             if ((await statsStore.readKennelCallAggregates(sinceDay, [])).length !== 0) throw new Error('leere lineageIds nicht []');
             this.addResult(testName, true);
         } catch (error) {
@@ -4758,9 +4762,9 @@ export class StartupTest {
                 readKennelCallAggregates: async () => {
                     reads += 1;
                     return [
-                        { lineageId: 'land-x', total: 5, last30d: 5, leadFailed: 0, rankedTotal: 5, ranked30d: 5 },
-                        { lineageId: 'land-z', total: 900, last30d: 900, leadFailed: 0, rankedTotal: 900, ranked30d: 900 },
-                        { lineageId: 'land-r', total: 2, last30d: 2, leadFailed: 0, rankedTotal: 2, ranked30d: 2 },
+                        { lineageId: 'land-x', total: 5, last30d: 5, leadFailed: 0, leadFailed30d: 0, rankedTotal: 5, ranked30d: 5 },
+                        { lineageId: 'land-z', total: 900, last30d: 900, leadFailed: 0, leadFailed30d: 0, rankedTotal: 900, ranked30d: 900 },
+                        { lineageId: 'land-r', total: 2, last30d: 2, leadFailed: 0, leadFailed30d: 0, rankedTotal: 2, ranked30d: 2 },
                     ];
                 },
                 readKennelRatingAggregates: async () => [
@@ -5332,6 +5336,122 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Feature-Runde (10-0: "durchsuchbar mit filtern, top alle mit stichworten oder nie benutzt oder nie
+     * funktioniert"): ListQuery `usage` auf Kennel-stats — alle fuenf Werte, top ordnet selbst (gesamt, dann
+     * 30 Tage) ausser mit sort, sort=failures30d, Kombination mit q und minCalls, kaputter Wert = kein Filter.
+     */
+    private async testListQueryUsageFiltersKennels(): Promise<void> {
+        const testName = 'Feature-Runde 2: ListQuery usage auf Kennels (fuenf Werte, q, sort)';
+        try {
+            const kennel = (id: string, name: string, total: number, last30d: number, leadFailed: number, leadFailed30d: number) => ({
+                id, name, stats: { calls: { total, last30d, leadFailed, leadFailed30d, ranked: total, ranked30d: last30d }, rating: { avg: null, count: 0, score: 0 } },
+            });
+            const items: any[] = [
+                kennel('a', 'Alpha Wetter', 9, 4, 1, 1),      // gerufen, einer scheiterte in 30 T
+                kennel('b', 'Beta Wetter', 3, 3, 3, 3),       // gerufen, jeder scheiterte
+                kennel('c', 'Gamma', 0, 0, 0, 0),             // nie gerufen
+                kennel('d', 'Delta Wetter', 7, 0, 2, 0),      // gerufen, 30 T still, alte Fehler
+                kennel('e', 'Epsilon', 9, 9, 0, 0),           // gerufen, nie gescheitert
+                { id: 'f', name: 'Ohne Stats' },              // alter Server: zaehlt als 0
+            ];
+            const ids = (q: Record<string, unknown>) => ListQuery.from(q).apply(items, undefined).data.map((x: any) => x.id).join(',');
+            const expect = (label: string, got: string, want: string) => { if (got !== want) throw new Error(`${label}: ${got} statt ${want}`); };
+            if (USAGE_FILTERS.join() !== 'top,never_used,never_worked,failing,dormant') throw new Error(`USAGE_FILTERS: ${USAGE_FILTERS.join()}`);
+            expect('top (eigene Ordnung)', ids({ usage: 'top' }), 'e,a,d,b');          // 9/9 vor 9/4, dann 7, 3
+            expect('top + sort=name', ids({ usage: 'top', sort: 'name' }), 'a,b,d,e');
+            expect('never_used', ids({ usage: 'never_used' }), 'c,f');
+            expect('never_worked', ids({ usage: 'never_worked' }), 'b');
+            expect('failing', ids({ usage: 'failing' }), 'a,b');
+            expect('failing + sort=failures30d desc', ids({ usage: 'failing', sort: 'failures30d', dir: 'desc' }), 'b,a');
+            expect('dormant', ids({ usage: 'dormant' }), 'd');
+            expect('q=wetter + top', ids({ q: 'wetter', usage: 'top' }), 'a,d,b');
+            expect('q=wetter + never_worked', ids({ q: 'wetter', usage: 'never_worked' }), 'b');
+            expect('q=wetter + failing', ids({ q: 'wetter', usage: 'failing' }), 'a,b');
+            expect('q=gamma + never_used', ids({ q: 'gamma', usage: 'never_used' }), 'c');
+            expect('top + minCalls=8', ids({ usage: 'top', minCalls: 8 }), 'e,a');
+            expect('usage kaputt = kein Filter', ids({ usage: 'popular' }), 'a,b,d,e,c,f');
+            const page = ListQuery.from({ usage: 'top', limit: '2' });
+            const cut = page.apply(items, undefined);
+            if (cut.total !== 4 || cut.data.map((x: any) => x.id).join() !== 'e,a') throw new Error(`Seite: ${cut.total} ${cut.data.map((x: any) => x.id)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Feature-Runde 2 ueber das Werkzeug: list_kennels {usage} filtert nur, was der Aufrufer ausfuehren darf —
+     * ein fremder privater, nie gerufener Kennel erscheint anonym nicht unter never_used, fuer den Owner schon;
+     * Zahlen aus echten Zaehlungen (Counter mit Uhr, dormant = Laeufe vor 40 Tagen).
+     */
+    private async testListKennelsUsageRespectsRights(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'Feature-Runde 2: list_kennels usage nur ueber lesbaren Kennels';
+        const p = `test-usage-${Date.now()}`;
+        const names = ['top', 'flaky', 'broken', 'dormant', 'none', 'secret'];
+        try {
+            for (const n of names) {
+                const created = await kennelsController.create({
+                    id: `${p}-${n}`, name: `Usage ${n}`, dogIds: [],
+                    visibility: n === 'secret' ? 'private' : 'public', ownerId: 'UU1',
+                });
+                if (!created.ok) throw new Error(`Kennel ${n}: ${created.error}`);
+            }
+            let clock = Date.now() - 40 * 86_400_000;
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0, now: () => new Date(clock) });
+            counter.record(`${p}-dormant`, 'public', false);
+            clock = Date.now();
+            for (let i = 0; i < 5; i++) counter.record(`${p}-top`, 'public', false);
+            counter.record(`${p}-flaky`, 'mcp-execute', false);
+            counter.record(`${p}-flaky`, 'mcp-execute', false);
+            counter.record(`${p}-flaky`, 'api-run', true);
+            counter.record(`${p}-broken`, 'public', true);
+            counter.record(`${p}-broken`, 'mcp-build', true);
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            deps.kennelStats = new KennelStatsService(StartupTest.NO_STATS_STORE, counter);
+            const anon: AuthCtx = { user: null, isSuperUser: false };
+            const owner = this.fakeUser('UU1');
+            const list = async (args: Record<string, unknown>, ctx: AuthCtx) => {
+                const r = await this.toolNamed('list_kennels').handler({ search: p, ...args }, ctx, deps);
+                if (r.isError) throw new Error(`list_kennels ${JSON.stringify(args)}: ${r.content[0]?.text}`);
+                const body = JSON.parse(r.content[0].text);
+                const rows: any[] = Array.isArray(body) ? body : body.kennels;
+                return rows.map((k) => String(k.lineageId).slice(p.length + 1)).join(',');
+            };
+            const expect = (label: string, got: string, want: string) => { if (got !== want) throw new Error(`${label}: ${got} statt ${want}`); };
+            expect('anon never_used', await list({ usage: 'never_used' }, anon), 'none');
+            expect('owner never_used', await list({ usage: 'never_used' }, owner), 'none,secret');
+            expect('top', await list({ usage: 'top' }, anon), 'top,flaky,broken,dormant');
+            expect('never_worked', await list({ usage: 'never_worked' }, anon), 'broken');
+            expect('failing', await list({ usage: 'failing', sort: 'failures30d', dir: 'desc' }, anon), 'broken,flaky');
+            expect('dormant', await list({ usage: 'dormant' }, anon), 'dormant');
+            expect('search + top', await list({ search: `${p}-fl`, usage: 'top' }, anon), 'flaky');
+            const paged = await this.toolNamed('list_kennels').handler({ search: p, usage: 'top', limit: 2 }, anon, deps);
+            const env = JSON.parse(paged.content[0].text);
+            if (env.total !== 4 || env.kennels.length !== 2 || env.hasMore !== true) throw new Error(`Envelope: ${paged.content[0].text.slice(0, 200)}`);
+            const flaky = env.kennels.find((k: any) => k.lineageId === `${p}-flaky`) ?? JSON.parse((await this.toolNamed('list_kennels').handler({ search: `${p}-flaky` }, anon, deps)).content[0].text)[0];
+            if (flaky?.stats?.calls?.leadFailed30d !== 1 || flaky.stats.calls.total !== 3) throw new Error(`stats flaky: ${JSON.stringify(flaky?.stats)}`);
+            const schema = this.toolNamed('list_kennels').inputSchema as any;
+            if (schema.properties.usage?.enum?.join() !== USAGE_FILTERS.join() || !String(schema.properties.usage.description).includes('never_worked')) {
+                throw new Error('list_kennels-Schema ohne usage-Definitionen');
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            for (const n of names) {
+                try { await kennelsController.delete(`${p}-${n}`); } catch { /* ignore */ }
+            }
         }
     }
 

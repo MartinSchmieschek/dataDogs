@@ -211,12 +211,13 @@ export class KennelCallCounter {
     pendingAggregates(sinceDay: string): Map<string, Omit<KennelCallAggregate, 'lineageId'>> {
         const out = new Map<string, Omit<KennelCallAggregate, 'lineageId'>>();
         for (const d of this.pending.values()) {
-            const agg = out.get(d.lineageId) ?? { total: 0, last30d: 0, leadFailed: 0, rankedTotal: 0, ranked30d: 0 };
+            const agg = out.get(d.lineageId) ?? { total: 0, last30d: 0, leadFailed: 0, leadFailed30d: 0, rankedTotal: 0, ranked30d: 0 };
             const inWindow = d.day >= sinceDay;
             const ranked = RANKED.has(d.source);
             agg.total += d.count;
             agg.leadFailed += d.leadFailed;
             if (inWindow) agg.last30d += d.count;
+            if (inWindow) agg.leadFailed30d += d.leadFailed;
             if (ranked) agg.rankedTotal += d.count;
             if (ranked && inWindow) agg.ranked30d += d.count;
             out.set(d.lineageId, agg);

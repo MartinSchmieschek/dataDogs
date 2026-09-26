@@ -58,7 +58,8 @@ export interface IMyRights {
  * nur echte Nutzung (/k/:id, execute). `rating.avg` ist null ohne Bewertung, `score` der Bayes-Rang.
  */
 export interface IKennelStats {
-  calls: { total: number; last30d: number; leadFailed: number; ranked: number; ranked30d: number };
+  /** leadFailed30d: Laeufe mit gescheitertem Lead in den letzten 30 Tagen (fehlt bei alten Servern). */
+  calls: { total: number; last30d: number; leadFailed: number; leadFailed30d?: number; ranked: number; ranked30d: number };
   rating: { avg: number | null; count: number; score: number };
 }
 

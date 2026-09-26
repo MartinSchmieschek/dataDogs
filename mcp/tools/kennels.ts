@@ -34,7 +34,7 @@ import { SPUREN_NODES_FIELD_HINT, SPUREN_TASK_FIELD_HINT } from '../spuren-brief
 import { REDACTED_TEXT, kennelRunView, redactWavesForCtx } from '../../services/wavesRedaction';
 import { KennelSnapshotCache } from '../snapshots/KennelSnapshotCache';
 import { firstRefusedDogRef, refusedDogRefMessage } from '../../services/dogAccess';
-import { ListQuery } from '../../api/routes/ListQuery';
+import { ListQuery, USAGE_FILTERS, USAGE_FILTER_HELP } from '../../api/routes/ListQuery';
 
 /** Status notebook — see mcp/skill.md § Spuren & Rechtfertigung */
 const KENNEL_TRACE_NODE_SCHEMA = {
@@ -323,7 +323,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'list_kennels',
             description:
-                'Lists kennels visible to the current user — every kennel you may run, run-only kennels included. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt) and `stats` {calls: {total, last30d, leadFailed, ranked, ranked30d}, rating: {avg, count, score}}. Find kennels by usage and stars: `{search, sort: "rating" | "calls30d", dir: "desc"}`; filter with minStars (raw average) and minCalls (ranked calls). WITHOUT limit the result is a bare array (legacy shape); WITH limit an envelope {kennels, total, offset, limit, hasMore}. Use get_kennel for the header, and the get_kennel_* tools for payload fields (they need the read right).',
+                'Lists kennels visible to the current user — every kennel you may run, run-only kennels included. Returns minimal metadata only (id, lineageId, name, emoji, dogCount, visibility, updatedAt) and `stats` {calls: {total, last30d, leadFailed, leadFailed30d, ranked, ranked30d}, rating: {avg, count, score}}. Find kennels by usage and stars: `{search, sort: "rating" | "calls30d", dir: "desc"}`; filter with minStars (raw average) and minCalls (ranked calls). Filter by how they are used with `usage`: "top" (called, most calls first), "never_used" (0 calls), "never_worked" (called, every run failed), "failing" (a failed run in the last 30 days), "dormant" (called once, silent for 30 days) — e.g. `{search: "weather", usage: "top"}` or `{usage: "failing", sort: "failures30d", dir: "desc"}`; exact definitions in the `usage` parameter. WITHOUT limit the result is a bare array (legacy shape); WITH limit an envelope {kennels, total, offset, limit, hasMore}. Use get_kennel for the header, and the get_kennel_* tools for payload fields (they need the read right).',
             inputSchema: {
                 type: 'object',
                 additionalProperties: false,
@@ -332,9 +332,10 @@ export function getKennelTools(): ToolDef[] {
                     mine: { type: 'boolean', description: 'only kennels owned by the caller' },
                     sort: {
                         type: 'string',
-                        enum: ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating'],
-                        description: 'calls/calls30d = ranked usage (public + execute paths), rating = Bayes score. Default name.',
+                        enum: ['name', 'createdAt', 'updatedAt', 'calls', 'calls30d', 'rating', 'failures30d'],
+                        description: 'calls/calls30d = ranked usage (public + execute paths), rating = Bayes score, failures30d = runs whose lead failed in the last 30 days (stats.calls.leadFailed30d). Default name (with usage "top": most calls first).',
                     },
+                    usage: { type: 'string', enum: [...USAGE_FILTERS], description: USAGE_FILTER_HELP },
                     dir: { type: 'string', enum: ['asc', 'desc'] },
                     minStars: { type: 'number', minimum: 1, maximum: 5, description: 'keep kennels whose raw average rating is >= minStars' },
                     minCalls: { type: 'number', minimum: 0, description: 'keep kennels with at least this many ranked calls' },
@@ -361,6 +362,7 @@ export function getKennelTools(): ToolDef[] {
                     dir: args.dir,
                     minStars: args.minStars,
                     minCalls: args.minCalls,
+                    usage: args.usage,
                     limit: args.limit,
                     offset: args.offset,
                 });

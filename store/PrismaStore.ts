@@ -704,6 +704,7 @@ export class PrismaStore implements IStore, IKennelStatsStore, IDogStatsStore {
              CAST(SUM("count") AS INTEGER)                                                          AS "total",
              CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "count" ELSE 0 END) AS INTEGER)           AS "last30d",
              CAST(SUM("leadFailed") AS INTEGER)                                                     AS "leadFailed",
+             CAST(SUM(CASE WHEN "day" >= ${sinceDay} THEN "leadFailed" ELSE 0 END) AS INTEGER)      AS "leadFailed30d",
              CAST(SUM(CASE WHEN "source" IN (${ranked}) THEN "count" ELSE 0 END) AS INTEGER)        AS "rankedTotal",
              CAST(SUM(CASE WHEN "source" IN (${ranked}) AND "day" >= ${sinceDay} THEN "count" ELSE 0 END) AS INTEGER) AS "ranked30d"
       FROM "KennelCallDaily"
@@ -715,6 +716,7 @@ export class PrismaStore implements IStore, IKennelStatsStore, IDogStatsStore {
       total: Number(r.total ?? 0),
       last30d: Number(r.last30d ?? 0),
       leadFailed: Number(r.leadFailed ?? 0),
+      leadFailed30d: Number(r.leadFailed30d ?? 0),
       rankedTotal: Number(r.rankedTotal ?? 0),
       ranked30d: Number(r.ranked30d ?? 0),
     }));

@@ -25,8 +25,14 @@ export interface PagedApiResponse<T> extends ApiResponse<T[]> {
 }
 
 /** calls/calls30d = Aufrufe (ranked), rating = Bayes-Score (P4). */
-export type KennelSortKey = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating';
+export type KennelSortKey = 'name' | 'createdAt' | 'updatedAt' | 'calls' | 'calls30d' | 'rating' | 'failures30d';
 export type KennelSortDir = 'asc' | 'desc';
+/**
+ * Aufruf-Filter (`usage=`, api/routes/ListQuery.ts USAGE_FILTER_HELP): top = gerufen, meiste zuerst;
+ * never_used = 0 Aufrufe; never_worked = gerufen, jeder Lauf gescheitert; failing = gescheiterter Lauf in
+ * 30 Tagen; dormant = gerufen, aber 0 in 30 Tagen. Nur ueber dem, was der Aufrufer ausfuehren darf.
+ */
+export type UsageFilter = 'top' | 'never_used' | 'never_worked' | 'failing' | 'dormant';
 
 export interface KennelPageQuery {
   /** Seitengröße, serverseitig auf 200 gedeckelt. */
@@ -42,6 +48,8 @@ export interface KennelPageQuery {
   minStars?: number;
   /** Nur Kennels mit mindestens so vielen gezaehlten Aufrufen. */
   minCalls?: number;
+  /** Aufruf-Filter, kombinierbar mit q und sort. */
+  usage?: UsageFilter;
 }
 
 /** Antwort von GET/PUT/DELETE /api/kennels/:id/rating (P4). `mine` ist null anonym oder unbewertet. */
@@ -101,6 +109,7 @@ export class KennelService {
     if (query.dir) params = params.set('dir', query.dir);
     if (query.minStars !== undefined) params = params.set('minStars', String(query.minStars));
     if (query.minCalls !== undefined) params = params.set('minCalls', String(query.minCalls));
+    if (query.usage) params = params.set('usage', query.usage);
     return this.http.get<PagedApiResponse<IKennelConfig>>(this.baseUrl, { params });
   }
 

@@ -656,6 +656,34 @@ async function run() {
     fail('P4 stats', e.message);
   }
 
+  // Feature-Runde: Aufruf-Filter (usage) — der execute_kennel oben hat KENNEL_ID gerufen: unter top ja,
+  // unter never_used nein; REST GET /api/kennels liest dieselben Parameter (dieselbe ListQuery).
+  try {
+    const schema = await mcpCall('describe_tool', { name: 'list_kennels' });
+    const usageEnum = schema?.inputSchema?.properties?.usage?.enum || [];
+    const top = await mcpCall('list_kennels', { search: KENNEL_ID, usage: 'top' });
+    const never = await mcpCall('list_kennels', { search: KENNEL_ID, usage: 'never_used' });
+    const inTop = Array.isArray(top) && top.some((k) => k.lineageId === KENNEL_ID);
+    const inNever = Array.isArray(never) && never.some((k) => k.lineageId === KENNEL_ID);
+    const failing = await mcpCall('list_kennels', { usage: 'failing', sort: 'failures30d', dir: 'desc', limit: 5 });
+    const failingOk = Array.isArray(failing?.kennels) && failing.kennels.every((k) => (k.stats?.calls?.leadFailed30d ?? 0) > 0);
+    if (usageEnum.join() !== 'top,never_used,never_worked,failing,dormant') fail('list_kennels usage', `enum ${JSON.stringify(usageEnum)}`);
+    else if (!inTop || inNever) fail('list_kennels usage', `top ${inTop}, never_used ${inNever}`);
+    else if (!failingOk) fail('list_kennels usage', `failing without leadFailed30d: ${JSON.stringify(failing).slice(0, 160)}`);
+    else pass('list_kennels usage', `top has ${KENNEL_ID}, never_used not, failing ${failing.kennels.length}/${failing.total}`);
+
+    const rest = await httpGet(`/api/kennels?q=${encodeURIComponent(KENNEL_ID)}&usage=top&limit=5`);
+    const restNever = await httpGet(`/api/kennels?q=${encodeURIComponent(KENNEL_ID)}&usage=never_used&limit=5`);
+    const body = JSON.parse(rest.raw || '{}');
+    const bodyNever = JSON.parse(restNever.raw || '{}');
+    const restTop = Array.isArray(body.data) && body.data.some((k) => (k.lineageId || k.id) === KENNEL_ID);
+    const restNone = Array.isArray(bodyNever.data) && !bodyNever.data.some((k) => (k.lineageId || k.id) === KENNEL_ID);
+    if (rest.status !== 200 || !restTop || !restNone) fail('GET /api/kennels usage', `HTTP ${rest.status}/${restNever.status}, top ${restTop}, never_used clean ${restNone}`);
+    else pass('GET /api/kennels usage', `top total ${body.total}, never_used total ${bodyNever.total}`);
+  } catch (e) {
+    fail('usage filter (kennels)', e.message);
+  }
+
   // P4b (13): derselbe execute_kennel zaehlt auch jeden Dog sofort (ungeflushte Deltas im Memo-Merge);
   // get_node traegt usage mit dem Kennel; list_nodes kennt sort=proven.
   try {
