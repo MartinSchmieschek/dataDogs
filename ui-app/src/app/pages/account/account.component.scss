@@ -124,6 +124,49 @@
   color: var(--ink);
 }
 
+// Beta keys (admins): the form wraps, every row wraps — nothing scrolls sideways on a phone.
+.beta-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s3);
+
+  .fld {
+    display: flex;
+    flex: 1 1 220px;
+    flex-direction: column;
+    gap: var(--s1);
+    min-width: 0;
+  }
+
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 16px;
+  }
+}
+
+.beta-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.beta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.beta-meta {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 639px) {
   .head {
     flex-direction: column;

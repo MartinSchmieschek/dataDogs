@@ -4,7 +4,7 @@
   <sd-chapter-card [kicker]="'account' + (user()?.email ? ' · ' + user()!.email : '')" title="Account" />
 
   <nav class="sd-tabs tabs" role="tablist" aria-label="Account">
-    @for (t of tabs; track t) {
+    @for (t of tabs(); track t) {
       <button type="button" role="tab" class="sd-tab" [attr.aria-selected]="tab() === t" (click)="select(t)">{{ t }}</button>
     }
   </nav>
@@ -13,7 +13,7 @@
     <p class="status sd-small" role="status">{{ status() }}</p>
   }
 
-  @if (!auth.isReady() || !user()) {
+  @if (!auth.isReady() || !beta() || (!user() && tab() !== 'beta')) {
     <div class="pane"><span class="sd-skel"></span></div>
   } @else {
     @switch (tab()) {
@@ -105,6 +105,60 @@
           }
         </section>
         <sd-key-form [open]="keyFormOpen()" (closed)="keyFormOpen.set(false)" (saved)="onKeySaved($event)" />
+      }
+
+      @case ('beta') {
+        <section class="pane">
+          <sd-banner tone="info" [text]="beta()!.keysRequired
+            ? 'Closed beta is on: every Google account needs a beta key once — new ones to sign up, existing ones at their next sign-in. One key, one account, no expiry.'
+            : 'Beta keys are not required here (needs SLOPDOGS_STAGE=beta with sign-in on). Keys made now wait until they are.'" />
+
+          <form class="beta-new" (submit)="$event.preventDefault(); newBetaKey()">
+            <label class="fld">
+              <span class="sd-label">For whom</span>
+              <input class="sd-field" type="text" maxlength="200" placeholder="name or note (optional)"
+                [value]="betaNote()" (input)="betaNote.set($any($event.target).value)" />
+            </label>
+            <button type="submit" class="sd-btn sd-btn--primary" [disabled]="betaBusy() === 'new'" [attr.aria-busy]="betaBusy() === 'new'">
+              {{ betaBusy() === 'new' ? 'Making…' : '+ New beta key' }}</button>
+          </form>
+
+          @if (freshBetaKey(); as fresh) {
+            <div class="fresh" role="status">
+              <p class="sd-label">The new beta key. Shown once. Send it to one person — it unlocks one Google account.</p>
+              <sd-url-chip [text]="fresh" />
+              <button type="button" class="sd-btn sd-btn--sm" (click)="freshBetaKey.set(null)">Done, I copied it</button>
+            </div>
+          }
+          @if (betaError()) { <sd-banner [text]="betaError()!" /> }
+
+          @switch (betaState()) {
+            @case ('loading') { <sd-track-skeleton [count]="3" /> }
+            @case ('error') {
+              <p class="sd-small"><button type="button" class="sd-btn sd-btn--sm" (click)="loadBetaKeys()">Retry</button></p>
+            }
+            @default {
+              <ul class="beta-list" aria-label="Beta keys">
+                @for (k of betaKeys(); track k.id) {
+                  <li class="beta-row">
+                    <span class="sd-data">…{{ k.last4 }}</span>
+                    <span class="sd-chip" [class.sd-chip--live]="k.state === 'open'">{{ k.state }}</span>
+                    <span class="beta-meta sd-small sd-muted">
+                      {{ k.note || 'no note' }}
+                      @if (k.usedBy) { · used by {{ k.usedBy }} }
+                      @if (k.usedAt) { · {{ k.usedAt.slice(0, 10) }} }
+                    </span>
+                    @if (k.state === 'open') {
+                      <button type="button" class="sd-btn sd-btn--sm" [disabled]="betaBusy() === k.id" (click)="revokeBetaKey(k)">Revoke</button>
+                    }
+                  </li>
+                } @empty {
+                  <li class="empty">No beta keys yet.</li>
+                }
+              </ul>
+            }
+          }
+        </section>
       }
     }
   }

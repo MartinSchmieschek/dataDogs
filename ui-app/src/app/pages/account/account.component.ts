@@ -6,7 +6,8 @@ import { AuthService } from '../../services/auth.service';
 import { TokenService, type INewPersonalToken, type IPersonalToken } from '../../services/token.service';
 import { UserKeyService } from '../../services/user-key.service';
 import type { IUserKey } from '../../models/user-key.model';
-import { ACCOUNT_TABS, accountTabOf, type AccountTab } from '../../utils/account';
+import { accountTabOf, visibleAccountTabs, type AccountTab } from '../../utils/account';
+import { BetaService, type IBetaKey } from '../../services/beta.service';
 import { KEYS_NOTICE, KEYSTORE_OFF, keyErrorText } from '../../utils/user-keys';
 import { SdTopBarComponent } from '../../components/sd-top-bar/sd-top-bar.component';
 import { SdChapterCardComponent } from '../../components/sd-chapter-card/sd-chapter-card.component';
@@ -24,7 +25,9 @@ type ListState = 'idle' | 'loading' | 'ready' | 'error' | 'disabled';
  * profile: who you are, sign out, the `claude mcp add` box. tokens: personal access tokens over the
  * JSON face of `/auth/tokens` — a new one shows its value once in an ink box. keys: the key store
  * (P4c) — masked rows, the add sheet, delete with a question, the notice that a database reset takes
- * them, and `The key store is off on this server.` without a master key. Signed out: `/login?returnTo=`.
+ * them, and `The key store is off on this server.` without a master key. beta (admins only): closed-beta keys —
+ * one key unlocks one Google account, once, no expiry; a new key shows its value once. Signed out: `/login?returnTo=`, except the local
+ * super-user, who sees only the beta tab.
  */
 @Component({
   selector: 'app-account',
@@ -43,8 +46,10 @@ export class AccountComponent {
   private readonly tokensApi = inject(TokenService);
   private readonly keysApi = inject(UserKeyService);
   readonly auth = inject(AuthService);
+  private readonly betaApi = inject(BetaService);
 
-  readonly tabs = ACCOUNT_TABS;
+  readonly beta = this.betaApi.status;
+  readonly tabs = computed(() => visibleAccountTabs(!!this.user(), !!this.beta()?.admin));
   readonly keysNotice = KEYS_NOTICE;
   readonly keystoreOff = KEYSTORE_OFF;
   readonly tab = signal<AccountTab>('profile');
@@ -68,22 +73,37 @@ export class AccountComponent {
   readonly keyFormOpen = signal(false);
   readonly status = signal<string | null>(null);
 
+  readonly betaKeys = signal<IBetaKey[]>([]);
+  readonly betaState = signal<ListState>('idle');
+  readonly betaBusy = signal<string | null>(null);
+  readonly betaError = signal<string | null>(null);
+  readonly freshBetaKey = signal<string | null>(null);
+  readonly betaNote = signal('');
+
   constructor() {
     this.route.queryParamMap.pipe(takeUntilDestroyed(inject(DestroyRef))).subscribe((q) => {
       this.tab.set(accountTabOf(q.get('tab')));
     });
-    // Signed out: to the login with the way back. Signed in: load what the open tab shows, once.
+    void this.betaApi.load();
+    // Signed out: to the login with the way back — unless a beta admin without an account (local super-user):
+    // then only the beta tab. Signed in: load what the open tab shows, once. A tab you may not see is the first.
     effect(() => {
-      if (!this.auth.isReady()) return;
+      if (!this.auth.isReady() || !this.beta()) return;
       const user = this.user();
+      const tabs = this.tabs();
       const tab = this.tab();
       untracked(() => {
-        if (!user) {
+        if (tabs.length === 0) {
           void this.router.navigate(['/login'], { queryParams: { returnTo: `/account?tab=${tab}` }, replaceUrl: true });
           return;
         }
-        if (tab === 'tokens' && this.tokensState() === 'idle') this.loadTokens();
-        if (tab === 'keys' && this.keysState() === 'idle') this.loadKeys();
+        if (!tabs.includes(tab)) {
+          this.tab.set(tabs[0]);
+          return;
+        }
+        if (user && tab === 'tokens' && this.tokensState() === 'idle') this.loadTokens();
+        if (user && tab === 'keys' && this.keysState() === 'idle') this.loadKeys();
+        if (tab === 'beta' && this.betaState() === 'idle') this.loadBetaKeys();
       });
     }, { allowSignalWrites: true });
   }
@@ -181,6 +201,55 @@ export class AccountComponent {
       error: (err: HttpErrorResponse) => {
         this.keyBusy.set(null);
         this.keyError.set(`Couldn't delete ${key.alias} (${err.status || 'network'}).`);
+      },
+    });
+  }
+
+  // === Beta keys (admins) ===
+
+  loadBetaKeys(): void {
+    this.betaState.set('loading');
+    this.betaApi.list().subscribe({
+      next: (r) => {
+        this.betaKeys.set(r.keys ?? []);
+        this.betaState.set('ready');
+      },
+      error: (err: HttpErrorResponse) => {
+        this.betaError.set(err.error?.error_description ?? `Couldn't load the beta keys (${err.status || 'network'}).`);
+        this.betaState.set('error');
+      },
+    });
+  }
+
+  newBetaKey(): void {
+    if (this.betaBusy()) return;
+    this.betaBusy.set('new');
+    this.betaError.set(null);
+    this.betaApi.create(this.betaNote().trim() ? { note: this.betaNote().trim() } : {}).subscribe({
+      next: (r) => {
+        this.betaBusy.set(null);
+        this.freshBetaKey.set(r.code);
+        this.betaNote.set('');
+        this.betaKeys.update((list) => [r.key, ...list]);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.betaBusy.set(null);
+        this.betaError.set(err.error?.error_description ?? `Couldn't make a beta key (${err.status || 'network'}).`);
+      },
+    });
+  }
+
+  revokeBetaKey(key: IBetaKey): void {
+    this.betaBusy.set(key.id);
+    this.betaError.set(null);
+    this.betaApi.revoke(key.id).subscribe({
+      next: (r) => {
+        this.betaBusy.set(null);
+        this.betaKeys.update((list) => list.map((k) => (k.id === key.id ? r.key : k)));
+      },
+      error: (err: HttpErrorResponse) => {
+        this.betaBusy.set(null);
+        this.betaError.set(`Couldn't revoke …${key.last4} (${err.status || 'network'}).`);
       },
     });
   }

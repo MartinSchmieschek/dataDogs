@@ -37,9 +37,12 @@ export class AuthService {
     }
 
     /** Redirects to Google. After login the user lands on /auth/me by default; pass returnTo to come back here. */
-    login(returnTo?: string): void {
+    login(returnTo?: string, betaKey?: string): void {
         const target = returnTo ?? window.location.pathname + window.location.search;
-        const url = apiAbsoluteUrl('/auth/google/login') + '?returnTo=' + encodeURIComponent(target);
+        // Closed beta: the key rides along once; the server keeps it for the callback.
+        const key = betaKey?.trim();
+        const url = apiAbsoluteUrl('/auth/google/login') + '?returnTo=' + encodeURIComponent(target)
+            + (key ? '&betaKey=' + encodeURIComponent(key) : '');
         window.location.href = url;
     }
 
