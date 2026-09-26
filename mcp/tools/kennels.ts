@@ -798,8 +798,15 @@ export function getKennelTools(): ToolDef[] {
                         config, query, body, authCtxToCapabilityCtx(ctx), vmTimeoutMs, { source: 'mcp-execute' },
                     );
                     const lead = findDogInWaves(waves, dogIds[0]);
-                    if (!lead) return fail(access === 'read' ? `Lead ${dogIds[0]} not in waves` : 'lead_failed');
-                    return ok(lead.result);
+                    if (lead && lead.result !== undefined) return ok(lead.result);
+                    // Kein Ergebnis ist eine gueltige Antwort, kein Schemafehler: `undefined` hatte keinen Text, und
+                    // der MCP-Client meldete einen Schemafehler statt der Wahrheit. Ein Lead ohne Rueckgabewert
+                    // erscheint gar nicht in den Waves — auch das ist "kein Ergebnis", kein Werkzeugfehler.
+                    if (lead?.error) return fail(access === 'read' ? `Lead failed: ${lead.error}` : 'lead_failed');
+                    return ok({
+                        result: null,
+                        hint: 'The lead yielded no result — GET /k/<kennelId> answers with an empty body. Make the lead return a value; get_snapshot_errors shows what went wrong upstream.',
+                    });
                 } catch (err: any) {
                     return fail(runErrorText(err, access));
                 }

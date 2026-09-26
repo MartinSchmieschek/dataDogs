@@ -186,11 +186,13 @@ export function unknownArgsRefusal(tool: ToolDef, args: unknown): { message: str
 }
 
 export function ok(payload: unknown): ToolResult {
+    // JSON.stringify(undefined) ist undefined — ein Textblock ohne Text verletzt das MCP-Schema.
+    const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
     return {
         content: [
             {
                 type: 'text',
-                text: typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2),
+                text: text ?? 'null',
             },
         ],
     };

@@ -524,6 +524,32 @@ async function run() {
     try { await mcpCallRaw('delete_kennel', { id: strayId }); } catch { /* best effort */ }
   }
 
+  // execute_kennel mit einem Lead ohne Ergebnis: eine gueltige Antwort {result: null, hint}, kein Schemafehler.
+  const emptyLeadId = `gateway-empty-lead-${Date.now()}`;
+  try {
+    const built = await mcpCallRaw('build_kennel', { id: emptyLeadId, refresh: false, dogs: [{ displayName: 'GatewayEmptyLead', tsCode: 'const nothing = 1;' }] });
+    if (built.isError) throw new Error(`build_kennel: ${String(built.value).slice(0, 160)}`);
+    const exec = await mcpRequest('tools/call', { name: 'execute_kennel', arguments: { id: emptyLeadId } });
+    const value = toolTextContent(exec.envelope);
+    if (exec.status !== 200 || exec.envelope?.error || exec.envelope?.result?.isError) fail('execute_kennel empty lead', exec.raw.slice(0, 200));
+    else if (!value || value.result !== null || typeof value.hint !== 'string') fail('execute_kennel empty lead', JSON.stringify(value).slice(0, 160));
+    else pass('execute_kennel empty lead', 'result null + hint');
+
+    const thrower = await mcpCallRaw('build_kennel', { id: `${emptyLeadId}-throws`, refresh: false, dogs: [{ displayName: 'GatewayThrowingLead', tsCode: "throw new Error('gateway boom');" }] });
+    if (thrower.isError) throw new Error(`build_kennel: ${String(thrower.value).slice(0, 160)}`);
+    const boom = await mcpRequest('tools/call', { name: 'execute_kennel', arguments: { id: `${emptyLeadId}-throws` } });
+    const boomValue = toolTextContent(boom.envelope);
+    if (boom.status !== 200 || boom.envelope?.error) fail('execute_kennel throwing lead', boom.raw.slice(0, 200));
+    else if (boom.envelope?.result?.isError ? !/gateway boom|Lead failed/.test(String(boomValue)) : boomValue?.result !== null) fail('execute_kennel throwing lead', JSON.stringify(boomValue).slice(0, 160));
+    else pass('execute_kennel throwing lead', String(boom.envelope?.result?.isError ? boomValue : 'result null + hint').slice(0, 70));
+  } catch (e) {
+    fail('execute_kennel empty lead', e.message);
+  } finally {
+    for (const id of [emptyLeadId, `${emptyLeadId}-throws`]) {
+      try { await mcpCallRaw('delete_kennel', { id }); } catch { /* best effort */ }
+    }
+  }
+
   // delete_node: eine Versions-GUID nimmt genau eine Version, die lineageId den ganzen Dog; ein zweites Loeschen
   // ist "not found" — kein roher Store-Text. /actions kennt das Werkzeug auch.
   let deleteProbe = null;
