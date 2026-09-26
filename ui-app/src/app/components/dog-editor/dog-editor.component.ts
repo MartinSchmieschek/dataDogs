@@ -27,6 +27,8 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
   @ViewChild('editorContainer', { static: true }) containerRef!: ElementRef;
 
   @Input() dog!: DogEntry;
+  /** The browser preview (P6 U5) shows code, it never edits it. */
+  @Input() readOnly = false;
 
   readonly monacoLoading = signal(false);
 
@@ -122,11 +124,11 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
         minimap: { enabled: false },
         automaticLayout: true,
         scrollBeyondLastLine: false,
-        readOnly: false,
+        readOnly: this.readOnly,
       });
     }
 
-    this.editor.updateOptions({ readOnly: false });
+    this.editor.updateOptions({ readOnly: this.readOnly });
   }
 
   private async loadMonaco(): Promise<any> {

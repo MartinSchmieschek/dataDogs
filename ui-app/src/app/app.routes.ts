@@ -25,6 +25,12 @@ export const routes: Routes = [
       .then(m => m.KennelConfigComponent),
   },
   {
+    // side B (P6 U5): the dog browser; a dog opens as a preview (`?dog=`), never as a page (8.21).
+    path: 'dogs',
+    loadComponent: () => import('./pages/dogs/dogs-browser.component')
+      .then(m => m.DogsBrowserComponent),
+  },
+  {
     path: 'kennel',
     redirectTo: 'kennels',
     pathMatch: 'full',

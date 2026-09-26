@@ -3,8 +3,8 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 
 /**
  * Top bar (6.3, 6.5 `sd-top-bar`, variant list): SD emblem in Pirata One, the SLOPDOGS wordmark in Bebas,
- * the side link (active = ink chip), then the projected search and actions. The auth badge floats at the
- * right edge (app shell), so the bar keeps room for it. `side B · dogs` arrives with the /dogs browser (U5).
+ * the side links `side A · kennels`, `side B · dogs` (active = ink chip), then the projected search and
+ * actions. The auth badge floats at the right edge (app shell), so the bar keeps room for it.
  */
 @Component({
   selector: 'sd-top-bar',
@@ -24,6 +24,8 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       <nav class="sides" aria-label="Sides">
         <a class="sd-chip sd-chip--soft side" routerLink="/kennels" routerLinkActive="is-on"
           [routerLinkActiveOptions]="{ exact: false }">side A · kennels</a>
+        <a class="sd-chip sd-chip--soft side" routerLink="/dogs" routerLinkActive="is-on"
+          [routerLinkActiveOptions]="{ exact: false }">side B · dogs</a>
       </nav>
       <div class="mid"><ng-content select="[bar-search]" /></div>
       <div class="end"><ng-content select="[bar-actions]" /></div>
@@ -37,6 +39,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     .mark { display: inline-flex; align-items: center; gap: var(--s2); text-decoration: none; color: var(--ink); }
     .word { font-family: var(--font-display); font-size: 20px; line-height: 1; letter-spacing: .03em;
       text-transform: uppercase; padding-top: 2px; }
+    .sides { display: flex; gap: var(--s2); }
     .side { text-decoration: none; }
     .side.is-on { background: var(--ink); color: var(--paper); }
     .mid { flex: 1; min-width: 0; display: flex; justify-content: center; }

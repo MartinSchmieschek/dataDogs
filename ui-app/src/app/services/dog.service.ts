@@ -1,7 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map, shareReplay, tap } from 'rxjs/operators';
 import { DogInfo, IDogUsage } from '../models/dog.model';
+
+const CATALOG_TTL_MS = 60_000;
 
 export interface ApiResponse<T = any> {
   ok: boolean;
@@ -39,6 +42,39 @@ export class DogService {
     const params = kennelId ? `?kennelId=${encodeURIComponent(kennelId)}` : '';
     return this.http.get<ApiResponse<DogInfo[]>>(`${this.baseUrl}${params}`);
   }
+
+  /**
+   * The list without code (`lean=1`, P6 U5): base dogs and dogs in one list, sorted by the server
+   * (`proven` = list_nodes' order, 8.26). With `kennelId` only what the kennel does not hold yet.
+   */
+  getCatalog(query: { sort?: string; dir?: 'asc' | 'desc'; kennelId?: string } = {}): Observable<ApiResponse<DogInfo[]>> {
+    let params = new HttpParams().set('lean', '1');
+    if (query.sort) params = params.set('sort', query.sort);
+    if (query.dir) params = params.set('dir', query.dir);
+    if (query.kennelId) params = params.set('kennelId', query.kennelId);
+    return this.http.get<ApiResponse<DogInfo[]>>(this.baseUrl, { params });
+  }
+
+  /**
+   * The catalog for look-ups by id (the dog inspector's stats tab): one lean request, shared for a
+   * minute — a dog's stats move with the 30 s flush, not with every click.
+   */
+  catalogOnce(): Observable<DogInfo[]> {
+    const now = Date.now();
+    if (!this.catalogCache || now - this.catalogCache.at > CATALOG_TTL_MS) {
+      this.catalogCache = {
+        at: now,
+        list: this.getCatalog().pipe(
+          map((res) => res.data ?? []),
+          tap({ error: () => (this.catalogCache = null) }),
+          shareReplay({ bufferSize: 1, refCount: false }),
+        ),
+      };
+    }
+    return this.catalogCache.list;
+  }
+
+  private catalogCache: { at: number; list: Observable<DogInfo[]> } | null = null;
 
   getById(id: string): Observable<ApiResponse<any>> {
     return this.http.get<ApiResponse>(`${this.baseUrl}/${encodeURIComponent(id)}`);

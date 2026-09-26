@@ -11,7 +11,9 @@ import {
   buildDogPanelSections,
   DEFAULT_PANEL_SECTION,
   getDefaultPanelSection,
+  dogInsightKey,
 } from '../../utils/dog-panel-sections';
+import { SdDogInsightComponent } from '../sd-dog-insight/sd-dog-insight.component';
 import { DogSidePanelCodeArtifactComponent } from './artifacts/dog-side-panel-code-artifact.component';
 import { DogSidePanelVmTypedefArtifactComponent } from './artifacts/dog-side-panel-vm-typedef-artifact.component';
 import { DogSidePanelResultArtifactComponent } from './artifacts/dog-side-panel-result-artifact.component';
@@ -33,6 +35,7 @@ export { DEFAULT_PANEL_SECTION, getDefaultPanelSection } from '../../utils/dog-p
     DogSidePanelResultArtifactComponent,
     DogSidePanelParentsArtifactComponent,
     AclPanelComponent,
+    SdDogInsightComponent,
   ],
   templateUrl: './dog-side-panel.component.html',
   styleUrls: ['../../styles/dog-node-card.scss', './dog-side-panel.component.scss'],
@@ -96,6 +99,12 @@ export class DogSidePanelComponent implements OnChanges {
   readonly availableSections = computed(() => {
     const d = this.dogSignal();
     return d ? buildDogPanelSections(d) : [];
+  });
+
+  /** `usage` / `stats` (U5): the key list and `/usage` know this dog by — lineageId or `base:X`. */
+  readonly insightKey = computed(() => {
+    const d = this.dogSignal();
+    return d ? dogInsightKey(d) : null;
   });
 
   parentsRequired = signal<string[]>([]);

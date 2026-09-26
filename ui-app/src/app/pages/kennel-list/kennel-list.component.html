@@ -73,6 +73,8 @@
 
 <button type="button" class="sd-btn sd-btn--primary sd-btn--icon fab" aria-label="New kennel" (click)="openCreate()">+</button>
 
+<sd-bottom-bar variant="sides" />
+
 @if (sheetOpen()) {
   <sd-kennel-sheet [busy]="creating()" [error]="createError()" (submitted)="onCreate($event)" (cancelled)="closeCreate()" />
 }

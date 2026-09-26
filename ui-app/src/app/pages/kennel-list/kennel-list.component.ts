@@ -32,6 +32,7 @@ import { SdBannerComponent } from '../../components/sd-banner/sd-banner.componen
 import { SdUrlChipComponent } from '../../components/sd-url-chip/sd-url-chip.component';
 import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
 import { SdKennelSheetComponent, type KennelCreateData } from '../../components/sd-kennel-sheet/sd-kennel-sheet.component';
+import { SdBottomBarComponent } from '../../components/sd-bottom-bar/sd-bottom-bar.component';
 
 /** v3 (P4 4.9): the sort keys include `calls30d` and `rating`. */
 const KENNEL_LIST_SORT_STORAGE_KEY = 'slopdogs.kennelList.sort.v3';
@@ -109,6 +110,7 @@ function dedupeKennelsById(list: IKennelConfig[]): IKennelConfig[] {
     SdUrlChipComponent,
     SdVeilComponent,
     SdKennelSheetComponent,
+    SdBottomBarComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styles: [`
@@ -126,8 +128,10 @@ function dedupeKennelsById(list: IKennelConfig[]): IKennelConfig[] {
     .toast { position: fixed; left: 50%; bottom: var(--s5); z-index: var(--z-toast); transform: translateX(-50%);
       padding: var(--s2) var(--s4); background: var(--ink); color: var(--paper); border: 2px solid var(--paper); outline: 2px solid var(--ink); }
     @media (max-width: 767px) {
+      .page { padding-bottom: calc(var(--s8) + 60px); }
+      .toast { bottom: calc(60px + var(--s3)); }
       .new-top { display: none; }
-      .fab { display: inline-flex; position: fixed; right: var(--s4); bottom: max(var(--s4), env(safe-area-inset-bottom));
+      .fab { display: inline-flex; position: fixed; right: var(--s4); bottom: calc(60px + var(--s4) + env(safe-area-inset-bottom));
         z-index: var(--z-sticky); width: 56px; height: 56px; font-size: 24px; }
       .tools .import { display: none; }
     }

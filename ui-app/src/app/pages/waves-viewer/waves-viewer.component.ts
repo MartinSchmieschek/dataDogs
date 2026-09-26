@@ -21,6 +21,7 @@ import {
 import { kennelRefForDog } from '../../utils/kennel-ref-for-dog';
 import { DogEntry, Waves } from '../../models/dog-entry.model';
 import { DogInfo } from '../../models/dog.model';
+import type { DogCatalogEntry } from '../../models/dog-catalog';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
 import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
@@ -617,15 +618,24 @@ export class WavesViewerComponent implements OnInit {
     if (this.layoutDirty()) this.saveLayout();
   }
 
-  onPaletteAdd(dogRef: string): void {
+  /** Palette click (S4): a run-only dog goes in as its version GUID — pinned (8.15) — and the toast says so. */
+  onPaletteAdd(dog: DogCatalogEntry): void {
     const cfg = this.kennelConfig();
     if (!cfg || !this.canMutate()) return;
-    const dogIds = [...(cfg.dogIds ?? []), dogRef];
+    const dogIds = [...(cfg.dogIds ?? []), dog.ref];
     this.kennelService.update(this.kennelId, { dogIds }).subscribe({
-      next: () => {
+      next: (res) => {
+        if (res && res.ok === false) {
+          this.error.set(res.error ?? `Couldn't add ${dog.name}.`);
+          return;
+        }
+        this.showToast(dog.runOnly
+          ? `Added ${dog.name}, pinned to v${dog.version ?? '?'}.`
+          : `Added ${dog.name}.`);
         this.loadWaves();
         this.loadAvailableDogs();
       },
+      error: (err) => this.error.set(err?.error?.error ?? `Couldn't add ${dog.name} (${err?.status ?? 'network'}).`),
     });
   }
 
@@ -949,8 +959,9 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
+  /** The palette's list: what the kennel does not hold yet, without code (`lean=1`), proven first. */
   loadAvailableDogs() {
-    this.dogService.getAll(this.kennelId).subscribe({
+    this.dogService.getCatalog({ kennelId: this.kennelId, sort: 'proven', dir: 'desc' }).subscribe({
       next: (res) => this.availableDogs.set(res.data ?? []),
     });
   }

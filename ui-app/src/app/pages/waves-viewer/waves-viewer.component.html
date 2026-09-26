@@ -140,12 +140,11 @@
       (inspect)="openKennelInspector(kennelInspectorTab())" />
   }
 
-  <!-- Dog palette: left drawer / bottom sheet (restyled in U5); only for editors of a readable kennel -->
+  <!-- Dog palette: left drawer / bottom sheet (U5); only for editors of a readable kennel -->
   @if (canMutate()) {
     <app-waves-dog-palette
       [availableDogs]="availableDogs()"
       [open]="paletteOpen()"
-      mode="overlay"
       (closeRequested)="paletteOpen.set(false)"
       (newDogRequested)="createNewDog(); paletteOpen.set(false)"
       (dogAdded)="onPaletteAdd($event); paletteOpen.set(false)" />

@@ -1,6 +1,6 @@
 import { DogEntry } from '../models/dog-entry.model';
 
-export type DogPanelSectionId = 'code' | 'vm' | 'result' | 'parents' | 'acl';
+export type DogPanelSectionId = 'code' | 'vm' | 'result' | 'parents' | 'usage' | 'stats' | 'acl';
 
 export interface DogPanelSectionItem {
   id: DogPanelSectionId;
@@ -14,13 +14,29 @@ export const SECTION_LABEL: Record<DogPanelSectionId, string> = {
   vm: 'context',
   result: 'result',
   parents: 'parents',
+  usage: 'usage',
+  stats: 'stats',
   acl: 'access',
 };
 
+/**
+ * Der Schluessel, unter dem Liste und `/usage` einen Dog kennen (P4b): lineageId, bei Base-Dogs `base:X`.
+ * null, wenn nichts Belastbares da ist (privater redigierter Dog ohne Identitaet).
+ */
+export function dogInsightKey(dog: DogEntry): string | null {
+  if (dog.lineageId) return dog.lineageId;
+  if (!dog.codeTs && !dog.serializedDogConfig && !dog.redacted && dog.name && dog.id === dog.name) return `base:${dog.name}`;
+  return null;
+}
+
 export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
-  // P3.5 Redaction: fremder Dog ohne Leserecht — nur das Ergebnis, kein Code, kein Kontext, keine Rechte.
+  const insight: DogPanelSectionItem[] = dogInsightKey(dog)
+    ? [{ id: 'usage', label: SECTION_LABEL.usage }, { id: 'stats', label: SECTION_LABEL.stats }]
+    : [];
+  // P3.5 Redaction: fremder Dog ohne Leserecht — Ergebnis, Nutzung und Zahlen; kein Code, kein Kontext,
+  // keine Rechte. Ein privater (access none) behaelt nur das Ergebnisfeld.
   if (dog.redacted) {
-    return [{ id: 'result', label: SECTION_LABEL.result }];
+    return [{ id: 'result', label: SECTION_LABEL.result }, ...(dog.access === 'run' ? insight : [])];
   }
   const out: DogPanelSectionItem[] = [];
   if (dog.codeTs) {
@@ -31,6 +47,7 @@ export function buildDogPanelSections(dog: DogEntry): DogPanelSectionItem[] {
   if (dog.codeTs) {
     out.push({ id: 'parents', label: SECTION_LABEL.parents });
   }
+  out.push(...insight);
   // SerializedDogs and MimicDogs have a lineageId — only those have an ACL.
   // Hunters (BaseDogs) are project-wide, no ACL.
   if (dog.lineageId) {

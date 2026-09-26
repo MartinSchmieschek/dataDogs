@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { DogEntry } from '../../models/dog-entry.model';
+import { shortDogLabel } from '../../utils/short-dog-label';
 
 /**
  * Dog card on the ruled inlay (P6 U3, 8.22): 128×56 paper card, 2 px ink, square.
@@ -17,7 +18,7 @@ import type { DogEntry } from '../../models/dog-entry.model';
       @if (status(); as s) { <span class="dot" [class.err]="s === 'err'" aria-hidden="true"></span> }
       <span class="ic" [class.none]="!icon()" aria-hidden="true">{{ icon() || '◇' }}</span>
       <span class="tx">
-        <span class="nm">@if (kind() !== 'own') {<svg class="lk" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M3 4.5V3a2 2 0 0 1 4 0v1.5"/><rect x="1.5" y="4.5" width="7" height="5"/></svg>}{{ name() }}</span>
+        <span class="nm">@if (kind() !== 'own') {<svg class="lk" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M3 4.5V3a2 2 0 0 1 4 0v1.5"/><rect x="1.5" y="4.5" width="7" height="5"/></svg>}{{ label() }}</span>
         @switch (kind()) {
           @case ('foreign') { <span class="sd-chip sd-chip--frozen sub-chip">{{ pinned() }}</span> }
           @case ('redacted') { <span class="sd-chip sd-chip--soft sub-chip">private</span> }
@@ -60,6 +61,11 @@ export class SdDogCardComponent {
   readonly selected = input(false);
 
   readonly name = computed(() => this.dog().displayName?.trim() || this.dog().name);
+  /**
+   * What fits the 72 px of text (Courier 13 px: 9 characters, 7 behind the lock) with the part that tells
+   * siblings apart — `Slo…SkinA`, not `SlopdogsL…` (U5). The full name stays in the title.
+   */
+  readonly label = computed(() => shortDogLabel(this.name(), this.kind() === 'own' ? 9 : 7));
   readonly icon = computed(() => this.dog().icon?.trim() ?? '');
   readonly kind = computed<'own' | 'foreign' | 'redacted'>(() => {
     const d = this.dog();

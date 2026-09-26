@@ -4,7 +4,7 @@ import { SdTapeDeckComponent } from '../sd-tape-deck/sd-tape-deck.component';
 
 /**
  * Mobile bottom bar (6.3, 6.5 `sd-bottom-bar`), below 768 px only. Variant `sides`: the two sides of the
- * cassette, `Kennels · Dogs` (S1/S6, wired with the /dogs browser in U5). Variant `kennel` (S2):
+ * cassette, `Kennels · Dogs` (S1 /kennels, S6 /dogs). Variant `kennel` (S2):
  * `Dogs · [⏵ RUN] · Inspect` — Dogs opens the palette (missing for readers, disabled while frozen), Run is
  * the one orange of the screen and turns into `● running` with a turning reel.
  */

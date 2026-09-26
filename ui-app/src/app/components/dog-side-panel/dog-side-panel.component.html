@@ -115,6 +115,9 @@
           (toggleRequired)="toggleParentRequired($event)"
           (toggleOptional)="toggleParentOptional($event)" />
       }
+      @if ((activeSection() === 'usage' || activeSection() === 'stats') && insightKey(); as key) {
+        <sd-dog-insight [dogKey]="key" [mode]="activeSection() === 'usage' ? 'usage' : 'stats'" />
+      }
       @if (!isRedacted && activeSection() === 'acl' && dog.lineageId) {
         <app-acl-panel entityType="node" [id]="dog.lineageId" />
       }
