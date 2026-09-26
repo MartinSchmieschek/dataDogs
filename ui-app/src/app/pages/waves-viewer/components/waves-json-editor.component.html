@@ -52,7 +52,7 @@
   <div class="monaco-wrap">
     <div #container class="monaco-host" [style.min-height.px]="minHeight"></div>
     @if (monacoLoading()) {
-      <app-loading-indicator />
+      <sd-veil label="Loading the editor" />
     }
   </div>
 </div>

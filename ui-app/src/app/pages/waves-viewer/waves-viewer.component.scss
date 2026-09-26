@@ -82,16 +82,6 @@
   flex-direction: column;
 }
 
-/* Void-Glyphe bleibt erhalten, aber stark gedämpft — der Canvas-Gradient soll dominieren. */
-.void-wrap {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.45;
-  mix-blend-mode: lighten;
-}
-
 .canvas-scale {
   position: relative;
   z-index: tk.$z-canvas;

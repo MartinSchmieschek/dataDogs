@@ -6,7 +6,8 @@ import { KennelService } from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
 import { IKennelConfig, KennelVersionEntry } from '../../models/kennel-config.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
-import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
+import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
+import { INLAY_EDITOR_OPTIONS } from '../../monaco/inlay-theme';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { DogDisplayComponent } from '../../components/dog-display/dog-display.component';
 import { KennelEmojiPickerComponent } from '../../components/kennel-emoji-picker/kennel-emoji-picker.component';
@@ -39,7 +40,7 @@ const BASE_DOG_TYPES = [
   imports: [
     FormsModule,
     RouterLink,
-    LoadingIndicatorComponent,
+    SdVeilComponent,
     DogDisplayComponent,
     KennelEmojiPickerComponent,
     VersionTimelineComponent,
@@ -219,12 +220,11 @@ export class KennelConfigComponent implements OnInit, OnDestroy {
       this.bodyEditor = monaco.editor.create(container, {
         value: text,
         language: 'json',
-        theme: 'vs-dark',
+        ...INLAY_EDITOR_OPTIONS,
         minimap: { enabled: false },
         automaticLayout: true,
         scrollBeyondLastLine: false,
         lineNumbers: 'on',
-        fontSize: 13,
       });
     };
     setTimeout(tryInit, 200);

@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { registerInlayTheme } from '../monaco/inlay-theme';
 
 const MONACO_BASE = '/assets/monaco/vs';
 const LOADER_SRC = `${MONACO_BASE}/loader.js`;
@@ -6,6 +7,7 @@ const EDITOR_MODULE = 'vs/editor/editor.main';
 
 /**
  * Laedt Monaco erst, wenn ein Editor ihn wirklich braucht — vorher kostet er nichts.
+ * Nach dem Laden ist das Theme "inlay" registriert (Registrierungs-Hook, P6 U1).
  *
  * Der Vertrag der frueheren index.html bleibt erhalten: `window.monaco` wird gesetzt
  * und das Ereignis `monaco-ready` auf `window` gefeuert. Geladen wird hoechstens einmal;
@@ -18,7 +20,10 @@ export class MonacoLoaderService {
 
   ensureMonaco(): Promise<any> {
     const existing = this.globalMonaco;
-    if (existing) return Promise.resolve(existing);
+    if (existing) {
+      registerInlayTheme(existing);
+      return Promise.resolve(existing);
+    }
 
     this.pending ??= this.load().catch((err) => {
       this.pending = null;
@@ -69,6 +74,7 @@ export class MonacoLoaderService {
             return;
           }
           (window as any).monaco = monaco;
+          registerInlayTheme(monaco);
           window.dispatchEvent(new Event('monaco-ready'));
           resolve(monaco);
         },

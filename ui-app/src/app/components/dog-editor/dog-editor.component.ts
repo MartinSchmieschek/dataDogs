@@ -4,19 +4,20 @@ import {
 } from '@angular/core';
 import { DogEntry } from '../../models/dog-entry.model';
 import { MonacoLoaderService } from '../../services/monaco-loader.service';
-import { LoadingIndicatorComponent } from '../loading-indicator/loading-indicator.component';
+import { SdVeilComponent } from '../sd-veil/sd-veil.component';
+import { INLAY_EDITOR_OPTIONS } from '../../monaco/inlay-theme';
 
 @Component({
   selector: 'app-dog-editor',
   standalone: true,
-  imports: [LoadingIndicatorComponent],
+  imports: [SdVeilComponent],
   template: `
     <div
       class="editor-wrapper dog-node-card"
       [class.dog-node-card--serialized]="!!dog.codeTs">
       <div #editorContainer class="editor-container"></div>
       @if (monacoLoading()) {
-        <app-loading-indicator />
+        <sd-veil label="Loading the editor" />
       }
     </div>
   `,
@@ -117,11 +118,10 @@ export class DogEditorComponent implements OnChanges, OnDestroy {
       this.editor = monaco.editor.create(container, {
         value: content,
         language: 'typescript',
-        theme: 'vs-dark',
+        ...INLAY_EDITOR_OPTIONS,
         minimap: { enabled: false },
         automaticLayout: true,
         scrollBeyondLastLine: false,
-        fontSize: 13,
         readOnly: false,
       });
     }

@@ -11,14 +11,15 @@ import {
   OnChanges,
 } from '@angular/core';
 import { EditSectionComponent } from '../../edit-section/edit-section.component';
-import { LoadingIndicatorComponent } from '../../loading-indicator/loading-indicator.component';
+import { SdVeilComponent } from '../../sd-veil/sd-veil.component';
+import { INLAY_EDITOR_OPTIONS } from '../../../monaco/inlay-theme';
 import { MonacoLoaderService } from '../../../services/monaco-loader.service';
 import { isHtmlResultString, isMarkdownResultString } from '../../../utils/lead-result-string-format';
 
 @Component({
   selector: 'app-dog-side-panel-result-artifact',
   standalone: true,
-  imports: [EditSectionComponent, LoadingIndicatorComponent],
+  imports: [EditSectionComponent, SdVeilComponent],
   template: `
     <app-edit-section title="Result" [hideHeader]="hideHeader">
       @if (resultIsHtml || resultIsMarkdown) {
@@ -35,7 +36,7 @@ import { isHtmlResultString, isMarkdownResultString } from '../../../utils/lead-
         <div class="result-monaco-wrap">
           <div #monacoHost class="result-monaco-host dog-node-card"></div>
           @if (monacoLoading()) {
-            <app-loading-indicator />
+            <sd-veil label="Loading the editor" />
           }
         </div>
       }
@@ -168,12 +169,11 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
       this.editor = monaco.editor.create(host, {
         value,
         language,
-        theme: 'vs-dark',
+        ...INLAY_EDITOR_OPTIONS,
         readOnly: true,
         minimap: { enabled: false },
         automaticLayout: true,
         scrollBeyondLastLine: false,
-        fontSize: 13,
         wordWrap: 'on',
       });
     }

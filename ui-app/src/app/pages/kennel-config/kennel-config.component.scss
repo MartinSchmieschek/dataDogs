@@ -43,7 +43,7 @@ h1 {
     background: #000;
     color: #fff;
     border: 1px solid #333;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
     box-sizing: border-box;
   }
 
@@ -230,7 +230,7 @@ h1 {
     background: #1a1a1a;
     color: #fff;
     border: 1px solid #333;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
   }
 }
 
@@ -240,7 +240,7 @@ h1 {
   color: #fff;
   border: none;
   cursor: pointer;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .body-editor-wrap {
@@ -266,7 +266,7 @@ h1 {
   border: none;
   cursor: pointer;
   font-weight: bold;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   border-radius: 5px;
 
@@ -282,6 +282,6 @@ h1 {
   border-radius: 5px;
   cursor: pointer;
   text-decoration: none;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
 }

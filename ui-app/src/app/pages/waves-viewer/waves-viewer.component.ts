@@ -10,7 +10,6 @@ import { DogEntry, Waves } from '../../models/dog-entry.model';
 import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
-import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
 import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-panel.component';
 import { findKennelDogIndex, graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
@@ -32,7 +31,7 @@ type KennelTab = 'kennel' | 'versions';
   standalone: true,
   imports: [
     FormsModule,
-    GraphCanvasScaleComponent, VoidMythicBackdropComponent, VisNetworkComponent, DogSidePanelComponent,
+    GraphCanvasScaleComponent, VisNetworkComponent, DogSidePanelComponent,
     VersionTimelineComponent,
     WavesAppBarComponent, WavesInspectorComponent, WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
   ],

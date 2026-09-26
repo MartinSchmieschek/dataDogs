@@ -32,7 +32,7 @@ export class ErrorVideoPopupService {
   openPopup(_errorText?: string | null): void {
     this.openWithConfig({
       embedUrl: ERROR_FLASH_VIDEO_EMBED_URL,
-      headLabel: 'Fernes Signal',
+      headLabel: 'Distant signal',
       voidSubtitleLines: this.voidLinesForEasterEgg(),
     });
   }
@@ -41,7 +41,7 @@ export class ErrorVideoPopupService {
   openLoadingEasterEgg(): void {
     this.openWithConfig({
       embedUrl: LOADING_EASTER_EGG_EMBED_URL,
-      headLabel: 'Fernes Signal',
+      headLabel: 'Distant signal',
       voidSubtitleLines: this.voidLinesForEasterEgg(),
     });
   }

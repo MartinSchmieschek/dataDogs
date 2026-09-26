@@ -2,7 +2,8 @@ import {
   AfterViewInit, Component, ElementRef, EventEmitter,
   inject, Input, OnDestroy, Output, signal, ViewChild,
 } from '@angular/core';
-import { LoadingIndicatorComponent } from '../../../components/loading-indicator/loading-indicator.component';
+import { SdVeilComponent } from '../../../components/sd-veil/sd-veil.component';
+import { INLAY_EDITOR_OPTIONS } from '../../../monaco/inlay-theme';
 import { MonacoLoaderService } from '../../../services/monaco-loader.service';
 
 /**
@@ -15,7 +16,7 @@ import { MonacoLoaderService } from '../../../services/monaco-loader.service';
 @Component({
   selector: 'app-waves-json-editor',
   standalone: true,
-  imports: [LoadingIndicatorComponent],
+  imports: [SdVeilComponent],
   templateUrl: './waves-json-editor.component.html',
   styleUrls: ['./waves-json-editor.component.scss'],
 })
@@ -120,11 +121,10 @@ export class WavesJsonEditorComponent implements AfterViewInit, OnDestroy {
     this.editor = monaco.editor.create(container, {
       value: this._initialValue || this.placeholder,
       language: 'json',
-      theme: 'vs',
+      ...INLAY_EDITOR_OPTIONS,
       minimap: { enabled: false },
       automaticLayout: true,
       scrollBeyondLastLine: false,
-      fontSize: 13,
       lineNumbers: 'on',
       folding: true,
       tabSize: 2,

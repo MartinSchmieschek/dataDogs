@@ -1,8 +1,8 @@
 /**
- * Kurze Stimmungszeilen für das Void-Kino-Popup (eigenständig formuliert, kein abgeschriebenes Spiel-Lore).
+ * Short whisper lines for the void cinema (written for this app, no copied game lore). English (8.13).
  */
 export const VOID_PHILOSOPHY_LINES = [
-  'Das Auge kennt keinen Rand, bis der Rand es schließt.',
-  'In der Leere hallt nur, was du hineingibst.',
-  'Ein Signal ohne sichtbare Quelle — und doch empfangen.',
+  'The eye knows no edge until the edge closes it.',
+  'In the void only what you put in echoes back.',
+  'A signal without a visible source, and still received.',
 ];

@@ -1,6 +1,6 @@
 <div class="container">
   @if (loading()) {
-    <app-loading-indicator />
+    <sd-veil [fullscreen]="true" />
   }
 
   <a [routerLink]="['/kennels', kennelId]" class="back-link">← Zurück zum Kennel</a>
@@ -153,7 +153,7 @@
         <div class="body-editor-wrap">
           <div #bodyEditorContainer class="body-editor"></div>
           @if (monacoLoading()) {
-            <app-loading-indicator />
+            <sd-veil label="Loading the editor" />
           }
         </div>
       </div>

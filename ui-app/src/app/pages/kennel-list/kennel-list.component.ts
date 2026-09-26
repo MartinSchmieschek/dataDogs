@@ -1,13 +1,11 @@
 import { DatePipe } from '@angular/common';
 import {
-  afterNextRender,
   Component,
   computed,
   effect,
   ElementRef,
   inject,
   input,
-  OnDestroy,
   OnInit,
   signal,
   viewChild,
@@ -24,15 +22,11 @@ import {
 } from '../../services/kennel.service';
 import { IKennelConfig } from '../../models/kennel-config.model';
 import { KennelFormComponent, KennelFormData } from '../../components/kennel-form/kennel-form.component';
-import { LoadingIndicatorComponent } from '../../components/loading-indicator/loading-indicator.component';
-import { BackdropDriveService } from '../../services/backdrop-drive.service';
+import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
 import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
-import { KennelScenicParallaxBackdropComponent } from '../../components/kennel-scenic-parallax-backdrop/kennel-scenic-parallax-backdrop.component';
-import { VoidMythicBackdropComponent } from '../../components/void-mythic-backdrop/void-mythic-backdrop.component';
 import { KennelActionFanComponent, type KennelFanAction } from '../../components/kennel-action-fan/kennel-action-fan.component';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
-import { KennelCardMotionDirective } from '../../directives/kennel-card-motion.directive';
 import { VisibilityBadgeComponent } from '../../components/visibility-badge/visibility-badge.component';
 import { AuthService } from '../../services/auth.service';
 
@@ -104,22 +98,18 @@ function splitKennelDescForHighlight(text: string, query: string): KennelDescHig
   imports: [
     DatePipe,
     KennelFormComponent,
-    LoadingIndicatorComponent,
-    VoidMythicBackdropComponent,
-    KennelScenicParallaxBackdropComponent,
-    KennelCardMotionDirective,
+    SdVeilComponent,
     KennelActionFanComponent,
     VisibilityBadgeComponent,
   ],
   templateUrl: './kennel-list.component.html',
   styleUrls: ['./kennel-list.component.scss']
 })
-export class KennelListComponent implements OnInit, OnDestroy {
+export class KennelListComponent implements OnInit {
   private kennelService = inject(KennelService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private errorVideoPopup = inject(ErrorVideoPopupService);
-  private backdropDrive = inject(BackdropDriveService);
   private auth = inject(AuthService);
 
   /** Authenticated user — exposed so the template can hide owner-only filters when anonymous. */
@@ -135,15 +125,6 @@ export class KennelListComponent implements OnInit, OnDestroy {
   /** `?new=1` seen but auth state not ready yet — resolved by the auth-gated effect below. */
   private pendingNewFromQuery = signal(false);
 
-  /** iOS: Hinweis ausgeblendet ohne Erlaubnis. */
-  compassPromptDismissed = signal(false);
-
-  showCompassPrompt = computed(
-    () =>
-      this.backdropDrive.iosOrientationRequiresUserGesture() &&
-      !this.backdropDrive.deviceOrientationUnlocked() &&
-      !this.compassPromptDismissed()
-  );
 
   private kennelScrollRef = viewChild<ElementRef<HTMLElement>>('kennelScroll');
   private loadMoreSentinel = viewChild<ElementRef<HTMLElement>>('loadMoreSentinel');
@@ -171,11 +152,6 @@ export class KennelListComponent implements OnInit, OnDestroy {
       }
     });
 
-    afterNextRender(() => {
-      const host = this.kennelScrollRef()?.nativeElement;
-      if (!host) return;
-      this.backdropDrive.bindScrollElement(host, { scrollRangePx: 560 });
-    });
 
     // Auth-reactive reload: when login/logout flips the user signal, refresh the list
     // so the visibility filters on the backend kick in for the new identity.
@@ -281,22 +257,6 @@ export class KennelListComponent implements OnInit, OnDestroy {
       .subscribe(({ req, res, failure }) => this.applyPage(req, res, failure));
   }
 
-  ngOnDestroy(): void {
-    this.backdropDrive.detachScrollElement();
-    this.sentinelObserver?.disconnect();
-    this.sentinelObserver = null;
-  }
-
-  async onCompassAllow(): Promise<void> {
-    const ok = await this.backdropDrive.requestDeviceOrientationPermission();
-    if (!ok) {
-      this.compassPromptDismissed.set(true);
-    }
-  }
-
-  onCompassDismiss(): void {
-    this.compassPromptDismissed.set(true);
-  }
 
   /** Execute-Pfad-Zeile in der Karte anzeigen (Standard: ja). */
   showExecutePath = input(true);

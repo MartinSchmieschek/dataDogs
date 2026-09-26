@@ -1,12 +1,12 @@
 import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { ErrorVideoPopupComponent } from './components/error-video-popup/error-video-popup.component';
+import { SdVoidCinemaComponent } from './components/sd-void-cinema/sd-void-cinema.component';
 import { AuthBadgeComponent } from './components/auth-badge/auth-badge.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, ErrorVideoPopupComponent, AuthBadgeComponent],
+  imports: [RouterOutlet, SdVoidCinemaComponent, AuthBadgeComponent],
   templateUrl: './app.component.html',
 })
 export class AppComponent {}

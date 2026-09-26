@@ -191,7 +191,7 @@ import { DogPanelSectionId } from '../../utils/dog-panel-sections';
     .node-context {
       pointer-events: auto;
       display: block;
-      font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+      font-family: 'JetBrains Mono', 'Fira Code', Consolas, var(--font-mono);
       font-size: 9px;
       line-height: 1.2;
       color: rgba(190, 200, 215, 0.82);

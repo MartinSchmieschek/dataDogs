@@ -1,11 +1,4 @@
 <div class="kennel-shell">
-  <div class="kennel-backdrop-layer" aria-hidden="true">
-    <div class="kennel-backdrop-legacy">
-      <app-void-mythic-backdrop />
-    </div>
-    <app-kennel-scenic-parallax-backdrop />
-  </div>
-
   <div class="kennel-shell-inner">
     <div class="kennel-work-area">
       <!-- Schwebend: Suchblase + Sortierung (Sort ausgeblendet bei aktivem Suchfilter) -->
@@ -125,7 +118,6 @@
                 @for (kennel of kennels(); track kennel.id + '@' + listOrderEpoch(); let i = $index) {
                   <div
                     class="kennel-card-motion"
-                    appKennelCardMotion
                     role="listitem"
                     [style.animation-delay]="(i * 42) + 'ms'">
                     <div class="kennel-card-motion-visual">
@@ -238,24 +230,10 @@
 
       @if (showInitialLoading()) {
         <div class="kennel-list-loading-shroud" aria-live="polite">
-          <app-loading-indicator />
+          <sd-veil />
         </div>
       }
     </div>
   </div>
 
-  @if (showCompassPrompt()) {
-    <div class="kennel-compass-prompt" role="dialog" aria-labelledby="kennel-compass-title">
-      <p id="kennel-compass-title" class="kennel-compass-prompt-title">Hintergrund &amp; Kompass</p>
-      <p class="kennel-compass-prompt-text">
-        Für die sanfte Parallax-Bewegung kann die Start-Ausrichtung gespeichert und mit der aktuellen Ausrichtung verglichen werden. Bitte Kompass- und Geräteausrichtung erlauben.
-      </p>
-      <div class="kennel-compass-prompt-actions">
-        <button type="button" class="kennel-compass-prompt-btn kennel-compass-prompt-btn--primary" (click)="onCompassAllow()">
-          Erlauben
-        </button>
-        <button type="button" class="kennel-compass-prompt-btn" (click)="onCompassDismiss()">Später</button>
-      </div>
-    </div>
-  }
 </div>
