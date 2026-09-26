@@ -26,7 +26,7 @@ export async function getNasaApod(date?: string, hd: boolean = false): Promise<N
     let res: Response;
     try {
         res = await fetch(`${APOD_BASE}?${params.toString()}`, {
-            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)" },
             signal: controller.signal,
         });
     } finally {

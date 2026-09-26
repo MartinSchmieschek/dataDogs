@@ -12,7 +12,7 @@ async function ghFetch(url: string): Promise<{ data: unknown; rateLimitRemaining
             headers: {
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)",
             },
             signal: controller.signal,
         });

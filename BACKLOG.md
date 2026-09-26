@@ -90,7 +90,7 @@ Findings from a full code review against current standards.
 - [x] **UI — Kennel-Antwort im Node-Viewer:** Button **Antwort (Server)** öffnet den **öffentlichen** Endpunkt `GET http://localhost:3000/k/:id` (Lead-Yield), z. B. `/k/default-kennel`; Query-Parameter aus dem Panel werden angehängt. (Nicht `/api/kennels/.../run`.)
 - [x] **API-Routen — `/api/`-Konsistenz geklärt (P3):** Zielbild steht: **Ware** (Lead-Antwort, Docs, Spec) lebt unter `/k/:id`, `/k/:id/docs`, `/k/:id/openapi.json`; die **Steuer-API** (CRUD, Run/Execute, Versions, Export/Import) bleibt unter `/api/kennels/:id/...`. Zwei Namensräume bleiben absichtlich getrennt (Produkt-URL vs. Werkstatt) statt Zusammenlegung unter `/api/v1`; README/ARCHITECTURE aktualisiert, Quelle der Wahrheit ist `api/routes/routeTable.ts`.
 - [x] **License in `package.json`:** Root and `packages/core` set to `MIT`, aligned with [LICENSE](LICENSE).
-- [x] **`package.json` metadata:** `description`, `repository` (origin `MartinSchmieschek/dataDogs`), `engines.node` (`>=18.19.0`), `main` → `main.ts`, `private` as boolean.
+- [x] **`package.json` metadata:** `description`, `repository` (origin `MartinSchmieschek/SlopDogs`), `engines.node` (`>=18.19.0`), `main` → `main.ts`, `private` as boolean.
 - [x] **`ARCHITECTURE.md`:** Section *Deployment — where the lodge meets the wild* (ports, env, DB, static UI; README vibe).
 - [x] **Production:** Build pipeline (`npm run build` → `dist/`), `start` / `start:prod`, `postinstall` builds `packages/core`; README documents dev vs. production.
 - [x] **Prisma seed:** `prisma.seed` → `ts-node seed.ts`; CLI entry in `seed.ts` when run as main module.

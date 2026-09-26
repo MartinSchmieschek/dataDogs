@@ -25,7 +25,7 @@ export async function fetchAirportIndex(): Promise<AirportIndex> {
     let res: Response;
     try {
         res = await fetch(AIRPORTS_JSON_URL, {
-            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)" },
             signal: controller.signal,
         });
     } finally {

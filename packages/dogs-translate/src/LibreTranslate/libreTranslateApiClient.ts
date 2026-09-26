@@ -27,7 +27,7 @@ async function tryInstance(base: string, text: string, source: string, target: s
             headers: {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
-                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)",
             },
             body: JSON.stringify({ q: text, source, target, format: "text" }),
             signal: controller.signal,

@@ -11,7 +11,7 @@ async function mbFetch<T>(url: string): Promise<T> {
         res = await fetch(url, {
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "SlopDogs/0.1 (https://github.com/MartinSchmieschek/dataDogs)",
+                "User-Agent": "SlopDogs/0.1 (https://github.com/MartinSchmieschek/SlopDogs)",
             },
             signal: controller.signal,
         });

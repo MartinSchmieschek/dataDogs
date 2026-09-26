@@ -57,7 +57,7 @@ export async function fetchRssItems(feedUrl: string, sourceName: string): Promis
         res = await fetch(feedUrl, {
             headers: {
                 "Accept": "application/rss+xml, application/xml, text/xml, */*",
-                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)",
+                "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)",
             },
             signal: controller.signal,
         });

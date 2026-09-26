@@ -4,7 +4,7 @@ export async function popCultureFetch<T>(url: string, timeoutMs: number = 20000)
     let res: Response;
     try {
         res = await fetch(url, {
-            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)" },
             signal: controller.signal,
         });
     } finally {

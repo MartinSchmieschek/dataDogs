@@ -12,7 +12,7 @@ export async function getCatFact(maxLength?: number): Promise<CatFactResult> {
     let res: Response;
     try {
         res = await fetch(url, {
-            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/dataDogs)" },
+            headers: { "Accept": "application/json", "User-Agent": "SlopDogs/0.2 (+https://github.com/MartinSchmieschek/SlopDogs)" },
             signal: controller.signal,
         });
     } finally {
