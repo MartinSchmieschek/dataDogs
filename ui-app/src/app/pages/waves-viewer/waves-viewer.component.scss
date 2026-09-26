@@ -1,262 +1,329 @@
-/*
- * Waves-Viewer — Page-level styles only.
- * All visual semantics are sourced from _tokens.scss; reusable patterns are in _primitives.scss.
- * Component-scoped subtree: nothing here leaks to other pages.
- */
-@use './tokens' as tk;
-@use './primitives' as pr;
-
+// S2 Kennel page (6.4): layout only — tokens and primitives are global (styles.scss, DESIGN.md).
 :host {
   display: block;
-  background: tk.$page-bg;
-  color: tk.$text;
-  font-family: tk.$font-sans;
-  font-size: tk.$font-md;
-  line-height: tk.$lh-base;
   height: 100vh;
   height: 100dvh;
+  background: var(--paper);
 }
 
 .viewer {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  position: relative;
-  background: tk.$page-bg;
 }
 
-/* ============ Error banner ============ */
-
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: tk.$space-3;
-  padding: tk.$space-3 tk.$space-4;
-  background: tk.$danger-50;
-  color: tk.$danger-500;
-  border-bottom: 1px solid tk.$danger-200;
-  font-size: tk.$font-md;
-  font-weight: tk.$weight-medium;
-  flex-shrink: 0;
-
-  .error-icon { flex-shrink: 0; }
-  .error-text { flex: 1; word-break: break-word; line-height: tk.$lh-base; }
+.banner {
+  display: block;
+  flex: none;
 }
 
-/* ============ Stage / Canvas ============ */
+// ============ Stage / canvas ============
 
 .stage {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: tk.$space-3;
+  flex-direction: column;
 }
 
 .canvas-card {
-  flex: 1;
-  position: relative;
-  border-radius: tk.$radius-lg;
-  overflow: hidden;
-  background: tk.$canvas-bg-gradient;
-  background-color: tk.$canvas-bg;
-  box-shadow: tk.$shadow-md;
-  display: flex;
-  flex-direction: column;
-  transition: box-shadow tk.$dur-fast tk.$ease-out;
-
-  &.is-drag-target {
-    box-shadow: tk.$shadow-md, 0 0 0 3px tk.$accent;
-  }
-}
-
-@media (max-width: tk.$breakpoint-tablet) {
-  .stage { padding: tk.$space-2; }
-  .canvas-card { border-radius: tk.$radius-md; }
-}
-
-.canvas-stack {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+
+  &.is-drag-target {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
 }
 
 .canvas-scale {
   position: relative;
-  z-index: tk.$z-canvas;
+  z-index: 1;
+}
+
+.silhouettes {
+  flex: 1;
+  min-height: 0;
+}
+
+.grid-empty {
+  flex: 1;
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--grid) 1px, transparent 1.2px);
+  background-size: 24px 24px;
 }
 
 .drop-overlay {
   position: absolute;
   inset: 0;
   z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(234, 88, 12, 0.10);
-  transition: background tk.$dur-fast tk.$ease-out;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
 }
 
 .drop-label {
-  font-size: tk.$font-md;
-  font-weight: tk.$weight-bold;
-  color: tk.$text-inverse;
-  padding: tk.$space-3 tk.$space-5;
-  border-radius: tk.$radius-md;
-  background: tk.$accent;
-  box-shadow: tk.$shadow-lg;
-  letter-spacing: 0.02em;
+  padding: var(--s3) var(--s5);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 2px solid var(--ink);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
   pointer-events: none;
 }
 
-/* ============ Empty state ============ */
+// ============ Empty, missing, run-only note ============
 
-.empty {
+.empty,
+.missing {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  text-align: center;
-  padding: tk.$space-6;
-  gap: tk.$space-3;
-  color: #bcc4d4;
-  background: tk.$canvas-bg-gradient;
+  gap: var(--s3);
+  max-width: 84ch;
+  padding: var(--s7) var(--gutter);
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--grid) 1px, transparent 1.2px);
+  background-size: 24px 24px;
+
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 28px;
+    line-height: 28px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+  }
+
+  sd-url-chip {
+    align-self: stretch;
+  }
 }
 
-.empty-art {
-  color: tk.$brand-400;
-  opacity: 0.85;
-  margin-bottom: tk.$space-1;
+.missing {
+  max-width: none;
 }
 
-.empty-title {
-  margin: 0;
-  font-size: tk.$font-xl;
-  font-weight: tk.$weight-bold;
-  color: tk.$neutral-25;
-  letter-spacing: -0.01em;
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
 }
 
-.empty-text {
-  margin: 0 0 tk.$space-2;
-  font-size: tk.$font-md;
-  color: tk.$neutral-300;
-  max-width: 360px;
-  line-height: tk.$lh-base;
+.ro-note {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--gutter);
+  background: var(--paper-2);
+  border-top: 1px solid var(--line);
+
+  p {
+    max-width: 72ch;
+  }
 }
 
-.empty-cta {
-  @include pr.btn-primary;
-  height: tk.$control-h-lg;
-  padding: 0 tk.$space-5;
+// ============ Drawer content ============
+
+.dh-kicker {
+  color: var(--ink-soft);
 }
 
-/* ============ Inspector form layout (slot content) ============ */
+.dh-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-back {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.dh-meta {
+  margin-top: var(--s1);
+  color: var(--ink-soft);
+}
+
+.dh-pin {
+  margin-top: var(--s2);
+  border-color: var(--paper);
+  color: var(--paper);
+}
+
+.dh-tabs {
+  flex: none;
+  padding: 0 var(--s4);
+  background: var(--paper-2);
+  overflow-x: auto;
+
+  &[hidden] {
+    display: none;
+  }
+
+  .sd-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+  }
+}
+
+.dirty {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+}
+
+.badge {
+  color: var(--ink-3);
+  font-weight: 400;
+  letter-spacing: 0;
+}
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: tk.$space-4;
-  padding: tk.$space-4;
-
-  &--code { padding-bottom: tk.$space-5; }
+  gap: var(--s4);
+  padding: var(--s4);
 }
 
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: tk.$space-2;
+  gap: var(--s1);
 }
 
-.form-label {
-  @include pr.field-label;
+.lock-note {
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--ink-2);
+  background: var(--paper-3);
 }
 
-.form-input {
-  @include pr.input-base;
-
-  &--code { @include pr.input-code; }
+.text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.form-textarea {
-  @include pr.textarea-base;
-  min-height: 160px;
+.body-text {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--s3);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
 }
 
-.form-hint {
-  @include pr.field-helper;
-}
+.query-text {
+  margin: 0;
 
-.form-actions {
-  display: flex;
-  align-items: center;
-  gap: tk.$space-3;
-  flex-wrap: wrap;
-  padding-top: tk.$space-2;
+  div {
+    display: flex;
+    gap: var(--s2);
+  }
 
-  &--sticky {
-    position: sticky;
-    bottom: 0;
-    margin-top: tk.$space-2;
-    padding: tk.$space-3;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, tk.$surface 50%);
-    border-top: 1px solid tk.$border;
-    margin-left: -#{tk.$space-4};
-    margin-right: -#{tk.$space-4};
-    padding-left: tk.$space-4;
-    padding-right: tk.$space-4;
+  dt {
+    color: var(--ink-2);
+
+    &::after {
+      content: ' =';
+    }
+  }
+
+  dd {
+    margin: 0;
   }
 }
 
-.btn-primary {
-  @include pr.btn-primary;
-  height: tk.$control-h-md;
-  padding: 0 tk.$space-4;
+.form-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 calc(-1 * var(--s4)) calc(-1 * var(--s4));
+  padding: var(--s3) var(--s4);
+  background: var(--paper-2);
+  border-top: 1px solid var(--line);
 }
-
-.btn-secondary {
-  @include pr.btn-secondary;
-  height: tk.$control-h-md;
-  padding: 0 tk.$space-4;
-}
-
-.btn-icon-quiet {
-  @include pr.btn-icon(tk.$control-h-md);
-  background: transparent;
-  border-color: transparent;
-  color: tk.$text-faint;
-
-  &:hover { background: tk.$danger-50; color: tk.$danger-500; }
-}
-
-/* ============ Query rows ============ */
 
 .query-list {
   display: flex;
   flex-direction: column;
-  gap: tk.$space-2;
+  gap: var(--s2);
 }
 
 .query-row {
   display: grid;
-  grid-template-columns: minmax(80px, 28%) auto 1fr auto;
+  grid-template-columns: minmax(80px, 30%) auto 1fr auto;
   align-items: center;
-  gap: tk.$space-2;
+  gap: var(--s2);
 
-  &--add { padding-top: tk.$space-1; border-top: 1px dashed tk.$border; }
+  &--add {
+    padding-top: var(--s2);
+    border-top: 1px dashed var(--line-strong);
+  }
 }
 
 .query-eq {
-  color: tk.$text-faint;
-  font-family: tk.$font-mono;
-  font-size: tk.$font-md;
+  color: var(--ink-3);
 }
 
-/* ============ Mobile compact ============ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s5);
+  z-index: var(--z-toast);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: var(--s2) var(--s4);
+  background: var(--ink);
+  color: var(--paper);
+  border: 2px solid var(--paper);
+  outline: 2px solid var(--ink);
+}
 
-@media (max-width: tk.$breakpoint-tablet) {
-  .form { padding: tk.$space-3; gap: tk.$space-2; }
-  .query-row { grid-template-columns: 1fr auto 1fr auto; }
+@media (max-width: 767px) {
+  .stage {
+    padding-bottom: 60px;
+  }
+
+  .toast {
+    bottom: 76px;
+  }
+
+  .form {
+    padding: var(--s3);
+  }
+
+  .form-actions {
+    margin: 0 calc(-1 * var(--s3)) calc(-1 * var(--s3));
+  }
+
+  .query-row {
+    grid-template-columns: 1fr auto 1fr auto;
+  }
 }

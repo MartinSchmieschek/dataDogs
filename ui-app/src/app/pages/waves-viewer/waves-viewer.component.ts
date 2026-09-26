@@ -1,13 +1,25 @@
 import { Component, inject, signal, OnInit, computed, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { KennelService } from '../../services/kennel.service';
+import type { HttpErrorResponse } from '@angular/common/http';
+import {
+  KennelService,
+  isKennelRunView,
+  type KennelRunView,
+} from '../../services/kennel.service';
 import { DogService } from '../../services/dog.service';
-import { IKennelConfig, KennelVersionEntry, IKennelNodeAnnotation, IKennelEdgeAnnotation } from '../../models/kennel-config.model';
+import { AuthService } from '../../services/auth.service';
+import {
+  IKennelConfig,
+  IKennelStats,
+  KennelVersionEntry,
+  IKennelNodeAnnotation,
+  IKennelEdgeAnnotation,
+} from '../../models/kennel-config.model';
 import { kennelRefForDog } from '../../utils/kennel-ref-for-dog';
 import { DogEntry, Waves } from '../../models/dog-entry.model';
-import { BaseDogInfo, DogInfo, SerializedDogInfo, isBaseDog } from '../../models/dog.model';
+import { DogInfo } from '../../models/dog.model';
 import { VersionTimelineComponent, TimelineVersion } from '../../components/version-timeline/version-timeline.component';
 import { VisNetworkComponent } from '../../components/vis-network/vis-network.component';
 import { GraphCanvasScaleComponent } from '../../components/graph-canvas-scale/graph-canvas-scale.component';
@@ -15,51 +27,91 @@ import { DogSidePanelComponent } from '../../components/dog-side-panel/dog-side-
 import { findKennelDogIndex, graphNodeIdMatchesKennelDogId } from '../../utils/kennel-dog-id-match';
 import { collectDescendantBranchNodeIds } from '../../components/vis-network/graph-layout';
 import { DogPanelSectionId } from '../../utils/dog-panel-sections';
-import { ErrorVideoPopupService } from '../../services/error-video-popup.service';
 import { apiAbsoluteUrl } from '../../config/api-base';
 import { publicKennelDocsPath, publicKennelOpenApiPath, publicKennelPath } from '../../config/public-paths';
-import { WavesAppBarComponent, AppBarStatus, OverflowItem } from './components/waves-app-bar.component';
 import { WavesInspectorComponent, InspectorTab } from './components/waves-inspector.component';
 import { WavesJsonEditorComponent } from './components/waves-json-editor.component';
 import { WavesDogPaletteComponent } from './components/waves-dog-palette.component';
 import { WavesConfirmDialogComponent } from './components/waves-confirm-dialog.component';
+import {
+  FROZEN_TITLE,
+  SdKennelHeadComponent,
+  type KennelHeadAction,
+  type KennelHeadRights,
+  type KennelRunState,
+} from '../../components/sd-kennel-head/sd-kennel-head.component';
+import { SdBottomBarComponent } from '../../components/sd-bottom-bar/sd-bottom-bar.component';
+import { SdWaveCanvasComponent } from '../../components/sd-wave-canvas/sd-wave-canvas.component';
+import { SdBannerComponent } from '../../components/sd-banner/sd-banner.component';
+import { SdVeilComponent } from '../../components/sd-veil/sd-veil.component';
+import { SdUrlChipComponent } from '../../components/sd-url-chip/sd-url-chip.component';
 
-type KennelTab = 'kennel' | 'versions';
+/** Inspector tabs of the kennel (6.4 S2; rating and stats arrive with U4, `access` with U6). */
+export type KennelTab = 'brief' | 'versions';
+const KENNEL_TABS: readonly KennelTab[] = ['brief', 'versions'];
 
+/** loading: nothing known yet · full: READ · run-only: RUN without READ (W17 stage 1) · missing: 404. */
+type ViewMode = 'loading' | 'full' | 'run-only' | 'missing';
+
+const OLD_VERSION_TITLE = 'An older version. Back to latest to edit.';
+const TOAST_MS = 4000;
+
+/**
+ * S2 Kennel page (P6 U3, 6.4): the kennel head as chapter card, the ruled-inlay canvas (vis-network
+ * for readable kennels, silhouettes for run-only ones), the bottom bar on mobile, and the inspectors for the
+ * kennel (brief, versions), the dog and edge notes. Rights come from
+ * `myRights` (P3.5): readers get text instead of fields, frozen keeps every mutation control visible but
+ * disabled with `Frozen. Unfreeze in settings.`; runs, ratings and export keep working (8.25).
+ */
 @Component({
   selector: 'app-waves-viewer',
   standalone: true,
   imports: [
     FormsModule,
+    RouterLink,
     GraphCanvasScaleComponent, VisNetworkComponent, DogSidePanelComponent,
     VersionTimelineComponent,
-    WavesAppBarComponent, WavesInspectorComponent, WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
+    WavesInspectorComponent, WavesJsonEditorComponent, WavesDogPaletteComponent, WavesConfirmDialogComponent,
+    SdKennelHeadComponent, SdBottomBarComponent, SdWaveCanvasComponent, SdBannerComponent, SdVeilComponent,
+    SdUrlChipComponent,
   ],
   templateUrl: './waves-viewer.component.html',
   styleUrls: ['./waves-viewer.component.scss']
 })
 export class WavesViewerComponent implements OnInit {
-  /** Skalierung des Dependency-Graphen (Wrapper = „neuer Canvas“). */
-  readonly graphCanvasScale = 0.5;
+  /** The ruled inlay shows cards at their real size (U3); the wrapper stays for pointer maths. */
+  readonly graphCanvasScale = 1;
+  readonly frozenTitle = FROZEN_TITLE;
 
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private destroyRef = inject(DestroyRef);
   private kennelService = inject(KennelService);
   private dogService = inject(DogService);
-  private errorVideoPopup = inject(ErrorVideoPopupService);
+  readonly auth = inject(AuthService);
 
   kennelId = '';
+  readonly mode = signal<ViewMode>('loading');
   waves = signal<Waves | null>(null);
   kennelConfig = signal<IKennelConfig | null>(null);
+  /** Calls and stars (P4) — from the single fetch or the list entry; the /run config carries none. */
+  readonly kennelStats = signal<IKennelStats | undefined>(undefined);
+  /** What a run-only caller sees of a run (W17 stage 1). */
+  readonly runView = signal<KennelRunView | null>(null);
   selectedDog = signal<DogEntry | null>(null);
   /** Vom Graph-Fächer: welche Section im Side-Panel aktiv starten soll. */
   panelInitialSection = signal<DogPanelSectionId | null>(null);
   loading = signal(false);
   error = signal<string | null>(null);
+  /** Outcome of the last run for the status chip: `● live · 1.8 s` or `● failed`. */
+  readonly lastRun = signal<{ ok: boolean; durationMs: number } | null>(null);
   availableDogs = signal<DogInfo[]>([]);
+  readonly toast = signal<string | null>(null);
   isDragOver = false;
   isDragging = false;
   private dragEndTimer: any = null;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private runStartedAt = 0;
 
   // --- Kennel version timeline ---
   kennelVersions = signal<KennelVersionEntry[]>([]);
@@ -98,19 +150,17 @@ export class WavesViewerComponent implements OnInit {
   /** True if any layout/comment/task change is unsaved. */
   layoutDirty = signal(false);
   layoutSaving = signal(false);
-  /** Edge whose comment editor is currently open in the canvas. */
+  /** Edge whose comment editor is currently open in the drawer. */
   editingEdgeKey = signal<{ fromId: string; toId: string } | null>(null);
   edgeCommentDraft = '';
 
   // === Inspector / Palette UI state ===
-  /** Kennel-inspector drawer (Aufgabe/Query/Body/Versions). */
   readonly kennelInspectorOpen = signal(false);
-  /** Active tab inside the kennel inspector. */
-  readonly kennelInspectorTab = signal<KennelTab>('kennel');
-  /** Dog-palette drawer / side-rail visible? */
+  readonly kennelInspectorTab = signal<KennelTab>('brief');
   readonly paletteOpen = signal(false);
   /** Edge-cut staged but not confirmed yet — drives confirm dialog. */
   readonly pendingCut = signal<{ fromId: string; toId: string } | null>(null);
+  readonly pendingDelete = signal(false);
 
   flatDogList = computed(() => {
     const w = this.waves();
@@ -118,115 +168,111 @@ export class WavesViewerComponent implements OnInit {
     return w.flat();
   });
 
-  /** Titel der schwebenden Node-Bearbeiten-Fensters. */
-  nodePanelTitle = computed(() => {
+  // === Rights and locks (P3.5 myRights, 8.25 freeze) ===
+
+  readonly rights = computed<KennelHeadRights>(() => {
+    if (this.mode() === 'run-only') return { read: false, edit: false, own: false };
+    const r = this.kennelConfig()?.myRights;
+    return r ? { read: r.read, edit: r.edit, own: r.own } : { read: true, edit: true, own: true };
+  });
+  readonly frozen = computed(() => {
+    const cfg = this.kennelConfig();
+    return !!(cfg?.frozen ?? cfg?.myRights?.frozen);
+  });
+  /** Readers without edit: text instead of fields, no palette, no drag, no cut. */
+  readonly readOnly = computed(() => !this.frozen() && !this.rights().edit);
+  /** Why mutations are locked right now (frozen, or an older version on screen) — null when they are not. */
+  readonly mutationLock = computed<string | null>(() => {
+    if (this.frozen()) return FROZEN_TITLE;
+    if (this.activeKennelVersionId()) return OLD_VERSION_TITLE;
+    return null;
+  });
+  readonly canMutate = computed(() => !this.readOnly() && !this.mutationLock() && this.mode() === 'full');
+
+  // === Head ===
+
+  readonly runState = computed<KennelRunState>(() => {
+    if (this.loading()) return 'running';
+    const last = this.lastRun();
+    if (!last) return 'idle';
+    return last.ok ? 'live' : 'failed';
+  });
+  readonly dogCount = computed<number | null>(() => {
+    const rv = this.runView();
+    if (this.mode() === 'run-only') return rv ? rv.waves.reduce((n, w) => n + w.dogCount, 0) : null;
+    const w = this.waves();
+    if (w) return w.flat().length;
+    const ids = this.kennelConfig()?.dogIds;
+    return Array.isArray(ids) ? ids.length : null;
+  });
+  readonly waveCount = computed<number | null>(() => {
+    if (this.mode() === 'run-only') return this.runView()?.waves.length ?? null;
+    return this.waves()?.length ?? null;
+  });
+  readonly oldVersionLabel = computed<string | null>(() => {
+    const active = this.activeKennelVersionId();
+    if (!active) return null;
+    const list = this.kennelVersions();
+    const idx = list.findIndex((v) => v.id === active);
+    if (idx < 0) return 'older version';
+    const date = list[idx].createdAt ? String(list[idx].createdAt).slice(0, 10) : '';
+    return `v${list.length - idx}${date ? ' · ' + date : ''}`;
+  });
+
+  /** The first failing dog of the last run — the banner names it and offers `[Show dog]`. */
+  readonly firstFailure = computed<{ wave: number; dog: DogEntry | null } | null>(() => {
+    const w = this.waves();
+    if (w) {
+      for (let i = 0; i < w.length; i++) {
+        const dog = w[i].find((d) => !!d.error);
+        if (dog) return { wave: i + 1, dog };
+      }
+      return null;
+    }
+    const rv = this.runView();
+    if (!rv) return null;
+    let flat = 0;
+    for (let i = 0; i < rv.waves.length; i++) {
+      const slice = rv.dogs.slice(flat, flat + rv.waves[i].dogCount);
+      if (slice.some((d) => d.status === 'failed')) return { wave: i + 1, dog: null };
+      flat += rv.waves[i].dogCount;
+    }
+    return null;
+  });
+  readonly failureText = computed(() => {
+    const f = this.firstFailure();
+    if (!f) return null;
+    if (!f.dog) return `Run failed in wave ${f.wave}.`;
+    const first = String(f.dog.error ?? '').split(/\r?\n/)[0].trim();
+    return `Run failed in wave ${f.wave}: ${f.dog.displayName || f.dog.name}${first ? ' — ' + first : ''}`;
+  });
+
+  // === Drawer ===
+
+  /** One drawer: edge note, dog inspector, or kennel inspector — the newest wins. */
+  readonly drawerMode = computed<'edge' | 'dog' | 'kennel' | null>(() => {
+    if (this.editingEdgeKey()) return 'edge';
+    if (this.selectedDog()) return 'dog';
+    if (this.kennelInspectorOpen()) return 'kennel';
+    return null;
+  });
+  readonly kennelInspectorTabs = computed<InspectorTab[]>(() => [
+    { id: 'brief', label: 'brief', dirty: this.layoutDirty() || this.paramsDirty() },
+    { id: 'versions', label: 'versions', badge: this.timelineVersions().length || undefined },
+  ]);
+  readonly briefDirty = computed(() => this.layoutDirty() || this.paramsDirty());
+
+
+  /** A foreign run-only dog in this kennel is pinned; a newer head lets editors lift the pin (8.15). */
+  readonly selectedPin = computed(() => {
     const d = this.selectedDog();
-    return d ? `Node: ${d.displayName || d.name}` : '';
+    if (!d?.redacted || d.access !== 'run') return null;
+    const newer = typeof d.latestVersion === 'number' && typeof d.version === 'number' && d.latestVersion > d.version;
+    return { version: d.version ?? null, latestVersion: d.latestVersion ?? null, newer };
   });
 
-  // === App-bar derived state ===
-
-  readonly appBarStatus = computed<AppBarStatus>(() => {
-    if (this.error()) return { kind: 'error', label: 'Fehler beim letzten Run' };
-    if (this.layoutDirty() || this.paramsDirty()) return { kind: 'dirty', label: 'Ungespeicherte Änderungen' };
-    return { kind: 'ok', label: 'Aktuell' };
-  });
-
-  readonly appBarSubtitle = computed<string | null>(() => {
-    const dogs = this.flatDogList();
-    const cfg = this.kennelConfig();
-    const parts: string[] = [];
-    if (cfg?.dogIds?.length) parts.push(`${cfg.dogIds.length} Dogs`);
-    else if (dogs.length) parts.push(`${dogs.length} Dogs`);
-    const v = this.kennelVersions()[0]?.version;
-    if (typeof v === 'number') parts.push(`v${v}`);
-    return parts.length ? parts.join(' · ') : null;
-  });
-
-  readonly appBarChips = computed(() => ([
-    {
-      id: 'kennel',
-      label: 'Kennel',
-      dirty: this.layoutDirty() || this.paramsDirty(),
-      active: this.kennelInspectorOpen() && this.kennelInspectorTab() === 'kennel',
-    },
-  ]));
-
-  readonly overflowItems = computed<OverflowItem[]>(() => {
-    const items: OverflowItem[] = [];
-    items.push({
-      id: 'open-kennel',
-      label: 'Kennel bearbeiten',
-      dirty: this.layoutDirty() || this.paramsDirty(),
-    });
-    if (this.timelineVersions().length > 1) {
-      items.push({ id: 'open-versions', label: 'Versionen' });
-    }
-    if (this.layoutDirty() || this.paramsDirty()) {
-      items.push({
-        id: 'save-kennel',
-        label: this.layoutSaving() || this.paramsSaving() ? 'Speichert…' : 'Alles speichern',
-        enabled: !this.layoutSaving() && !this.paramsSaving(),
-      });
-    }
-    items.push({ id: 'palette', label: 'Dogs hinzufügen' });
-    items.push({ id: 'open-swagger', label: 'Swagger JSON', href: this.swaggerJsonUrl, external: true });
-    items.push({ id: 'export', label: 'Als JSON exportieren' });
-    return items;
-  });
-
-  readonly kennelInspectorTabs = computed<InspectorTab[]>(() => {
-    // Tab bar only shown when there's more than one tab (Versions).
-    if (this.timelineVersions().length <= 1) return [];
-    return [
-      { id: 'kennel', label: 'Bearbeiten', dirty: this.layoutDirty() || this.paramsDirty() },
-      { id: 'versions', label: 'Versionen', badge: this.timelineVersions().length },
-    ];
-  });
-
-  openKennelInspector(tab: KennelTab): void {
-    this.kennelInspectorTab.set(tab);
-    this.kennelInspectorOpen.set(true);
-  }
-
-  onAppBarChip(id: string): void {
-    if (id === 'kennel' || id === 'versions') {
-      this.openKennelInspector(id);
-    }
-  }
-
-  onOverflowAction(id: string): void {
-    switch (id) {
-      case 'open-kennel': this.openKennelInspector('kennel'); return;
-      case 'open-versions': this.openKennelInspector('versions'); return;
-      case 'save-kennel': this.saveKennel(); return;
-      case 'palette': this.paletteOpen.set(true); return;
-      case 'export': this.exportKennel(); return;
-    }
-  }
-
-  /** Save both task/layout and query/body in one go — one button, one signal. */
-  saveKennel(): void {
-    if (this.paramsDirty()) this.saveParams();
-    if (this.layoutDirty()) this.saveLayout();
-  }
-
-  onPaletteAdd(dogRef: string): void {
-    const cfg = this.kennelConfig();
-    if (!cfg) return;
-    const dogIds = [...(cfg.dogIds ?? []), dogRef];
-    this.kennelService.update(this.kennelId, { dogIds }).subscribe({
-      next: () => {
-        this.loadWaves();
-        this.loadAvailableDogs();
-      },
-    });
-  }
-
-  /** Auto-close kennel inspector if there's nothing relevant to show on the active tab. */
-  closeKennelInspector(): void {
-    this.kennelInspectorOpen.set(false);
-  }
+  readonly origin = typeof window !== 'undefined' ? window.location.origin : '';
+  readonly mcpCommand = `claude mcp add --transport http slopdogs ${this.origin}/mcp`;
 
   /** Append ?version=... to a URL if a specific kennel version is selected. */
   private appendVersionParam(url: string): string {
@@ -236,7 +282,7 @@ export class WavesViewerComponent implements OnInit {
     return `${url}${sep}version=${encodeURIComponent(v)}`;
   }
 
-  /** Swagger UI & OpenAPI — direkt Express :3000 (neuer Tab, kein Angular-Origin). */
+  /** Swagger UI & OpenAPI — direkt Express (neuer Tab, kein Angular-Origin). */
   get swaggerDocsUrl(): string {
     return this.appendVersionParam(apiAbsoluteUrl(publicKennelDocsPath(this.kennelId)));
   }
@@ -268,6 +314,12 @@ export class WavesViewerComponent implements OnInit {
       const id = pm.get('id');
       if (!id) return;
       this.kennelId = id;
+      this.mode.set('loading');
+      this.waves.set(null);
+      this.kennelConfig.set(null);
+      this.kennelStats.set(undefined);
+      this.runView.set(null);
+      this.lastRun.set(null);
       this.selectedDog.set(null);
       this.panelInitialSection.set(null);
       this.activeKennelVersionId.set(null);
@@ -277,19 +329,57 @@ export class WavesViewerComponent implements OnInit {
       this.editingEdgeKey.set(null);
       this.edgeCommentDraft = '';
       this.error.set(null);
+      this.loadHeader();
       this.loadWaves();
       this.loadAvailableDogs();
       this.loadKennelVersions();
     });
+
+    // `?panel=brief|versions` opens the inspector on that tab.
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((qm) => {
+      const panel = qm.get('panel') as KennelTab | null;
+      if (panel && (KENNEL_TABS as readonly string[]).includes(panel)) {
+        this.kennelInspectorTab.set(panel);
+        this.kennelInspectorOpen.set(true);
+      }
+    });
   }
 
-  onComfortVideoClick(): void {
-    this.errorVideoPopup.openPopup(this.error());
+  // === Loading ===
+
+  /**
+   * The head: the single fetch (READ) carries stats and rights; without READ it answers 404, and a
+   * run-only kennel is found in the list (RUN view: name, emoji, description, frozen, rights, stats).
+   */
+  private loadHeader(): void {
+    const id = this.kennelId;
+    this.kennelService.getById(id).subscribe({
+      next: (res) => {
+        if (id !== this.kennelId || !res.ok || !res.data) return;
+        this.kennelStats.set(res.data.stats);
+        if (!this.kennelConfig()) this.kennelConfig.set(res.data);
+        else this.kennelConfig.update((c) => (c ? { ...c, frozen: res.data!.frozen, myRights: res.data!.myRights ?? c.myRights } : c));
+        if (this.mode() === 'loading') this.mode.set('full');
+      },
+      error: (err: HttpErrorResponse) => {
+        if (id !== this.kennelId || err.status !== 404) return;
+        this.kennelService.findListed(id).subscribe({
+          next: (entry) => {
+            if (id !== this.kennelId || !entry) return;
+            this.kennelStats.set(entry.stats);
+            this.kennelConfig.set(entry);
+            if (entry.myRights && !entry.myRights.read) this.mode.set('run-only');
+          },
+        });
+      },
+    });
   }
 
   loadWaves() {
+    const id = this.kennelId;
     this.loading.set(true);
     this.error.set(null);
+    this.runStartedAt = performance.now();
 
     const query = this.buildQueryRecord();
     let body: any = undefined;
@@ -300,13 +390,24 @@ export class WavesViewerComponent implements OnInit {
     } catch { /* invalid JSON - ignore, send without body */ }
 
     const version = this.activeKennelVersionId() ?? undefined;
-    this.kennelService.run(this.kennelId, body, query, version).subscribe({
+    this.kennelService.run(id, body, query, version).subscribe({
       next: (res) => {
+        if (id !== this.kennelId) return;
+        const elapsed = performance.now() - this.runStartedAt;
+        if (isKennelRunView(res)) {
+          this.mode.set('run-only');
+          this.runView.set(res);
+          this.waves.set(null);
+          this.lastRun.set({ ok: res.dogs.every((d) => d.status === 'ok'), durationMs: res.durationMs });
+          this.loading.set(false);
+          return;
+        }
         if (res.ok) {
+          this.mode.set('full');
           this.waves.set(res.waves);
-          this.kennelConfig.set(res.kennelConfig);
-          this.syncParamsFromConfig(res.kennelConfig);
+          this.setConfigFromRun(res.kennelConfig);
           this.loadKennelVersions();
+          this.lastRun.set({ ok: !res.waves.flat().some((d) => !!d.error), durationMs: elapsed });
 
           const sel = this.selectedDog();
           if (sel) {
@@ -318,17 +419,41 @@ export class WavesViewerComponent implements OnInit {
             this.selectedDog.set(updated ?? null);
           }
         } else {
-          this.error.set(res.error ?? 'Fehler beim Laden');
-          this.kennelConfig.set(res.kennelConfig ?? null);
-          if (res.kennelConfig) this.syncParamsFromConfig(res.kennelConfig);
+          this.error.set(res.error ?? 'The run returned no result.');
+          this.lastRun.set({ ok: false, durationMs: elapsed });
+          if (res.kennelConfig) {
+            this.mode.set('full');
+            this.setConfigFromRun(res.kennelConfig);
+          }
         }
         this.loading.set(false);
       },
-      error: (err) => {
-        this.error.set(err.error?.error ?? err.message);
+      error: (err: HttpErrorResponse) => {
+        if (id !== this.kennelId) return;
         this.loading.set(false);
+        if (err.status === 404) {
+          this.mode.set('missing');
+          return;
+        }
+        this.error.set(err.error?.error ?? err.message);
+        this.lastRun.set({ ok: false, durationMs: performance.now() - this.runStartedAt });
+        if (err.error?.kennelConfig) {
+          this.mode.set('full');
+          this.setConfigFromRun(err.error.kennelConfig);
+        }
       }
     });
+  }
+
+  /** The /run config is the freshest; stats stay from the single fetch. */
+  private setConfigFromRun(config: IKennelConfig): void {
+    this.kennelConfig.set(config);
+    this.syncParamsFromConfig(config);
+  }
+
+  retry(): void {
+    this.loadWaves();
+    if (!this.kennelConfig()) this.loadHeader();
   }
 
   private syncParamsFromConfig(config: IKennelConfig) {
@@ -347,6 +472,117 @@ export class WavesViewerComponent implements OnInit {
       this.layoutEdges.set(Array.isArray(config.edges) ? config.edges.map(e => ({ ...e })) : []);
       this.taskText.set(config.task ?? '');
     }
+  }
+
+  // === Head actions ===
+
+  onHeadAction(action: KennelHeadAction): void {
+    switch (action) {
+      case 'edit': void this.router.navigate(['/kennels', this.kennelId, 'edit']); return;
+      case 'open': window.open(this.kennelRunBrowserUrl, '_blank', 'noopener'); return;
+      case 'docs': window.open(this.swaggerDocsUrl, '_blank', 'noopener'); return;
+      case 'copy-link': this.copyLink(); return;
+      case 'export': this.exportKennel(); return;
+      case 'versions': this.openKennelInspector('versions'); return;
+      case 'palette': this.openPalette(); return;
+      case 'freeze': this.setFrozen(true); return;
+      case 'unfreeze': this.setFrozen(false); return;
+      case 'delete': if (!this.frozen()) this.pendingDelete.set(true); return;
+    }
+  }
+
+  copyLink(): void {
+    const url = this.kennelRunBrowserUrl;
+    navigator.clipboard?.writeText(url).then(() => this.showToast('Link copied.'), () => this.showToast(url));
+  }
+
+  openPalette(): void {
+    if (!this.canMutate()) return;
+    this.paletteOpen.set(true);
+  }
+
+  private setFrozen(frozen: boolean): void {
+    const call = frozen ? this.kennelService.freeze(this.kennelId) : this.kennelService.unfreeze(this.kennelId);
+    call.subscribe({
+      next: () => {
+        this.kennelConfig.update((c) => (c ? { ...c, frozen, myRights: c.myRights ? { ...c.myRights, frozen } : c.myRights } : c));
+        this.showToast(frozen ? 'Frozen. Runs, ratings and copies keep working.' : 'Unfrozen.');
+        this.loadHeader();
+      },
+      error: (err: HttpErrorResponse) => this.showToast(`Couldn't ${frozen ? 'freeze' : 'unfreeze'}: ${err.error?.error_description ?? err.error?.error ?? err.status}`),
+    });
+  }
+
+  confirmDelete(): void {
+    this.pendingDelete.set(false);
+    this.kennelService.delete(this.kennelId).subscribe({
+      next: () => void this.router.navigate(['/kennels']),
+      error: (err: HttpErrorResponse) => this.error.set(err.error?.error ?? err.message),
+    });
+  }
+
+  showToast(text: string): void {
+    this.toast.set(text);
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_MS);
+  }
+
+  // === Drawer ===
+
+  openKennelInspector(tab: KennelTab): void {
+    if (this.mode() === 'run-only') return;
+    this.selectedDog.set(null);
+    this.editingEdgeKey.set(null);
+    this.kennelInspectorTab.set(tab);
+    this.kennelInspectorOpen.set(true);
+    this.writePanelParam(tab);
+  }
+
+  selectKennelTab(tab: KennelTab): void {
+    this.kennelInspectorTab.set(tab);
+    this.writePanelParam(tab);
+  }
+
+  /** `‹ kennel`: from the dog inspector back to the kennel inspector. */
+  backToKennel(): void {
+    this.closeSidePanel();
+    this.openKennelInspector(this.kennelInspectorTab());
+  }
+
+  closeDrawer(): void {
+    this.cancelEdgeComment();
+    this.closeSidePanel();
+    this.kennelInspectorOpen.set(false);
+    this.writePanelParam(null);
+  }
+
+  private writePanelParam(tab: KennelTab | null): void {
+    if ((this.route.snapshot.queryParamMap.get('panel') ?? null) === tab) return;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { panel: tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  /** Save both task/layout and query/body in one go — one button, one signal. */
+  saveKennel(): void {
+    if (!this.canMutate()) return;
+    if (this.paramsDirty()) this.saveParams();
+    if (this.layoutDirty()) this.saveLayout();
+  }
+
+  onPaletteAdd(dogRef: string): void {
+    const cfg = this.kennelConfig();
+    if (!cfg || !this.canMutate()) return;
+    const dogIds = [...(cfg.dogIds ?? []), dogRef];
+    this.kennelService.update(this.kennelId, { dogIds }).subscribe({
+      next: () => {
+        this.loadWaves();
+        this.loadAvailableDogs();
+      },
+    });
   }
 
   /** Compute a stable kennel-ref for a DogEntry (lineageId, base:Name, or version ID). */
@@ -419,7 +655,7 @@ export class WavesViewerComponent implements OnInit {
   onNodePositionsChanged(positions: Map<string, { x: number; y: number }>) {
     const cfg = this.kennelConfig();
     const dogs = this.flatDogList();
-    if (!cfg) return;
+    if (!cfg || !this.canMutate()) return;
     const byRef = new Map<string, { x: number; y: number }>();
     for (const [instId, pos] of positions) {
       const dog = dogs.find(d => d.id === instId);
@@ -442,6 +678,7 @@ export class WavesViewerComponent implements OnInit {
   }
 
   onNodeCommentChanged(ev: { kennelRef: string; comment: string }) {
+    if (!this.canMutate()) return;
     const trimmed = ev.comment.trim();
     const existing = this.layoutNodes();
     const idx = existing.findIndex(n => n.id === ev.kennelRef);
@@ -460,7 +697,7 @@ export class WavesViewerComponent implements OnInit {
     this.layoutDirty.set(true);
   }
 
-  /** Open the inline edge-comment editor for the given (from, to) instance IDs. */
+  /** Open the edge note in the drawer for the given (from, to) instance IDs. */
   startEdgeComment(ev: { fromId: string; toId: string }) {
     const cfg = this.kennelConfig();
     if (!cfg) return;
@@ -475,11 +712,23 @@ export class WavesViewerComponent implements OnInit {
     this.edgeCommentDraft = cur?.comment ?? '';
   }
 
+  /** `from → to` for the edge note head. */
+  edgeLabel(): string {
+    const ev = this.editingEdgeKey();
+    if (!ev) return '';
+    const dogs = this.flatDogList();
+    const name = (id: string) => {
+      const d = dogs.find((x) => x.id === id);
+      return d?.displayName || d?.name || id;
+    };
+    return `${name(ev.fromId)} → ${name(ev.toId)}`;
+  }
+
   commitEdgeComment() {
     const slot = this.editingEdgeKey();
     if (!slot) return;
     const cfg = this.kennelConfig();
-    if (!cfg) {
+    if (!cfg || !this.canMutate()) {
       this.editingEdgeKey.set(null);
       return;
     }
@@ -546,7 +795,7 @@ export class WavesViewerComponent implements OnInit {
       next: (res) => {
         this.layoutSaving.set(false);
         if (!res.ok) {
-          this.error.set(res.error ?? 'Speichern fehlgeschlagen');
+          this.error.set(res.error ?? 'Saving failed.');
           return;
         }
         this.layoutDirty.set(false);
@@ -623,7 +872,7 @@ export class WavesViewerComponent implements OnInit {
       const raw = this.bodyJson().trim();
       if (raw) defaultBody = JSON.parse(raw);
     } catch {
-      this.error.set('Body ist kein gültiges JSON');
+      this.error.set('The body is not valid JSON.');
       this.paramsSaving.set(false);
       return;
     }
@@ -643,7 +892,7 @@ export class WavesViewerComponent implements OnInit {
       next: (res) => {
         this.paramsSaving.set(false);
         if (!res.ok) {
-          this.error.set(res.error ?? 'Speichern der Query/Body-Defaults fehlgeschlagen');
+          this.error.set(res.error ?? 'Saving the query and body defaults failed.');
           return;
         }
         this.paramsDirty.set(false);
@@ -663,12 +912,14 @@ export class WavesViewerComponent implements OnInit {
   }
 
   private loadKennelVersions() {
-    this.kennelService.getVersions(this.kennelId).subscribe({
+    const id = this.kennelId;
+    this.kennelService.getVersions(id).subscribe({
       next: (res) => {
-        if (res.ok && res.data) {
+        if (id === this.kennelId && res.ok && res.data) {
           this.kennelVersions.set(res.data);
         }
-      }
+      },
+      error: () => { /* no READ: no versions (run-only) */ },
     });
   }
 
@@ -681,8 +932,18 @@ export class WavesViewerComponent implements OnInit {
     this.loadWaves();
   }
 
+  backToLatest(): void {
+    const newest = this.kennelVersions()[0];
+    if (newest) this.onKennelVersionSelected(newest.id);
+    else {
+      this.activeKennelVersionId.set(null);
+      this.loadWaves();
+    }
+  }
+
   onDogSelected(dog: DogEntry) {
     this.panelInitialSection.set(null);
+    this.editingEdgeKey.set(null);
     this.selectedDog.set(dog);
   }
 
@@ -692,6 +953,7 @@ export class WavesViewerComponent implements OnInit {
   }
 
   onDogDeleted(lineageId: string) {
+    if (!this.canMutate()) return;
     this.selectedDog.set(null);
     const config = this.kennelConfig();
     if (!config) return;
@@ -712,6 +974,7 @@ export class WavesViewerComponent implements OnInit {
    * Stage a branch-cut request — actual removal is gated through the confirm dialog.
    */
   onBranchCutRequested(ev: { fromId: string; toId: string }) {
+    if (!this.canMutate()) return;
     this.pendingCut.set(ev);
   }
 
@@ -737,7 +1000,7 @@ export class WavesViewerComponent implements OnInit {
   confirmBranchCut() {
     const ev = this.pendingCut();
     this.pendingCut.set(null);
-    if (!ev) return;
+    if (!ev || !this.canMutate()) return;
     const config = this.kennelConfig();
     const waves = this.waves();
     if (!config || !waves?.length) return;
@@ -757,7 +1020,7 @@ export class WavesViewerComponent implements OnInit {
     });
 
     if (nextIds.length === before.length) {
-      this.error.set('Kein passender dogIds-Eintrag zum Entfernen (ID-Abgleich).');
+      this.error.set('No matching dogIds entry to remove.');
       return;
     }
 
@@ -767,26 +1030,15 @@ export class WavesViewerComponent implements OnInit {
         this.loadWaves();
         this.loadAvailableDogs();
       },
-      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Kennel-Update fehlgeschlagen'),
+      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Updating the kennel failed.'),
     });
   }
 
   onDogMovedToFirst(_emitId: string) {
     const dog = this.selectedDog();
-    if (!dog) return;
+    if (!dog || !this.canMutate()) return;
     this.reorderKennelDogIds(ids => {
       const idx = findKennelDogIndex(ids, dog.id, dog.lineageId);
-      if (idx <= 0) return ids;
-      const copy = [...ids];
-      const [entry] = copy.splice(idx, 1);
-      return [entry, ...copy];
-    });
-  }
-
-  /** Dropdown: gewählter Kennel-dogIds-Eintrag wird Lead (Index 0). */
-  onLeadDropdownChange(leadKennelId: string) {
-    this.reorderKennelDogIds(ids => {
-      const idx = ids.indexOf(leadKennelId);
       if (idx <= 0) return ids;
       const copy = [...ids];
       const [entry] = copy.splice(idx, 1);
@@ -808,26 +1060,6 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
-  kennelDogLabel(lineageId: string): string {
-    if (lineageId.startsWith('base:')) return lineageId.slice('base:'.length);
-    // For GUIDs, try to find a matching dog's display name
-    const dogs = this.flatDogList();
-    const match = dogs.find(d => d.id === lineageId || d.lineageId === lineageId);
-    return match?.displayName || match?.name || lineageId.substring(0, 8) + '…';
-  }
-
-  iconForKennelDogId(lineageId: string): string | undefined {
-    const dogs = this.availableDogs();
-    if (lineageId.startsWith('base:')) {
-      const name = lineageId.slice('base:'.length);
-      const d = dogs.find((x): x is BaseDogInfo => isBaseDog(x) && x.name === name);
-      return d?.icon;
-    }
-    // Match by version ID or lineageId (lineage GUID)
-    const d = dogs.find((x): x is SerializedDogInfo => !isBaseDog(x) && (x.id === lineageId || x.lineageId === lineageId));
-    return d?.icon;
-  }
-
   /** Find the kennel's dogIds entry that corresponds to this dog (by id or lineageId). */
   getKennelRefForDog(dog: DogEntry): string | null {
     const ids = this.kennelConfig()?.dogIds ?? [];
@@ -841,7 +1073,7 @@ export class WavesViewerComponent implements OnInit {
   /** Toggle pin: switch a kennel dogIds entry between lineageId (latest) and version-ID (pinned). */
   onPinChanged(ev: { lineageId: string; versionId: string | null }) {
     const config = this.kennelConfig();
-    if (!config) return;
+    if (!config || !this.canMutate()) return;
     const ids = [...(config.dogIds ?? [])];
     // Find the entry that currently references this dog (by lineageId or any version of it)
     const idx = ids.findIndex(id => id === ev.lineageId || id === this.selectedDog()?.id);
@@ -853,6 +1085,37 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
+  /**
+   * `Update pin` (8.15): a foreign run-only dog stays pinned — lifting it means pinning the newer head,
+   * never the lineage (the server answers `pin_required` for a lineageId).
+   */
+  updatePin(): void {
+    const dog = this.selectedDog();
+    const config = this.kennelConfig();
+    if (!dog?.latestId || !config || !this.canMutate()) return;
+    const ids = [...(config.dogIds ?? [])];
+    const idx = ids.findIndex((id) => id === dog.id || (!!dog.lineageId && id === dog.lineageId));
+    if (idx < 0) return;
+    ids[idx] = dog.latestId;
+    this.kennelService.update(this.kennelId, { dogIds: ids }).subscribe({
+      next: (res) => {
+        if (!res.ok) {
+          this.error.set(res.error ?? 'Updating the pin failed.');
+          return;
+        }
+        this.showToast(`Pinned to v${dog.latestVersion}.`);
+        this.loadWaves();
+      },
+      error: (err) => this.error.set(err.error?.error ?? err.message),
+    });
+  }
+
+  /** The first failing dog in the dog inspector (`[Show dog]`). */
+  showFailedDog(): void {
+    const dog = this.firstFailure()?.dog;
+    if (dog) this.onDogSelected(dog);
+  }
+
   closeSidePanel() {
     this.panelInitialSection.set(null);
     this.selectedDog.set(null);
@@ -860,7 +1123,7 @@ export class WavesViewerComponent implements OnInit {
 
   onGlobalDragOver() {
     clearTimeout(this.dragEndTimer);
-    this.isDragging = true;
+    this.isDragging = this.canMutate();
   }
 
   onGlobalDragEnd() {
@@ -894,7 +1157,7 @@ export class WavesViewerComponent implements OnInit {
     this.isDragging = false;
 
     const lineageId = event.dataTransfer?.getData('application/dog-id');
-    if (!lineageId) return;
+    if (!lineageId || !this.canMutate()) return;
 
     const config = this.kennelConfig();
     if (!config) return;
@@ -908,12 +1171,13 @@ export class WavesViewerComponent implements OnInit {
     });
   }
 
+  /** Export runs while frozen (8.25): the bundle goes to the clipboard, else it downloads. */
   exportKennel() {
     this.kennelService.exportBundle(this.kennelId).subscribe({
       next: (bundle: any) => {
         const json = JSON.stringify(bundle, null, 2);
         navigator.clipboard.writeText(json).then(() => {
-          console.log('Kennel bundle copied to clipboard');
+          this.showToast('Bundle copied.');
         }).catch(() => {
           // Fallback: download as file
           const blob = new Blob([json], { type: 'application/json' });
@@ -923,16 +1187,19 @@ export class WavesViewerComponent implements OnInit {
           a.download = `${this.kennelId}.kennel.json`;
           a.click();
           URL.revokeObjectURL(url);
+          this.showToast('Bundle downloaded.');
         });
       },
+      error: (err: HttpErrorResponse) => this.showToast(`Couldn't export: ${err.error?.error ?? err.status}`),
     });
   }
 
   createNewDog() {
+    if (!this.canMutate()) return;
     const displayName = `dog-${Date.now()}`;
     this.dogService.create({
       displayName,
-      tsCode: '// Neuer Dog\nreturn {};',
+      tsCode: '// A new dog\nreturn {};',
     }).subscribe({
       next: (res) => {
         if (res.ok) {

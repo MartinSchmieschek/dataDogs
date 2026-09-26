@@ -54,6 +54,18 @@ export class DogSidePanelComponent implements OnChanges {
   @Input() kennelDogRef: string | null = null;
   /** Bestehender Node-Kommentar im Kennel (kennel.nodes[].comment). */
   @Input() kennelNodeComment: string | null = null;
+  /**
+   * Leser ohne Edit-Recht am Kennel: Lead-Stern nicht klickbar, Kommentar nur lesend (leer = weg),
+   * "Remove from kennel" und Pin-Umschaltung ausgeblendet. Code-Save am Dog selbst bleibt unberuehrt.
+   */
+  @Input() kennelReadOnly = false;
+  /**
+   * Kennel frozen: dieselben Kennel-Controls sichtbar, aber disabled; der Text ist der Tooltip
+   * (z. B. "Frozen. Unfreeze in settings."). null = nicht gesperrt.
+   */
+  @Input() kennelLock: string | null = null;
+  /** Inside a drawer (sd-drawer) the drawer head closes; the panel drops its own `×`. */
+  @Input() showClose = true;
   @Output() saved = new EventEmitter<void>();
   /** Emits the trimmed comment together with the kennel-ref of this dog. */
   @Output() kennelNodeCommentChanged = new EventEmitter<{ kennelRef: string; comment: string }>();
@@ -111,6 +123,47 @@ export class DogSidePanelComponent implements OnChanges {
     return !!this.dog?.codeTs;
   }
 
+  /** P3.5: fremder Dog ohne Leserecht — nur Ergebnis, keine Bearbeitung. */
+  get isRedacted(): boolean {
+    return !!this.dog?.redacted;
+  }
+
+  /** Code, Name und Parents bearbeitbar: eigener lesbarer SerializedDog. */
+  get canEditDog(): boolean {
+    return this.isSerialized && !this.isRedacted;
+  }
+
+  /** Label-Maker-Chip fuer redacted Dogs: `run only` bzw. `private`. */
+  get accessChip(): string | null {
+    if (!this.isRedacted) return null;
+    return this.dog.access === 'none' ? 'private' : 'run only';
+  }
+
+  get leadStarClickable(): boolean {
+    return !this.isCurrentLead && !this.kennelReadOnly && !this.kennelLock;
+  }
+
+  get leadStarTitle(): string {
+    if (this.isCurrentLead) return "Lead dog (the kennel's answer)";
+    if (this.kennelLock) return this.kennelLock;
+    if (this.kennelReadOnly) return 'Not the lead dog';
+    return 'Make lead';
+  }
+
+  get canRemoveFromKennel(): boolean {
+    return !this.kennelReadOnly && (!!this.dog?.deletable || this.isSerialized);
+  }
+
+  /** Kommentar-Feld: Leser sehen es nur, wenn schon ein Kommentar da ist. */
+  get showKennelNodeComment(): boolean {
+    if (!this.kennelDogRef) return false;
+    return !this.kennelReadOnly || !!this.kennelNodeComment?.trim();
+  }
+
+  get showSaveBar(): boolean {
+    return this.canEditDog || this.canRemoveFromKennel;
+  }
+
   get isCurrentLead(): boolean {
     if (!this.kennelLeadControlsEnabled || !this.kennelLeadDogIdsSlot || !this.dog) {
       return false;
@@ -140,7 +193,7 @@ export class DogSidePanelComponent implements OnChanges {
 
   /** Forwarded from the version graph — the user pinned or unpinned a version node. */
   onPinToggled(versionId: string | null) {
-    if (!this.dog?.lineageId) return;
+    if (!this.dog?.lineageId || this.kennelReadOnly || this.kennelLock) return;
     this.pinChanged.emit({ lineageId: this.dog.lineageId, versionId });
   }
 
@@ -155,8 +208,10 @@ export class DogSidePanelComponent implements OnChanges {
       this.parentsOptional.set([...(this.dog.parentsOptional ?? [])]);
       this.editorDog.set(this.dog);
       this.selectedVersionId.set(null);
-      if (this.isSerialized) {
+      if (this.isSerialized && !this.isRedacted) {
         this.loadVersions();
+      } else {
+        this.versions.set([]);
       }
       this.syncActiveSection();
     }
@@ -254,7 +309,7 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   saveCode() {
-    if (!this.dog) return;
+    if (!this.dog || !this.canEditDog) return;
 
     this.saving.set(true);
     this.saveError.set(null);
@@ -263,7 +318,7 @@ export class DogSidePanelComponent implements OnChanges {
     const code = this.codeArtifact?.getCurrentCode();
     if (code == null) {
       this.saving.set(false);
-      this.saveError.set('Editor nicht bereit');
+      this.saveError.set('The editor is not ready yet.');
       return;
     }
 
@@ -286,7 +341,7 @@ export class DogSidePanelComponent implements OnChanges {
           this.loadVersions(); // Reload the branching tree after save — the new incarnation must appear
           this.saved.emit();
         } else {
-          this.saveError.set(res.error ?? 'Fehler beim Speichern');
+          this.saveError.set(res.error ?? 'Could not save.');
         }
       },
       error: (err) => {
@@ -300,7 +355,7 @@ export class DogSidePanelComponent implements OnChanges {
     const input = event.target as HTMLInputElement;
     const newName = input.value.trim();
     this.renaming.set(false);
-    if (!newName || !this.dog?.lineageId || newName === this.dog.displayName) return;
+    if (!this.canEditDog || !newName || !this.dog?.lineageId || newName === this.dog.displayName) return;
     this.dogService.rename(this.dog.lineageId, newName).subscribe({
       next: () => {
         this.renamed.emit();
@@ -310,12 +365,13 @@ export class DogSidePanelComponent implements OnChanges {
   }
 
   deleteDog() {
-    if (!this.dog) return;
+    if (!this.dog || !this.canRemoveFromKennel || this.kennelLock) return;
     // Just tell the parent to remove this dog from the kennel — no DB deletion here.
     this.deleted.emit(this.dog.id);
   }
 
   moveToFirst() {
+    if (!this.leadStarClickable) return;
     this.movedToFirst.emit(this.dog.id);
   }
 
@@ -324,7 +380,7 @@ export class DogSidePanelComponent implements OnChanges {
    * the parent (waves-viewer) merges it into kennelConfig.nodes and marks the layout dirty.
    */
   onKennelNodeCommentInput(value: string) {
-    if (!this.kennelDogRef) return;
+    if (!this.kennelDogRef || this.kennelReadOnly || this.kennelLock) return;
     this.kennelNodeCommentChanged.emit({ kennelRef: this.kennelDogRef, comment: value });
   }
 }

@@ -16,13 +16,13 @@ import { EditSectionComponent } from '../../edit-section/edit-section.component'
               <input type="checkbox"
                 [checked]="requiredIds.includes(parent.id)"
                 (click)="toggleRequired.emit(parent.id)">
-              Req
+              required
             </label>
             <label class="parent-checkbox">
               <input type="checkbox"
                 [checked]="optionalIds.includes(parent.id)"
                 (click)="toggleOptional.emit(parent.id)">
-              Opt
+              optional
             </label>
           </div>
         }

@@ -24,7 +24,7 @@ import { isHtmlResultString, isMarkdownResultString } from '../../../utils/lead-
     <app-edit-section title="Result" [hideHeader]="hideHeader">
       @if (resultIsHtml || resultIsMarkdown) {
         <div class="result-toolbar">
-          <button type="button" class="btn-view-mode" (click)="cycleResultView()">{{ resultViewLabel() }}</button>
+          <button type="button" class="sd-btn sd-btn--sm" title="Switch the view" (click)="cycleResultView()">{{ resultViewLabel() }}</button>
         </div>
       }
       @if (showHtmlPreview()) {
@@ -201,7 +201,7 @@ export class DogSidePanelResultArtifactComponent implements AfterViewInit, OnDes
 
   private formatResultText(): string {
     const r = this.result;
-    if (r === undefined) return '// (kein Ergebnis)';
+    if (r === undefined) return '// (no result)';
     if (r !== null && typeof r === 'object') {
       try {
         return JSON.stringify(r, null, 2);

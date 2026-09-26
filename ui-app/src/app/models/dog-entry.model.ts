@@ -41,6 +41,15 @@ export interface DogEntry {
   readBy?: ReadTrackingEntry[];
   /** Transitiver Beitrag zum Lead-Ergebnis (nur gesetzt wenn die API Config mitschickt). */
   onLeadDependencyPath?: boolean;
+  /** P3.5 (services/wavesRedaction.ts): the caller may not read this dog — no code, no context. */
+  redacted?: boolean;
+  /** P3.5: set with `redacted` — `run` keeps result and a short error, `none` keeps the identity only. */
+  access?: 'read' | 'run' | 'none';
+  /** Version of the instance that ran (oldest = 1); redacted RUN nodes carry it, so a pinned foreign dog shows `pinned v7`. */
+  version?: number;
+  /** Redacted RUN nodes: how far the lineage head is (`v9 available`) and its version GUID to re-pin to. */
+  latestVersion?: number;
+  latestId?: string;
 }
 
 export type Waves = DogEntry[][];

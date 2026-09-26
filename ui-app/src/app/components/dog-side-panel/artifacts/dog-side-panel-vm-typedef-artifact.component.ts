@@ -6,11 +6,11 @@ import { EditSectionComponent } from '../../edit-section/edit-section.component'
   standalone: true,
   imports: [EditSectionComponent],
   template: `
-    <app-edit-section title="VM-Kontext (Typen, Monaco)" [collapsed]="collapsed" [hideHeader]="hideHeader">
+    <app-edit-section title="Context (types)" [collapsed]="collapsed" [hideHeader]="hideHeader">
       @if (typeDef?.trim()) {
         <pre class="typedef-pre">{{ typeDef }}</pre>
       } @else {
-        <div class="typedef-empty">Kein VM-Kontext</div>
+        <div class="typedef-empty">No context.</div>
       }
     </app-edit-section>
   `,

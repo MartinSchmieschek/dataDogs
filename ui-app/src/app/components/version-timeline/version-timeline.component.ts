@@ -31,7 +31,7 @@ const PY = 12;
   template: `
     <div class="vc">
       <div class="vh">
-        <span class="vl">Versionen</span>
+        <span class="vl">versions</span>
       </div>
       <div class="vs">
         <svg [attr.width]="sw" [attr.height]="sh">
@@ -52,20 +52,27 @@ const PY = 12;
               (click)="select(n.v.id)">
               <title>{{ tip(n) }}</title>
             </circle>
-            <!-- 📍 marker on the node the kennel actually uses -->
+            <!-- pin marker (filled ink square) on the node the kennel is pinned to -->
             @if (showPinControls && n.v.id === pinnedVersionId) {
-              <text [attr.x]="n.x" [attr.y]="n.y - r(n) - 4" class="marker clickable"
-                (click)="unpin($event)">📍</text>
+              <rect [attr.x]="n.x - 4" [attr.y]="n.y - r(n) - 12" width="8" height="8"
+                class="marker" [class.clickable]="!pinLock"
+                (click)="unpin($event)">
+                <title>{{ pinLock || 'Pinned. Click to follow the latest version.' }}</title>
+              </rect>
             }
           }
 
-          <!-- pin/unpin toggle on selected node -->
-          @if (showPinControls && selNode) {
-            <text
-              [attr.x]="selNode.x"
-              [attr.y]="selNode.y - r(selNode) - 4"
+          <!-- pin/unpin toggle on selected node (outlined square) -->
+          @if (showPinControls && selNode && selNode.v.id !== pinnedVersionId) {
+            <rect
+              [attr.x]="selNode.x - 4"
+              [attr.y]="selNode.y - r(selNode) - 12"
+              width="8" height="8"
               class="pa"
-              (click)="togglePin()">📌</text>
+              [class.locked]="!!pinLock"
+              (click)="togglePin()">
+              <title>{{ pinLock || 'Pin this version' }}</title>
+            </rect>
           }
         </svg>
       </div>
@@ -74,27 +81,28 @@ const PY = 12;
   `,
   styles: [`
     :host{display:block}
-    .vc{padding:6px 10px 4px;background:#0a0a0a;border-top:1px solid #222}
+    .vc{padding:var(--s2) var(--s3) var(--s1);background:var(--paper-2);border-top:1px solid var(--line)}
     .vh{display:flex;align-items:center;gap:6px;margin-bottom:3px}
-    .vl{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#555}
+    .vl{font-size:11px;line-height:14px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:var(--ink-2)}
     .vs{overflow-x:auto;overflow-y:hidden}
     svg{display:block}
 
-    .tl{stroke:#222;stroke-width:1.5}
-    .el{fill:none;stroke:#222;stroke-width:1.5}
+    .tl{stroke:var(--line-strong);stroke-width:1.5}
+    .el{fill:none;stroke:var(--line-strong);stroke-width:1.5}
 
-    .nd{fill:#3a3a3a;stroke:#555;stroke-width:1.5;cursor:pointer;transition:all .12s}
-    .nd:hover{fill:#666;stroke:#aaa}
-    .nd.active{fill:#07f;stroke:#5bf;stroke-width:2;filter:drop-shadow(0 0 4px rgba(0,119,255,.5))}
-    .nd.sel{fill:#3a3a3a;stroke:#fff;stroke-width:2}
+    .nd{fill:var(--paper-2);stroke:var(--ink-3);stroke-width:1.5;cursor:pointer;transition:fill var(--dur-fast),stroke var(--dur-fast)}
+    .nd:hover{fill:var(--paper-3);stroke:var(--ink)}
+    .nd.active{fill:var(--ink);stroke:var(--ink);stroke-width:2}
+    .nd.sel{fill:var(--paper-2);stroke:var(--ink);stroke-width:2}
 
-    .marker{font-size:11px;text-anchor:middle;pointer-events:none;user-select:none}
-    .marker.clickable{pointer-events:all;cursor:pointer;opacity:.7;transition:opacity .12s}
-    .marker.clickable:hover{opacity:1}
-    .pa{font-size:12px;text-anchor:middle;cursor:pointer;user-select:none;opacity:.45;transition:opacity .12s}
-    .pa:hover{opacity:1}
+    .marker{fill:var(--ink);pointer-events:none}
+    .marker.clickable{pointer-events:all;cursor:pointer}
+    .pa{fill:transparent;stroke:var(--ink);stroke-width:1.5;cursor:pointer}
+    .pa:hover{fill:var(--accent)}
+    .pa.locked{cursor:not-allowed;opacity:.45}
+    .pa.locked:hover{fill:transparent}
 
-    .vi{margin-top:4px;font-size:9px;color:#666;text-align:center}
+    .vi{margin-top:4px;font-size:12px;line-height:17px;color:var(--ink-2);text-align:center}
   `]
 })
 export class VersionTimelineComponent implements OnDestroy, OnChanges {
@@ -104,6 +112,8 @@ export class VersionTimelineComponent implements OnDestroy, OnChanges {
   @Input() pinnedVersionId: string | null = null;
   /** Whether to show pin/unpin controls. Set to false for kennel timelines. */
   @Input() showPinControls = true;
+  /** Kennel frozen: pin controls stay visible but inert; the text is the tooltip. */
+  @Input() pinLock: string | null = null;
   @Output() versionSelected = new EventEmitter<string>();
   @Output() pinToggled = new EventEmitter<string | null>();
 
@@ -208,26 +218,27 @@ export class VersionTimelineComponent implements OnDestroy, OnChanges {
     const d = this.fd(n.v.createdAt);
     const nm = n.v.displayName || '';
     const fl: string[] = [];
-    if (n.v.id === this.activeId) fl.push(this.pinnedVersionId ? 'fixiert' : 'aktuell');
+    if (n.v.id === this.activeId) fl.push(this.pinnedVersionId ? 'pinned' : 'latest');
     return `${nm} ${d}${fl.length ? ' (' + fl.join(', ') + ')' : ''}`.trim();
   }
 
   select(id: string) { this.versionSelected.emit(id); }
 
   togglePin() {
-    if (!this.selectedVersionId) return;
+    if (!this.selectedVersionId || this.pinLock) return;
     this.pinToggled.emit(this.pinnedVersionId === this.selectedVersionId ? null : this.selectedVersionId);
   }
 
   unpin(e: MouseEvent) {
     e.stopPropagation();
+    if (this.pinLock) return;
     this.pinToggled.emit(null);
   }
 
   get info(): string {
     if (this.selectedVersionId && this.selectedVersionId !== this.activeId) {
       const n = this.nodes.find(x => x.v.id === this.selectedVersionId);
-      if (n) return `${n.v.displayName || this.fd(n.v.createdAt)} geladen — Speichern erzeugt Branch`;
+      if (n) return `${n.v.displayName || this.fd(n.v.createdAt)} loaded — saving starts a branch`;
     }
     return '';
   }
@@ -236,7 +247,8 @@ export class VersionTimelineComponent implements OnDestroy, OnChanges {
   private fd(s?: string): string {
     if (!s) return '';
     const d = new Date(s);
-    return `${d.getDate()}.${d.getMonth() + 1}. ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const p = (x: number) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
   ngOnDestroy() {}

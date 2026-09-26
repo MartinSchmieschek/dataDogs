@@ -6,25 +6,36 @@
 .parent-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 0;
-  font-size: 12px;
+  gap: var(--s3);
+  padding: var(--s1) 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+
+  &:last-child { border-bottom: 0; }
 }
 
 .parent-name {
   flex: 1;
-  color: #ccc;
+  min-width: 0;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .parent-checkbox {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--s1);
   cursor: pointer;
   font-size: 11px;
-  color: #999;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
 
   input {
     cursor: pointer;
+    accent-color: var(--ink);
   }
 }

@@ -9,17 +9,17 @@
                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          <span class="lint-text">Valides JSON</span>
+          <span class="lint-text">Valid JSON</span>
         }
         @case ('invalid') {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span class="lint-text" [title]="lintMessage()">Ungültig — {{ lintMessage() }}</span>
+          <span class="lint-text" [title]="lintMessage()">Invalid — {{ lintMessage() }}</span>
         }
         @case ('empty') {
-          <span class="lint-text">Leer</span>
+          <span class="lint-text">Empty</span>
         }
       }
     </span>
@@ -29,21 +29,21 @@
               class="btn"
               [disabled]="lintStatus() !== 'valid'"
               (click)="format()"
-              title="Lesbar formatieren (2-space)">
+              title="Pretty-print (2 spaces)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="21" y1="6" x2="3" y2="6" />
           <line x1="17" y1="12" x2="3" y2="12" />
           <line x1="13" y1="18" x2="3" y2="18" />
         </svg>
-        <span>Formatieren</span>
+        <span>Format</span>
       </button>
 
       <button type="button"
               class="btn btn--ghost"
               [disabled]="lintStatus() !== 'valid'"
               (click)="minify()"
-              title="Eine Zeile">
+              title="One line">
         <span>Minify</span>
       </button>
     </div>

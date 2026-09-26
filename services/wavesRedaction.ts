@@ -48,10 +48,15 @@ export async function redactWavesForCtx(waves: Waves, reqCtx: any, nodesStore: I
     const refs = waves.flat().filter((n) => n && (n.editable || n.mimic)).map((n) => ({ id: n.id, lineageId: n.lineageId }));
     if (refs.length === 0) return waves;
     const index = await DogAclIndex.load(nodesStore, refs);
+    const accessById = new Map(refs.map((r) => [r.id, index.accessOf(r, reqCtx)]));
+    const pins = await pinnedVersionsOf(
+        nodesStore,
+        waves.flat().filter((n) => n && accessById.get(n.id) === 'run').map((n) => ({ id: n.id, lineageId: n.lineageId })),
+    );
 
     return waves.map((wave) => wave.map((n) => {
         if (!n || !(n.editable || n.mimic)) return n; // base dogs are public infra
-        const access = index.accessOf({ id: n.id, lineageId: n.lineageId }, reqCtx);
+        const access = accessById.get(n.id) ?? 'none';
         if (access === 'read') return n;
         const redacted: NodeEntry = { ...n };
         redacted.codeTs = undefined;
@@ -63,6 +68,10 @@ export async function redactWavesForCtx(waves: Waves, reqCtx: any, nodesStore: I
         redacted.readFrom = undefined;
         if (access === 'run') {
             redacted.error = shortErrorText(n.error);
+            // Versionsnummern sind kein Code: der Kennel pinnt RUN-Fremddogs (8.15), die UI zeigt
+            // `pinned v7` und bietet `Update pin` an, wenn der Kopf weiter ist.
+            const pin = pins.get(n.id);
+            if (pin) Object.assign(redacted as any, pin);
         } else {
             redacted.result = REDACTED_RESULT;
             redacted.error = n.error ? REDACTED_TEXT : undefined;
@@ -71,6 +80,31 @@ export async function redactWavesForCtx(waves: Waves, reqCtx: any, nodesStore: I
         (redacted as any).access = access;
         return redacted;
     }));
+}
+
+/** Wo eine gelaufene Version in ihrer Lineage steht (aelteste = v1) und wie weit der Kopf ist. */
+export interface PinnedVersion {
+    version: number;
+    latestVersion: number;
+    latestId: string;
+}
+
+/**
+ * Versionsstand der RUN-Fremddogs eines Laufs: eine Abfrage je Lineage, nur fuer Knoten, die der
+ * Aufrufer ausfuehren, aber nicht lesen darf. Gezaehlt wird nach createdAt wie in der Versionsliste.
+ */
+async function pinnedVersionsOf(nodesStore: IStore, refs: Array<{ id: string; lineageId?: string }>): Promise<Map<string, PinnedVersion>> {
+    const out = new Map<string, PinnedVersion>();
+    const lineages = [...new Set(refs.map((r) => r.lineageId).filter((v): v is string => !!v))];
+    const histories = await Promise.all(lineages.map((l) => nodesStore.findAllVersions('SerializedDog', l)));
+    const byLineage = new Map(lineages.map((l, i) => [l, histories[i]]));
+    for (const ref of refs) {
+        const history = ref.lineageId ? byLineage.get(ref.lineageId) ?? [] : [];
+        const index = history.findIndex((v) => v.id === ref.id);
+        if (index < 0) continue;
+        out.set(ref.id, { version: history.length - index, latestVersion: history.length, latestId: history[0].id });
+    }
+    return out;
 }
 
 /** Was ein Kennel-RUN-Leser von einem Lauf sieht (W17 Stufe 1). */

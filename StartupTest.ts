@@ -3674,6 +3674,9 @@ export class StartupTest {
             if (!node) throw new Error(`/run: X nicht in den Waves: ${JSON.stringify(run.body).slice(0, 300)}`);
             if (node.result?.x !== 't3-x-out') throw new Error(`/run: X.result fehlt: ${JSON.stringify(node.result)}`);
             if (node.codeTs !== undefined || node.vmContext !== undefined || node.access !== 'run') throw new Error('/run: X nicht auf RUN redigiert');
+            if (node.version !== 1 || node.latestVersion !== 1 || node.latestId !== xVersion) {
+                throw new Error(`/run: Pin-Stand von X fehlt (P6 U3): ${JSON.stringify({ v: node.version, l: node.latestVersion, id: node.latestId })}`);
+            }
 
             const call = async (name: string, args: Record<string, any>) => {
                 const r = await this.toolNamed(name).handler(args, runner, deps);

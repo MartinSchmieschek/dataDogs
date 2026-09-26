@@ -1,16 +1,14 @@
 import { DogEntry, Waves } from '../../models/dog-entry.model';
 
-/** Kompakter Layout-Slot (Kanten-Box); Label/Icon können im DogNode darüber hinauszeichnen. */
-export const GRAPH_NODE_W = 56;
+/** Layout slot = the dog card (`sd-dog-card`, 128×56, P6 U3). */
+export const GRAPH_NODE_W = 128;
 export const GRAPH_NODE_H = 56;
 
-/** Sichtbarer Icon-Kreis im Slot (muss zu `.node-icon-port` passen). */
-export const GRAPH_NODE_ICON_PX = 52;
+/** Edge port height: edges dock at the card's top/bottom edge. */
+export const GRAPH_NODE_ICON_PX = GRAPH_NODE_H;
 
-/**
- * X-Offset vom Slot-Linksrand zur Icon-Port-Mitte — muss zu `.node-hub` / Padding in GraphDogNode passen.
- */
-export const GRAPH_EDGE_ANCHOR_OFFSET_PX = 28;
+/** X offset from the card's left edge to the edge anchor (card centre). */
+export const GRAPH_EDGE_ANCHOR_OFFSET_PX = GRAPH_NODE_W / 2;
 
 export function graphEdgeAnchorX(nodeLeftX: number): number {
   return nodeLeftX + GRAPH_EDGE_ANCHOR_OFFSET_PX;
@@ -26,14 +24,15 @@ export function graphIconPortBottomY(nodeY: number, nodeH: number = GRAPH_NODE_H
   return nodeY + (nodeH + GRAPH_NODE_ICON_PX) / 2;
 }
 
-/** Horizontaler Abstand zwischen Knoten in einer Wellen-Zeile (Labels/Margins am Graph-Dog-Node) */
-const COL_GAP = 124;
-/** Vertikaler Abstand zwischen Wellen-Zeilen (ältere Welle unten, jüngere oben) */
-const ROW_GAP = 80;
-/** Außenrand um den Graphen */
-const PADDING = 40;
+/** Horizontal gap between cards in one wave row. */
+const COL_GAP = 40;
+/** Vertical gap between wave rows (room for the band line); later waves on top. */
+const ROW_GAP = 88;
+/** Outer margin: left/right leave room for the `wave 01` chip, top/bottom half a row gap. */
+const PADDING_X = 96;
+const PADDING = ROW_GAP / 2;
 
-const SEP_GAP = 48;
+const SEP_GAP = 32;
 const SEP_ITERATIONS = 32;
 
 /** Zusätzliche Abstoßung nach Überlappungs-Trennung (Mindestabstand der Slot-Mitten). */
@@ -60,7 +59,7 @@ export interface EdgeSegment {
   optional: boolean;
   /** Eindeutige Read-Tracking-Zeilen auf dieser Kante (Liest von + Wird gelesen). */
   readTrackingCount: number;
-  /** SVG-Stärke der sichtbaren Linie (ohne Rand) — skaliert mit {@link readTrackingCount}. */
+  /** SVG stroke width of the visible hairline. */
   strokeWidthPx: number;
 }
 
@@ -148,19 +147,8 @@ export function countReadTrackingForEdge(from: DogEntry, to: DogEntry): number {
   return n;
 }
 
-const EDGE_STROKE_MIN_REQUIRED = 4.5;
-const EDGE_STROKE_MIN_OPTIONAL = 4;
-const EDGE_STROKE_MAX = 18;
-
-function strokeWidthPxFromReadCount(readCount: number, optional: boolean): number {
-  const min = optional ? EDGE_STROKE_MIN_OPTIONAL : EDGE_STROKE_MIN_REQUIRED;
-  if (readCount <= 0) return min;
-  const bonus = Math.sqrt(readCount) * 2.35;
-  return Math.round(Math.min(EDGE_STROKE_MAX, min + bonus) * 10) / 10;
-}
-
-/** Zusätzliche Breite um die Linie für den dunkleren Außenrand (wird zur strokeWidthPx addiert). */
-export const GRAPH_EDGE_BORDER_PAD_PX = 3.2;
+/** Ruled inlay: one hairline per edge, 1.5 px; read tracking shows in the edge panel, not the width. */
+const EDGE_STROKE_PX = 1.5;
 
 /**
  * Gleich große AABB: iterativ entlang der kleineren Überlappungsachse trennen.
@@ -330,7 +318,7 @@ export function buildGraphLayout(waves: Waves): GraphLayout {
       nodes: [],
       edges: [],
       dogMap,
-      contentWidth: PADDING * 2,
+      contentWidth: PADDING_X * 2,
       contentHeight: PADDING * 2,
     };
   }
@@ -346,7 +334,7 @@ export function buildGraphLayout(waves: Waves): GraphLayout {
     const displayRow = numWaves - 1 - w;
     const y = PADDING + displayRow * (GRAPH_NODE_H + ROW_GAP);
     const rowW = rowWidths[w];
-    const x0 = PADDING + (maxRowW - rowW) / 2;
+    const x0 = PADDING_X + (maxRowW - rowW) / 2;
     wave.forEach((dog, i) => {
       const x = x0 + i * (GRAPH_NODE_W + COL_GAP);
       pos.set(dog.id, { x, y });
@@ -361,7 +349,7 @@ export function buildGraphLayout(waves: Waves): GraphLayout {
 
   const edges = recomputeEdgeSegments(nodes, waves);
 
-  const contentWidth = PADDING * 2 + maxRowW;
+  const contentWidth = PADDING_X * 2 + maxRowW;
   const contentHeight =
     PADDING * 2 + numWaves * GRAPH_NODE_H + Math.max(0, numWaves - 1) * ROW_GAP;
 
@@ -422,7 +410,7 @@ export function recomputeEdgeSegments(nodes: PlacedNode[], waves: Waves): EdgeSe
     if (!pN || !cN) return;
     const { x1, y1, x2, y2 } = edgeAttachmentPoints(pN, cN, GRAPH_NODE_W, GRAPH_NODE_H);
     const readTrackingCount = countReadTrackingForEdge(pN.dog, cN.dog);
-    const strokeWidthPx = strokeWidthPxFromReadCount(readTrackingCount, optional);
+    const strokeWidthPx = EDGE_STROKE_PX;
     edges.push({
       key: `${ek}-${optional ? 'opt' : 'req'}`,
       fromId,
@@ -583,7 +571,7 @@ function worldToRender(
     return {
       renderNodes: [],
       renderEdges: [],
-      contentWidth: PADDING * 2,
+      contentWidth: PADDING_X * 2,
       contentHeight: PADDING * 2,
     };
   }
@@ -599,7 +587,7 @@ function worldToRender(
     maxY = Math.max(maxY, n.y + GRAPH_NODE_H);
   }
 
-  const sx = minX - PADDING;
+  const sx = minX - PADDING_X;
   const sy = minY - PADDING;
 
   const renderNodes: RenderNode[] = worldNodes.map(n => ({
@@ -623,8 +611,58 @@ function worldToRender(
     };
   });
 
-  const contentWidth = maxX - minX + 2 * PADDING;
+  const contentWidth = maxX - minX + 2 * PADDING_X;
   const contentHeight = maxY - minY + 2 * PADDING;
 
   return { renderNodes, renderEdges, contentWidth, contentHeight };
+}
+
+/** One horizontal wave band in render (canvas) coordinates (8.22 ruled inlay). */
+export interface WaveBand {
+  /** Wave index in execution order (0 = first wave, label `wave 01`). */
+  waveIndex: number;
+  label: string;
+  /** Position top to bottom — drives the alternating fill. */
+  order: number;
+  y0: number;
+  y1: number;
+}
+
+/**
+ * Bands from the current card positions: each wave spans its cards; neighbouring bands meet halfway
+ * between them, so they never overlap even after manual drags. Outer bands get half a row gap extra.
+ */
+export function computeWaveBands(renderNodes: readonly RenderNode[], waves: Waves): WaveBand[] {
+  const yById = new Map(renderNodes.map(n => [n.id, n.ry]));
+  const raw: Array<{ waveIndex: number; y0: number; y1: number }> = [];
+  waves.forEach((wave, waveIndex) => {
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const dog of wave) {
+      const y = yById.get(dog.id);
+      if (y == null) continue;
+      y0 = Math.min(y0, y);
+      y1 = Math.max(y1, y + GRAPH_NODE_H);
+    }
+    if (y0 < y1) raw.push({ waveIndex, y0, y1 });
+  });
+  raw.sort((a, b) => a.y0 + a.y1 - (b.y0 + b.y1));
+
+  const bands: WaveBand[] = [];
+  let prevBottom = -Infinity;
+  raw.forEach((r, i) => {
+    const next = raw[i + 1];
+    const top = i === 0 ? r.y0 - ROW_GAP / 2 : prevBottom;
+    let bottom = next ? (r.y1 + next.y0) / 2 : r.y1 + ROW_GAP / 2;
+    bottom = Math.max(bottom, top);
+    bands.push({
+      waveIndex: r.waveIndex,
+      label: `wave ${String(r.waveIndex + 1).padStart(2, '0')}`,
+      order: i,
+      y0: top,
+      y1: bottom,
+    });
+    prevBottom = bottom;
+  });
+  return bands;
 }

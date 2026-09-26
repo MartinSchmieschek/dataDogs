@@ -41,7 +41,7 @@ export type DogDisplayVariant = 'toolbar' | 'panel' | 'compact' | 'list' | 'stac
       white-space: nowrap;
     }
     .panel .glyph { font-size: 1.25em; }
-    .panel .label { font-size: 1rem; font-weight: 600; }
+    .panel .label { font-size: 1rem; font-weight: 700; }
     .toolbar .label { font-size: inherit; }
     .list .label { font-size: 12px; }
     .stacked {
@@ -56,9 +56,9 @@ export type DogDisplayVariant = 'toolbar' | 'panel' | 'compact' | 'list' | 'stac
       line-height: 1;
     }
     .stacked .label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #d0d8e0;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
       white-space: normal;
       line-height: 1.2;
       max-width: 12rem;
@@ -77,8 +77,8 @@ export type DogDisplayVariant = 'toolbar' | 'panel' | 'compact' | 'list' | 'stac
     }
     .graphVis .label {
       font-size: 10.5px;
-      font-weight: 500;
-      color: #f0f2f6;
+      font-weight: 400;
+      color: inherit;
       white-space: normal;
       line-height: 1.2;
       max-width: 5.5rem;

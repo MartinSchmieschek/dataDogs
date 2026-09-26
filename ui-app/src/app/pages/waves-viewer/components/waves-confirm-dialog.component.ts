@@ -44,10 +44,10 @@ import { Component, HostListener, input, output } from '@angular/core';
 })
 export class WavesConfirmDialogComponent {
   readonly open = input<boolean>(false);
-  readonly title = input<string>('Sicher?');
+  readonly title = input<string>('Are you sure?');
   readonly message = input<string | null>(null);
-  readonly confirmLabel = input<string>('Bestätigen');
-  readonly cancelLabel = input<string>('Abbrechen');
+  readonly confirmLabel = input<string>('Confirm');
+  readonly cancelLabel = input<string>('Cancel');
   readonly variant = input<'default' | 'danger'>('default');
   readonly icon = input<'danger' | null>(null);
 

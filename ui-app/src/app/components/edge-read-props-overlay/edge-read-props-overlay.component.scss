@@ -1,26 +1,25 @@
 .edge-read-root {
   max-width: 240px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  padding: 8px;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
 }
 
 .edge-read-root--edge {
   max-width: none;
   width: 100%;
-  box-shadow: none;
-}
-
-.edge-read-root--edge .edge-read-label {
-  color: rgba(205, 225, 248, 0.95);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
-  margin-inline-end: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .edge-read-label {
-  font-size: 9px;
-  font-weight: bold;
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: .16em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #8ab;
-  margin: 0 0 8px 2px;
-  padding-top: 2px;
+  color: var(--ink-2);
 }

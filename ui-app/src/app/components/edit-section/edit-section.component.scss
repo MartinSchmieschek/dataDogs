@@ -1,5 +1,5 @@
 .edit-section {
-  margin-bottom: 8px;
+  margin-bottom: var(--s2);
   overflow: hidden;
 }
 
@@ -10,33 +10,35 @@
 .section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
   cursor: pointer;
   user-select: none;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--paper-2);
+
   &:hover {
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--paper-3);
   }
 }
 
 .toggle {
-  font-size: 10px;
-  color: #666;
+  font-size: 11px;
+  color: var(--ink-2);
   width: 12px;
 }
 
 .section-title {
-  font-size: 12px;
-  font-weight: bold;
-  color: #ccc;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  color: var(--ink);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: .06em;
 }
 
 .section-body {
-  padding: 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.35);
+  padding: var(--s3);
+  border-top: 1px solid var(--line);
 }
 
 .section-body.hidden {

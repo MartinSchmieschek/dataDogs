@@ -11,7 +11,7 @@
   flex-direction: column;
   background: tk.$surface;
   border: 1px solid tk.$border;
-  border-radius: tk.$radius-md;
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -25,10 +25,12 @@
 }
 
 .label {
-  font-size: tk.$font-sm;
-  font-weight: tk.$weight-medium;
+  font-size: tk.$font-xs;
+  line-height: 14px;
+  font-weight: tk.$weight-bold;
+  letter-spacing: .16em;
+  text-transform: uppercase;
   color: tk.$text-muted;
-  letter-spacing: 0.02em;
 }
 
 .lint {
@@ -36,11 +38,11 @@
   align-items: center;
   gap: tk.$space-1;
   font-size: tk.$font-sm;
-  color: tk.$success-500;
+  color: var(--live-ink);
   margin-right: auto;
 
   &.is-invalid { color: tk.$danger-500; }
-  &.is-empty { color: tk.$text-faint; }
+  &.is-empty { color: tk.$text-muted; }
 
   .lint-text {
     max-width: 280px;
@@ -64,9 +66,9 @@
   gap: tk.$space-1;
 
   &--ghost {
-    background: transparent;
     border-color: transparent;
-    &:hover { background: tk.$surface; border-color: tk.$border; }
+
+    &:hover:not(:disabled) { border-color: var(--ink); box-shadow: none; transform: none; }
   }
 }
 

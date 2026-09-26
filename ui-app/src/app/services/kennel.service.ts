@@ -62,6 +62,22 @@ export interface RunResponse {
   error?: string;
 }
 
+/**
+ * What a caller with RUN but without READ gets from /run (P3.5 W17 stage 1, services/wavesRedaction.ts
+ * `kennelRunView`): the shape of the run, the lead result, the duration — no names, no config.
+ */
+export interface KennelRunView {
+  ok: true;
+  waves: Array<{ dogCount: number }>;
+  leadResult: unknown;
+  durationMs: number;
+  dogs: Array<{ status: 'ok' | 'failed' }>;
+}
+
+export function isKennelRunView(res: RunResponse | KennelRunView | null | undefined): res is KennelRunView {
+  return !!res && !('kennelConfig' in res) && Array.isArray((res as KennelRunView).dogs);
+}
+
 @Injectable({ providedIn: 'root' })
 export class KennelService {
   private http = inject(HttpClient);
@@ -90,6 +106,26 @@ export class KennelService {
 
   getById(id: string): Observable<ApiResponse<IKennelConfig>> {
     return this.http.get<ApiResponse<IKennelConfig>>(`${this.baseUrl}/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * The list entry of one kennel — for run-only kennels, whose single fetch answers 404 without READ
+   * (P3.5): the list carries their RUN view (name, emoji, description, visibility, frozen, myRights, stats).
+   * `q` also matches the lineageId; only an exact id match counts.
+   */
+  findListed(id: string): Observable<IKennelConfig | null> {
+    return this.getPage({ limit: 200, q: id }).pipe(
+      map((res) => (res.data ?? []).find((k) => k.lineageId === id || k.id === id) ?? null),
+    );
+  }
+
+  /** Freeze (8.16/8.25): no edit for anyone until the owner unfreezes; runs, ratings and copies keep working. */
+  freeze(id: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/${encodeURIComponent(id)}/freeze`, {});
+  }
+
+  unfreeze(id: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/${encodeURIComponent(id)}/unfreeze`, {});
   }
 
   create(data: {
@@ -128,7 +164,7 @@ export class KennelService {
     return this.http.get<ApiResponse<KennelVersionEntry[]>>(`${this.baseUrl}/${encodeURIComponent(id)}/versions`);
   }
 
-  run(id: string, body?: any, query?: Record<string, string>, version?: string): Observable<RunResponse> {
+  run(id: string, body?: any, query?: Record<string, string>, version?: string): Observable<RunResponse | KennelRunView> {
     let params = new HttpParams();
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
@@ -141,9 +177,9 @@ export class KennelService {
     // Auch {} ist ein gültiger Body (z. B. BodyRetriever); nicht nur "keys.length > 0".
     const hasBody = body !== undefined && body !== null;
     if (hasBody) {
-      return this.http.post<RunResponse>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, body, { params });
+      return this.http.post<RunResponse | KennelRunView>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, body, { params });
     }
-    return this.http.get<RunResponse>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, { params });
+    return this.http.get<RunResponse | KennelRunView>(`${this.baseUrl}/${encodeURIComponent(id)}/run`, { params });
   }
 
   exportBundle(id: string): Observable<any> {

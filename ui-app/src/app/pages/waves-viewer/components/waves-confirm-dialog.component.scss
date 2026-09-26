@@ -9,7 +9,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 22, 38, 0.55);
+  background: var(--scrim);
   z-index: tk.$z-modal;
   animation: fade-in tk.$dur-base tk.$ease-out;
 }
@@ -19,6 +19,7 @@
   to   { opacity: 1; }
 }
 
+/* Papier-Dialog mit dem einen harten Schatten (.sd-lift). */
 .dialog {
   position: fixed;
   top: 50%;
@@ -26,9 +27,11 @@
   transform: translate(-50%, -50%);
   z-index: calc(#{tk.$z-modal} + 1);
   width: min(440px, calc(100vw - #{tk.$space-5}));
-  background: tk.$surface;
-  border-radius: tk.$radius-lg;
-  box-shadow: tk.$shadow-lg;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--ink);
   padding: tk.$space-5;
   display: flex;
   flex-direction: column;
@@ -37,8 +40,8 @@
 }
 
 @keyframes dialog-in {
-  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.98); }
-  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 4px)); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
 }
 
 .head {
@@ -54,11 +57,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: tk.$radius-full;
+  border-radius: 0;
 
   &--danger {
-    background: tk.$danger-50;
-    color: tk.$danger-500;
+    border: 2px solid var(--danger-ink);
+    color: var(--danger-ink);
   }
 }
 
@@ -68,18 +71,17 @@
 }
 
 .title {
-  font-size: tk.$font-lg;
-  font-weight: tk.$weight-bold;
-  color: tk.$text;
-  letter-spacing: -0.01em;
-  line-height: tk.$lh-tight;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .message {
   margin-top: tk.$space-1;
-  font-size: tk.$font-md;
-  color: tk.$text-muted;
-  line-height: tk.$lh-base;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink-2);
   word-break: break-word;
 }
 
@@ -97,10 +99,11 @@
 .btn-confirm {
   @include pr.btn-primary;
 
+  /* Destruktiv: nie rot gefuellt, nur Rahmen und Schrift. */
   &.is-danger {
-    background: tk.$danger-500;
-    border-color: tk.$danger-500;
-    &:hover { background: #b91c1c; border-color: #b91c1c; }
+    background: transparent;
+    border-color: var(--danger-ink);
+    color: var(--danger-ink);
   }
 }
 

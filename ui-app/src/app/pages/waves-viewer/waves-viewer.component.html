@@ -3,255 +3,352 @@
   (dragend)="onGlobalDragEnd()"
   (drop)="onGlobalDragEnd()">
 
-  <app-waves-app-bar
-    [title]="kennelConfig()?.name || kennelId"
-    [subtitle]="appBarSubtitle()"
-    [emoji]="kennelConfig()?.emoji || null"
-    [status]="appBarStatus()"
-    [running]="loading()"
-    [chips]="appBarChips()"
-    [overflowItems]="overflowItems()"
-    (runRequested)="loadWaves()"
-    (chipClicked)="onAppBarChip($event)"
-    (overflowSelected)="onOverflowAction($event)" />
+  @if (mode() !== 'missing') {
+    <sd-kennel-head
+      [kennel]="kennelConfig()"
+      [kennelId]="kennelId"
+      [stats]="kennelStats()"
+      [rights]="rights()"
+      [frozen]="frozen()"
+      [dogCount]="dogCount()"
+      [waveCount]="waveCount()"
+      [runState]="runState()"
+      [durationMs]="lastRun()?.durationMs ?? null"
+      [oldVersion]="oldVersionLabel()"
+      [publicUrl]="kennelRunBrowserUrl"
+      [docsUrl]="swaggerDocsUrl"
+      (run)="loadWaves()"
+      (backToLatest)="backToLatest()"
+      (action)="onHeadAction($event)" />
+  }
 
   @if (error()) {
-    <div
-      class="error-banner comfort-error-trigger"
-      role="button"
-      tabindex="0"
-      (click)="onComfortVideoClick()"
-      (keydown.enter)="onComfortVideoClick()"
-      (keydown.space)="$event.preventDefault(); onComfortVideoClick()">
-      <svg class="error-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="8" x2="12" y2="12" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-      </svg>
-      <span class="error-text">{{ error() }}</span>
-    </div>
+    <sd-banner class="banner" [text]="error()!">
+      <button type="button" class="sd-btn sd-btn--sm" (click)="retry()">Retry</button>
+    </sd-banner>
+  } @else if (failureText() && !loading()) {
+    <sd-banner class="banner" [text]="failureText()!">
+      @if (firstFailure()?.dog) {
+        <button type="button" class="sd-btn sd-btn--sm" (click)="showFailedDog()">Show dog</button>
+      }
+    </sd-banner>
   }
 
   <main class="stage">
-    <section class="canvas-card"
-             [class.is-drag-target]="isDragOver">
-      @if (isDragging) {
-        <div class="drop-overlay"
-          (dragover)="onDragOver($event)"
-          (dragleave)="onDragLeave($event)"
-          (drop)="onDrop($event)">
-          @if (isDragOver) {
-            <span class="drop-label">Dog hier ablegen</span>
-          }
-        </div>
+    @switch (mode()) {
+      @case ('missing') {
+        <section class="missing">
+          <h1 class="sd-chapter-title">This kennel isn't here.</h1>
+          <p class="sd-muted">It may be private, or the address has changed.</p>
+          <div class="row">
+            <a class="sd-btn sd-btn--primary" routerLink="/kennels">Back to kennels</a>
+            @if (auth.isReady() && !auth.user()) {
+              <button type="button" class="sd-btn" (click)="auth.login()">Sign in</button>
+            }
+          </div>
+        </section>
       }
 
-      @if (waves()) {
-        <div class="canvas-stack">
-          <app-graph-canvas-scale class="canvas-scale" [scale]="graphCanvasScale">
-            <app-vis-network
-              [waves]="waves()!"
-              [selectedDog]="selectedDog()"
-              [flatDogs]="flatDogList()"
-              [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
-              [leadRunUrl]="kennelRunBrowserUrl"
-              [leadSwaggerUrl]="swaggerDocsUrl"
-              [canvasScale]="graphCanvasScale"
-              [initialNodePositions]="nodePositionsForGraph()"
-              [nodeComments]="nodeCommentsForGraph()"
-              [edgeComments]="edgeCommentsForGraph()"
-              (dogSelected)="onDogSelected($event)"
-              (dogSectionEdit)="onDogSectionEdit($event)"
-              (dogDeleted)="onDogDeleted($event)"
-              (branchCutRequested)="onBranchCutRequested($event)"
-              (nodePositionsChanged)="onNodePositionsChanged($event)"
-              (edgeCommentRequested)="startEdgeComment($event)" />
-          </app-graph-canvas-scale>
-        </div>
-      } @else if (!loading()) {
-        <div class="empty">
-          <div class="empty-art" aria-hidden="true">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="4" r="2" /><circle cx="18" cy="8" r="2" /><circle cx="4" cy="8" r="2" />
-              <circle cx="20" cy="16" r="2" /><circle cx="4" cy="16" r="2" />
-              <path d="M8 14a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0z" />
-            </svg>
+      @case ('run-only') {
+        <section class="canvas-card canvas-card--silhouette">
+          @if (runView(); as rv) {
+            <sd-wave-canvas class="silhouettes" [waves]="rv.waves" [statuses]="rv.dogs" />
+          } @else {
+            <div class="grid-empty" aria-hidden="true"></div>
+          }
+          @if (loading() && !runView()) {
+            <sd-veil [retryable]="true" (retry)="retry()" />
+          }
+        </section>
+        <aside class="ro-note">
+          <p>
+            @if (dogCount() !== null) {
+              {{ dogCount() }} dog{{ dogCount() === 1 ? '' : 's' }} in {{ waveCount() }} wave{{ waveCount() === 1 ? '' : 's' }}.
+            }
+            You can run this kennel and read its output at the public address. The code stays with its owner.
+          </p>
+          <div class="row">
+            <a class="sd-btn" [href]="kennelRunBrowserUrl" target="_blank" rel="noopener">Open /k/{{ kennelId }}</a>
+            <a class="sd-btn" [href]="swaggerDocsUrl" target="_blank" rel="noopener">Docs</a>
           </div>
-          <h2 class="empty-title">Noch keine Dogs im Kennel</h2>
-          <p class="empty-text">Öffne die Dog-Palette und füge per Klick einen Dog hinzu.</p>
-          <button type="button" class="empty-cta" (click)="paletteOpen.set(true)">Dogs hinzufügen</button>
-        </div>
+        </aside>
       }
-    </section>
+
+      @default {
+        <section class="canvas-card" [class.is-drag-target]="isDragOver">
+          @if (isDragging) {
+            <div class="drop-overlay"
+              (dragover)="onDragOver($event)"
+              (dragleave)="onDragLeave($event)"
+              (drop)="onDrop($event)">
+              @if (isDragOver) {
+                <span class="drop-label">Drop the dog here</span>
+              }
+            </div>
+          }
+
+          @if (flatDogList().length > 0) {
+            <app-graph-canvas-scale class="canvas-scale" [scale]="graphCanvasScale">
+              <app-vis-network
+                [waves]="waves()!"
+                [selectedDog]="selectedDog()"
+                [flatDogs]="flatDogList()"
+                [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
+                [canvasScale]="graphCanvasScale"
+                [initialNodePositions]="nodePositionsForGraph()"
+                [nodeComments]="nodeCommentsForGraph()"
+                [edgeComments]="edgeCommentsForGraph()"
+                [readOnly]="readOnly()"
+                [mutationLock]="mutationLock()"
+                (dogSelected)="onDogSelected($event)"
+                (dogSectionEdit)="onDogSectionEdit($event)"
+                (dogDeleted)="onDogDeleted($event)"
+                (branchCutRequested)="onBranchCutRequested($event)"
+                (nodePositionsChanged)="onNodePositionsChanged($event)"
+                (edgeCommentRequested)="startEdgeComment($event)" />
+            </app-graph-canvas-scale>
+          } @else if (waves() && !loading()) {
+            <div class="empty">
+              <h2>No dogs yet.</h2>
+              <p class="sd-muted">Add one from the palette, or let your AI build the kennel over MCP.</p>
+              @if (!readOnly()) {
+                <button type="button" class="sd-btn sd-btn--primary" [disabled]="!!mutationLock()"
+                  [attr.title]="mutationLock()" (click)="openPalette()">Open palette</button>
+              }
+              <sd-url-chip [text]="mcpCommand" />
+            </div>
+          } @else {
+            <div class="grid-empty" aria-hidden="true"></div>
+          }
+          @if (loading() && !waves()) {
+            <sd-veil [retryable]="true" (retry)="retry()" />
+          }
+        </section>
+      }
+    }
   </main>
 
-  <!-- Dog-Palette as left drawer / bottom-sheet on mobile -->
-  <app-waves-dog-palette
-    [availableDogs]="availableDogs()"
-    [open]="paletteOpen()"
-    mode="overlay"
-    (closeRequested)="paletteOpen.set(false)"
-    (newDogRequested)="createNewDog(); paletteOpen.set(false)"
-    (dogAdded)="onPaletteAdd($event); paletteOpen.set(false)" />
+  @if (mode() !== 'missing') {
+    <sd-bottom-bar
+      variant="kennel"
+      [running]="loading()"
+      [dogsHidden]="mode() === 'run-only' || readOnly()"
+      [dogsLock]="mutationLock()"
+      [inspectHidden]="mode() === 'run-only'"
+      (dogs)="openPalette()"
+      (run)="loadWaves()"
+      (inspect)="openKennelInspector(kennelInspectorTab())" />
+  }
 
-  <!-- Kennel inspector: Aufgabe / Query / Body / Versions -->
+  <!-- Dog palette: left drawer / bottom sheet (restyled in U5); only for editors of a readable kennel -->
+  @if (canMutate()) {
+    <app-waves-dog-palette
+      [availableDogs]="availableDogs()"
+      [open]="paletteOpen()"
+      mode="overlay"
+      (closeRequested)="paletteOpen.set(false)"
+      (newDogRequested)="createNewDog(); paletteOpen.set(false)"
+      (dogAdded)="onPaletteAdd($event); paletteOpen.set(false)" />
+  }
+
+  <!-- Kennel inspector: brief / versions -->
   <app-waves-inspector
-    [open]="kennelInspectorOpen()"
+    [open]="drawerMode() === 'kennel'"
     title="Kennel"
     [subtitle]="kennelConfig()?.name || null"
     [tabs]="kennelInspectorTabs()"
     [activeTab]="kennelInspectorTab()"
-    (closeRequested)="closeKennelInspector()"
-    (tabSelected)="kennelInspectorTab.set($any($event))">
-
+    (closeRequested)="closeDrawer()"
+    (tabSelected)="selectKennelTab($any($event))">
     @switch (kennelInspectorTab()) {
-      @case ('kennel') {
-        <div class="form">
-          <section class="form-section">
-            <label class="form-label" for="task-area">Aufgabe / Briefing</label>
-            <textarea id="task-area"
-                      class="form-textarea"
-                      [ngModel]="taskText()"
-                      (ngModelChange)="onTaskTextChange($event)"
-                      rows="6"
-                      spellcheck="false"
-                      placeholder="Was soll dieser Kennel tun?"></textarea>
-          </section>
+          @case ('brief') {
+          <div class="form">
+            @if (frozen()) {
+              <p class="lock-note sd-small">Frozen. Runs, ratings and copies keep working; edits wait for the owner.</p>
+            }
+            <section class="form-section">
+              <label class="sd-label" for="task-area">Brief</label>
+              @if (readOnly()) {
+                <p class="text">{{ taskText() || 'No brief yet.' }}</p>
+              } @else {
+                <textarea id="task-area" class="sd-textarea"
+                  [ngModel]="taskText()"
+                  (ngModelChange)="onTaskTextChange($event)"
+                  [disabled]="!!mutationLock()"
+                  [attr.title]="mutationLock()"
+                  rows="6"
+                  spellcheck="false"
+                  placeholder="What should this kennel do?"></textarea>
+              }
+            </section>
 
-          <section class="form-section">
-            <label class="form-label">Query Parameter</label>
-            <div class="query-list">
-              @for (param of queryParams(); track $index; let i = $index) {
-                <div class="query-row">
-                  <input class="form-input form-input--code"
-                         [ngModel]="param.key"
-                         (ngModelChange)="setQueryParamAt(i, 'key', $event)"
-                         placeholder="Key">
-                  <span class="query-eq" aria-hidden="true">=</span>
-                  <input class="form-input form-input--code"
-                         [ngModel]="param.value"
-                         (ngModelChange)="setQueryParamAt(i, 'value', $event)"
-                         placeholder="Value">
-                  <button type="button"
-                          class="btn-icon-quiet"
-                          (click)="removeQueryParam(i)"
-                          aria-label="Parameter entfernen"
-                          title="Entfernen">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
+            <section class="form-section">
+              <span class="sd-label">Query</span>
+              @if (readOnly() || mutationLock()) {
+                @if (queryParams().length) {
+                  <dl class="query-text sd-data">
+                    @for (param of queryParams(); track $index) {
+                      <div><dt>{{ param.key }}</dt><dd>{{ param.value }}</dd></div>
+                    }
+                  </dl>
+                } @else {
+                  <p class="text sd-muted">No query defaults.</p>
+                }
+              } @else {
+                <div class="query-list">
+                  @for (param of queryParams(); track $index; let i = $index) {
+                    <div class="query-row">
+                      <input class="sd-field sd-field--code" aria-label="Key"
+                        [ngModel]="param.key" (ngModelChange)="setQueryParamAt(i, 'key', $event)" placeholder="key">
+                      <span class="query-eq" aria-hidden="true">=</span>
+                      <input class="sd-field sd-field--code" aria-label="Value"
+                        [ngModel]="param.value" (ngModelChange)="setQueryParamAt(i, 'value', $event)" placeholder="value">
+                      <button type="button" class="sd-btn sd-btn--icon sd-btn--bare" (click)="removeQueryParam(i)"
+                        aria-label="Remove parameter" title="Remove">×</button>
+                    </div>
+                  }
+                  <div class="query-row query-row--add">
+                    <input class="sd-field sd-field--code" aria-label="New key" [(ngModel)]="newQueryKey"
+                      placeholder="new key" (keyup.enter)="addQueryParam()">
+                    <span class="query-eq" aria-hidden="true">=</span>
+                    <input class="sd-field sd-field--code" aria-label="New value" [(ngModel)]="newQueryValue"
+                      placeholder="value" (keyup.enter)="addQueryParam()">
+                    <button type="button" class="sd-btn sd-btn--icon sd-btn--bare" (click)="addQueryParam()"
+                      aria-label="Add parameter" title="Add">+</button>
+                  </div>
                 </div>
               }
-              <div class="query-row query-row--add">
-                <input class="form-input form-input--code"
-                       [(ngModel)]="newQueryKey"
-                       placeholder="Neuer Key"
-                       (keyup.enter)="addQueryParam()">
-                <span class="query-eq" aria-hidden="true">=</span>
-                <input class="form-input form-input--code"
-                       [(ngModel)]="newQueryValue"
-                       placeholder="Value"
-                       (keyup.enter)="addQueryParam()">
-                <button type="button" class="btn-icon-quiet" (click)="addQueryParam()" aria-label="Hinzufügen" title="Hinzufügen">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
+            </section>
+
+            <section class="form-section">
+              @if (readOnly() || mutationLock()) {
+                <span class="sd-label">Body</span>
+                <pre class="body-text sd-data">{{ bodyJson() }}</pre>
+              } @else {
+                <app-waves-json-editor
+                  label="Body (JSON)"
+                  [value]="bodyJson()"
+                  [minHeight]="240"
+                  (valueChange)="bodyJson.set($event); onBodyJsonChange()" />
+              }
+            </section>
+
+            @if (!readOnly()) {
+              <div class="form-actions">
+                <button type="button" class="sd-btn sd-btn--primary"
+                  [disabled]="!!mutationLock() || !briefDirty() || layoutSaving() || paramsSaving()"
+                  [attr.title]="mutationLock()"
+                  (click)="saveKennel()">
+                  {{ (layoutSaving() || paramsSaving()) ? 'Saving…' : 'Save & rerun' }}
                 </button>
+                <span class="sd-hint">Brief, query, body and layout are saved together.</span>
               </div>
-            </div>
-          </section>
-
-          <section class="form-section">
-            <app-waves-json-editor
-              label="Body (JSON)"
-              [value]="bodyJson()"
-              [minHeight]="240"
-              (valueChange)="bodyJson.set($event); onBodyJsonChange()" />
-          </section>
-
-          <div class="form-actions form-actions--sticky">
-            <button type="button" class="btn-primary"
-                    [disabled]="(!layoutDirty() && !paramsDirty()) || layoutSaving() || paramsSaving()"
-                    (click)="saveKennel()">
-              {{ (layoutSaving() || paramsSaving()) ? 'Speichert…' : 'Speichern & Neu laden' }}
-            </button>
-            <span class="form-hint">Aufgabe, Query & Body werden gemeinsam persistiert.</span>
+            }
           </div>
-        </div>
-      }
+        }
 
-      @case ('versions') {
-        <div class="form">
-          <label class="form-label">Versions-Historie</label>
-          <app-version-timeline
-            [versions]="timelineVersions()"
-            [currentVersionId]="currentKennelVersionId"
-            [selectedVersionId]="selectedKennelVersionId()"
-            [pinnedVersionId]="null"
-            [showPinControls]="false"
-            (versionSelected)="onKennelVersionSelected($event)" />
-        </div>
-      }
+        @case ('versions') {
+          <div class="form">
+            <app-version-timeline
+              [versions]="timelineVersions()"
+              [currentVersionId]="currentKennelVersionId"
+              [selectedVersionId]="selectedKennelVersionId()"
+              [pinnedVersionId]="null"
+              [showPinControls]="false"
+              (versionSelected)="onKennelVersionSelected($event)" />
+            @if (activeKennelVersionId()) {
+              <button type="button" class="sd-btn sd-btn--sm" (click)="backToLatest()">Back to latest</button>
+            }
+          </div>
+        }
+
     }
   </app-waves-inspector>
 
-  <!-- Dog inspector: embeds existing app-dog-side-panel -->
+  <!-- Dog inspector -->
   <app-waves-inspector
-    [open]="!!selectedDog()"
-    [title]="nodePanelTitle()"
-    (closeRequested)="closeSidePanel()">
+    [open]="drawerMode() === 'dog'"
+    [title]="selectedDog()?.displayName || selectedDog()?.name || 'Dog'"
+    [subtitle]="selectedPin() ? 'run only · ' + (selectedPin()!.version !== null ? 'pinned to v' + selectedPin()!.version : 'pinned') : null"
+    (closeRequested)="closeDrawer()">
     @if (selectedDog(); as dog) {
-      <app-dog-side-panel
-        [dog]="dog"
-        [initialSection]="panelInitialSection()"
-        [allDogs]="flatDogList()"
-        [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
-        [kennelLeadControlsEnabled]="!!(kennelConfig()?.dogIds?.length)"
-        [kennelDogRef]="getKennelRefForDog(dog)"
-        [kennelNodeComment]="commentForSelectedDog()"
-        (saved)="loadWaves()"
-        (deleted)="onDogDeleted($event)"
-        (movedToFirst)="onDogMovedToFirst($event)"
-        (pinChanged)="onPinChanged($event)"
-        (renamed)="loadWaves(); loadAvailableDogs()"
-        (kennelNodeCommentChanged)="onNodeCommentChanged($event)"
-        (closed)="closeSidePanel()" />
+      @if (selectedPin(); as pin) {
+        @if (pin.newer && !readOnly()) {
+          <div class="form">
+            <button type="button" class="sd-btn sd-btn--sm" [disabled]="!!mutationLock()"
+              [attr.title]="mutationLock() || 'Pin the newer version'" (click)="updatePin()">
+              Update pin · v{{ pin.latestVersion }} available</button>
+          </div>
+        }
+      }
+          <app-dog-side-panel
+            [dog]="dog"
+            [showClose]="false"
+            [initialSection]="panelInitialSection()"
+            [allDogs]="flatDogList()"
+            [kennelLeadDogIdsSlot]="kennelConfig()?.dogIds?.[0] ?? null"
+            [kennelLeadControlsEnabled]="!!(kennelConfig()?.dogIds?.length)"
+            [kennelDogRef]="getKennelRefForDog(dog)"
+            [kennelNodeComment]="commentForSelectedDog()"
+            [kennelReadOnly]="readOnly()"
+            [kennelLock]="mutationLock()"
+            (saved)="loadWaves()"
+            (deleted)="onDogDeleted($event)"
+            (movedToFirst)="onDogMovedToFirst($event)"
+            (pinChanged)="onPinChanged($event)"
+            (renamed)="loadWaves(); loadAvailableDogs()"
+            (kennelNodeCommentChanged)="onNodeCommentChanged($event)"
+            (closed)="closeDrawer()" />
     }
+  </app-waves-inspector>
+
+  <!-- Edge note -->
+  <app-waves-inspector
+    [open]="drawerMode() === 'edge'"
+    title="Edge note"
+    [subtitle]="edgeLabel()"
+    (closeRequested)="cancelEdgeComment()">
+        <div class="form">
+          @if (readOnly()) {
+            <p class="text">{{ edgeCommentDraft || 'No note on this edge.' }}</p>
+          } @else {
+            <label class="sd-label" for="edge-note">What happens on this edge?</label>
+            <textarea id="edge-note" class="sd-textarea" [(ngModel)]="edgeCommentDraft" rows="8" spellcheck="false"
+              [disabled]="!!mutationLock()" [attr.title]="mutationLock()"></textarea>
+            <div class="form-actions">
+              <button type="button" class="sd-btn sd-btn--primary" [disabled]="!!mutationLock()"
+                [attr.title]="mutationLock()" (click)="commitEdgeComment()">Apply</button>
+              <button type="button" class="sd-btn" (click)="cancelEdgeComment()">Cancel</button>
+            </div>
+          }
+        </div>
   </app-waves-inspector>
 
   <!-- Branch-cut confirmation -->
   <app-waves-confirm-dialog
     [open]="!!pendingCut()"
-    title="Teilbaum schneiden?"
-    [message]="'Die Kante ' + (cutLabel() ?? '') + ' und alle darunter liegenden Dogs werden aus dem Kennel entfernt. Die Dogs bleiben gespeichert, aber sie sind nicht mehr Teil dieses Kennels.'"
-    confirmLabel="Schneiden"
-    cancelLabel="Abbrechen"
+    title="Cut this branch?"
+    [message]="'The edge ' + (cutLabel() ?? '') + ' and every dog below it leave this kennel. The dogs stay saved; they are just not part of this kennel any more.'"
+    confirmLabel="Cut"
+    cancelLabel="Cancel"
     variant="danger"
     icon="danger"
     (confirmed)="confirmBranchCut()"
     (dismissed)="cancelBranchCut()" />
 
-  <!-- Edge inspector: comment editor -->
-  <app-waves-inspector
-    [open]="!!editingEdgeKey()"
-    title="Kantenkommentar"
-    subtitle="Was passiert auf dieser Kante?"
-    (closeRequested)="cancelEdgeComment()">
-    <div class="form">
-      <textarea class="form-textarea"
-                [(ngModel)]="edgeCommentDraft"
-                rows="8"
-                spellcheck="false"
-                placeholder="Was passiert auf dieser Kante?"></textarea>
-      <div class="form-actions">
-        <button type="button" class="btn-primary" (click)="commitEdgeComment()">Übernehmen</button>
-        <button type="button" class="btn-secondary" (click)="cancelEdgeComment()">Abbrechen</button>
-      </div>
-    </div>
-  </app-waves-inspector>
+  <!-- Delete confirmation -->
+  <app-waves-confirm-dialog
+    [open]="pendingDelete()"
+    title="Delete this kennel?"
+    [message]="'/k/' + kennelId + ' stops answering. The dogs stay saved.'"
+    confirmLabel="Delete kennel"
+    cancelLabel="Cancel"
+    variant="danger"
+    icon="danger"
+    (confirmed)="confirmDelete()"
+    (dismissed)="pendingDelete.set(false)" />
+
+  @if (toast()) {
+    <p class="toast" role="status">{{ toast() }}</p>
+  }
 </div>

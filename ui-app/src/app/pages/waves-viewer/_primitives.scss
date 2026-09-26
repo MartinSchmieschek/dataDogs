@@ -1,11 +1,12 @@
 /*
- * Style-Primitives — Mixins für Buttons, Inputs, Cards.
+ * Style-Primitives — Mixins in der Mixtape-Sprache (ui-app/DESIGN.md), Alias der globalen .sd-*-Klassen.
  * Konsumenten: @use './tokens' as tk; @use './primitives' as pr;
- * Niemals globale Klassen exportieren — nur Mixins.
+ * Niemals globale Klassen exportieren — nur Mixins. Jedes @include kopiert CSS in die Komponente:
+ * nur benutzen, was gebraucht wird; neue Komponenten nehmen direkt .sd-btn, .sd-field, .sd-chip, .sd-tab.
  */
 @use './tokens' as tk;
 
-/* === Button base === */
+/* === Button base: quiet, 2 px Tinte, eckig, Courier 700 13 uppercase === */
 @mixin btn-base($height: tk.$control-h-md) {
   display: inline-flex;
   align-items: center;
@@ -13,135 +14,119 @@
   gap: tk.$space-2;
   height: $height;
   padding: 0 tk.$space-4;
-  font-family: tk.$font-sans;
-  font-size: tk.$font-md;
-  font-weight: tk.$weight-medium;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: 0;
-  border-radius: tk.$radius-sm;
-  border: 1px solid transparent;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-radius: 0;
+  border: 2px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
   user-select: none;
-  transition: background tk.$dur-fast tk.$ease-out,
-              border-color tk.$dur-fast tk.$ease-out,
-              color tk.$dur-fast tk.$ease-out,
-              box-shadow tk.$dur-fast tk.$ease-out;
+  transition: transform var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+
+  &:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+
+  &:active:not(:disabled) {
+    transform: none;
+    box-shadow: none;
+  }
 
   &:focus-visible {
-    outline: none;
-    box-shadow: tk.$shadow-focus;
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
   }
 
   &:disabled,
   &[aria-disabled='true'] {
-    opacity: 0.5;
+    opacity: .45;
     cursor: not-allowed;
-    pointer-events: none;
   }
 }
 
 @mixin btn-primary {
   @include btn-base;
-  background: tk.$accent;
-  color: tk.$accent-on;
-  border-color: tk.$accent;
-  font-weight: tk.$weight-bold;
-
-  &:hover { background: tk.$accent-hover; border-color: tk.$accent-hover; }
-  &:active { transform: translateY(0.5px); }
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 @mixin btn-secondary {
   @include btn-base;
-  background: tk.$surface;
-  color: tk.$text;
-  border-color: tk.$border;
-
-  &:hover {
-    background: tk.$surface-muted;
-    border-color: tk.$border-strong;
-  }
 }
 
 @mixin btn-ghost {
   @include btn-base;
-  background: transparent;
-  color: tk.$text-muted;
   border-color: transparent;
 
-  &:hover {
-    background: tk.$surface-muted;
-    color: tk.$text;
+  &:hover:not(:disabled) {
+    border-color: var(--ink);
+    box-shadow: none;
+    transform: none;
   }
 
   &.is-active,
   &[aria-pressed='true'] {
-    background: tk.$accent-soft;
-    color: tk.$accent;
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
   }
 }
 
+/* Nie rot gefuellt: Rahmen und Text in danger-ink. */
 @mixin btn-danger {
   @include btn-base;
-  background: tk.$danger-50;
-  color: tk.$danger-500;
-  border-color: tk.$danger-200;
-
-  &:hover {
-    background: tk.$danger-500;
-    color: tk.$text-inverse;
-    border-color: tk.$danger-500;
-  }
+  border-color: var(--danger-ink);
+  color: var(--danger-ink);
 }
 
 @mixin btn-icon($size: tk.$control-h-md) {
   @include btn-base($size);
   width: $size;
   padding: 0;
-  font-size: tk.$font-lg;
+  font-size: 16px;
+  letter-spacing: 0;
 }
 
-/* === Input/Textarea === */
+/* === Input/Textarea: Schreibmaschinenzeile — paper-2, nur 2 px Tinte unten === */
 @mixin input-base {
   display: block;
   width: 100%;
   height: tk.$control-h-md;
   padding: 0 tk.$space-3;
-  font-family: tk.$font-sans;
-  font-size: tk.$font-md;
-  color: tk.$text;
-  background: tk.$surface;
-  border: 1px solid tk.$border;
-  border-radius: tk.$radius-sm;
-  transition: border-color tk.$dur-fast tk.$ease-out,
-              box-shadow tk.$dur-fast tk.$ease-out,
-              background tk.$dur-fast tk.$ease-out;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 0;
+  border-bottom: 2px solid var(--ink);
+  border-radius: 0;
 
-  &::placeholder { color: tk.$text-faint; }
-
-  &:hover { border-color: tk.$border-strong; }
+  &::placeholder { color: var(--ink-3); }
 
   &:focus,
   &:focus-visible {
-    outline: none;
-    border-color: tk.$border-focus;
-    box-shadow: tk.$shadow-focus;
+    outline: 3px solid var(--focus);
+    outline-offset: 0;
   }
 
   &:disabled {
-    background: tk.$surface-muted;
-    color: tk.$text-muted;
+    opacity: .55;
     cursor: not-allowed;
   }
 }
 
 @mixin input-code {
   @include input-base;
-  font-family: tk.$font-mono;
-  font-size: tk.$font-sm;
-  background: tk.$surface-sunken;
+  font-size: 13px;
 }
 
 @mixin textarea-base {
@@ -149,123 +134,136 @@
   height: auto;
   min-height: 96px;
   padding: tk.$space-3;
-  line-height: tk.$lh-base;
+  line-height: 21px;
   resize: vertical;
 }
 
-/* === Card / Surface === */
+/* === Card / Surface: Blatt auf dem Grund, Haarlinie, kein Schatten === */
 @mixin card {
-  background: tk.$surface;
-  border: 1px solid tk.$border;
-  border-radius: tk.$radius-md;
-  box-shadow: tk.$shadow-sm;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 0;
 }
 
+/* Schwebend (Drawer, Dialog): 2 px Tinte, der eine harte Schatten. */
 @mixin surface-card {
-  background: tk.$surface;
-  border-radius: tk.$radius-lg;
-  box-shadow: tk.$shadow-md;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--ink);
 }
 
 /* === Label / Form-Field === */
 @mixin field-label {
   display: block;
-  font-family: tk.$font-sans;
-  font-size: tk.$font-sm;
-  font-weight: tk.$weight-medium;
-  color: tk.$text-muted;
-  letter-spacing: 0.02em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
   margin-bottom: tk.$space-1;
 }
 
 @mixin field-helper {
-  font-size: tk.$font-sm;
-  color: tk.$text-faint;
-  line-height: tk.$lh-base;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--ink-2);
 }
 
-/* === Chip / Badge === */
+/* === Chip: Label-Maker (Tinte, Papier-Schrift) === */
+@mixin chip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding: 3px 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--paper);
+  background: var(--ink);
+  border: 0;
+  border-radius: 0;
+}
+
+/* === Chip als Filter/Knopf: outline, aktiv = Tinte === */
 @mixin chip {
   display: inline-flex;
   align-items: center;
   gap: tk.$space-1;
-  height: 28px;
+  min-height: 32px;
   padding: 0 tk.$space-3;
-  font-size: tk.$font-sm;
-  font-weight: tk.$weight-medium;
-  color: tk.$text-muted;
-  background: tk.$surface-muted;
-  border: 1px solid tk.$border;
-  border-radius: tk.$radius-full;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: transparent;
+  border: 2px solid var(--ink);
+  border-radius: 0;
   cursor: pointer;
-  transition: background tk.$dur-fast tk.$ease-out,
-              color tk.$dur-fast tk.$ease-out,
-              border-color tk.$dur-fast tk.$ease-out;
 
-  &:hover { background: tk.$surface-sunken; color: tk.$text; }
+  &:hover { background: var(--paper-3); }
 
   &.is-active,
   &[aria-pressed='true'] {
-    background: tk.$accent-soft;
-    color: tk.$accent;
-    border-color: tk.$accent;
+    background: var(--ink);
+    color: var(--paper);
   }
 }
 
-/* === Tab === */
+/* === Tab: Label, aktiv = 3 px Tinte unten === */
 @mixin tab {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: tk.$space-2;
-  height: 44px;
-  padding: 0 tk.$space-4;
-  font-family: tk.$font-sans;
-  font-size: tk.$font-md;
-  font-weight: tk.$weight-medium;
-  color: tk.$text-muted;
+  padding: tk.$space-2 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
   background: transparent;
-  border: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: color tk.$dur-fast tk.$ease-out;
 
-  &:hover { color: tk.$text; }
+  &:hover { color: var(--ink); }
 
-  &.is-active {
-    color: tk.$accent;
-
-    &::after {
-      content: '';
-      position: absolute;
-      left: tk.$space-3;
-      right: tk.$space-3;
-      bottom: 0;
-      height: 2px;
-      background: tk.$accent;
-      border-radius: tk.$radius-full;
-    }
+  &.is-active,
+  &[aria-selected='true'] {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
   }
 }
 
-/* === Status-Dot === */
+/* === Status-Dot: eckiger Punkt === */
 @mixin status-dot($size: 8px) {
   display: inline-block;
   width: $size;
   height: $size;
-  border-radius: tk.$radius-full;
+  border-radius: 0;
   flex-shrink: 0;
 }
 
-/* === Scrollbar refinement === */
+/* === Scrollbar auf Papier === */
 @mixin nice-scrollbar {
   &::-webkit-scrollbar { width: 10px; height: 10px; }
-  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-track { background: var(--paper); }
   &::-webkit-scrollbar-thumb {
-    background: tk.$neutral-200;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-    border-radius: tk.$radius-full;
-    &:hover { background: tk.$neutral-300; background-clip: padding-box; }
+    background: var(--line-strong);
+    border: 2px solid var(--paper);
+    border-radius: 0;
+    &:hover { background: var(--ink-2); }
   }
 }

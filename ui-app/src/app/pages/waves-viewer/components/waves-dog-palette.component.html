@@ -8,9 +8,9 @@
        [class.is-open]="open()"
        [attr.aria-hidden]="!open()">
   <header class="head">
-    <h2 class="head-title">Dogs hinzufügen</h2>
+    <h2 class="head-title">Add dogs</h2>
     @if (mode() === 'overlay') {
-      <button type="button" class="close" (click)="closeRequested.emit()" aria-label="Schließen">
+      <button type="button" class="close" (click)="closeRequested.emit()" aria-label="Close">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -28,10 +28,10 @@
       <input type="search"
              [value]="searchQuery()"
              (input)="searchQuery.set($any($event.target).value)"
-             placeholder="Suchen…"
-             aria-label="Dogs durchsuchen">
+             placeholder="Search…"
+             aria-label="Search dogs">
       @if (searchQuery()) {
-        <button type="button" class="search-clear" (click)="searchQuery.set('')" aria-label="Leeren">
+        <button type="button" class="search-clear" (click)="searchQuery.set('')" aria-label="Clear search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -47,7 +47,7 @@
               [class.is-active]="filter() === 'all'"
               [attr.aria-selected]="filter() === 'all' ? 'true' : 'false'"
               (click)="setFilter('all')">
-        Alle <span class="chip-count">{{ counts().all }}</span>
+        All <span class="chip-count">{{ counts().all }}</span>
       </button>
       <button type="button"
               class="chip"
@@ -77,7 +77,7 @@
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </span>
-        <span class="card-new-label">Neuer Dog</span>
+        <span class="card-new-label">New dog</span>
       </button>
 
       @for (dog of filteredDogs(); track dog.id) {
@@ -96,7 +96,7 @@
           </div>
           <div class="card-name" [title]="labelFor(dog)">{{ labelFor(dog) }}</div>
           @if (contextNameFor(dog); as ctx) {
-            <code class="card-context" [title]="'Im VM-Kontext: ' + ctx">{{ ctx }}</code>
+            <code class="card-context" [title]="'In the context as: ' + ctx">{{ ctx }}</code>
           }
           @if (descriptionFor(dog); as desc) {
             <div class="card-desc" [title]="desc">{{ desc }}</div>
@@ -106,16 +106,16 @@
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span>Hinzufügen</span>
+            <span>Add</span>
           </div>
         </div>
       } @empty {
         <div class="empty">
           @if (searchQuery().trim()) {
-            <p>Keine Treffer für „{{ searchQuery() }}"</p>
-            <button type="button" class="empty-action" (click)="searchQuery.set('')">Suche leeren</button>
+            <p>No dogs match “{{ searchQuery() }}”.</p>
+            <button type="button" class="empty-action" (click)="searchQuery.set('')">Clear search</button>
           } @else {
-            <p>Keine Dogs verfügbar.</p>
+            <p>No dogs available.</p>
           }
         </div>
       }

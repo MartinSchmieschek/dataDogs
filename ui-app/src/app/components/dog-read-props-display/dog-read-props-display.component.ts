@@ -4,7 +4,7 @@ import {
 import { GRAPH_NODE_H } from '../vis-network/graph-layout';
 
 /**
- * Kompakte Liste von Property-Pfaden (z. B. „Liest von“ entlang einer Kante im Graph).
+ * Compact list of property paths (e.g. "reads from" along a graph edge), paper and ink.
  */
 @Component({
   selector: 'app-dog-read-props-display',
@@ -16,12 +16,12 @@ import { GRAPH_NODE_H } from '../vis-network/graph-layout';
         class="read-props-clip"
         [style.max-height.px]="maxHeightPx">
         @if (paths.length === 0) {
-          <span class="read-props-empty">Keine Einträge</span>
+          <span class="read-props-empty">No reads</span>
         } @else {
           <ul class="read-props-list">
             @for (p of paths; track $index) {
               <li class="read-props-item">
-                <span class="read-props-paw" aria-hidden="true">🐾</span>
+                <span class="read-props-mark" aria-hidden="true">›</span>
                 <code class="read-props-code">{{ p }}</code>
               </li>
             }
@@ -39,12 +39,12 @@ import { GRAPH_NODE_H } from '../vis-network/graph-layout';
 export class DogReadPropsDisplayComponent implements OnChanges, AfterViewInit, OnDestroy {
   @Input() paths: string[] = [];
 
-  /** Kein Glas/Hintergrund — z. B. Read-Infos neben der Kanten-Schere. */
+  /** No box — e.g. inside the edge read-tracking panel. */
   @Input() plain = false;
 
   @ViewChild('clipBox') clipBox?: ElementRef<HTMLDivElement>;
 
-  /** 1,5× Graph-Knotenhöhe — kompakt neben dem Graph lesbar. */
+  /** 1.5× card height — compact next to the graph. */
   readonly maxHeightPx = GRAPH_NODE_H * 1.5;
 
   readonly overflowing = signal(false);

@@ -9,7 +9,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 22, 38, 0.45);
+  background: var(--scrim);
   z-index: tk.$z-drawer;
   animation: backdrop-in tk.$dur-base tk.$ease-out;
 }
@@ -34,6 +34,7 @@
     left: 0;
     width: 380px;
     max-width: 90vw;
+    border-right: 2px solid var(--ink);
     box-shadow: tk.$shadow-lg;
     animation: palette-in-left tk.$dur-base tk.$ease-out;
   }
@@ -62,8 +63,8 @@
     width: 100%;
     max-width: 100%;
     height: 88dvh;
-    border-top-left-radius: tk.$radius-lg;
-    border-top-right-radius: tk.$radius-lg;
+    border-right: 0;
+    border-top: 2px solid var(--ink);
     animation: palette-in-bottom tk.$dur-base tk.$ease-out;
 
     &::before {
@@ -71,8 +72,7 @@
       display: block;
       width: 36px;
       height: 4px;
-      background: tk.$neutral-200;
-      border-radius: tk.$radius-full;
+      background: var(--line-strong);
       margin: tk.$space-2 auto 0;
       flex-shrink: 0;
     }
@@ -96,19 +96,17 @@
 .head-title {
   margin: 0;
   flex: 1;
-  font-size: tk.$font-lg;
+  font-size: 18px;
+  line-height: 24px;
   font-weight: tk.$weight-bold;
-  letter-spacing: -0.01em;
   color: tk.$text;
 }
 
 .close {
   @include pr.btn-icon(tk.$control-h-md);
-  background: transparent;
   border-color: transparent;
-  color: tk.$text-muted;
 
-  &:hover { background: tk.$surface-muted; color: tk.$text; }
+  &:hover:not(:disabled) { border-color: var(--ink); box-shadow: none; transform: none; }
 }
 
 .peek {
@@ -146,8 +144,7 @@
   height: 28px;
   border: none;
   background: transparent;
-  color: tk.$text-faint;
-  border-radius: tk.$radius-sm;
+  color: tk.$text-muted;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -212,23 +209,16 @@
               transform 60ms ease;
 
   &:hover {
-    border-color: tk.$accent;
-    box-shadow: tk.$shadow-sm;
+    background: tk.$surface-muted;
+    border-color: var(--ink);
     .card-action { opacity: 1; transform: translateY(0); }
   }
 
-  &:active { transform: scale(0.99); }
+  &:active { background: tk.$surface-muted; }
 
   &:focus-visible {
-    outline: none;
-    box-shadow: tk.$shadow-focus;
-    border-color: tk.$accent;
-  }
-
-  &--base { background: tk.$surface-muted; }
-  &--serialized {
-    background: tk.$brand-50;
-    border-color: tk.$brand-200;
+    outline: 3px solid var(--focus);
+    outline-offset: 0;
   }
 
   &--new {
@@ -240,16 +230,17 @@
     gap: tk.$space-2;
     min-height: 56px;
 
+    border: 2px dashed var(--ink);
+
     &:hover {
-      background: tk.$accent-soft;
-      color: tk.$accent;
-      border-color: tk.$accent;
+      background: tk.$surface-muted;
+      color: tk.$text;
     }
   }
 }
 
 .card-new-icon { display: inline-flex; }
-.card-new-label { font-size: tk.$font-md; font-weight: tk.$weight-medium; }
+.card-new-label { font-size: 13px; font-weight: tk.$weight-bold; letter-spacing: .06em; text-transform: uppercase; }
 
 .card-head {
   display: flex;
@@ -263,15 +254,11 @@
 }
 
 .card-cat {
-  font-size: tk.$font-xs;
-  font-weight: tk.$weight-bold;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: tk.$text-faint;
+  @include pr.chip-label;
   margin-left: auto;
 }
 
-.card--serialized .card-cat { color: tk.$brand-600; }
+.card--base .card-cat { background: var(--paper-3); color: var(--ink-2); }
 
 .card-name {
   font-size: tk.$font-md;
@@ -315,7 +302,9 @@
   gap: 4px;
   font-size: tk.$font-xs;
   font-weight: tk.$weight-bold;
-  color: tk.$accent;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: tk.$text;
   opacity: 0;
   transform: translateY(4px);
   transition: opacity tk.$dur-fast tk.$ease-out, transform tk.$dur-fast tk.$ease-out;
@@ -329,7 +318,7 @@
 .empty {
   padding: tk.$space-6 tk.$space-4;
   text-align: center;
-  color: tk.$text-faint;
+  color: tk.$text-muted;
   font-size: tk.$font-md;
 
   p { margin: 0 0 tk.$space-3; }
@@ -339,4 +328,5 @@
   @include pr.btn-secondary;
   height: tk.$control-h-sm;
   padding: 0 tk.$space-3;
+  font-size: 12px;
 }

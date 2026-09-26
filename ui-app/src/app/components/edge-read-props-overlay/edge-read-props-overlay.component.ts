@@ -2,7 +2,7 @@ import { Component, Input } from '@angular/core';
 import { DogReadPropsDisplayComponent } from '../dog-read-props-display/dog-read-props-display.component';
 
 /**
- * Read-Tracking am Knoten: eine Karte pro Datenrichtung (links eingehend, rechts ausgehend).
+ * Read tracking: one block per data direction (left incoming, right outgoing).
  */
 @Component({
   selector: 'app-edge-read-props-overlay',
@@ -19,6 +19,6 @@ import { DogReadPropsDisplayComponent } from '../dog-read-props-display/dog-read
 export class EdgeReadPropsOverlayComponent {
   @Input({ required: true }) title!: string;
   @Input() paths: string[] = [];
-  /** `edge`: ohne Kartenhintergrund, breit — neben der Graph-Schere. */
+  /** `edge`: no box, full width — inside the edge read-tracking panel. */
   @Input() variant: 'card' | 'edge' = 'card';
 }
