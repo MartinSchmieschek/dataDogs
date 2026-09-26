@@ -1,7 +1,7 @@
 import type { IKennelConfig } from '../models/kennel-config.model';
 
-/** How the settings drawer shows itself (6.4 S3). */
-export type SettingsView = 'edit' | 'frozen' | 'readonly' | 'none';
+/** How the settings drawer shows itself (6.4 S3). `landing`: locked_landing (P5) — read-only, no unfreeze. */
+export type SettingsView = 'edit' | 'frozen' | 'landing' | 'readonly' | 'none';
 
 export interface SettingsRights {
   read: boolean;
@@ -23,21 +23,32 @@ export function isListedEditor(cfg: Pick<IKennelConfig, 'ownerId' | 'editors'> |
 }
 
 /**
- * Editors edit; frozen shows everything read-only with the unfreeze banner; readers read; without
- * READ (run-only, missing) there are no settings.
+ * Editors edit; frozen shows everything read-only with the unfreeze banner; landing (P5,
+ * LANDING_KENNEL_IDS) shows everything read-only too, but without an unfreeze offer — nobody, not
+ * even the owner, mutates a landing kennel, and it wins over frozen (unfreezing would not help);
+ * readers read; without READ (run-only, missing) no settings.
  */
-export function settingsView(rights: SettingsRights | null, frozen: boolean): SettingsView {
+export function settingsView(rights: SettingsRights | null, frozen: boolean, landingLocked = false): SettingsView {
   if (!rights || !rights.read) return 'none';
+  if (landingLocked) return 'landing';
   if (frozen) return 'frozen';
   return rights.edit ? 'edit' : 'readonly';
 }
 
 /**
- * The deep link `/kennels/:id/edit` opens the drawer for whoever may edit — on a frozen kennel for the
- * owner and editors (read-only, the banner says why); everyone else stays on the page with the toast.
+ * The deep link `/kennels/:id/edit` opens the drawer for whoever may edit — on a frozen or landing
+ * kennel for the owner and editors (read-only, the banner says why — `rights.own`/`edit` are scrubbed
+ * to false for landing, so `listedEditor` is the only signal left); everyone else stays on the page
+ * with the toast.
  */
-export function editDeepLinkOpens(rights: SettingsRights | null, frozen: boolean, listedEditor: boolean): boolean {
+export function editDeepLinkOpens(
+  rights: SettingsRights | null,
+  frozen: boolean,
+  listedEditor: boolean,
+  landingLocked = false,
+): boolean {
   if (!rights?.read) return false;
+  if (landingLocked) return listedEditor;
   if (frozen) return rights.own || listedEditor;
   return rights.edit;
 }

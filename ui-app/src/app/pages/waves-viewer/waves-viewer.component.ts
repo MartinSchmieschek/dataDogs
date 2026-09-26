@@ -43,6 +43,7 @@ import { hasEscapeLayer } from '../../utils/escape-layers';
 import { KENNEL_NAME_MAX, renameErrorText, renameProblem } from '../../utils/kennel-rename';
 import {
   FROZEN_TITLE,
+  LANDING_LOCK_TITLE,
   SdKennelHeadComponent,
   type KennelHeadAction,
   type KennelHeadRights,
@@ -223,10 +224,14 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
     const cfg = this.kennelConfig();
     return !!(cfg?.frozen ?? cfg?.myRights?.frozen);
   });
-  /** Readers without edit: text instead of fields, no palette, no drag, no cut. */
-  readonly readOnly = computed(() => !this.frozen() && !this.rights().edit);
-  /** Why mutations are locked right now (frozen, or an older version on screen) — null when they are not. */
+  /** Landing page (server LANDING_KENNEL_IDS): edit/own are false for everyone, including owner. */
+  readonly landingLocked = computed(() => this.kennelConfig()?.myRights?.locked === 'landing');
+  /** Readers without edit: text instead of fields, no palette, no drag, no cut. Landing behaves like
+   * frozen here — locked, not "read only" — so it is excluded from this check. */
+  readonly readOnly = computed(() => !this.frozen() && !this.landingLocked() && !this.rights().edit);
+  /** Why mutations are locked right now (frozen, landing, or an older version on screen) — null when not. */
   readonly mutationLock = computed<string | null>(() => {
+    if (this.landingLocked()) return LANDING_LOCK_TITLE;
     if (this.frozen()) return FROZEN_TITLE;
     if (this.activeKennelVersionId()) return OLD_VERSION_TITLE;
     return null;
@@ -642,12 +647,12 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
     this.settingsPending.set(true);
   }
 
-  /** The deep link opens for editors (frozen: owner and editors, read-only); others get the toast. */
+  /** The deep link opens for editors (frozen/landing: owner and editors, read-only); others get the toast. */
   private settleSettingsDeepLink(): void {
     this.settingsPending.set(false);
     const cfg = this.kennelConfig();
     const opens = this.mode() === 'full'
-      && editDeepLinkOpens(this.rights(), this.frozen(), isListedEditor(cfg, this.auth.user()?.id));
+      && editDeepLinkOpens(this.rights(), this.frozen(), isListedEditor(cfg, this.auth.user()?.id), this.landingLocked());
     if (opens) {
       this.showSettings();
       return;
@@ -699,7 +704,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
     this.pendingDelete.set(false);
     this.kennelService.delete(this.kennelId).subscribe({
       next: () => void this.router.navigate(['/kennels']),
-      error: (err: HttpErrorResponse) => this.error.set(err.error?.error ?? err.message),
+      error: (err: HttpErrorResponse) => this.error.set(err.error?.error_description ?? err.error?.error ?? err.message),
     });
   }
 
@@ -790,7 +795,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
     const settings = this.settingsDrawer();
     if (this.settingsOpen() && settings) {
       if (settings.editable()) settings.save();
-      else this.showToast(this.frozen() ? FROZEN_TITLE : 'Read only. Nothing to save.');
+      else this.showToast(this.landingLocked() ? LANDING_LOCK_TITLE : this.frozen() ? FROZEN_TITLE : 'Read only. Nothing to save.');
       return;
     }
     const panel = this.dogPanel();
@@ -885,7 +890,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
         this.loadWaves();
         this.loadAvailableDogs();
       },
-      error: (err) => this.error.set(err?.error?.error ?? `Couldn't add ${dog.name} (${err?.status ?? 'network'}).`),
+      error: (err) => this.error.set(err?.error?.error_description ?? err?.error?.error ?? `Couldn't add ${dog.name} (${err?.status ?? 'network'}).`),
     });
   }
 
@@ -1107,7 +1112,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
       },
       error: (err) => {
         this.layoutSaving.set(false);
-        this.error.set(err.error?.error ?? err.message);
+        this.error.set(err.error?.error_description ?? err.error?.error ?? err.message);
       }
     });
   }
@@ -1204,7 +1209,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
       },
       error: (err) => {
         this.paramsSaving.set(false);
-        this.error.set(err.error?.error ?? err.message);
+        this.error.set(err.error?.error_description ?? err.error?.error ?? err.message);
       }
     });
   }
@@ -1336,7 +1341,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
         this.loadWaves();
         this.loadAvailableDogs();
       },
-      error: (err) => this.error.set(err.error?.error ?? err.message ?? 'Updating the kennel failed.'),
+      error: (err) => this.error.set(err.error?.error_description ?? err.error?.error ?? err.message ?? 'Updating the kennel failed.'),
     });
   }
 
@@ -1395,7 +1400,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
         this.showToast(ev.versionId ? this.pinLabel(ev.versionId) : 'Follows the latest version.');
         this.loadWaves();
       },
-      error: (err) => this.error.set(err.error?.error ?? err.message),
+      error: (err) => this.error.set(err.error?.error_description ?? err.error?.error ?? err.message),
     });
   }
 
@@ -1426,7 +1431,7 @@ export class WavesViewerComponent implements OnInit, LeavesSafely {
         this.showToast(pinnedToast(dog.latestVersion));
         this.loadWaves();
       },
-      error: (err) => this.error.set(err.error?.error ?? err.message),
+      error: (err) => this.error.set(err.error?.error_description ?? err.error?.error ?? err.message),
     });
   }
 

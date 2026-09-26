@@ -14,6 +14,9 @@
       @if (frozen()) {
         <span class="sd-chip sd-chip--frozen">frozen</span>
       }
+      @if (landingLocked()) {
+        <span class="sd-chip sd-chip--frozen">landing</span>
+      }
       @if (runOnly()) {
         <span class="sd-chip">run only</span>
       } @else if (readOnly()) {
@@ -52,7 +55,7 @@
     </div>
     <div class="acts">
       @if (!paletteHidden()) {
-        <button type="button" class="sd-btn palette" [disabled]="frozen()" [attr.title]="frozen() ? frozenTitle : 'Add dogs from the palette'"
+        <button type="button" class="sd-btn palette" [disabled]="frozen() || landingLocked()" [attr.title]="paletteTitle()"
           (click)="action.emit('palette')">Dogs</button>
       }
       @if (runState() === 'running') {
@@ -70,8 +73,9 @@
   <span class="scrim" (click)="menuOpen.set(false)" aria-hidden="true"></span>
   <span class="menu sd-lift sd-rise" role="group" aria-label="Kennel actions">
     @if (!runOnly()) {
-      <!-- Settings (S3): editors edit; readers read; frozen shows the unfreeze banner there. -->
-      <button type="button" [title]="frozen() ? frozenTitle : rights().edit ? 'Name, access, dogs, defaults' : 'Read only'"
+      <!-- Settings (S3): editors edit; readers read; frozen/landing show their own read-only banner there. -->
+      <button type="button"
+        [title]="landingLocked() ? landingLockTitle : frozen() ? frozenTitle : rights().edit ? 'Name, access, dogs, defaults' : 'Read only'"
         (click)="pick('edit')">Settings</button>
       @if (rights().edit) {
         <!-- The name changes; the ID (lineageId) stays — links, versions, stars and pins hang on it. -->

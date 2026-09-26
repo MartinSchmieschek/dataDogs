@@ -15,6 +15,9 @@
           }
         </sd-banner>
       }
+      @case ('landing') {
+        <sd-banner tone="info" [text]="landingLockTitle" />
+      }
       @case ('readonly') {
         <sd-banner tone="info" text="Read only. The owner and editors change these settings." />
       }

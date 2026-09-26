@@ -11,11 +11,13 @@ import {
     normalizeVisibility,
     rightsOf,
     isFrozen,
+    isLandingLocked,
     canManageAcl,
     withMyRights,
     VISIBILITIES,
     type Access,
 } from '../auth/visibility';
+import { LandingKennels } from '../auth/landingKennels';
 import { type BaseDogInfo, type ToolDef, type ToolDeps, ok, fail, resolveTsCode, codeHinweise } from './types';
 import {
     BASE_DOG_PREFIX,
@@ -245,6 +247,17 @@ function visibilityChangeRefused(existing: any, requested: unknown, ctx: AuthCtx
     const next = normalizeVisibility(requested);
     if (!next || next === (existing?.visibility ?? undefined)) return null;
     return canManageAcl(existing, ctx) ? null : 'Only the owner may change visibility';
+}
+
+/**
+ * Warum eine Kennel-Mutation abgewiesen wird: wer nicht lesen darf, erfaehrt nichts (not found); ein Landing-Kennel
+ * (LANDING_KENNEL_IDS) nennt Code und Grund — fuer jeden, auch Owner und Super-User; frozen; sonst keine Rechte.
+ */
+function kennelMutationRefusal(kennel: any, ctx: AuthCtx, id: string): string {
+    if (!canRead(kennel, ctx)) return `Kennel ${id} not found`;
+    if (isLandingLocked(kennel)) return `${LandingKennels.LOCK_CODE}: ${LandingKennels.LOCK_MESSAGE}`;
+    if (isFrozen(kennel)) return `Kennel ${id} is frozen — unfreeze it first`;
+    return 'Not authorized';
 }
 
 /** Minimal projection for list_kennels — no payloads, no layout. */
@@ -622,7 +635,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'update_kennel',
             description:
-                'Updates an existing kennel — creates a new version. The owner or a user with the edit right (editor) can update; changing visibility (public | run-only | private) needs the owner; a frozen kennel takes no update until the owner unfreezes it. Pass only the fields you want to change; others are preserved. Newly added dogIds must be dogs you can run; run-only foreign dogs are pinned to a version. **Spuren:** `task` + `nodes[]` — User-Wunsch festhalten, nicht JSON-Vertrag (mcp/skill.md § Spuren & Rechtfertigung). Use refresh_kennel_snapshot afterwards to see the run state.',
+                'Updates an existing kennel — creates a new version. The owner or a user with the edit right (editor) can update; changing visibility (public | run-only | private) needs the owner; a frozen kennel takes no update until the owner unfreezes it; a landing kennel (listed in the server env LANDING_KENNEL_IDS) takes none from anyone — "locked_landing". Pass only the fields you want to change; others are preserved. Newly added dogIds must be dogs you can run; run-only foreign dogs are pinned to a version. **Spuren:** `task` + `nodes[]` — User-Wunsch festhalten, nicht JSON-Vertrag (mcp/skill.md § Spuren & Rechtfertigung). Use refresh_kennel_snapshot afterwards to see the run state.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -643,10 +656,7 @@ export function getKennelTools(): ToolDef[] {
                 const id = String(args.id);
                 const existing = await deps.kennelsController.getById(id);
                 if (!existing.ok || !existing.data) return fail(`Kennel ${id} not found`);
-                if (!canMutate(existing.data as any, ctx)) {
-                    if (!canRead(existing.data as any, ctx)) return fail(`Kennel ${id} not found`);
-                    return fail(isFrozen(existing.data as any) ? `Kennel ${id} is frozen — unfreeze it first` : 'Not authorized');
-                }
+                if (!canMutate(existing.data as any, ctx)) return fail(kennelMutationRefusal(existing.data, ctx, id));
                 const visibilityRefused = visibilityChangeRefused(existing.data, args.visibility, ctx);
                 if (visibilityRefused) return fail(visibilityRefused);
                 // SECURITY (2026-09-13): validate only dogIds ADDED in this update, so a
@@ -683,7 +693,7 @@ export function getKennelTools(): ToolDef[] {
         {
             name: 'delete_kennel',
             description:
-                'Deletes a kennel and ALL its versions. The owner or an editor can delete; not while frozen. Irreversible — every dog dies forever.',
+                'Deletes a kennel and ALL its versions. The owner or an editor can delete; not while frozen, never a landing kennel (LANDING_KENNEL_IDS, "locked_landing"). Irreversible — every dog dies forever.',
             inputSchema: {
                 type: 'object',
                 required: ['id'],
@@ -696,9 +706,7 @@ export function getKennelTools(): ToolDef[] {
                 const id = String(args.id);
                 const existing = await deps.kennelsController.getById(id);
                 if (!existing.ok || !existing.data) return fail(`Kennel ${id} not found`);
-                if (!canMutate(existing.data as any, ctx)) {
-                    return fail(canRead(existing.data as any, ctx) ? 'Not authorized' : `Kennel ${id} not found`);
-                }
+                if (!canMutate(existing.data as any, ctx)) return fail(kennelMutationRefusal(existing.data, ctx, id));
                 const result = await deps.kennelsController.delete(id);
                 if (!result.ok) return fail(result.error ?? 'delete failed');
                 return ok({ deleted: id });

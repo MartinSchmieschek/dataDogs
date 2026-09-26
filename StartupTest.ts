@@ -56,6 +56,8 @@ import {
     canRead,
     canRun,
     rightsOf,
+    isFrozen,
+    isLandingLocked,
     applyCreateDefaults,
     type AclEntity,
     type Visibility,
@@ -93,6 +95,7 @@ import fs from 'fs';
 import path from 'path';
 import { gzipSync } from 'zlib';
 import { LandingPage, type LandingRunner } from './server-app/LandingPage';
+import { LandingKennels } from './mcp/auth/landingKennels';
 import { resolvePublicDir } from './server-app/expressPaths';
 import { SLOPDOGS_LANDING_KENNEL_ID, seedSlopdogsLandingKennel } from './seed-data/kennels/slopdogs-landing';
 
@@ -372,6 +375,9 @@ export class StartupTest {
             await this.testResponseCompression();
             // Fix-Runde: DELETE nach Version oder Lineage, Codes statt Store-Text
             await this.testDeleteRefScopes(nodesController, kennelsController as KennelController);
+            // Landing-Rotation (LANDING_KENNEL_IDS) und Schreibschutz der gelisteten Kennels
+            await this.testLandingRotation();
+            await this.testLandingLock(kennelsController as KennelController, nodesController);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -3411,7 +3417,7 @@ export class StartupTest {
 
             // myRights anonym auf public (3.5.7).
             const rights = rightsOf(entity('public'), anon);
-            if (JSON.stringify(rights) !== JSON.stringify({ run: true, read: true, edit: false, own: false, frozen: false })) {
+            if (JSON.stringify(rights) !== JSON.stringify({ run: true, read: true, edit: false, own: false, frozen: false, locked: null })) {
                 throw new Error(`myRights anonym/public: ${JSON.stringify(rights)}`);
             }
 
@@ -3450,7 +3456,7 @@ export class StartupTest {
             const owner = this.fakeUser('UO');
             const before: any = (await kennelsController.getById(kennelId)).data;
             if (before?.visibility !== 'run-only' || before?.runners !== 'UR') throw new Error(`run-only/runners nicht gespeichert: ${JSON.stringify(before)}`);
-            if (JSON.stringify(rightsOf(before, owner)) !== JSON.stringify({ run: true, read: true, edit: true, own: true, frozen: false })) {
+            if (JSON.stringify(rightsOf(before, owner)) !== JSON.stringify({ run: true, read: true, edit: true, own: true, frozen: false, locked: null })) {
                 throw new Error('Owner hat nicht alle Rechte');
             }
 
@@ -6095,7 +6101,7 @@ export class StartupTest {
             const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0 });
             const handler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
             let clock = 1_000_000;
-            const landing = new LandingPage({ publicDir: this.landingPublicDir(), kennelId, memoMs: 60_000, now: () => clock });
+            const landing = new LandingPage({ publicDir: this.landingPublicDir(), kennelIds: [], defaultKennelId: kennelId, memoMs: 60_000, now: () => clock });
             landing.useRunner(handler);
             const runs = (): number => landing.runs;
 
@@ -6165,7 +6171,7 @@ export class StartupTest {
             const seen = { asked: 0 };
             const runner: LandingRunner = { runLeadAsAnonymous: async () => { seen.asked += 1; return answer(); } };
             const asked = (): number => seen.asked;
-            const landing = new LandingPage({ publicDir, kennelId: '__st_no_landing', memoMs: 1_000, now: () => clock });
+            const landing = new LandingPage({ publicDir, kennelIds: [], defaultKennelId: '__st_no_landing', memoMs: 1_000, now: () => clock });
 
             const cold = await landing.page();
             if (cold?.source !== 'fallback' || cold.html !== file || asked() !== 0) throw new Error('ohne Runner kein Fallback');
@@ -6267,6 +6273,166 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /** Setzt LANDING_KENNEL_IDS / LANDING_KENNEL_ID fuer die Dauer von `run` und stellt beide danach wieder her. */
+    private static async withLandingEnv<T>(ids: string | undefined, alias: string | undefined, run: () => Promise<T>): Promise<T> {
+        const saved = { ids: process.env.LANDING_KENNEL_IDS, alias: process.env.LANDING_KENNEL_ID };
+        const put = (name: string, value: string | undefined) => {
+            if (value === undefined) delete process.env[name];
+            else process.env[name] = value;
+        };
+        put('LANDING_KENNEL_IDS', ids);
+        put('LANDING_KENNEL_ID', alias);
+        try {
+            return await run();
+        } finally {
+            put('LANDING_KENNEL_IDS', saved.ids);
+            put('LANDING_KENNEL_ID', saved.alias);
+        }
+    }
+
+    /**
+     * Landing-Rotation (2026-09-26): LANDING_KENNEL_IDS wird gelesen (Leerstellen, Doppelte, Alias LANDING_KENNEL_ID);
+     * `/` verteilt ueber zwei laufende Kennels, ueberspringt einen fehlenden (ein Lauf je Fenster), `?landing=` erzwingt
+     * nur Gelistete; leere Liste -> der Default; keiner der gelisteten laeuft -> der Default; auch der nicht -> Fallback.
+     */
+    private async testLandingRotation(): Promise<void> {
+        const testName = 'Landing-Rotation: zwei Kennels, fehlender uebersprungen, Default, Fallback';
+        try {
+            await StartupTest.withLandingEnv(' rot-a, rot-b ,,ROT-A ', 'ignored', async () => {
+                const ids = LandingKennels.ids();
+                if (JSON.stringify(ids) !== '["rot-a","rot-b"]') throw new Error(`LANDING_KENNEL_IDS: ${JSON.stringify(ids)}`);
+            });
+            await StartupTest.withLandingEnv(undefined, 'solo-landing', async () => {
+                if (JSON.stringify(LandingKennels.ids()) !== '["solo-landing"]' || !LandingKennels.includes('SOLO-landing')) throw new Error('Alias LANDING_KENNEL_ID');
+            });
+            await StartupTest.withLandingEnv(undefined, undefined, async () => {
+                if (LandingKennels.ids().length !== 0) throw new Error('leere Env ist nicht leer');
+            });
+
+            const html = (id: string) => `<!DOCTYPE html><html><body>${id}</body></html>`;
+            const asked = new Map<string, number>();
+            let live = new Set(['rot-a', 'rot-b', 'def']);
+            const runner: LandingRunner = {
+                runLeadAsAnonymous: async (id) => {
+                    asked.set(id, (asked.get(id) ?? 0) + 1);
+                    return live.has(id) ? html(id) : null;
+                },
+            };
+            let seed = 7;
+            const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+            let clock = 0;
+            const make = (kennelIds: string[]) => {
+                const landing = new LandingPage({ publicDir: this.landingPublicDir(), kennelIds, defaultKennelId: 'def', memoMs: 1_000, now: () => clock, random });
+                landing.useRunner(runner);
+                return landing;
+            };
+
+            const rotating = make(['rot-a', 'rot-missing', 'rot-b']);
+            const served = new Map<string, number>();
+            for (let i = 0; i < 60; i++) {
+                const page = await rotating.page();
+                served.set(page?.kennelId ?? page?.source ?? 'null', (served.get(page?.kennelId ?? page?.source ?? 'null') ?? 0) + 1);
+            }
+            const a = served.get('rot-a') ?? 0;
+            const b = served.get('rot-b') ?? 0;
+            if (a + b !== 60 || a < 15 || b < 15) throw new Error(`Verteilung: ${JSON.stringify([...served])}`);
+            if ((asked.get('rot-missing') ?? 0) !== 1) throw new Error(`fehlender Kennel ${asked.get('rot-missing')} mal gelaufen (ein Lauf je Fenster)`);
+            if ((asked.get('rot-a') ?? 0) !== 1 || (asked.get('rot-b') ?? 0) !== 1 || asked.has('def')) throw new Error(`Laeufe: ${JSON.stringify([...asked])}`);
+            if (!rotating.rotates) throw new Error('rotates');
+
+            if ((await rotating.page(rotating.forcedOf('ROT-B')))?.kennelId !== 'rot-b') throw new Error('?landing=rot-b nicht erzwungen');
+            if (rotating.forcedOf('def') !== null || rotating.forcedOf('elsewhere') !== null) throw new Error('?landing= oeffnet einen nicht gelisteten Kennel');
+
+            const empty = make([]);
+            if ((await empty.page())?.kennelId !== 'def' || empty.rotates) throw new Error('leere Liste liefert nicht den Default');
+
+            live = new Set(['def']);
+            clock += 5_000;
+            const dead = make(['rot-a', 'rot-b']);
+            if ((await dead.page())?.kennelId !== 'def') throw new Error('keiner der gelisteten laeuft: nicht der Default');
+
+            live = new Set();
+            const nothing = make(['rot-a']);
+            const last = await nothing.page();
+            if (last?.source !== 'fallback' || last.kennelId) throw new Error(`auch der Default fehlt: ${last?.source}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Landing-Schreibschutz: ein Kennel in LANDING_KENNEL_IDS ist fuer alle gesperrt — Owner und Super-User, REST PUT,
+     * rename, DELETE, ACL (PUT /acl, freeze) und MCP update_kennel/delete_kennel/freeze_entity mit 403 locked_landing;
+     * myRights {edit:false, own:false, locked:'landing'}, Lesen und Laufen bleiben. Der Seed-Default ist nicht
+     * automatisch gesperrt. Aus der Liste genommen, ist er wieder frei.
+     */
+    private async testLandingLock(kennelsController: KennelController, nodesController: Controller<ISerializedDogConfig>): Promise<void> {
+        const testName = 'Landing-Schreibschutz: 403 locked_landing fuer Owner und Super-User (REST, ACL, MCP)';
+        const kennelId = `st-landing-lock-${Date.now()}`;
+        try {
+            const created = await kennelsController.create({ id: kennelId, name: 'Landing lock', dogIds: [], visibility: 'public', ownerId: 'UL1' });
+            if (!created.ok) throw new Error(`Kennel: ${created.error}`);
+            const owner = this.fakeUser('UL1');
+            const superUser: AuthCtx = { user: null, isSuperUser: true };
+            const registry = new ControllerRegistry();
+            registry.register('kennels', kennelsController);
+            registry.register('nodes', nodesController);
+            const handler = new ConfigRouteHandler(registry);
+            const aclRoutes = new Map<string, (req: any, res: any) => Promise<void> | void>();
+            const fakeApp: any = {};
+            for (const verb of ['get', 'put', 'post']) fakeApp[verb] = (p: string, h: any) => aclRoutes.set(`${verb.toUpperCase()} ${p}`, h);
+            new AclRouteHandler(kennelsController, nodesController, this.fakeAuthPrisma(['UL1', 'UL2'])).registerRoutes(fakeApp);
+            const acl = async (route: string, ctx: AuthCtx, body: any = {}) => {
+                const { res, out } = this.fakeResponse();
+                await aclRoutes.get(route)!({ params: { subpath: 'kennels', id: kennelId }, body, ctx }, res);
+                return out;
+            };
+            const tools = [...getKennelTools(), ...getAclTools()];
+            const tool = (name: string, args: Record<string, any>, ctx: AuthCtx) =>
+                tools.find((t) => t.name === name)!.handler(args, ctx, { kennelsController, nodesController } as any);
+            const locked = (label: string, out: { statusCode: number; body: any }) => {
+                if (out.statusCode !== 403 || out.body?.error !== 'locked_landing' || out.body?.error_description !== LandingKennels.LOCK_MESSAGE) {
+                    throw new Error(`${label}: ${out.statusCode} ${JSON.stringify(out.body)}`);
+                }
+            };
+            const lockedTool = async (label: string, result: Promise<{ isError?: boolean; content: Array<{ text: string }> }>) => {
+                const r = await result;
+                if (!r.isError || !r.content[0].text.startsWith('locked_landing')) throw new Error(`${label}: ${r.content[0].text}`);
+            };
+
+            await StartupTest.withLandingEnv(`other-landing, ${kennelId}`, undefined, async () => {
+                const head: any = (await kennelsController.getById(kennelId)).data;
+                for (const ctx of [owner, superUser]) {
+                    const rights = rightsOf(head, ctx);
+                    if (rights.edit || rights.own || rights.locked !== 'landing' || !rights.read || !rights.run) throw new Error(`myRights: ${JSON.stringify(rights)}`);
+                    locked('PUT', await this.callHandler(handler, 'handleUpdate', { params: { subpath: 'kennels', id: kennelId }, body: { name: 'x' }, ctx, method: 'PUT' }));
+                    locked('rename', await this.callHandler(handler, 'handleRename', { params: { subpath: 'kennels', id: kennelId }, body: { displayName: 'x' }, ctx }));
+                    locked('DELETE', await this.callHandler(handler, 'handleDelete', { params: { subpath: 'kennels', id: kennelId }, ctx, method: 'DELETE' }));
+                    locked('PUT /acl', await acl('PUT /api/:subpath/:id/acl', ctx, { runners: [] }));
+                    locked('freeze', await acl('POST /api/:subpath/:id/freeze', ctx));
+                    await lockedTool('update_kennel', tool('update_kennel', { id: kennelId, name: 'x' }, ctx));
+                    await lockedTool('delete_kennel', tool('delete_kennel', { id: kennelId }, ctx));
+                    await lockedTool('freeze_entity', tool('freeze_entity', { entity_type: 'kennel', id: kennelId }, ctx));
+                }
+                const stranger = await this.callHandler(handler, 'handleUpdate', { params: { subpath: 'kennels', id: kennelId }, body: { name: 'x' }, ctx: this.fakeUser('UL2'), method: 'PUT' });
+                locked('PUT Fremder', stranger);
+                if (isLandingLocked({ lineageId: LandingPage.DEFAULT_KENNEL_ID, dogIds: [] } as any)) throw new Error('Seed-Default gesperrt, ohne gelistet zu sein');
+                if (isLandingLocked({ lineageId: kennelId, theRun: 'return 1;' } as any)) throw new Error('ein Dog gilt als Landing-Kennel');
+                const after: any = (await kennelsController.getById(kennelId)).data;
+                if (after?.name !== 'Landing lock' || isFrozen(after)) throw new Error(`Kennel veraendert: ${after?.name}, frozen ${after?.frozen}`);
+            });
+
+            const freed = await this.callHandler(handler, 'handleUpdate', { params: { subpath: 'kennels', id: kennelId }, body: { name: 'frei' }, ctx: owner, method: 'PUT' });
+            if (freed.statusCode !== 200) throw new Error(`nicht mehr gelistet, trotzdem gesperrt: ${freed.statusCode} ${JSON.stringify(freed.body)}`);
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { await kennelsController.delete(kennelId); } catch { /* ignore */ }
         }
     }
 

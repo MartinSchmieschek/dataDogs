@@ -16,6 +16,7 @@ const STATUS_OF: Record<AclError['code'], number> = {
     not_found: 404,
     forbidden: 403,
     frozen: 409,
+    locked_landing: 403,
     invalid_user: 400,
     invalid_visibility: 400,
     failed: 500,

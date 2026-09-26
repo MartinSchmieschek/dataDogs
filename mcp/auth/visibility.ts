@@ -14,6 +14,8 @@
 //   runners[]       additional users who may run/reference, not read (RUN)
 //   visibility      "public" | "run-only" | "private" | null
 //   frozen          true → no mutation for anyone (owner included) until unfreeze; runs, reads, copies go on
+//   landing         kennel listed in env LANDING_KENNEL_IDS → like frozen, and no ACL change either, for as
+//                   long as it is listed (derived from the env, not stored; myRights.locked = 'landing')
 //
 // Implicit rules
 //   ownerId = null              → community: any logged-in user reads + mutates; OWN only super-user
@@ -24,6 +26,7 @@
 //   mutations                   → only owner + editors + super-user (+ community for null-owner)
 
 import type { AuthCtx } from './middleware';
+import { LandingKennels } from './landingKennels';
 
 export type Visibility = 'public' | 'run-only' | 'private';
 
@@ -62,6 +65,9 @@ export function aclOf(row: any): AclEntity {
     return acl as AclEntity;
 }
 
+/** Warum niemand eine Entitaet aendern darf: Landing-Kennel (Env) vor frozen (Owner taut auf). */
+export type LockReason = 'landing' | 'frozen';
+
 /** Rechte eines Aufrufers an einer Entitaet — fuer UI-Chips und Agenten (`myRights`). */
 export interface MyRights {
     run: boolean;
@@ -69,6 +75,8 @@ export interface MyRights {
     edit: boolean;
     own: boolean;
     frozen: boolean;
+    /** Gesperrt fuer alle, mit Grund — `landing` kann niemand aufheben, solange die Env ihn listet. */
+    locked: LockReason | null;
 }
 
 /** Parse a comma-separated User-ID list (DB column) or pass through an array. */
@@ -163,6 +171,25 @@ export function isFrozen(k: AclEntity | null | undefined): boolean {
     return !!k && Boolean(k.frozen);
 }
 
+/** Dog-Typen: ein Dog ist nie ein Landing-Kennel, auch wenn seine lineageId zufaellig in der Liste stuende. */
+const DOG_TYPES = ['SerializedDog', 'MimicDog', 'BaseDog'];
+
+/**
+ * Landing-Kennel (Env LANDING_KENNEL_IDS): schreibgeschuetzt fuer alle, solange er dort steht — Owner und
+ * Super-User eingeschlossen, auch keine ACL-Aenderung. Laeufe, Sterne, Lesen, Kopieren bleiben.
+ */
+export function isLandingLocked(k: (AclEntity & Record<string, any>) | null | undefined): boolean {
+    if (!k) return false;
+    if (DOG_TYPES.includes(k.type) || k.theRun !== undefined || k.parentsRequired !== undefined) return false;
+    return LandingKennels.includes(k.lineageId || k.id);
+}
+
+/** Der Sperrgrund einer Entitaet oder null. */
+export function lockOf(k: AclEntity | null | undefined): LockReason | null {
+    if (isLandingLocked(k as any)) return 'landing';
+    return isFrozen(k) ? 'frozen' : null;
+}
+
 /**
  * Can the requester create/update/delete this entity? For nodes that may also be
  * editable by kennel-owners-using-them, use {@link permissions.canMutateNode} which
@@ -172,7 +199,7 @@ export function isFrozen(k: AclEntity | null | undefined): boolean {
  * {@link canManageAcl} unfreezes it (8.25 a).
  */
 export function canMutate(k: AclEntity | null, ctx: AuthCtx | undefined): boolean {
-    if (isFrozen(k)) return false;
+    if (lockOf(k)) return false;
     if (ctx?.isSuperUser) return true;
     if (!ctx?.user) return false;
     if (!k) return true; // create: any logged-in user may create new
@@ -189,6 +216,7 @@ export function canMutate(k: AclEntity | null, ctx: AuthCtx | undefined): boolea
  * right is the super-user's (8.16): logged-in users keep editing it, but nobody claims it.
  */
 export function canManageAcl(k: AclEntity, ctx: AuthCtx | undefined): boolean {
+    if (isLandingLocked(k as any)) return false;
     if (ctx?.isSuperUser) return true;
     if (!ctx?.user) return false;
     if (isCommunityOwned(k)) return false;
@@ -211,6 +239,7 @@ export function rightsOf(k: AclEntity, ctx: AuthCtx | undefined): MyRights {
         edit: canMutate(k, ctx),
         own: canManageAcl(k, ctx),
         frozen: isFrozen(k),
+        locked: lockOf(k),
     };
 }
 

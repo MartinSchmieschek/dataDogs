@@ -5,7 +5,8 @@
 // Permission model (Rechte v2, NONE < RUN < READ < EDIT < OWN): only the entity's owner (or
 // super-user) may manage its ACL (canManageAcl). Community-owned entities (ownerId=null) stay
 // editable for every logged-in user, but nobody claims them — their OWN right is the super-user's
-// (8.16). A frozen entity takes no ACL change either; only unfreeze passes (8.25 a).
+// (8.16). A frozen entity takes no ACL change either; only unfreeze passes (8.25 a). A landing kennel
+// (env LANDING_KENNEL_IDS) takes none at all, not even freeze/unfreeze — 403 locked_landing.
 
 import type { PrismaClient } from '../../store/generated/prisma-auth-client';
 import type { AuthCtx } from '../auth/middleware';
@@ -14,6 +15,7 @@ import {
     canMutate,
     canRead,
     isFrozen,
+    isLandingLocked,
     normalizeVisibility,
     parseList,
     serializeList,
@@ -23,6 +25,7 @@ import {
     type Visibility,
 } from '../auth/visibility';
 import { type ToolDef, type ToolDeps, ok, fail } from './types';
+import { LandingKennels } from '../auth/landingKennels';
 
 export type EntityType = 'kennel' | 'node';
 /** `reader` is the UI/MCP name of the `viewers[]` column (W18). */
@@ -60,7 +63,7 @@ const LIST_COLUMN: Record<ListRole, 'editors' | 'viewers' | 'runners'> = {
 /** Ein Fehler des AclManagers — die Tuer (MCP oder REST) uebersetzt ihn in ihre Sprache. */
 export class AclError extends Error {
     constructor(
-        readonly code: 'not_found' | 'forbidden' | 'frozen' | 'invalid_user' | 'invalid_visibility' | 'failed',
+        readonly code: 'not_found' | 'forbidden' | 'frozen' | 'locked_landing' | 'invalid_user' | 'invalid_visibility' | 'failed',
         message: string,
     ) {
         super(message);
@@ -104,6 +107,7 @@ export class AclManager {
     async loadManaged(entityType: EntityType, id: string, ctx: AuthCtx | undefined, allowFrozen = false): Promise<any> {
         const entity = await this.load(entityType, id);
         if (!entity) throw new AclError('not_found', `${entityType} ${id} not found`);
+        AclManager.refuseLandingLocked(entity, ctx);
         if (!canManageAcl(entity, ctx)) {
             throw canMutate(entity, ctx) || canRead(entity, ctx)
                 ? new AclError('forbidden', 'Only the owner may manage access')
@@ -113,6 +117,13 @@ export class AclManager {
             throw new AclError('frozen', `${entityType} ${id} is frozen — unfreeze it first`);
         }
         return entity;
+    }
+
+    /** Ein Landing-Kennel (LANDING_KENNEL_IDS) nimmt keine Rechte-Aenderung an — Lesern sagt 403, warum. */
+    private static refuseLandingLocked(entity: any, ctx: AuthCtx | undefined): void {
+        if (isLandingLocked(entity) && canRead(entity, ctx)) {
+            throw new AclError('locked_landing', LandingKennels.LOCK_MESSAGE);
+        }
     }
 
     /** Loest ids zu Personen auf (view()); unbekannte kommen mit email/name = null zurueck. */
@@ -230,6 +241,7 @@ export class AclManager {
     async release(entityType: EntityType, id: string, ctx: AuthCtx | undefined) {
         const entity = await this.load(entityType, id);
         if (!entity) throw new AclError('not_found', `${entityType} ${id} not found`);
+        AclManager.refuseLandingLocked(entity, ctx);
         if (entity.ownerId == null) return { entity_type: entityType, id, action: 'already_community' };
         if (!ctx?.isSuperUser && entity.ownerId !== ctx?.user?.id) {
             throw new AclError('forbidden', 'Only the current owner may release ownership');
@@ -281,7 +293,8 @@ async function asTool(run: () => Promise<unknown>) {
     try {
         return ok(await run());
     } catch (err: any) {
-        return fail(err instanceof AclError ? err.message : err?.message ?? String(err));
+        if (err instanceof AclError) return fail(err.code === 'locked_landing' ? `${err.code}: ${err.message}` : err.message);
+        return fail(err?.message ?? String(err));
     }
 }
 

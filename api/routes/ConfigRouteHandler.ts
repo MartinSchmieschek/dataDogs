@@ -9,12 +9,14 @@ import {
     canRead,
     canMutate,
     isFrozen,
+    isLandingLocked,
     normalizeVisibility,
     filterRunnable,
     applyCreateDefaults,
     runView,
     withMyRights,
 } from '../../mcp/auth/visibility';
+import { LandingKennels } from '../../mcp/auth/landingKennels';
 import { canMutateNode } from '../../mcp/auth/permissions';
 import { IStore } from '../../store/IStore';
 import { paramString } from '../utils/routeParams';
@@ -137,12 +139,20 @@ export class ConfigRouteHandler {
         });
     }
 
-    /** Die Antwort auf eine verweigerte Mutation: 404 fuer Nicht-Leser, sonst 403 bzw. 409 (frozen). */
+    /** 403 locked_landing fuer einen Kennel aus LANDING_KENNEL_IDS — true, wenn geantwortet wurde. */
+    private static sendLandingLocked(res: Response, entity: any): boolean {
+        if (!isLandingLocked(entity)) return false;
+        res.status(403).json({ error: LandingKennels.LOCK_CODE, error_description: LandingKennels.LOCK_MESSAGE });
+        return true;
+    }
+
+    /** Die Antwort auf eine verweigerte Mutation: 404 fuer Nicht-Leser, sonst 403 (auch locked_landing) bzw. 409 (frozen). */
     private static sendMutationRefused(res: Response, entity: any, req: Request, id: string, notAllowed: string): void {
         if (!canRead(entity, req.ctx)) {
             res.status(404).json({ error: `Entity mit ID ${id} nicht gefunden` });
             return;
         }
+        if (ConfigRouteHandler.sendLandingLocked(res, entity)) return;
         if (isFrozen(entity)) {
             res.status(409).json({ error: 'frozen', error_description: 'Frozen. Unfreeze it first.' });
             return;
@@ -549,6 +559,7 @@ export class ConfigRouteHandler {
             res.status(404).json({ error: 'not_found' });
             return;
         }
+        if (ConfigRouteHandler.sendLandingLocked(res, entity)) return;
         if (isFrozen(entity)) {
             res.status(409).json({ error: 'frozen', error_description: 'Frozen. Unfreeze it first.' });
             return;
@@ -584,11 +595,9 @@ export class ConfigRouteHandler {
             }
             const allowed = await this.canMutateForSubpath(subpath, existing.data, req);
             if (!allowed) {
-                res.status(canRead(existing.data, req.ctx) ? 403 : 404).json({
-                    error: canRead(existing.data, req.ctx)
-                        ? `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} umzubenennen`
-                        : `Entity mit ID ${id} nicht gefunden`,
-                });
+                ConfigRouteHandler.sendMutationRefused(
+                    res, existing.data, req, id, `Nicht berechtigt, diese ${subpath === 'kennels' ? 'Kennel' : 'Node'} umzubenennen`,
+                );
                 return;
             }
 

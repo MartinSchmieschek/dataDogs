@@ -44,6 +44,13 @@ export interface IMyRights {
   edit: boolean;
   own: boolean;
   frozen: boolean;
+  /**
+   * Server-side write lock beyond `frozen`. `'landing'`: the kennel is listed in the server's
+   * LANDING_KENNEL_IDS — `edit`/`own` are false for everyone including owner and superuser, but
+   * runs, ratings, reads and copies stay open. `'frozen'` mirrors the `frozen` flag. `null`/missing:
+   * unlocked (or a server before this field existed).
+   */
+  locked?: 'landing' | 'frozen' | null;
 }
 
 /**

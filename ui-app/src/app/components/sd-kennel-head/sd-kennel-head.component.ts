@@ -22,6 +22,12 @@ export interface KennelHeadRights {
 export const FROZEN_TITLE = 'Frozen. Unfreeze in settings.';
 
 /**
+ * Landing lock (P5, server `LANDING_KENNEL_IDS`): the same visible-but-disabled treatment as
+ * frozen, but with no unfreeze offer — nobody mutates a landing kennel, not even the owner.
+ */
+export const LANDING_LOCK_TITLE = 'Locked: this kennel is a landing page (LANDING_KENNEL_IDS).';
+
+/**
  * The kennel head (6.4 S2, 6.5 `sd-kennel-head`): the chapter card of the kennel page. Row one: `‹ kennels`,
  * the kicker and the state chips (`● live · 1.8 s`, `frozen`, `run only`, `read only`, an old version).
  * Row two: emoji and the name in Bebas — the one place the kennel name is a title — then the public URL
@@ -44,6 +50,8 @@ export class SdKennelHeadComponent {
   readonly stats = input<IKennelStats | undefined>(undefined);
   readonly rights = input<KennelHeadRights>({ read: true, edit: true, own: true });
   readonly frozen = input(false);
+  /** Landing lock (P5): like frozen for the controls, but its own chip and no unfreeze offer. */
+  readonly landingLocked = input(false);
   readonly dogCount = input<number | null>(null);
   readonly waveCount = input<number | null>(null);
   readonly runState = input<KennelRunState>('idle');
@@ -61,9 +69,12 @@ export class SdKennelHeadComponent {
 
   readonly menuOpen = signal(false);
   readonly frozenTitle = FROZEN_TITLE;
+  readonly landingLockTitle = LANDING_LOCK_TITLE;
 
   readonly runOnly = computed(() => !this.rights().read);
-  readonly readOnly = computed(() => this.rights().read && !this.rights().edit && !this.frozen());
+  /** Landing behaves like frozen here — locked, not "read only". */
+  readonly readOnly = computed(() =>
+    this.rights().read && !this.rights().edit && !this.frozen() && !this.landingLocked());
   readonly name = computed(() => this.kennel()?.name || this.kennel()?.lineageId || this.kennelId());
   readonly emoji = computed(() => this.kennel()?.emoji?.trim() || '🐕');
   readonly publicPath = computed(() => {
@@ -89,8 +100,15 @@ export class SdKennelHeadComponent {
     if (ms === null) return '';
     return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
   });
-  /** The palette needs edit rights; frozen keeps it visible but locked. */
-  readonly paletteHidden = computed(() => this.runOnly() || (!this.rights().edit && !this.frozen()));
+  /** The palette needs edit rights; frozen and landing keep it visible but locked. */
+  readonly paletteHidden = computed(() =>
+    this.runOnly() || (!this.rights().edit && !this.frozen() && !this.landingLocked()));
+  /** Landing wins the title if both apply (unfreezing would not help); then frozen, then the normal hint. */
+  readonly paletteTitle = computed(() => {
+    if (this.landingLocked()) return this.landingLockTitle;
+    if (this.frozen()) return this.frozenTitle;
+    return 'Add dogs from the palette';
+  });
 
   toggleMenu(event: Event): void {
     event.stopPropagation();

@@ -19,6 +19,7 @@ import {
   type SettingsRights,
 } from '../../utils/kennel-settings';
 import { ConfirmService, LEAVE_UNSAVED } from '../../services/confirm.service';
+import { LANDING_LOCK_TITLE } from '../sd-kennel-head/sd-kennel-head.component';
 import { SdDrawerComponent } from '../sd-drawer/sd-drawer.component';
 import { SdBannerComponent } from '../sd-banner/sd-banner.component';
 import { SdAccessPanelComponent } from '../sd-access-panel/sd-access-panel.component';
@@ -56,6 +57,8 @@ export class SdKennelSettingsComponent {
   readonly kennelId = input.required<string>();
   readonly rights = input<SettingsRights | null>(null);
   readonly frozen = input(false);
+  /** Landing lock (P5, LANDING_KENNEL_IDS): read-only like frozen, but no unfreeze offer in this drawer. */
+  readonly landingLocked = input(false);
   /** The dogs of the last run — names and icons for the order list. */
   readonly dogs = input<DogEntry[]>([]);
   /** `v12 · 2026-09-20` of the newest version, `null` without versions. */
@@ -71,6 +74,7 @@ export class SdKennelSettingsComponent {
   readonly deleteRequested = output<void>();
 
   readonly presets = KENNEL_EMOJI_PRESETS;
+  readonly landingLockTitle = LANDING_LOCK_TITLE;
 
   readonly name = signal('');
   readonly description = signal('');
@@ -83,7 +87,7 @@ export class SdKennelSettingsComponent {
   readonly error = signal<string | null>(null);
   readonly unfreezing = signal(false);
 
-  readonly view = computed(() => settingsView(this.rights(), this.frozen()));
+  readonly view = computed(() => settingsView(this.rights(), this.frozen(), this.landingLocked()));
   readonly editable = computed(() => this.view() === 'edit');
   readonly own = computed(() => !!this.rights()?.own);
   readonly lineage = computed(() => this.kennel()?.lineageId || this.kennelId());
