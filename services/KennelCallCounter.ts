@@ -168,10 +168,11 @@ export class KennelCallCounter {
         const out = new Map<string, PendingDogAggregate>();
         for (const d of this.pendingDogs.values()) {
             const agg = out.get(d.dogKey) ?? {
-                total: 0, last30d: 0, ranked30d: 0, failures30d: 0, cached30d: 0,
+                total: 0, last30d: 0, ranked30d: 0, failures: 0, failures30d: 0, cached30d: 0,
                 durationMsSum30d: 0, count30d: 0, durationMsMax30d: 0, kennels: new Set<string>(),
             };
             agg.total += d.count;
+            agg.failures += d.errors + d.timeouts + d.oom;
             if (d.day >= sinceDay) {
                 agg.last30d += d.count;
                 agg.count30d += d.count;

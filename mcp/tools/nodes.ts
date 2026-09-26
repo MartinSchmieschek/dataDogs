@@ -16,7 +16,7 @@ import {
     VISIBILITIES,
 } from '../auth/visibility';
 import { canMutateNode } from '../auth/permissions';
-import { ListQuery } from '../../api/routes/ListQuery';
+import { ListQuery, USAGE_FILTERS, USAGE_FILTER_HELP } from '../../api/routes/ListQuery';
 import { type ToolDef, ok, fail, resolveTsCode, codeHinweise } from './types';
 import { checkSerializedDogCode, sanitizeLineDocs, selectLineDocs, sliceDogCodeLines } from '@slopdogs/core';
 
@@ -47,7 +47,7 @@ export function getNodeTools(): ToolDef[] {
         {
             name: 'list_nodes',
             description:
-                'Lists nodes visible to the current user — the discovery surface: start here to find out what exists. Returns a paged window with metadata only (no tsCode), including each entry\'s `description` and its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax build_kennel expects). Hunters (BaseDogs), Pacts and Breeds (SerializedDogs/MimicDogs) share the same listing; Pacts are flagged `isPact: true` and carry `pactTypeDef` when they declare a shape — a Pact is a contract, fulfil it with a MimicDog (dogs[].imitates) or a providing dog, never call it directly. Default limit=50, cap=200. Filter via type, search by name/displayName/description substring (case-insensitive). Run-only dogs (you may run them, not read them) are listed too, with `tsCodePreview: null`; use their `id` (a version GUID) to reference them in a kennel. Prefer proven dogs: sort:\'proven\' lists battle-tested dogs first (usage x reliability x reuse x kennel stars) — reuse them instead of rebuilding; every node carries `stats` {calls {total, last30d, ranked30d, failures30d, cached30d, avgDurationMs, maxDurationMs, kennelsRun30d}, reuse {kennelsDirect, kennelsTransitive, kennelsForeign, owners, dependents}, proven {score, badge, reliability}}. Reused dogs change: a lineageId runs the newest version (which may be the better one); the old version stays — pin its version GUID (get_node_versions) or copy it. Every Hunter (BaseDog) also carries `pack` (the package it comes from, e.g. `dogs-weather`; `core` for built-ins) — the same value GET /api/nodes returns.',
+                'Lists nodes visible to the current user — the discovery surface: start here to find out what exists. Returns a paged window with metadata only (no tsCode), including each entry\'s `description` and its wiring contract `parentsRequired` / `parentsOptional` (bare class names, exactly the syntax build_kennel expects). Hunters (BaseDogs), Pacts and Breeds (SerializedDogs/MimicDogs) share the same listing; Pacts are flagged `isPact: true` and carry `pactTypeDef` when they declare a shape — a Pact is a contract, fulfil it with a MimicDog (dogs[].imitates) or a providing dog, never call it directly. Default limit=50, cap=200. Filter via type, search by name/displayName/description substring (case-insensitive). Run-only dogs (you may run them, not read them) are listed too, with `tsCodePreview: null`; use their `id` (a version GUID) to reference them in a kennel. Prefer proven dogs: sort:\'proven\' lists battle-tested dogs first (usage x reliability x reuse x kennel stars) — reuse them instead of rebuilding; every node carries `stats` {calls {total, last30d, ranked30d, failures, failures30d, cached30d, avgDurationMs, maxDurationMs, kennelsRun30d}, reuse {kennelsDirect, kennelsTransitive, kennelsForeign, owners, dependents}, proven {score, badge, reliability}} — failures = runs that ended in error, timeout or oom (all days), failures30d the same in the last 30 days. Find dogs by how they run with `usage` ("top", "never_used", "never_worked", "failing", "dormant"), `minReliability` (0..1) and `sort: "failures30d"` — e.g. `{search: "geocode", usage: "top"}` or `{usage: "failing", sort: "failures30d", dir: "desc"}`. Reused dogs change: a lineageId runs the newest version (which may be the better one); the old version stays — pin its version GUID (get_node_versions) or copy it. Every Hunter (BaseDog) also carries `pack` (the package it comes from, e.g. `dogs-weather`; `core` for built-ins) — the same value GET /api/nodes returns.',
             inputSchema: {
                 type: 'object',
                 additionalProperties: false,
@@ -61,12 +61,19 @@ export function getNodeTools(): ToolDef[] {
                     },
                     search: {
                         type: 'string',
-                        description: 'case-insensitive substring match on name and displayName',
+                        description: 'case-insensitive substring match on name, displayName and description',
                     },
                     sort: {
                         type: 'string',
-                        enum: ['name', 'updatedAt', 'proven', 'calls30d', 'reuse'],
-                        description: 'proven = battle-tested first (usage x reliability x reuse x kennel stars). Prefer proven dogs over building new ones.',
+                        enum: ['name', 'updatedAt', 'proven', 'calls30d', 'reuse', 'failures30d'],
+                        description: 'proven = battle-tested first (usage x reliability x reuse x kennel stars). Prefer proven dogs over building new ones. failures30d = runs that ended in error/timeout/oom in the last 30 days (with dir desc: the most broken first).',
+                    },
+                    usage: { type: 'string', enum: [...USAGE_FILTERS], description: USAGE_FILTER_HELP },
+                    minReliability: {
+                        type: 'number',
+                        minimum: 0,
+                        maximum: 1,
+                        description: 'keep dogs whose stats.proven.reliability >= minReliability (1 - failures30d / runs30d; a dog with fewer than 5 runs in 30 days counts as 0.7, unproven)',
                     },
                     dir: { type: 'string', enum: ['asc', 'desc'] },
                     provenOnly: {
@@ -163,9 +170,16 @@ export function getNodeTools(): ToolDef[] {
                 // P4b: jeder Eintrag traegt `stats` (Laeufe, Wiederverwendung, Bewaehrt). Sortiert wird nur
                 // auf Wunsch — ohne sort/provenOnly bleibt die bisherige Reihenfolge (Base-Dogs zuerst).
                 await deps.dogStats.attach(matching as any[]);
-                const wantsOrder = typeof args.sort === 'string' || args.provenOnly === true;
+                const wantsOrder = typeof args.sort === 'string' || args.provenOnly === true
+                    || typeof args.usage === 'string' || typeof args.minReliability === 'number';
                 const filtered = wantsOrder
-                    ? ListQuery.from({ sort: args.sort, dir: args.dir, proven: args.provenOnly === true ? '1' : undefined }).apply(matching, ctx).data
+                    ? ListQuery.from({
+                        sort: args.sort,
+                        dir: args.dir,
+                        proven: args.provenOnly === true ? '1' : undefined,
+                        usage: args.usage,
+                        minReliability: args.minReliability,
+                    }).apply(matching, ctx).data
                     : matching;
 
                 const total = filtered.length;

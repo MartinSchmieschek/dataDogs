@@ -3,6 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map, shareReplay, tap } from 'rxjs/operators';
 import { DogInfo, IDogUsage } from '../models/dog.model';
+import type { UsageFilter } from './kennel.service';
 
 const CATALOG_TTL_MS = 60_000;
 
@@ -47,10 +48,16 @@ export class DogService {
    * The list without code (`lean=1`, P6 U5): base dogs and dogs in one list, sorted by the server
    * (`proven` = list_nodes' order, 8.26). With `kennelId` only what the kennel does not hold yet.
    */
-  getCatalog(query: { sort?: string; dir?: 'asc' | 'desc'; kennelId?: string } = {}): Observable<ApiResponse<DogInfo[]>> {
+  getCatalog(
+    query: { sort?: string; dir?: 'asc' | 'desc'; kennelId?: string; q?: string; usage?: UsageFilter; minReliability?: number } = {},
+  ): Observable<ApiResponse<DogInfo[]>> {
     let params = new HttpParams().set('lean', '1');
     if (query.sort) params = params.set('sort', query.sort);
     if (query.dir) params = params.set('dir', query.dir);
+    if (query.q) params = params.set('q', query.q);
+    // Aufruf-Filter wie list_nodes (top | never_used | never_worked | failing | dormant) und Zuverlaessigkeit 0..1.
+    if (query.usage) params = params.set('usage', query.usage);
+    if (query.minReliability !== undefined) params = params.set('minReliability', String(query.minReliability));
     if (query.kennelId) params = params.set('kennelId', query.kennelId);
     return this.http.get<ApiResponse<DogInfo[]>>(this.baseUrl, { params });
   }

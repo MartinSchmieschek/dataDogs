@@ -716,6 +716,33 @@ async function run() {
     fail('P4b stats', e.message);
   }
 
+  // Feature-Runde: Aufruf-Filter (usage) fuer Dogs — ein Dog des oben gerufenen KENNEL_ID steht unter top,
+  // nie unter never_used; failing traegt nur Dogs mit failures30d > 0; GET /api/nodes liest dieselben Parameter.
+  try {
+    const schema = await mcpCall('describe_tool', { name: 'list_nodes' });
+    const props = schema?.inputSchema?.properties || {};
+    const kennel = await mcpCall('get_kennel', { id: KENNEL_ID });
+    const crew = new Set(Array.isArray(kennel?.dogIds) ? kennel.dogIds : []);
+    const top = await mcpCall('list_nodes', { usage: 'top', limit: 200 });
+    const ran = (top?.nodes || []).find((n) => crew.has(n.id) || crew.has(n.lineageId) || crew.has(`base:${n.name}`));
+    const never = ran ? await mcpCall('list_nodes', { usage: 'never_used', search: ran.displayName || ran.name, limit: 200 }) : null;
+    const failing = await mcpCall('list_nodes', { usage: 'failing', sort: 'failures30d', dir: 'desc', limit: 10 });
+    const failingOk = (failing?.nodes || []).every((n) => (n.stats?.calls?.failures30d ?? 0) > 0);
+    if ((props.usage?.enum || []).join() !== 'top,never_used,never_worked,failing,dormant' || !props.minReliability) fail('list_nodes usage', 'schema without usage/minReliability');
+    else if (!ran) fail('list_nodes usage', `no dog of ${KENNEL_ID} under usage=top (${top?.total} dogs)`);
+    else if ((never?.nodes || []).some((n) => n.id === ran.id)) fail('list_nodes usage', `${ran.id} listed as never_used`);
+    else if (!failingOk || typeof ran.stats?.calls?.failures !== 'number') fail('list_nodes usage', `failing ${JSON.stringify(failing).slice(0, 160)}`);
+    else pass('list_nodes usage', `${ran.displayName || ran.name} in top (${top.total}), failing ${failing.total}`);
+
+    const rest = await httpGet('/api/nodes?lean=1&usage=top&limit=5');
+    const body = JSON.parse(rest.raw || '{}');
+    const restOk = Array.isArray(body.data) && body.data.length > 0 && body.data.every((n) => (n.stats?.calls?.total ?? 0) > 0);
+    if (rest.status !== 200 || !restOk) fail('GET /api/nodes usage', `HTTP ${rest.status}, ${JSON.stringify(body).slice(0, 160)}`);
+    else pass('GET /api/nodes usage', `top ${body.data.length}/${body.total}`);
+  } catch (e) {
+    fail('usage filter (dogs)', e.message);
+  }
+
   // P4b: die Landing traegt provenDogs (Array, ggf. leer — das Abzeichen braucht >= 5 Laeufe).
   try {
     const landing = await httpGet('/api/landing');

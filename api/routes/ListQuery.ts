@@ -7,7 +7,7 @@
 //
 // Order of operations is fixed and must not be reordered:
 //   ACL visibility (the caller applies it BEFORE handing the list in)
-//     -> mine -> q -> minStars -> minCalls -> proven -> usage -> sort -> offset/limit
+//     -> mine -> q -> minStars -> minCalls -> proven -> minReliability -> usage -> sort -> offset/limit
 // `total` counts after the filters, before the page is cut. Slicing earlier yields
 // wrong pages; counting before the ACL filter would leak how many private entries of
 // other users exist.
@@ -77,6 +77,8 @@ export class ListQuery {
         readonly usage: UsageFilter | null = null,
         /** Whether the caller named a valid `sort` — only then does `usage=top` give up its own order. */
         readonly sortGiven: boolean = false,
+        /** Dogs: keep those whose `stats.proven.reliability` (0..1) is >= this, or no filter. */
+        readonly minReliability: number | null = null,
     ) { }
 
     /**
@@ -97,6 +99,7 @@ export class ListQuery {
             ListQuery.parseFlag(q.proven),
             ListQuery.parseUsage(q.usage),
             ListQuery.SORT_FIELDS.includes(ListQuery.first(q.sort) as string),
+            ListQuery.parseMinReliability(q.minReliability),
         );
     }
 
@@ -105,14 +108,15 @@ export class ListQuery {
         return this.limit !== null;
     }
 
-    /** Apply mine -> q -> minStars -> minCalls -> proven -> usage -> sort -> page. The caller has already applied the ACL filter. */
+    /** Apply mine -> q -> minStars -> minCalls -> proven -> minReliability -> usage -> sort -> page. The caller has already applied the ACL filter. */
     apply<T>(items: T[], ctx: AuthCtx | undefined): IListPage<T> {
         const owned = this.mineOnly ? items.filter(item => ListQuery.isOwnedBy(item, ctx)) : items;
         const found = this.search ? owned.filter(item => this.matches(item)) : owned;
         const starred = this.minStars === null ? found : found.filter(item => (ListQuery.statsOf(item)?.rating?.avg ?? -1) >= this.minStars!);
         const called = this.minCalls === null ? starred : starred.filter(item => (ListQuery.statsOf(item)?.calls?.ranked ?? 0) >= this.minCalls!);
         const proven = this.provenOnly ? called.filter(item => ListQuery.statsOf(item)?.proven?.badge === true) : called;
-        const used = this.usage === null ? proven : proven.filter(item => ListQuery.matchesUsage(item, this.usage!));
+        const reliable = this.minReliability === null ? proven : proven.filter(item => (ListQuery.statsOf(item)?.proven?.reliability ?? -1) >= this.minReliability!);
+        const used = this.usage === null ? reliable : reliable.filter(item => ListQuery.matchesUsage(item, this.usage!));
         const ordered = this.usage === 'top' && !this.sortGiven ? ListQuery.byCalls(used) : this.ordered(used);
 
         if (this.limit === null) {
@@ -212,7 +216,7 @@ export class ListQuery {
             leadFailed?: number; leadFailed30d?: number; failures?: number; failures30d?: number;
         };
         rating?: { avg?: number | null; score?: number };
-        proven?: { score?: number; badge?: boolean };
+        proven?: { score?: number; badge?: boolean; reliability?: number };
         reuse?: { kennelsTransitive?: number };
     } | undefined {
         return (item as { stats?: any })?.stats;
@@ -268,6 +272,12 @@ export class ListQuery {
     private static parseMinStars(raw: unknown): number | null {
         const value = ListQuery.parseNumber(raw);
         return value !== null && value >= 1 && value <= 5 ? value : null;
+    }
+
+    /** 0..1 (1 - failures30d / runs30d; 0.7 below 5 runs, P4b 4b.6); anything else means no filter. */
+    private static parseMinReliability(raw: unknown): number | null {
+        const value = ListQuery.parseNumber(raw);
+        return value !== null && value >= 0 && value <= 1 ? value : null;
     }
 
     private static parseMinCalls(raw: unknown): number | null {

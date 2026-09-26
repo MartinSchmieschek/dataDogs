@@ -387,6 +387,9 @@ export class StartupTest {
             // Feature-Runde nach dem lokalen Test: Aufruf-Filter (usage) fuer Kennels
             await this.testListQueryUsageFiltersKennels();
             await this.testListKennelsUsageRespectsRights(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
+            // ... und fuer Dogs (Fehler-Tracking aus P4b: error/timeout/oom)
+            await this.testListQueryUsageFiltersDogs();
+            await this.testListNodesUsageRespectsRights(nodesStore, kennelsStore, nodesController, kennelsController as KennelController, baseDogsMap);
 
             // Tile-Feature-Cache: atomarer Geo-Store verifizieren
             await this.testTileFeatureCache();
@@ -5452,6 +5455,116 @@ export class StartupTest {
             for (const n of names) {
                 try { await kennelsController.delete(`${p}-${n}`); } catch { /* ignore */ }
             }
+        }
+    }
+
+    /**
+     * Feature-Runde 3 (10-0: "auch die dogs muessen ein failed tracking haben und suchbar sein"): ListQuery
+     * `usage` auf Dog-stats (failures = error + timeout + oom), minReliability, sort=failures30d, mit q.
+     */
+    private async testListQueryUsageFiltersDogs(): Promise<void> {
+        const testName = 'Feature-Runde 3: ListQuery usage, minReliability, failures30d auf Dogs';
+        try {
+            const dog = (id: string, displayName: string, total: number, last30d: number, failures: number, failures30d: number, reliability: number) => ({
+                id, displayName, stats: {
+                    calls: { total, last30d, ranked30d: last30d, failures, failures30d, cached30d: 0 },
+                    reuse: { kennelsTransitive: 1 }, proven: { score: 0, badge: false, reliability },
+                },
+            });
+            const items: any[] = [
+                dog('a', 'Geo Lookup', 20, 20, 1, 1, 0.95),   // bewaehrt, ein Fehler in 30 T
+                dog('b', 'Geo Broken', 4, 4, 4, 4, 0.7),      // jeder Lauf scheiterte (unter 5 Laeufen: 0,7)
+                dog('c', 'Fresh Dog', 0, 0, 0, 0, 0.7),       // nie gelaufen
+                dog('d', 'Old Geo', 12, 0, 3, 0, 0.7),        // lief, 30 T still
+                dog('e', 'Clean Dog', 30, 30, 0, 0, 1),       // lief, nie gescheitert
+            ];
+            const ids = (q: Record<string, unknown>) => ListQuery.from(q).apply(items, undefined).data.map((x: any) => x.id).join(',');
+            const expect = (label: string, got: string, want: string) => { if (got !== want) throw new Error(`${label}: ${got} statt ${want}`); };
+            expect('top', ids({ usage: 'top' }), 'e,a,d,b');
+            expect('never_used', ids({ usage: 'never_used' }), 'c');
+            expect('never_worked', ids({ usage: 'never_worked' }), 'b');
+            expect('failing', ids({ usage: 'failing', sort: 'failures30d', dir: 'desc' }), 'b,a');
+            expect('dormant', ids({ usage: 'dormant' }), 'd');
+            expect('q=geo + top', ids({ q: 'geo', usage: 'top' }), 'a,d,b');
+            expect('q=geo + failing', ids({ q: 'geo', usage: 'failing' }), 'b,a');
+            expect('minReliability=0.9', ids({ minReliability: 0.9, sort: 'name' }), 'e,a');
+            expect('minReliability + top', ids({ minReliability: '0.8', usage: 'top' }), 'e,a');
+            expect('minReliability kaputt = kein Filter', ids({ minReliability: 3 }), 'e,c,b,a,d');   // nach Name
+            expect('sort=failures30d desc', ids({ sort: 'failures30d', dir: 'desc' }), 'b,a,e,d,c');   // Gleichstand 0: id, umgekehrt
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Feature-Runde 3 ueber das Werkzeug: list_nodes {usage, minReliability, sort} auf echten Dog-Zaehlungen
+     * (recordDog, Uhr fuer dormant) — ein fremder privater Dog erscheint anonym nie, fuer den Owner schon;
+     * failures zaehlt error, timeout und oom; die Suche (Name/Beschreibung) kombiniert.
+     */
+    private async testListNodesUsageRespectsRights(
+        nodesStore: IStore,
+        kennelsStore: IStore,
+        nodesController: Controller<ISerializedDogConfig>,
+        kennelsController: KennelController,
+        baseDogsMap: Map<string, any>,
+    ): Promise<void> {
+        const testName = 'Feature-Runde 3: list_nodes usage nur ueber lesbaren Dogs';
+        const tag = `UsageDog${Date.now()}`;
+        try {
+            const mk = (n: string, visibility: Visibility = 'public') =>
+                this.saveAclTestDog(nodesStore, `${tag}${n}`, `return { ${n.toLowerCase()}: 1 };`, { visibility, ownerId: 'UD1' });
+            const dogs: Record<string, string> = {};
+            for (const n of ['Clean', 'Flaky', 'Broken', 'Old', 'Fresh']) dogs[n] = await mk(n);
+            dogs.Secret = await mk('Secret', 'private');
+            let clock = Date.now() - 40 * 86_400_000;
+            const counter = new KennelCallCounter(StartupTest.NO_STATS_STORE, { flushIntervalMs: 0, now: () => new Date(clock) });
+            const run = (n: string, outcome: 'ok' | 'error' | 'timeout' | 'oom') => counter.recordDog({
+                dogKey: dogs[n], kennelLineageId: '__usage_k', source: 'public', outcome, cached: false, cacheHits: 0, cacheMisses: 0, durationMs: 5,
+            });
+            run('Old', 'ok');
+            run('Old', 'error');
+            clock = Date.now();
+            for (let i = 0; i < 8; i++) run('Clean', 'ok');
+            for (let i = 0; i < 5; i++) run('Flaky', 'ok');
+            run('Flaky', 'timeout');
+            run('Broken', 'error');
+            run('Broken', 'timeout');
+            run('Broken', 'oom');
+            const runHandler = new KennelRunHandler({ kennelsController, nodesStore, baseDogsMap, callCounter: counter });
+            const deps = this.toolDeps(nodesStore, kennelsStore, nodesController, kennelsController, runHandler);
+            deps.dogStats = new DogStatsService(StartupTest.NO_DOG_STATS_STORE, counter, new KennelStatsService(StartupTest.NO_STATS_STORE, counter));
+            const anon: AuthCtx = { user: null, isSuperUser: false };
+            const owner = this.fakeUser('UD1');
+            const list = async (args: Record<string, unknown>, ctx: AuthCtx) => {
+                const r = await this.toolNamed('list_nodes').handler({ search: tag, ...args }, ctx, deps);
+                if (r.isError) throw new Error(`list_nodes ${JSON.stringify(args)}: ${r.content[0]?.text}`);
+                return JSON.parse(r.content[0].text).nodes as any[];
+            };
+            const names = (rows: any[]) => rows.map((n) => String(n.displayName).slice(tag.length)).join(',');
+            const expect = (label: string, got: string, want: string) => { if (got !== want) throw new Error(`${label}: ${got} statt ${want}`); };
+            expect('anon never_used', names(await list({ usage: 'never_used' }, anon)), 'Fresh');
+            expect('owner never_used', names(await list({ usage: 'never_used', sort: 'name' }, owner)), 'Fresh,Secret');
+            expect('top', names(await list({ usage: 'top' }, anon)), 'Clean,Flaky,Broken,Old');
+            expect('never_worked', names(await list({ usage: 'never_worked' }, anon)), 'Broken');
+            expect('failing', names(await list({ usage: 'failing', sort: 'failures30d', dir: 'desc' }, anon)), 'Broken,Flaky');
+            expect('dormant', names(await list({ usage: 'dormant' }, anon)), 'Old');
+            expect('minReliability 0.8', names(await list({ minReliability: 0.8, sort: 'name' }, anon)), 'Clean,Flaky');
+            expect('search + top', names(await list({ search: `${tag}Fl`, usage: 'top' }, anon)), 'Flaky');
+            const broken = (await list({ search: `${tag}Broken` }, anon))[0];
+            if (broken?.stats?.calls?.failures !== 3 || broken.stats.calls.failures30d !== 3 || broken.stats.calls.total !== 3) {
+                throw new Error(`stats Broken: ${JSON.stringify(broken?.stats?.calls)}`);
+            }
+            const old = (await list({ search: `${tag}Old` }, anon))[0];
+            if (old?.stats?.calls?.failures !== 1 || old.stats.calls.failures30d !== 0) throw new Error(`stats Old: ${JSON.stringify(old?.stats?.calls)}`);
+            const schema = this.toolNamed('list_nodes').inputSchema as any;
+            if (schema.properties.usage?.enum?.join() !== USAGE_FILTERS.join() || schema.properties.minReliability?.maximum !== 1
+                || !schema.properties.sort.enum.includes('failures30d')) {
+                throw new Error('list_nodes-Schema ohne usage/minReliability/failures30d');
+            }
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
         }
     }
 

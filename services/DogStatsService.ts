@@ -11,8 +11,9 @@ import type { AuthCtx } from '../mcp/auth/middleware';
 import { canRun } from '../mcp/auth/visibility';
 
 export interface DogStats {
+    /** failures = error + timeout + oom ueber alle Tage, failures30d dieselben im 30-Tage-Fenster (Fehler-Tracking P4b). */
     calls: {
-        total: number; last30d: number; ranked30d: number; failures30d: number; cached30d: number;
+        total: number; last30d: number; ranked30d: number; failures: number; failures30d: number; cached30d: number;
         avgDurationMs: number | null; maxDurationMs: number; kennelsRun30d: number;
     };
     reuse: { kennelsDirect: number; kennelsTransitive: number; kennelsForeign: number; owners: number; dependents: number };
@@ -72,7 +73,7 @@ interface DogStatsMemo {
 
 const DAY_MS = 86_400_000;
 const NO_CALLS: CallCounts = {
-    total: 0, last30d: 0, ranked30d: 0, failures30d: 0, cached30d: 0,
+    total: 0, last30d: 0, ranked30d: 0, failures: 0, failures30d: 0, cached30d: 0,
     durationMsSum30d: 0, count30d: 0, durationMsMax30d: 0, kennelsRun30d: 0,
 };
 
@@ -233,6 +234,7 @@ export class DogStatsService {
             total: stored.total + (extra?.total ?? 0),
             last30d: stored.last30d + (extra?.last30d ?? 0),
             ranked30d: stored.ranked30d + (extra?.ranked30d ?? 0),
+            failures: stored.failures + (extra?.failures ?? 0),
             failures30d: stored.failures30d + (extra?.failures30d ?? 0),
             cached30d: stored.cached30d + (extra?.cached30d ?? 0),
             avgDurationMs: count30d > 0 ? Math.round(durationSum / count30d) : null,

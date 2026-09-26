@@ -46,6 +46,7 @@ export interface DogCallDelta {
 export interface DogCallAggregate {
     dogKey: string;
     total: number; last30d: number; ranked30d: number;
+    failures: number;               // errors + timeouts + oom, alle Tage (Filter usage=never_worked)
     failures30d: number;            // errors + timeouts + oom, 30 d
     cached30d: number; durationMsSum30d: number; count30d: number; durationMsMax30d: number;
     kennelsRun30d: number;          // distinct kennelLineageId mit count > 0 in 30 d

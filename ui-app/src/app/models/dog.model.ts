@@ -8,6 +8,8 @@ export interface IDogStats {
     last30d: number;
     /** Nur echte Nutzung (public, execute) — die Zahl, nach der gerankt wird. */
     ranked30d: number;
+    /** error + timeout + oom ueber alle Tage (fehlt bei alten Servern). */
+    failures?: number;
     failures30d: number;
     cached30d: number;
     avgDurationMs: number | null;
