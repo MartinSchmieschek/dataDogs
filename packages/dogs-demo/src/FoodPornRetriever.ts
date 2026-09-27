@@ -74,7 +74,10 @@ export class FoodPornRetriever extends Dog<unknown>{
             let searchString = "q=" + searchText.join(" ")
 
             // Cast our net into the YouTube abyss -- may the eldritch API answer our call
-            let url = 'https://youtube.googleapis.com/youtube/v3/search?part=snippet&'+searchString+'&key=AIzaSyB2OmnQMXte5o0TKPkxbK_j26ZrI_Ny8PE'
+            // The key comes from the environment (YOUTUBE_API_KEY), never from the code.
+            const apiKey = process.env.YOUTUBE_API_KEY?.trim();
+            if (!apiKey) throw new Error('FoodPornRetriever: YOUTUBE_API_KEY not set. Create a YouTube Data API v3 key in the Google Cloud Console.');
+            let url = 'https://youtube.googleapis.com/youtube/v3/search?part=snippet&'+searchString+'&key='+encodeURIComponent(apiKey)
             const reciepResponse = await fetch(url)
 
             // Parse the response hauled from the deep -- to cosmic forms from tangent planes

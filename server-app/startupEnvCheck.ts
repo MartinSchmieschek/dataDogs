@@ -412,6 +412,10 @@ export const ENV_CATALOG: readonly EnvVarSpec[] = [
         purpose: 'eBird-Beobachtungen', defaultValue: '—', consequence: 'BirdRetriever steht nicht auf',
     },
     {
+        name: 'YOUTUBE_API_KEY', section: 'integrations', since: '2026-09-27',
+        purpose: 'YouTube Data API v3 fuer FoodPornRetriever', defaultValue: '—', consequence: 'FoodPornRetriever scheitert beim Lauf',
+    },
+    {
         name: 'COINGECKO_API_KEY', section: 'integrations', since: 'vor P1',
         purpose: 'CoinGecko-Demo-Key (hoeheres Limit)', defaultValue: '—', consequence: 'ohne Key, engeres Rate-Limit',
     },
