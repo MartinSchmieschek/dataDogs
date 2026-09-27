@@ -305,6 +305,32 @@ const SANDBOX_WORKER_SOURCE = `
     const net = require('net');
     const util = require('util');
 
+    // Sicherheit (Env-Scrub, letzte Garantie): die eigene process.env dieses Workers leeren, BEVOR
+    // irgendein Dog-Code laeuft. Node's vm ist kein Sicherheits-Sandkasten -- Dog-Code bricht aus dem
+    // VM-Kontext in diesen Worker-Realm aus (fetch.constructor.constructor("return process.env")()) und
+    // liest process.env. Der Worker wird beim Start bereits mit env: {} und execArgv: [] entkoppelt (siehe
+    // new Worker(...) im Parent); dieser Scrub ist die dritte Schicht und greift auch, falls doch einmal
+    // eine Variable hereinkommt. Der Worker liest selbst kein App-Env (worker_threads/vm/dns/net/util sind
+    // Built-ins); fetch faellt ohne Proxy-Env auf Direktverbindung -- die Egress-Blocklist unten bleibt
+    // davon unberuehrt.
+    for (const k of Object.keys(process.env)) { delete process.env[k]; }
+
+    // Sicherheit (Dateisystem/Prozess-Haertung): dem ausgebrochenen Dog den Rueckweg zu require kappen.
+    // Der Dog erreicht ueber den Realm-Ausbruch das process dieses Workers und holt sich sonst require
+    // zurueck -- ueber process.getBuiltinModule (Node >= 22), process.mainModule.require, process.binding,
+    // process._linkedBinding oder process.dlopen -- und daraus fs (inkl. Lesen von /proc/1/environ = die
+    // Server-Env als Datei) und child_process (gemessen: writeFileSync UND execSync liefen). Diese Felder
+    // werden neutralisiert; danach wird process eingefroren, damit sie nicht wiederhergestellt werden. Der
+    // Worker hat seine Built-ins oben bereits geladen und gecacht (worker_threads/vm/dns/net/util) und
+    // braucht danach kein require mehr; fetch/dns/net sind in Konsten gebunden.
+    // Ehrlich: das ist Haertung, keine echte Grenze. require('fs')/child_process sind damit zu, aber V8 hat
+    // weitere Primordials -- echte Isolation braucht isolated-vm / Prozess-Sandbox (Folgeauftrag, R30).
+    for (const mk of ['getBuiltinModule', 'binding', '_linkedBinding', 'dlopen', 'mainModule', '_preload_modules']) {
+        try { delete process[mk]; } catch (e) { /* non-configurable -- defineProperty faengt es */ }
+        try { Object.defineProperty(process, mk, { value: undefined, writable: false, configurable: false, enumerable: false }); } catch (e) { /* schon weg oder nicht ueberschreibbar */ }
+    }
+    try { Object.freeze(process); } catch (e) { /* nichts weiter zu tun */ }
+
     // Egress-Blocklist (8.9): der native fetch des Dogs erreicht keine privaten oder lokalen
     // Netze (Container, Postgres, Metadaten-Dienst). Blocklist, keine Allowlist -- jede
     // oeffentliche API bleibt erreichbar. Jede Umleitung wird vor dem naechsten Sprung geprueft.
@@ -1171,8 +1197,27 @@ export class SerializedDog<T> extends Dog<T> {
                 // mit ERR_WORKER_OUT_OF_MEMORY — der 'error'-Pfad unten uebersetzt das in eine
                 // Meldung, die den schuldigen Dog nennt.
                 const maxHeapMb = resolveDogWorkerMaxHeapMb();
+                // Sicherheit gegen Env-Exfiltration. Node's vm ist kein Sicherheits-Sandkasten: Dog-Code
+                // bricht aus dem VM-Kontext in den Worker-Realm aus (fetch.constructor.constructor(
+                // "return process.env")()) und liest process.env. Damit dort keine Server-Geheimnisse
+                // (DATABASE_URL, KEYSTORE_MASTER_KEY_V1, GOOGLE_OAUTH_CLIENT_SECRET, MCP_TOKEN_SIGNING_KEY)
+                // stehen, wird der Worker dreifach entkoppelt -- gemessen war jede Schicht fuer sich noetig:
+                //   - execArgv: [] -- ohne das erbt der Worker die -r-Preloads des Servers, u.a.
+                //     "-r ./scripts/load-env.cjs", und laedt die .env-Secrets SELBST erneut in seine env
+                //     (env: {} allein genuegt deshalb NICHT -- der Worker fuellt sich sonst wieder).
+                //   - env: {} -- ohne das erbt der Worker eine Kopie der Prozess-env des Servers.
+                //   - der Env-Scrub oben in SANDBOX_WORKER_SOURCE -- letzte Garantie: leert die eigene
+                //     process.env, bevor Dog-Code laeuft, egal wie eine Variable hereinkommt.
+                // heap-Deckel und Timeout sind parent-seitig (resolveDogWorkerMaxHeapMb hier, timeoutMs weiter
+                // oben) und von alldem unberuehrt.
+                // Ehrlich benannt: das schliesst nur das Auslesen der Secrets aus der Env. Der Realm-Ausbruch
+                // selbst bleibt moeglich -- require('fs')/child_process oder Netz unter Umgehung von
+                // guardedFetch. Echte Isolation braucht eine Prozess-Sandbox / isolated-vm (eigener
+                // Folgeauftrag). Siehe auch das bewusste SSRF-Restrisiko R30 in docs/slopdogs/PLAN.md.
                 const worker = new Worker(SANDBOX_WORKER_SOURCE, {
                     eval: true,
+                    env: {},
+                    execArgv: [],
                     resourceLimits: {
                         maxOldGenerationSizeMb: maxHeapMb,
                         maxYoungGenerationSizeMb: resolveDogWorkerYoungHeapMb(maxHeapMb),

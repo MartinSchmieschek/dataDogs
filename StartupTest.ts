@@ -23,6 +23,7 @@ import {
     classifyDogError,
     unregisterVmGlobalCapability,
     DOG_OOM_MARKER,
+    DOG_TIMEOUT_MARKER,
     type DogRunReport,
     type ICacheHandler,
 } from '@slopdogs/core';
@@ -96,6 +97,7 @@ import {
 } from './services/keysCapability';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { gzipSync } from 'zlib';
 import { LandingPage, type LandingRunner } from './server-app/LandingPage';
 import { LandingKennels } from './mcp/auth/landingKennels';
@@ -368,6 +370,8 @@ export class StartupTest {
             }
             await this.testExportScansRawKeys(nodesStore, kennelsController as KennelController, baseDogsMap);
             await this.testWorkerFetchBlocksPrivateNetworks(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testDogWorkerHasNoServerEnv(nodesStore, kennelsController as KennelController, baseDogsMap);
+            await this.testDogWorkerHasNoFilesystem(nodesStore, kennelsController as KennelController, baseDogsMap);
 
             // P5: Landing — / ist der Kennel slopdogs-landing (Memo je Look, Quelle landing, statischer Fallback)
             await this.testLandingSeedIdempotent(nodesStore, kennelsStore);
@@ -6516,6 +6520,154 @@ export class StartupTest {
             this.addResult(testName, true);
         } catch (error) {
             this.addResult(testName, false, String(error));
+        }
+    }
+
+    /**
+     * Sicherheit: der Dog-Worker traegt keine Server-Umgebung. Node's vm ist kein Sicherheits-Sandkasten --
+     * Dog-Code bricht aus dem VM-Kontext in den Worker-Realm aus, etwa mit
+     *   fetch.constructor.constructor("return process.env")()
+     * und liest dort process.env. Ohne env: {} beim new Worker(...) erbte der Worker eine Kopie der kompletten
+     * Server-Env; der Ausbruch foerderte dann DATABASE_URL / KEYSTORE_MASTER_KEY_V1 / MCP_TOKEN_SIGNING_KEY /
+     * GOOGLE_OAUTH_CLIENT_SECRET zutage und lieferte sie als Dog-Yield unter /k/<kennel> aus.
+     *
+     * Der Test faehrt einen echten Dog ueber den KennelRun-Pfad (wie /run), der drei Ausbrueche versucht --
+     * per fetch, per console und als Vollabzug von process.env -- und prueft, dass im Yield weder der nur fuer
+     * diesen Lauf gesetzte Sondenwert noch die Namen der Geheimnisse auftauchen. Gegenprobe: ein normaler Dog
+     * liefert weiter korrekt, und der Timeout terminiert eine Endlosschleife -- Heap-Deckel und Timeout sind
+     * parent-seitig, env: {} ruehrt sie nicht an. Restrisiko: der Realm-Ausbruch selbst (fs/child_process/Netz
+     * unter Umgehung von guardedFetch) bleibt -- echte Isolation braucht eine Prozess-Sandbox (R30 im PLAN).
+     */
+    private async testDogWorkerHasNoServerEnv(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'Sicherheit: Dog-Worker erbt keine Server-Env (Realm-Ausbruch foerdert keine Secrets)';
+        const probe = 'lotus-env-probe-' + randomBytes(12).toString('hex');
+        const savedTimeout = process.env.SLOPDOGS_VM_TIMEOUT_MS;
+        const savedAltTimeout = process.env.DATADOGS_VM_TIMEOUT_MS;
+        try {
+            // Die Sonde nur fuer diesen Lauf in die SERVER-Env legen (nicht in .env). Ein leckender Worker
+            // gaebe sie ueber jeden der drei Vektoren zurueck.
+            process.env.LOTUS_SECRET_PROBE = probe;
+
+            const attack =
+                'const out = {};\n'
+                + "try { out.viaFetch = String(fetch.constructor.constructor('return process.env.LOTUS_SECRET_PROBE')()); } catch (e) { out.viaFetch = 'ERR ' + e.message; }\n"
+                + "try { out.viaConsole = String(console.log.constructor.constructor('return process.env.LOTUS_SECRET_PROBE')()); } catch (e) { out.viaConsole = 'ERR ' + e.message; }\n"
+                + "try { out.dump = fetch.constructor.constructor('return JSON.stringify(process.env)')(); } catch (e) { out.dump = 'ERR ' + e.message; }\n"
+                + 'return out;';
+            const dog = await this.saveAclTestDog(nodesStore, 'LotusEnvExfilDog', attack, { visibility: 'private', ownerId: 'UENVEXFIL' });
+            const deps: KeysTestDeps = { prisma: null as any, nodesStore, kennelsController, baseDogsMap };
+            const nodes = await this.runKeysKennel(deps, { ownerId: 'UENVEXFIL', visibility: 'private' }, [dog], { user: null, isSuperUser: true });
+            const node = nodes.find((n: any) => n.lineageId === dog);
+            const out = node?.result;
+            if (!out) throw new Error(`Angriffs-Dog lief nicht: ${JSON.stringify(node?.error)}`);
+            // Kernaussage: der Sondenwert taucht im Yield nirgends auf (assertNoSecret prueft roh/encoded/escaped).
+            StartupTest.assertNoSecret('env-exfil', [out], [probe]);
+            // Der Env-Dump traegt keinen Geheimnis-Namen. DATABASE_URL steht am Boot real in der Server-Env --
+            // ein leckender Worker faende ihn, ein sauberer sieht ein leeres process.env.
+            const text = JSON.stringify(out);
+            const names = ['DATABASE_URL', 'KEYSTORE_MASTER_KEY', 'SIGNING', 'SECRET'].filter((n) => text.includes(n));
+            if (names.length) throw new Error(`Env-Namen im Yield: ${names.join(', ')} -- Worker traegt die Server-Env`);
+            // Crisp: die process.env im Worker ist leer. Ohne den Env-Scrub traegt sie die per dotenv-Preload
+            // geladenen Secrets (env: {} allein genuegt dort nicht) -- dieser Vergleich ist das rot/gruen.
+            if (out.dump !== '{}') throw new Error(`process.env im Worker nicht leer: ${String(out.dump).slice(0, 100)}`);
+            if (out.viaFetch !== 'undefined' || out.viaConsole !== 'undefined') {
+                throw new Error(`Sonde im Worker lesbar: fetch=${out.viaFetch}, console=${out.viaConsole}`);
+            }
+
+            // Regression: ein normaler Dog liefert weiter korrekt ueber denselben Worker (env: {} + resourceLimits).
+            const plain = await this.saveAclTestDog(nodesStore, 'LotusPlainDog', 'return { ok: 6 * 7 };', { visibility: 'private', ownerId: 'UENVEXFIL' });
+            const plainNodes = await this.runKeysKennel(deps, { ownerId: 'UENVEXFIL', visibility: 'private' }, [plain], { user: null, isSuperUser: true });
+            const plainOut = plainNodes.find((n: any) => n.lineageId === plain)?.result;
+            if (!plainOut || plainOut.ok !== 42) throw new Error(`normaler Dog liefert falsch: ${JSON.stringify(plainOut)}`);
+
+            // Kurz belegt: der Timeout terminiert weiter eine Endlosschleife (parent-seitig, von env: {} unberuehrt).
+            process.env.SLOPDOGS_VM_TIMEOUT_MS = '400';
+            delete process.env.DATADOGS_VM_TIMEOUT_MS;
+            const spin = await this.saveAclTestDog(nodesStore, 'LotusSpinDog', 'while (true) {}\nreturn 1;', { visibility: 'private', ownerId: 'UENVEXFIL' });
+            const spinNode = (await this.runKeysKennel(deps, { ownerId: 'UENVEXFIL', visibility: 'private' }, [spin], { user: null, isSuperUser: true }))
+                .find((n: any) => n.lineageId === spin);
+            if (!spinNode?.error || !String(spinNode.error).includes(DOG_TIMEOUT_MARKER)) {
+                throw new Error(`Timeout griff nicht: err=${JSON.stringify(spinNode?.error)} result=${JSON.stringify(spinNode?.result)}`);
+            }
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            delete process.env.LOTUS_SECRET_PROBE;
+            if (savedTimeout === undefined) delete process.env.SLOPDOGS_VM_TIMEOUT_MS; else process.env.SLOPDOGS_VM_TIMEOUT_MS = savedTimeout;
+            if (savedAltTimeout === undefined) delete process.env.DATADOGS_VM_TIMEOUT_MS; else process.env.DATADOGS_VM_TIMEOUT_MS = savedAltTimeout;
+        }
+    }
+
+    /**
+     * Sicherheit: der Dog-Worker fasst das Dateisystem nicht an und startet keinen Prozess. Node's vm ist
+     * kein Sicherheits-Sandkasten -- Dog-Code bricht in den Worker-Realm aus und holte sich require sonst
+     * ueber process.getBuiltinModule (Node >= 22) / mainModule.require / binding / dlopen zurueck, daraus fs
+     * (auch /proc/1/environ = Server-Env als Datei) und child_process (gemessen: writeFileSync UND execSync
+     * liefen). Diese Rueckwege sind gekappt und process eingefroren. Der Test faehrt einen Dog ueber den
+     * echten KennelRun-Pfad, der schreiben, lesen, importieren und execSync versucht, und prueft: kein fs,
+     * keine Datei entsteht, kein fremder Datei-Inhalt im Yield, kein Prozess. Gegenprobe: ein normaler Dog
+     * liefert weiter. Restrisiko: V8-Primordials bleiben -> isolated-vm ist der echte Fix (R30).
+     */
+    private async testDogWorkerHasNoFilesystem(nodesStore: IStore, kennelsController: KennelController, baseDogsMap: Map<string, any>): Promise<void> {
+        const testName = 'Sicherheit: Dog-Worker ohne Dateisystem/Prozess (require-Rueckweg gekappt)';
+        const stamp = randomBytes(6).toString('hex');
+        const targetWrite = path.join(os.tmpdir(), `lotus-dog-write-${stamp}.txt`);
+        const secretFile = path.join(os.tmpdir(), `lotus-dog-secret-${stamp}.txt`);
+        const secret = 'lotus-fs-secret-' + randomBytes(12).toString('hex');
+        try {
+            fs.writeFileSync(secretFile, secret);
+            const attack =
+                'const out = {};\n'
+                + 'let proc = null; try { proc = fetch.constructor.constructor("return process")(); } catch (e) {}\n'
+                + 'out.getBuiltin = proc ? typeof proc.getBuiltinModule : "no-proc";\n'
+                + 'out.binding = proc ? typeof proc.binding : "no-proc";\n'
+                + 'out.dlopen = proc ? typeof proc.dlopen : "no-proc";\n'
+                + 'let f = null; let how = "no-fs";\n'
+                + 'try { f = proc.getBuiltinModule("fs"); if (f) how = "getBuiltinModule"; } catch (e) {}\n'
+                + 'if (!f) { try { f = proc.mainModule.require("fs"); how = "mainModule.require"; } catch (e) {} }\n'
+                + 'if (!f) { try { f = proc.binding("fs"); how = "binding"; } catch (e) {} }\n'
+                + 'if (!f) { try { f = (await import("fs")); how = "import"; } catch (e) {} }\n'
+                + 'out.fsHow = f ? how : "no-fs";\n'
+                + 'try { f.writeFileSync(' + JSON.stringify(targetWrite) + ', "x"); out.write = "WROTE"; } catch (e) { out.write = "ERR " + String(e.message).slice(0, 40); }\n'
+                + 'try { out.read = String(f.readFileSync(' + JSON.stringify(secretFile) + ')); } catch (e) { out.read = "ERR " + String(e.message).slice(0, 40); }\n'
+                + 'let cp = null; try { cp = proc.getBuiltinModule("child_process"); } catch (e) {}\n'
+                + 'try { out.exec = String(cp.execSync("echo hi")); } catch (e) { out.exec = "ERR " + String(e.message).slice(0, 40); }\n'
+                + 'return out;';
+            const dog = await this.saveAclTestDog(nodesStore, 'LotusFsExfilDog', attack, { visibility: 'private', ownerId: 'UFSEXFIL' });
+            const deps: KeysTestDeps = { prisma: null as any, nodesStore, kennelsController, baseDogsMap };
+            const nodes = await this.runKeysKennel(deps, { ownerId: 'UFSEXFIL', visibility: 'private' }, [dog], { user: null, isSuperUser: true });
+            const node = nodes.find((n: any) => n.lineageId === dog);
+            const out = node?.result;
+            if (!out) throw new Error(`Angriffs-Dog lief nicht: ${JSON.stringify(node?.error)}`);
+            // require-Rueckwege neutralisiert.
+            if (out.getBuiltin !== 'undefined' || out.binding !== 'undefined' || out.dlopen !== 'undefined') {
+                throw new Error(`require-Rueckweg offen: getBuiltinModule=${out.getBuiltin}, binding=${out.binding}, dlopen=${out.dlopen}`);
+            }
+            if (out.fsHow !== 'no-fs') throw new Error(`fs erreichbar via ${out.fsHow}`);
+            // Kein Schreiben: weder gemeldeter Erfolg noch eine Datei auf der Platte.
+            if (out.write === 'WROTE' || fs.existsSync(targetWrite)) {
+                throw new Error(`Dog hat geschrieben: write=${out.write}, existiert=${fs.existsSync(targetWrite)}`);
+            }
+            // Kein Lesen: der Inhalt der fremden Datei taucht nicht im Yield auf.
+            if (!String(out.read).startsWith('ERR')) throw new Error(`Dog hat gelesen: ${String(out.read).slice(0, 40)}`);
+            StartupTest.assertNoSecret('fs-read', [out], [secret]);
+            // Kein Prozess.
+            if (!String(out.exec).startsWith('ERR')) throw new Error(`Dog hat einen Prozess gestartet: ${out.exec}`);
+
+            // Regression: ein normaler Dog liefert weiter korrekt (nur fetch/console/yield -- kein fs noetig).
+            const plain = await this.saveAclTestDog(nodesStore, 'LotusFsPlainDog', 'return { ok: 6 * 7 };', { visibility: 'private', ownerId: 'UFSEXFIL' });
+            const plainOut = (await this.runKeysKennel(deps, { ownerId: 'UFSEXFIL', visibility: 'private' }, [plain], { user: null, isSuperUser: true }))
+                .find((n: any) => n.lineageId === plain)?.result;
+            if (!plainOut || plainOut.ok !== 42) throw new Error(`normaler Dog liefert falsch: ${JSON.stringify(plainOut)}`);
+
+            this.addResult(testName, true);
+        } catch (error) {
+            this.addResult(testName, false, String(error));
+        } finally {
+            try { fs.unlinkSync(secretFile); } catch { /* ignore */ }
+            try { if (fs.existsSync(targetWrite)) fs.unlinkSync(targetWrite); } catch { /* ignore */ }
         }
     }
 
